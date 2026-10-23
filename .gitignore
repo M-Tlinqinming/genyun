@@ -6,3 +6,8 @@ out/
 !.env.example
 *.log
 .DS_Store
+.data/
+.data-*.log
+.screens/
+test-results/
+playwright-report/

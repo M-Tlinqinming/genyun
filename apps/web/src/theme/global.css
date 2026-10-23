@@ -1,0 +1,35 @@
+/* 与 tokens.ts 保持一致，供少量自定义样式使用。 */
+:root {
+  --gy-surface: #ffffff;
+  --gy-canvas: #f8f9fb;
+  --gy-text: #18243b;
+  --gy-secondary: #596170;
+  --gy-tertiary: #697386;
+  --gy-split: #e5e7eb;
+  --gy-frame-line: #e8eaee;
+  --gy-primary: #245bdb;
+  --gy-selected: #eff4ff;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--gy-canvas);
+  color: var(--gy-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 侧栏分组标题与 Logo、机构选择左对齐（设计稿 24px） */
+.gy-sider-menu .ant-menu-item-group-title {
+  padding-inline-start: 24px;
+}
+
+.gy-sider-menu .ant-menu-item-group + .ant-menu-item-group {
+  margin-top: 8px;
+}
