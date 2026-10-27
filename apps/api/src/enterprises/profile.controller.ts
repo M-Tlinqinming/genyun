@@ -1,11 +1,18 @@
 import {
   basicInfoStartReady,
   basicStepSaveSchema,
+  defaultOrganizationStep,
+  dutyPhoneOfStep,
+  emergencyGroupsStartReady,
   enterpriseInputSchema,
   LICENSE_FIELDS,
+  organizationStepSaveSchema,
   type BasicStep,
   type BasicStepStored,
+  type ChecklistItemKey,
   type EnterpriseInput,
+  type EnterpriseProfile,
+  type OrganizationStepStored,
   type RecognizedLicense,
 } from '@genyun/shared';
 import {
@@ -13,6 +20,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Inject,
@@ -41,7 +49,7 @@ const STALE = '资料刚被其他人修改过，已为您显示最新内容，�
 const IDENTITY_KEYS = ['name', 'socialCreditCode', 'legalRepresentative', 'registeredAddress'] as const;
 const LICENSE_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
-const licenseSchema = z.object({ fileId: z.uuid('请选择文件') });
+const fileIdSchema = z.object({ fileId: z.uuid('请选择文件') });
 
 type Row = typeof enterprises.$inferSelect;
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -50,7 +58,7 @@ function emptyStep(): BasicStepStored {
   return { basic: {}, later: [], sources: {} };
 }
 
-// 企业自填第 1 步（12 页 S01）：读取、自动保存、上传营业执照并识别
+// 企业自填（12 页 S01、S02）：第 1 步读取、自动保存、上传营业执照并识别；第 2 步读取、自动保存、上传花名册
 @Controller('enterprises/:id')
 export class EnterpriseProfileController {
   constructor(
@@ -73,7 +81,7 @@ export class EnterpriseProfileController {
     if (version !== row.version) throw this.stale(row.version);
 
     const step: BasicStepStored = { ...(row.profile.basicStep ?? emptyStep()), basic, later, sources };
-    const saved = await this.write(user, row, version, identity, step);
+    const saved = await this.write(user, row, version, { basicStep: step }, identity);
     return this.view(saved);
   }
 
@@ -81,7 +89,7 @@ export class EnterpriseProfileController {
   @Post('license')
   async license(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     const row = await this.editable(user, id);
-    const parsed = licenseSchema.safeParse(body);
+    const parsed = fileIdSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请选择文件');
     const [file] = await this.db
       .select({ id: files.id, storageKey: files.storageKey, contentType: files.contentType })
@@ -130,18 +138,104 @@ export class EnterpriseProfileController {
     }
     if (status === 'recognized' && count === 0) status = 'unrecognized';
 
-    const saved = await this.write(user, row, row.version, identity, { ...step, basic, sources });
+    const saved = await this.write(user, row, row.version, { basicStep: { ...step, basic, sources } }, identity);
     return { ...(await this.view(saved)), recognition: { status, count } };
   }
 
-  private async write(user: SessionUser, row: Row, version: number, identity: EnterpriseInput, step: BasicStepStored) {
+  @Get('organization-step')
+  async getOrganization(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.organizationView(await this.load(user, id));
+  }
+
+  @Put('organization-step')
+  async saveOrganization(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+  ) {
+    const row = await this.editable(user, id);
+    const parsed = organizationStepSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+    if (parsed.data.version !== row.version) throw this.stale(row.version);
+    const stored: OrganizationStepStored = {
+      rosterFileIds: row.profile.organizationStep?.rosterFileIds ?? [],
+      step: parsed.data.step,
+    };
+    return this.organizationView(await this.write(user, row, row.version, { organizationStep: stored }));
+  }
+
+  // 上传花名册：文件记在企业资料里，页面另把它挂到任务的「各应急小组成员」上
+  @Post('roster')
+  async addRoster(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const row = await this.editable(user, id);
+    const parsed = fileIdSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请选择文件');
+    const [file] = await this.db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(eq(files.id, parsed.data.fileId), eq(files.orgId, row.orgId), eq(files.kind, 'customer_material')))
+      .limit(1);
+    if (!file) throw new NotFoundException('找不到该文件');
+    const current = this.organizationStored(row);
+    if (current.rosterFileIds.includes(file.id)) return this.organizationView(row);
+    const stored = { ...current, rosterFileIds: [...current.rosterFileIds, file.id] };
+    return this.organizationView(await this.write(user, row, row.version, { organizationStep: stored }));
+  }
+
+  @Delete('roster/:fileId')
+  async removeRoster(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+  ) {
+    const row = await this.editable(user, id);
+    const current = this.organizationStored(row);
+    if (!current.rosterFileIds.includes(fileId)) return this.organizationView(row);
+    const stored = { ...current, rosterFileIds: current.rosterFileIds.filter((f) => f !== fileId) };
+    return this.organizationView(await this.write(user, row, row.version, { organizationStep: stored }));
+  }
+
+  private organizationStored(row: Row): OrganizationStepStored {
+    const employeeCount = row.profile.basicStep?.basic.employeeCount;
+    return row.profile.organizationStep ?? { step: defaultOrganizationStep(employeeCount), rosterFileIds: [] };
+  }
+
+  private async organizationView(row: Row) {
+    const stored = this.organizationStored(row);
+    const roster =
+      stored.rosterFileIds.length === 0
+        ? []
+        : await this.db
+            .select({ fileId: files.id, originalName: files.originalName })
+            .from(files)
+            .where(inArray(files.id, stored.rosterFileIds));
+    return {
+      enterpriseId: row.id,
+      version: row.version,
+      step: stored.step,
+      // 按上传先后排列
+      roster: stored.rosterFileIds.flatMap((fid) => roster.filter((f) => f.fileId === fid)),
+      employeeCount: row.profile.basicStep?.basic.employeeCount ?? null,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  // 保存一块企业资料（identity 只有第 1 步会改），版本加 1，资料清单跟着变
+  private async write(
+    user: SessionUser,
+    row: Row,
+    version: number,
+    patch: Partial<EnterpriseProfile>,
+    identity?: EnterpriseInput,
+  ) {
+    const profile: EnterpriseProfile = { ...row.profile, ...patch };
     try {
       return await this.db.transaction(async (tx) => {
         const [saved] = await tx
           .update(enterprises)
           .set({
             ...identity,
-            profile: { ...row.profile, basicStep: step },
+            profile,
             version: version + 1,
             updatedAt: new Date(),
           })
@@ -149,7 +243,14 @@ export class EnterpriseProfileController {
           .returning();
         // 读与写之间别人刚好保存了
         if (!saved) throw this.stale(version + 1);
-        await this.syncBasicInfo(tx, user, row.id, basicInfoStartReady(step.basic));
+        if (patch.basicStep) {
+          await this.syncItem(tx, user, row.id, 'basic_info', basicInfoStartReady(patch.basicStep.basic));
+        }
+        if (patch.organizationStep) {
+          const { step } = patch.organizationStep;
+          await this.syncItem(tx, user, row.id, 'emergency_groups', emergencyGroupsStartReady(step));
+          await this.syncItem(tx, user, row.id, 'duty_phone', Boolean(dutyPhoneOfStep(step)));
+        }
         return saved;
       });
     } catch (err) {
@@ -160,16 +261,15 @@ export class EnterpriseProfileController {
     }
   }
 
-  // 资料清单「企业基本情况」跟着填写情况走：开始编制需要的几项都填了就是「已提供」，
+  // 资料清单跟着填写情况走：开始编制需要的内容都填了就是「已提供」，
   // 删掉其中一项又回到未回答（有文件作凭证的不动）。只改还在准备资料的任务
-  private async syncBasicInfo(tx: Tx, user: SessionUser, enterpriseId: string, ready: boolean) {
+  private async syncItem(tx: Tx, user: SessionUser, enterpriseId: string, itemKey: ChecklistItemKey, ready: boolean) {
     const open = await tx
       .select({ id: tasks.id })
       .from(tasks)
       .where(and(eq(tasks.enterpriseId, enterpriseId), eq(tasks.status, 'preparing'), isNull(tasks.closedAt)));
     if (open.length === 0) return;
     const ids = open.map((t) => t.id);
-    const itemKey = 'basic_info';
 
     if (!ready) {
       await tx.delete(checklistItems).where(

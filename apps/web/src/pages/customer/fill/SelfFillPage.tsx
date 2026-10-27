@@ -6,9 +6,10 @@ import { useSession } from '../../../auth/session';
 import { gy } from '../../../theme/tokens';
 import { BasicStepPage } from './BasicStepPage';
 import { FILL_STEPS, FillFrame } from './FillFrame';
+import { OrganizationStepPage } from './OrganizationStepPage';
 
 // 企业自填 /customer/tasks/:taskId/fill/:step（全屏，不在工作区框架里）。
-// 第 2 步在 6b、第 3–5 步在第 7–9 项做，目前先占位
+// 第 3–5 步在第 7–9 项做，目前先占位
 export function SelfFillPage() {
   const { taskId = '', step: stepParam = '1' } = useParams();
   const session = useSession();
@@ -32,6 +33,7 @@ export function SelfFillPage() {
   }
 
   if (step === 1) return <BasicStepPage key={task.data.id} task={task.data} />;
+  if (step === 2) return <OrganizationStepPage key={task.data.id} task={task.data} />;
   return (
     <PendingStep
       step={step}

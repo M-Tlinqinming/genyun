@@ -214,12 +214,13 @@ export function FillCard({
   );
 }
 
-// 右侧说明栏（为什么问这些 / 您填完以后 / 加密存储）
-export function SidePanel({ why, after }: { why: string[]; after: string[] }) {
+// 右侧说明栏（top 放在最上面，如第 2 步的组织体系图 / 为什么问这些 / 您填完以后 / 加密存储）
+export function SidePanel({ why, after, top }: { why: string[]; after: string[]; top?: ReactNode }) {
   const text = { fontSize: 13, lineHeight: '21px', color: '#3F4A5C', margin: 0 } as const;
   const heading = { margin: 0, fontSize: 14, lineHeight: '22px', fontWeight: 600, color: gy.text } as const;
   return (
     <aside style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {top}
       <section
         style={{
           display: 'flex',

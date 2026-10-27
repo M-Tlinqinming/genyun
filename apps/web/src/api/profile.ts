@@ -1,4 +1,12 @@
-import type { BasicStep, BasicStepField, BasicStepSave, EnterpriseInput, FieldSource } from '@genyun/shared';
+import type {
+  BasicStep,
+  BasicStepField,
+  BasicStepSave,
+  EnterpriseInput,
+  FieldSource,
+  OrganizationStep,
+  OrganizationStepSave,
+} from '@genyun/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, request } from './request';
 
@@ -22,15 +30,62 @@ export interface LicenseResult extends BasicStepView {
 
 export const basicStepKey = (enterpriseId: string) => ['enterprises', enterpriseId, 'basic-step'] as const;
 
+// 填写过程中不自动重新拉取，避免把正在输入的内容冲掉；离开这一步就丢掉缓存，
+// 回来时重新读取（各步共用一个版本号，旧缓存会让第一次保存被当成冲突）
+const fillQueryOptions = { staleTime: Infinity, gcTime: 0, refetchOnWindowFocus: false } as const;
+
 export function useBasicStep(enterpriseId: string | undefined) {
   return useQuery({
     queryKey: basicStepKey(enterpriseId ?? ''),
     queryFn: () => request<BasicStepView>(`/enterprises/${enterpriseId}/basic-step`),
     enabled: Boolean(enterpriseId),
-    // 填写过程中不自动重新拉取，避免把正在输入的内容冲掉
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
+    ...fillQueryOptions,
   });
+}
+
+export interface OrganizationStepView {
+  enterpriseId: string;
+  version: number;
+  step: OrganizationStep;
+  roster: { fileId: string; originalName: string }[];
+  // 第 1 步填的员工人数，用于建议小组数量
+  employeeCount: number | null;
+  updatedAt: string;
+}
+
+export const organizationStepKey = (enterpriseId: string) => ['enterprises', enterpriseId, 'organization-step'] as const;
+
+export function useOrganizationStep(enterpriseId: string | undefined) {
+  return useQuery({
+    queryKey: organizationStepKey(enterpriseId ?? ''),
+    queryFn: () => request<OrganizationStepView>(`/enterprises/${enterpriseId}/organization-step`),
+    enabled: Boolean(enterpriseId),
+    ...fillQueryOptions,
+  });
+}
+
+export function saveOrganizationStep(enterpriseId: string, body: OrganizationStepSave) {
+  return request<OrganizationStepView>(`/enterprises/${enterpriseId}/organization-step`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+// 花名册：挂到任务的「各应急小组成员」上，再记到企业资料里
+export async function addRoster(taskId: string, enterpriseId: string, fileId: string) {
+  await request(`/tasks/${taskId}/checklist/emergency_groups/files`, {
+    method: 'POST',
+    body: JSON.stringify({ fileId }),
+  });
+  return request<OrganizationStepView>(`/enterprises/${enterpriseId}/roster`, {
+    method: 'POST',
+    body: JSON.stringify({ fileId }),
+  });
+}
+
+export async function removeRoster(taskId: string, enterpriseId: string, fileId: string) {
+  await request(`/tasks/${taskId}/checklist/emergency_groups/files/${fileId}`, { method: 'DELETE' });
+  return request<OrganizationStepView>(`/enterprises/${enterpriseId}/roster/${fileId}`, { method: 'DELETE' });
 }
 
 export function saveBasicStep(enterpriseId: string, body: BasicStepSave) {
