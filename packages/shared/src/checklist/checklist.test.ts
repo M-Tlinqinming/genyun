@@ -41,6 +41,7 @@ describe('资料项状态', () => {
   it('拍照给耕云看只出现在需要辨认实物的项', () => {
     expect(statusNotAllowedReason('special_equipment', 'photo_for_expert')).toBeNull();
     expect(statusNotAllowedReason('equipment', 'photo_for_expert')).not.toBeNull();
+    expect(statusNotAllowedReason('fire_pool', 'photo_for_expert')).not.toBeNull();
   });
 
   it('耕云代办的项客户只能确认', () => {

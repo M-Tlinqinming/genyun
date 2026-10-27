@@ -138,7 +138,6 @@ export const productionSchema = z.object({
         volumeM3: amount,
       }),
       z.object({ answer: z.literal('no') }),
-      z.object({ answer: z.literal('photo'), photoFileIds: fileIds }),
     ])
     .optional(),
   hasEmergencyPool: z.boolean().optional(),

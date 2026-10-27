@@ -79,10 +79,7 @@ export const CHECKLIST_ITEMS = [
     conditional: true,
     allowPhoto: true,
   }),
-  item('fire_pool', '消防水池', 'resources', 'before_delivery', {
-    conditional: true,
-    allowPhoto: true,
-  }),
+  item('fire_pool', '消防水池', 'resources', 'before_delivery', { conditional: true }),
 
   item('site_plan', '总平面布置图', 'drawings', 'start'),
   item('evacuation_plan', '紧急疏散示意图', 'drawings', 'start'),
