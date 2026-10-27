@@ -3,6 +3,7 @@ import {
   type ChecklistItemUpdate,
   type ChecklistState,
   type ItemState,
+  type OnSiteRequestInput,
   type TaskCreateInput,
   type TaskUpdateInput,
   CHECKLIST_ITEM_KEYS,
@@ -11,6 +12,7 @@ import {
   formatTaskNumber,
   getItemDef,
   isContractActive,
+  reviewOf,
   statusNotAllowedReason,
 } from '@genyun/shared';
 import {
@@ -32,6 +34,7 @@ import {
   checklistItems,
   enterprises,
   files,
+  onSiteRequests,
   organizations,
   taskNumberCounters,
   tasks,
@@ -261,6 +264,75 @@ export class TasksService {
         );
     });
     return this.checklistResult(id);
+  }
+
+  // 企业自填第 5 步「核对」：前 4 步概括、还缺的必需资料、稍后补、交给专家判断的事项；
+  // 另带预约上门弹窗的默认联系人、合同有效期和这个任务最近一次上门需求
+  async review(user: SessionUser, id: string) {
+    const task = await this.load(user, id);
+    const [ent] = await this.db
+      .select({
+        profile: enterprises.profile,
+        contractStartsAt: organizations.contractStartsAt,
+        contractEndsAt: organizations.contractEndsAt,
+      })
+      .from(enterprises)
+      .innerJoin(organizations, eq(organizations.id, enterprises.orgId))
+      .where(eq(enterprises.id, task.enterpriseId))
+      .limit(1);
+    const profile = ent!.profile;
+    const { items } = await this.checklistResult(id);
+    const review = reviewOf({
+      enterpriseName: task.enterpriseName,
+      basicStep: profile.basicStep,
+      organization: profile.organizationStep?.step,
+      production: profile.productionStep?.step,
+      resources: profile.resourcesStep?.step,
+      checklist: items,
+    });
+    const basic = profile.basicStep?.basic ?? {};
+    return {
+      review,
+      contact: { name: basic.contactPerson ?? user.name, phone: basic.contactPhone ?? '' },
+      contract: { startsAt: ent!.contractStartsAt, endsAt: ent!.contractEndsAt },
+      onSiteRequest: (await this.onSiteRequestsOf(id))[0] ?? null,
+    };
+  }
+
+  // 预约耕云上门：只登记工单，运营在 M3 处理。同一任务可以多次预约（如补充新的需要）
+  async requestOnSite(user: SessionUser, id: string, input: OnSiteRequestInput) {
+    const task = await this.load(user, id);
+    if (!canEditOrganizationData(user, task.orgId)) throw new ForbiddenException('上门需求由客户提交');
+    await this.db.insert(onSiteRequests).values({
+      orgId: task.orgId,
+      enterpriseId: task.enterpriseId,
+      taskId: id,
+      contactName: input.contactName,
+      contactPhone: input.contactPhone,
+      callTime: input.callTime,
+      helpItems: input.helpItems,
+      note: input.note || null,
+      createdBy: user.id,
+    });
+    return (await this.onSiteRequestsOf(id))[0]!;
+  }
+
+  // 客户看得到的字段（不含运营内部备注），新的在前
+  private onSiteRequestsOf(taskId: string) {
+    return this.db
+      .select({
+        id: onSiteRequests.id,
+        contactName: onSiteRequests.contactName,
+        contactPhone: onSiteRequests.contactPhone,
+        callTime: onSiteRequests.callTime,
+        helpItems: onSiteRequests.helpItems,
+        note: onSiteRequests.note,
+        status: onSiteRequests.status,
+        createdAt: onSiteRequests.createdAt,
+      })
+      .from(onSiteRequests)
+      .where(eq(onSiteRequests.taskId, taskId))
+      .orderBy(desc(onSiteRequests.createdAt));
   }
 
   private async checklistResult(taskId: string) {
