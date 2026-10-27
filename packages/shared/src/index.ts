@@ -14,3 +14,4 @@ export * from './profile/industries.ts';
 export * from './profile/basic-step.ts';
 export * from './profile/organization-step.ts';
 export * from './profile/production-step.ts';
+export * from './profile/process-flow.ts';
