@@ -214,6 +214,132 @@ describe('企业自填第 1 步 · 资料清单跟着填写情况走', () => {
   });
 });
 
+describe('企业自填第 2 步 · 人员与应急组织', () => {
+  async function organization(id: string) {
+    const res = await (await as('a-admin@test.cn')).get(`/api/enterprises/${id}/organization-step`);
+    expect(res.status).toBe(200);
+    return res.body;
+  }
+
+  async function withTask(name: string) {
+    const id = await newEnterprise(name);
+    const agent = await as('a-admin@test.cn');
+    const task = (await agent.post(`/api/enterprises/${id}/tasks`).send({ name: '2026 年应急预案编制' })).body;
+    return { id, taskId: task.id as string, agent };
+  }
+
+  it('第一次打开按第 1 步的员工人数预设小组', async () => {
+    const id = await newEnterprise('丑公司');
+    expect((await organization(id)).step.groups.map((g: { name: string }) => g.name)).toEqual([
+      '抢险救灾组',
+      '综合保障组',
+      '通讯联络组',
+    ]);
+    const agent = await as('a-admin@test.cn');
+    await agent
+      .put(`/api/enterprises/${id}/basic-step`)
+      .send({ version: 1, identity: { name: '丑公司' }, basic: { employeeCount: 150 } });
+    const s = await organization(id);
+    expect(s).toMatchObject({ version: 2, employeeCount: 150, roster: [] });
+    expect(s.step.groups).toHaveLength(5);
+  });
+
+  it('总指挥及手机填了「各应急小组成员」为已提供，值班电话默认同总指挥', async () => {
+    const { id, taskId, agent } = await withTask('寅公司');
+    const s = await organization(id);
+    const commander = { id: 'p1', name: '陈大文', position: '总经理' };
+
+    const partial = await agent
+      .put(`/api/enterprises/${id}/organization-step`)
+      .send({ version: s.version, step: { ...s.step, commander } });
+    expect(partial.status).toBe(200);
+    expect(await checklistItem(taskId, 'emergency_groups')).toBeUndefined();
+    expect(await checklistItem(taskId, 'duty_phone')).toBeUndefined();
+
+    const full = await agent
+      .put(`/api/enterprises/${id}/organization-step`)
+      .send({ version: partial.body.version, step: { ...s.step, commander: { ...commander, phone: '13800002071' } } });
+    expect(full.status).toBe(200);
+    expect(full.body.step.commander.phone).toBe('13800002071');
+    expect(await checklistItem(taskId, 'emergency_groups')).toMatchObject({ status: 'provided' });
+    expect(await checklistItem(taskId, 'duty_phone')).toMatchObject({ status: 'provided' });
+
+    // 删掉手机：两项都回到未回答；另填值班电话则值班电话仍为已提供
+    await agent
+      .put(`/api/enterprises/${id}/organization-step`)
+      .send({ version: full.body.version, step: { ...s.step, commander, dutyPhone: '0752-3324567' } });
+    expect(await checklistItem(taskId, 'emergency_groups')).toBeUndefined();
+    expect(await checklistItem(taskId, 'duty_phone')).toMatchObject({ status: 'provided' });
+  });
+
+  it('和第 1 步共用版本号：别人刚保存过第 1 步时拒绝', async () => {
+    const id = await newEnterprise('卯公司');
+    const s = await organization(id);
+    const agent = await as('a-admin@test.cn');
+    await agent
+      .put(`/api/enterprises/${id}/basic-step`)
+      .send({ version: s.version, identity: { name: '卯公司' }, basic: { employeeCount: 10 } });
+    const stale = await agent.put(`/api/enterprises/${id}/organization-step`).send({ version: s.version, step: s.step });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ reason: 'stale' });
+    // 第 1 步的内容没被冲掉
+    expect((await step(id)).basic.employeeCount).toBe(10);
+  });
+
+  it('小组少于 2 个、电话格式不对时不保存', async () => {
+    const id = await newEnterprise('辰公司');
+    const s = await organization(id);
+    const agent = await as('a-admin@test.cn');
+    const one = await agent
+      .put(`/api/enterprises/${id}/organization-step`)
+      .send({ version: s.version, step: { ...s.step, groups: s.step.groups.slice(0, 1) } });
+    expect(one.status).toBe(400);
+    expect(one.body.message).toBe('至少设 2 个应急小组');
+    const phone = await agent
+      .put(`/api/enterprises/${id}/organization-step`)
+      .send({ version: s.version, step: { ...s.step, dutyPhone: '门卫室' } });
+    expect(phone.status).toBe(400);
+  });
+
+  it('上传花名册：文件记在企业资料里，挂到「各应急小组成员」后为已提供，可以移除', async () => {
+    const { id, taskId, agent } = await withTask('巳公司');
+    const file = await agent.post(`/api/orgs/${org.a}/files`).attach('file', DOCX, '应急通讯录.docx');
+    expect(file.status).toBe(201);
+    const fileId = file.body.id as string;
+
+    const added = await agent.post(`/api/enterprises/${id}/roster`).send({ fileId });
+    expect(added.status).toBe(201);
+    expect(added.body.roster).toEqual([{ fileId, originalName: '应急通讯录.docx' }]);
+    await agent.post(`/api/tasks/${taskId}/checklist/emergency_groups/files`).send({ fileId });
+    expect(await checklistItem(taskId, 'emergency_groups')).toMatchObject({ status: 'provided' });
+
+    // 切到上传花名册方式保存：有文件作凭证，资料项不受影响
+    const s = await organization(id);
+    await agent
+      .put(`/api/enterprises/${id}/organization-step`)
+      .send({ version: s.version, step: { ...s.step, mode: 'roster' } });
+    expect(await checklistItem(taskId, 'emergency_groups')).toMatchObject({ status: 'provided' });
+
+    const removed = await agent.delete(`/api/enterprises/${id}/roster/${fileId}`);
+    expect(removed.status).toBe(200);
+    expect(removed.body.roster).toEqual([]);
+    expect(removed.body.step.mode).toBe('roster');
+  });
+
+  it('别的组织读不到也改不了，也不能挂别的组织的文件', async () => {
+    const id = await newEnterprise('午公司');
+    const s = await organization(id);
+    const b = await as('b-admin@test.cn');
+    expect((await b.get(`/api/enterprises/${id}/organization-step`)).status).toBe(404);
+    expect((await b.put(`/api/enterprises/${id}/organization-step`).send({ version: s.version, step: s.step })).status).toBe(
+      404,
+    );
+    const other = await b.post(`/api/orgs/${org.b}/files`).attach('file', PDF, 'b.pdf');
+    const res = await (await as('a-admin@test.cn')).post(`/api/enterprises/${id}/roster`).send({ fileId: other.body.id });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('营业执照', () => {
   async function uploadLicense(data = PDF, name = '营业执照.pdf') {
     const res = await (

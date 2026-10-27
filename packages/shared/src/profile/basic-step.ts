@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { enterpriseInputSchema } from '../enterprise.ts';
 import { basicInfoSchema } from './basic.ts';
 import { INDUSTRY_NAMES } from './industries.ts';
+import type { OrganizationStepStored } from './organization-step.ts';
 
 export const basicStepSchema = basicInfoSchema
   .omit({ companyName: true, socialCreditCode: true, legalRepresentative: true, registeredAddress: true })
@@ -79,7 +80,8 @@ export interface BasicStepStored {
   licenseFileId?: string;
 }
 
-// 企业资料按自填步骤分块存放；后续步骤（6b 起）在这里加各自的块
+// 企业资料按自填步骤分块存放，共用企业的版本号；后续步骤在这里加各自的块
 export interface EnterpriseProfile {
   basicStep?: BasicStepStored;
+  organizationStep?: OrganizationStepStored;
 }
