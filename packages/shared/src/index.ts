@@ -18,3 +18,5 @@ export * from './profile/process-flow.ts';
 export * from './profile/resources-step.ts';
 export * from './profile/review-step.ts';
 export * from './on-site.ts';
+export * from './profile/library.ts';
+export * from './documents.ts';

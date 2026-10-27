@@ -1,4 +1,4 @@
-import { Breadcrumb, Empty, Result, Spin, Tabs } from 'antd';
+import { Breadcrumb, Button, Empty, Result, Spin, Tabs } from 'antd';
 import { Link, Navigate, useParams } from 'react-router';
 import { ApiError } from '../../api/request';
 import { useTask } from '../../api/tasks';
@@ -47,6 +47,11 @@ export function TaskPage() {
       <PageHeader
         title={t.name}
         description={`${t.number} · ${t.status === 'preparing' ? '资料准备 · 申请尚未提交' : '已提交'}`}
+        extra={
+          <Link to={`/customer/enterprises/${t.enterpriseId}?tab=documents`}>
+            <Button>查看企业资料</Button>
+          </Link>
+        }
       />
       <StageBar current={t.status === 'preparing' ? 0 : 1} />
       <Tabs

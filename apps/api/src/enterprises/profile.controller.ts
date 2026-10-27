@@ -14,6 +14,7 @@ import {
   firePoolStatus,
   firstAidKitStatus,
   LICENSE_FIELDS,
+  libraryFilesOf,
   materialsStartReady,
   neighborsReady,
   organizationStepSaveSchema,
@@ -59,6 +60,7 @@ import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { checklistItemFiles, checklistItems, enterprises, files, tasks } from '../db/schema.ts';
+import { registerFile } from '../documents/documents.service.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { LICENSE_RECOGNIZER, type LicenseRecognizer } from '../license/recognizer.ts';
 
@@ -372,6 +374,10 @@ export class EnterpriseProfileController {
           .returning();
         // 读与写之间别人刚好保存了
         if (!saved) throw this.stale(version + 1);
+        // 这次保存的步骤里引用的执照、花名册、台账、图纸等登记进企业资料库（已登记的跳过）
+        for (const f of libraryFilesOf(patch)) {
+          await registerFile(tx, user.id, { orgId: row.orgId, enterpriseId: row.id }, f.fileId, f.category);
+        }
         const provided = (ready: boolean) => (ready ? ('provided' as const) : null);
         if (patch.basicStep) {
           await this.syncItem(tx, user, row.id, 'basic_info', provided(basicInfoStartReady(patch.basicStep.basic)));
