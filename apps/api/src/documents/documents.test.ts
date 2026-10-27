@@ -137,3 +137,115 @@ describe('上传已有资料 · 任务关联的企业原始资料', () => {
     expect((await expert2.get(`/api/files/${fileId}/download-url`)).status).toBe(404);
   });
 });
+
+describe('企业资料库 · 版本与选用', () => {
+  it('资料库直接上传为 V1、待整理；上传新版本后任务仍用原版本，并提示有新版本', async () => {
+    const { enterpriseId, taskId, agent } = await newTask('丙一公司');
+    const v1 = await upload('应急人员名册.pdf');
+    await agent.post(`/api/tasks/${taskId}/documents`).send({ fileId: v1 });
+    const libraryOnly = await upload('企业资料清单.pdf');
+    const list = (await agent.post(`/api/enterprises/${enterpriseId}/documents`).send({ fileId: libraryOnly })).body;
+    expect(list).toHaveLength(2);
+    const roster = list.find((d: { name: string }) => d.name === '应急人员名册.pdf');
+    expect(roster).toMatchObject({ category: null, versionCount: 1, latest: { version: 1, fileId: v1 } });
+
+    const v2 = await upload('应急人员名册（2026 修订）.pdf');
+    const detail = (await agent.post(`/api/enterprises/${enterpriseId}/documents/${roster.id}/versions`).send({ fileId: v2 }))
+      .body;
+    expect(detail.versions.map((v: { version: number }) => v.version)).toEqual([2, 1]);
+    expect(detail.versions[0].tasks).toEqual([]);
+    expect(detail.versions[1].tasks).toEqual([expect.objectContaining({ taskId, status: 'preparing' })]);
+
+    const [linked] = (await agent.get(`/api/tasks/${taskId}/documents`)).body;
+    expect(linked).toMatchObject({ version: 1, latestVersion: 2 });
+    // 同一个文件不能再登记为新版本
+    const again = await agent.post(`/api/enterprises/${enterpriseId}/documents/${roster.id}/versions`).send({ fileId: v2 });
+    expect(again.status).toBe(400);
+  });
+
+  it('从资料库选用：确认后任务关联的就是选中的资料与版本，没选的取消关联', async () => {
+    const { enterpriseId, taskId, agent } = await newTask('丙二公司');
+    const a = await upload('总平面图.pdf');
+    const b = await upload('疏散图.pdf');
+    await agent.post(`/api/enterprises/${enterpriseId}/documents`).send({ fileId: a });
+    const lib = (await agent.post(`/api/enterprises/${enterpriseId}/documents`).send({ fileId: b })).body;
+    const plan = lib.find((d: { name: string }) => d.name === '总平面图.pdf');
+    const evac = lib.find((d: { name: string }) => d.name === '疏散图.pdf');
+    const v2 = await upload('总平面图 2026.pdf');
+    const detail = (await agent.post(`/api/enterprises/${enterpriseId}/documents/${plan.id}/versions`).send({ fileId: v2 }))
+      .body;
+
+    let res = await agent.put(`/api/tasks/${taskId}/documents`).send({
+      selections: [
+        { documentId: plan.id, versionId: detail.versions[1].versionId },
+        { documentId: evac.id, versionId: evac.latest.versionId },
+      ],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.map((d: { name: string; version: number }) => [d.name, d.version])).toEqual([
+      ['总平面图.pdf', 1],
+      ['疏散图.pdf', 1],
+    ]);
+
+    // 改选 V2、去掉疏散图
+    res = await agent.put(`/api/tasks/${taskId}/documents`).send({
+      selections: [{ documentId: plan.id, versionId: detail.versions[0].versionId }],
+    });
+    expect(res.body.map((d: { version: number }) => d.version)).toEqual([2]);
+    // 版本和资料对不上、或同一份资料选两个版本
+    const mismatch = await agent.put(`/api/tasks/${taskId}/documents`).send({
+      selections: [{ documentId: evac.id, versionId: detail.versions[0].versionId }],
+    });
+    expect(mismatch.status).toBe(404);
+    const twice = await agent.put(`/api/tasks/${taskId}/documents`).send({
+      selections: detail.versions.map((v: { versionId: string }) => ({ documentId: plan.id, versionId: v.versionId })),
+    });
+    expect(twice.status).toBe(400);
+  });
+
+  it('别的企业、别的组织的资料不能选用，也看不到资料库', async () => {
+    const mine = await newTask('丙三公司');
+    const other = await newTask('丙四公司');
+    const fileId = await upload('别家资料.pdf');
+    const [doc] = (await other.agent.post(`/api/enterprises/${other.enterpriseId}/documents`).send({ fileId })).body;
+    const res = await mine.agent
+      .put(`/api/tasks/${mine.taskId}/documents`)
+      .send({ selections: [{ documentId: doc.id, versionId: doc.latest.versionId }] });
+    expect(res.status).toBe(404);
+
+    const b = await as('b-admin@test.cn');
+    expect((await b.get(`/api/enterprises/${mine.enterpriseId}/documents`)).status).toBe(404);
+    expect((await b.get(`/api/enterprises/${other.enterpriseId}/documents/${doc.id}`)).status).toBe(404);
+    expect((await b.post(`/api/enterprises/${mine.enterpriseId}/documents`).send({ fileId })).status).toBe(404);
+  });
+
+  it('企业自填上传的图纸、台账自动进资料库，分类按填写位置；照片不进', async () => {
+    const { enterpriseId, agent } = await newTask('丙五公司');
+    const plan = await upload('总平面图.pdf');
+    const ledger = await upload('设备台账.pdf');
+    const label = await upload('油漆标签.pdf');
+    const basic = (await agent.get(`/api/enterprises/${enterpriseId}/basic-step`)).body;
+    const prod = (await agent.get(`/api/enterprises/${enterpriseId}/production-step`)).body;
+    let saved = await agent.put(`/api/enterprises/${enterpriseId}/production-step`).send({
+      version: basic.version,
+      step: {
+        ...prod.step,
+        ledgers: { equipment: [ledger], materials: [] },
+        materials: [{ id: 'm1', name: '油漆', labelPhotoFileIds: [label] }],
+      },
+    });
+    expect(saved.status).toBe(200);
+    const res = (await agent.get(`/api/enterprises/${enterpriseId}/resources-step`)).body;
+    saved = await agent.put(`/api/enterprises/${enterpriseId}/resources-step`).send({
+      version: saved.body.version,
+      step: { ...res.step, drawings: { ...res.step.drawings, site_plan: [plan] } },
+    });
+    expect(saved.status).toBe(200);
+
+    const lib = (await agent.get(`/api/enterprises/${enterpriseId}/documents`)).body;
+    expect(lib.map((d: { name: string; category: string }) => [d.name, d.category]).sort()).toEqual([
+      ['总平面图.pdf', 'drawings'],
+      ['设备台账.pdf', 'production'],
+    ]);
+  });
+});

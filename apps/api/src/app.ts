@@ -7,7 +7,7 @@ import { AuthController } from './auth/auth.controller.ts';
 import { AuthService } from './auth/auth.service.ts';
 import { Public, SessionGuard } from './auth/session.guard.ts';
 import { DATABASE, type Database } from './db/client.ts';
-import { TaskDocumentsController } from './documents/documents.controller.ts';
+import { EnterpriseDocumentsController, TaskDocumentsController } from './documents/documents.controller.ts';
 import { DocumentsService } from './documents/documents.service.ts';
 import { EnterprisesController } from './enterprises/enterprises.controller.ts';
 import { EnterpriseProfileController } from './enterprises/profile.controller.ts';
@@ -45,6 +45,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EnterpriseProfileController,
       TasksController,
       TaskDocumentsController,
+      EnterpriseDocumentsController,
       FilesController,
     ],
     providers: [
