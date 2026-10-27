@@ -12,7 +12,7 @@ import { buildingsReady, DRAWING_KEYS, DRAWINGS, msdsNeedOf, neighborsReady, typ
 export type ReviewStepNo = 1 | 2 | 3 | 4;
 
 // 资料清单各项在自填的哪一步填（耕云代办的项不列）
-const ITEM_STEP: Partial<Record<ChecklistItemKey, ReviewStepNo>> = {
+export const ITEM_STEP: Partial<Record<ChecklistItemKey, ReviewStepNo>> = {
   business_license: 1,
   basic_info: 1,
   emergency_groups: 2,

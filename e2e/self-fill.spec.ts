@@ -39,8 +39,10 @@ async function basicInfoStatus() {
   return body.items.basic_info?.status;
 }
 
-test('选了「按提示填写」的任务直接进入第 1 步', async () => {
+test('选了「按提示填写」的任务：任务页显示资料检查，点「继续填写」进入第 1 步', async () => {
   await page.goto(`/customer/tasks/${taskId}`);
+  await expect(page.getByText('资料来自企业自填')).toBeVisible();
+  await page.getByRole('button', { name: '继续填写' }).click();
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${taskId}/fill/1$`));
   await expect(page.getByRole('heading', { name: '先告诉我们，您是一家什么样的企业' })).toBeVisible();
   await expect(page.getByLabel('企业名称')).toHaveValue('惠州示例电器有限公司');
@@ -83,6 +85,7 @@ test('填一半退出，回来内容还在', async () => {
   await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
 
   await page.getByRole('button', { name: '继续准备资料' }).click();
+  await page.getByRole('button', { name: '继续填写' }).click();
   await expect(page).toHaveURL(/\/fill\/1$/);
   await expect(page.getByLabel('员工人数')).toHaveValue('86');
   await expect(page.getByLabel('主要产品')).toHaveValue('电热水壶、电饭煲');

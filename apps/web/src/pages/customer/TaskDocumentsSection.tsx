@@ -30,7 +30,7 @@ interface Pending {
 
 // 「上传已有资料」路线：任务页「资料与检查」（12 页 P03 上传、P03B 从企业资料中选用、P04 部分失败只重试失败项）。
 // 每个文件单独上传、单独登记进企业资料库并关联到任务，一个失败不影响其他文件
-export function TaskDocumentsSection({ task }: { task: Task }) {
+export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: () => void }) {
   const docs = useTaskDocuments(task.id);
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -261,7 +261,7 @@ export function TaskDocumentsSection({ task }: { task: Task }) {
             size="large"
             type="primary"
             disabled={saved.length === 0 || uploading}
-            onClick={() => message.info('资料检查即将开放；已上传的文件都已保存。')}
+            onClick={onCheck}
           >
             {failed.length > 0 ? '先检查已保存资料' : '检查资料'}
           </Button>
