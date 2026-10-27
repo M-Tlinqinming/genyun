@@ -1,5 +1,17 @@
-import { checklistItemUpdateSchema, taskCreateSchema, taskUpdateSchema } from '@genyun/shared';
-import { BadRequestException, Body, Controller, Get, Inject, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { checklistFileLinkSchema, checklistItemUpdateSchema, taskCreateSchema, taskUpdateSchema } from '@genyun/shared';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Inject,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Put,
+} from '@nestjs/common';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { TasksService } from './tasks.service.ts';
@@ -55,5 +67,26 @@ export class TasksController {
     @Body() body: unknown,
   ) {
     return this.tasks.updateChecklistItem(user, id, itemKey, parse(checklistItemUpdateSchema, body));
+  }
+
+  @Post('tasks/:id/checklist/:itemKey/files')
+  linkFile(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemKey') itemKey: string,
+    @Body() body: unknown,
+  ) {
+    const { fileId } = parse(checklistFileLinkSchema, body);
+    return this.tasks.linkFile(user, id, itemKey, fileId);
+  }
+
+  @Delete('tasks/:id/checklist/:itemKey/files/:fileId')
+  unlinkFile(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemKey') itemKey: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+  ) {
+    return this.tasks.unlinkFile(user, id, itemKey, fileId);
   }
 }

@@ -157,3 +157,45 @@ export const checklistItems = pgTable(
   },
   (t) => [primaryKey({ columns: [t.taskId, t.itemKey] })],
 );
+
+// customer_material = 客户上传的资料，本组织与相关人员可见；contract = 已签合同原件，仅运营可见（M3）
+export const fileKind = pgEnum('file_kind', ['customer_material', 'contract']);
+
+// 上传的文件。内容在文件存储里（本机磁盘 / 对象存储），这里只存登记信息
+export const files = pgTable('files', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  kind: fileKind('kind').notNull(),
+  // 客户看到的原文件名；存储路径只用系统生成的 ID
+  originalName: text('original_name').notNull(),
+  // 按文件内容判断出的类型，不信任浏览器给的类型
+  contentType: text('content_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  sha256: text('sha256').notNull(),
+  storageKey: text('storage_key').notNull().unique(),
+  uploadedBy: uuid('uploaded_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// 资料项关联的文件。移除关联不删除文件本身（企业原件保留）
+export const checklistItemFiles = pgTable(
+  'checklist_item_files',
+  {
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    itemKey: text('item_key').notNull(),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
+    linkedBy: uuid('linked_by')
+      .notNull()
+      .references(() => users.id),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.itemKey, t.fileId] })],
+);

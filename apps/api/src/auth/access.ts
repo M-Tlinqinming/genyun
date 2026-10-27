@@ -30,3 +30,15 @@ export function canViewTask(user: SessionUser, task: { orgId: string; assignedEx
   if (canViewOrganization(user, task.orgId)) return true;
   return task.assignedExpertId === user.id && user.memberships.some((m) => m.role === 'expert');
 }
+
+// 上传的文件：合同原件只有运营能看；客户资料由本组织客户、运营查看，
+// 专业人员只能看分派给自己的任务里用到的文件
+export function canViewFile(
+  user: SessionUser,
+  file: { orgId: string; kind: 'customer_material' | 'contract' },
+  usedInMyAssignedTask: boolean,
+): boolean {
+  if (file.kind === 'contract') return isOperator(user);
+  if (canViewOrganization(user, file.orgId)) return true;
+  return usedInMyAssignedTask && user.memberships.some((m) => m.role === 'expert');
+}
