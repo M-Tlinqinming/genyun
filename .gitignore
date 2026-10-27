@@ -11,3 +11,5 @@ out/
 .screens/
 test-results/
 playwright-report/
+.claude/worktrees/
+.claude/settings.local.json
