@@ -52,13 +52,13 @@ test('从企业详情创建任务，进入选择开始方式，选「按提示�
   await expect(page.getByRole('region', { name: '上传已有资料' })).toBeVisible();
 
   await page.getByRole('button', { name: '开始填写' }).click();
-  await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole('heading', { name: `${year} 年应急预案编制` })).toBeVisible();
-  await expect(page.getByText(/GY-\d{4}-\d{3} · 按提示填写/)).toBeVisible();
+  await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}\/fill\/1$/);
+  await expect(page.getByRole('heading', { name: '先告诉我们，您是一家什么样的企业' })).toBeVisible();
 });
 
 test('再点创建任务，被带到已有任务', async () => {
-  await page.getByRole('link', { name: '惠州示例五金有限公司' }).click();
+  await page.getByRole('button', { name: '保存并退出' }).click();
+  await expect(page.getByRole('heading', { name: '惠州示例五金有限公司' })).toBeVisible();
   await expect(page.getByRole('button', { name: '继续准备资料' })).toBeVisible();
   await page.getByRole('button', { name: '创建编制任务' }).click();
 
@@ -66,8 +66,7 @@ test('再点创建任务，被带到已有任务', async () => {
   await expect(page.getByText(/GY-\d{4}-\d{3} · \d{4} 年应急预案编制 · 资料准备中/)).toBeVisible();
   await expect(page.getByRole('button', { name: '创建草稿并准备资料' })).toHaveCount(0);
   await page.getByRole('button', { name: '继续已有任务' }).click();
-  await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}$/);
-  await expect(page.getByText(/· 按提示填写/)).toBeVisible();
+  await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}\/fill\/1$/);
 });
 
 test('填表期间同事已建好任务：提交时提示并带到那个任务，还没选方式就先选', async () => {
@@ -94,7 +93,10 @@ test('合同不在有效期内时不能新建任务', async () => {
   await page.route(`**/api/orgs/${orgId}`, async (route) => {
     const res = await route.fetch();
     const org = await res.json();
-    await route.fulfill({ response: res, json: { ...org, contractStartsAt: '2024-01-01', contractEndsAt: '2025-12-31' } });
+    await route.fulfill({
+      response: res,
+      json: { ...org, contractStartsAt: '2024-01-01', contractEndsAt: '2025-12-31' },
+    });
   });
   await page.goto(`/customer/enterprises/${id}/tasks/new`);
   await expect(page.getByText('暂时不能新建任务')).toBeVisible();

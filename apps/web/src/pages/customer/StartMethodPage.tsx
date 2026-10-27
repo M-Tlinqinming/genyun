@@ -5,7 +5,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { ApiError } from '../../api/request';
 import { useTask, useUpdateTask } from '../../api/tasks';
 import { useSession } from '../../auth/session';
-import { Logo } from '../../components/Logo';
+import { WizardHeader } from '../../components/WizardHeader';
 import { gy } from '../../theme/tokens';
 
 const STEPS = ['企业基本信息', '人员与应急组织', '生产情况：场所、设备、物料、工艺', '应急资源与图纸', '核对并提交'];
@@ -195,36 +195,10 @@ export function StartMethodPage() {
         background: gy.surface,
       }}
     >
-      <header
-        style={{
-          height: 64,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 32px',
-          borderBottom: `1px solid ${gy.split}`,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <Logo />
-          <span style={{ width: 1, height: 24, background: gy.split }} />
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span
-              style={{
-                fontSize: 14,
-                lineHeight: '22px',
-                fontWeight: 500,
-                color: gy.text,
-              }}
-            >
-              编制应急预案
-            </span>
-            <span style={{ fontSize: 12, lineHeight: '18px', color: gy.tertiary }}>{task.data?.enterpriseName}</span>
-          </div>
-        </div>
-        <Button onClick={() => navigate('/customer')}>返回工作台</Button>
-      </header>
+      <WizardHeader
+        enterpriseName={task.data?.enterpriseName}
+        extra={<Button onClick={() => navigate('/customer')}>返回工作台</Button>}
+      />
       <main
         style={{
           flex: 1,

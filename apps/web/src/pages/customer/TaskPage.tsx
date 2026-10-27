@@ -7,7 +7,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { TaskStageTag } from '../../components/TaskStageTag';
 
 // 任务入口：还没选开始方式先去选。
-// 选好之后的页面：按提示填写在第 6–9 项、上传已有资料在第 10 项做，目前先占位
+// 按提示填写转到填写向导；上传已有资料在第 10 项做，目前先占位
 export function TaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
@@ -27,6 +27,8 @@ export function TaskPage() {
 
   const t = task.data;
   if (t.startMethod === null) return <Navigate to={`/customer/tasks/${t.id}/start`} replace />;
+  // 按提示填写：进入填写向导（停在哪一步的记忆在后续项目里做，先从第 1 步开始）
+  if (t.startMethod === 'self_fill') return <Navigate to={`/customer/tasks/${t.id}/fill/1`} replace />;
 
   return (
     <>

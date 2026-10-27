@@ -6,6 +6,8 @@ import { dirname, join, resolve } from 'node:path';
 // 本机开发与测试用 LocalDiskStorage；预览与正式环境换成对象存储实现，业务代码不变。
 export interface FileStorage {
   put(key: string, data: Buffer, contentType: string): Promise<void>;
+  // 后台自己读取内容（如识别营业执照），不经过下载链接
+  read(key: string): Promise<Buffer>;
   // 生成短时效下载链接；filename 是客户看到的原文件名
   downloadUrl(key: string, opts: { filename: string; contentType: string; ttlSeconds: number }): Promise<string>;
 }
