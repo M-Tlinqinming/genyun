@@ -154,6 +154,8 @@ export const checklistItems = pgTable(
     callRequested: boolean('call_requested').notNull().default(false),
     // 「由我确认」时直接填写的实际情况
     note: text('note'),
+    // 状态由企业自填内容自动得出；自填内容清空时只撤回这种，客户在检查页手动处理的不动
+    synced: boolean('synced').notNull().default(false),
     expertResult: expertResult('expert_result'),
     expertJudgedBy: uuid('expert_judged_by').references(() => users.id),
     expertJudgedAt: timestamp('expert_judged_at', { withTimezone: true }),

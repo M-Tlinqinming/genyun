@@ -287,3 +287,25 @@ describe('资料检查 · 逐项处理', () => {
     expect((await (await as('b-admin@test.cn')).get(`/api/tasks/${taskId}/check`)).status).toBe(404);
   });
 });
+
+describe('检查页手动处理与自填同步', () => {
+  it('检查页里答了「没有消防水池」，之后保存自填第 4 步不会把它撤回', async () => {
+    const { enterpriseId, taskId, agent } = await newTask('戊一公司');
+    expect((await agent.put(`/api/tasks/${taskId}/checklist/fire_pool`).send({ status: 'none' })).status).toBe(200);
+    const res = (await agent.get(`/api/enterprises/${enterpriseId}/resources-step`)).body;
+    const saved = await agent
+      .put(`/api/enterprises/${enterpriseId}/resources-step`)
+      .send({ version: res.version, step: { ...res.step, neighbors: { answer: 'none', items: [] } } });
+    expect(saved.status).toBe(200);
+    const check = (await agent.get(`/api/tasks/${taskId}/check`)).body;
+    expect(check.items.fire_pool).toMatchObject({ status: 'none' });
+    expect(check.items.external_resources).toMatchObject({ status: 'provided' });
+
+    // 自填得出的状态，内容清空后照常撤回
+    const again = (await agent.get(`/api/enterprises/${enterpriseId}/resources-step`)).body;
+    await agent
+      .put(`/api/enterprises/${enterpriseId}/resources-step`)
+      .send({ version: again.version, step: { ...again.step, neighbors: { items: [] } } });
+    expect((await agent.get(`/api/tasks/${taskId}/check`)).body.items.external_resources).toBeUndefined();
+  });
+});

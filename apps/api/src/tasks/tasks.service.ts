@@ -180,6 +180,7 @@ export class TasksService {
       callRequested: input.callRequested,
       // 说明只跟「由我确认」走，改成别的状态时清掉
       note: input.status === 'provided' && input.note ? input.note : null,
+      synced: false,
       confirmedBy: confirms ? user.id : null,
       confirmedAt: confirms ? now : null,
       // 拍照给耕云看：等专家判断
@@ -221,6 +222,7 @@ export class TasksService {
       // 有文件作凭证，不需要再记确认人
       const values = {
         status: 'provided' as const,
+        synced: false,
         confirmedBy: null,
         confirmedAt: null,
         callRequested: false,

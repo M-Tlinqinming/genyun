@@ -435,6 +435,7 @@ export class EnterpriseProfileController {
           inArray(checklistItems.taskId, ids),
           eq(checklistItems.itemKey, itemKey),
           inArray(checklistItems.status, SYNCED_STATUSES),
+          eq(checklistItems.synced, true),
           notExists(
             tx
               .select({ one: checklistItemFiles.fileId })
@@ -460,6 +461,8 @@ export class EnterpriseProfileController {
       const confirms = target !== 'photo_for_expert';
       const values = {
         status: target,
+        synced: true,
+        note: null,
         confirmedBy: confirms ? user.id : null,
         confirmedAt: confirms ? now : null,
         callRequested: false,
