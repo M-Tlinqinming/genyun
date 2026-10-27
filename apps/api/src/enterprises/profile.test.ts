@@ -340,6 +340,127 @@ describe('企业自填第 2 步 · 人员与应急组织', () => {
   });
 });
 
+describe('企业自填第 3 步 · 场所、设备与物料', () => {
+  async function production(id: string) {
+    const res = await (await as('a-admin@test.cn')).get(`/api/enterprises/${id}/production-step`);
+    expect(res.status).toBe(200);
+    return res.body;
+  }
+
+  async function withTask(name: string) {
+    const id = await newEnterprise(name);
+    const agent = await as('a-admin@test.cn');
+    const task = (await agent.post(`/api/enterprises/${id}/tasks`).send({ name: '2026 年应急预案编制' })).body;
+    return { id, taskId: task.id as string, agent };
+  }
+
+  const answers = (a: string[]) => ({
+    pressureVessels: { answer: a[0] },
+    boilers: { answer: a[1] },
+    pressurePipelines: { answer: a[2] },
+    storageTanks: { answer: a[3] },
+  });
+
+  it('第一次打开预选常见场所，并按第 1 步的经营范围加上喷涂', async () => {
+    const id = await newEnterprise('丙一公司');
+    const agent = await as('a-admin@test.cn');
+    await agent
+      .put(`/api/enterprises/${id}/basic-step`)
+      .send({ version: 1, identity: { name: '丙一公司' }, basic: { businessScope: '五金件加工、喷涂' } });
+    const s = await production(id);
+    expect(s).toMatchObject({ version: 2, saved: false, businessScope: '五金件加工、喷涂', fileNames: {} });
+    expect(s.step.sites).toEqual(['workshop', 'spraying', 'warehouse', 'power_room']);
+  });
+
+  it('设备、物料填了名称与数量为已提供；特种设备四类都答完才有结论', async () => {
+    const { id, taskId, agent } = await withTask('丙二公司');
+    let s = await production(id);
+    const save = async (step: object) => {
+      const res = await agent.put(`/api/enterprises/${id}/production-step`).send({ version: s.version, step });
+      expect(res.status).toBe(200);
+      s = res.body;
+    };
+
+    await save({
+      ...s.step,
+      equipment: [{ id: 'e1', name: '螺杆空压机', quantity: '2 台' }],
+      materials: [{ id: 'm1', name: '油漆', maxStorage: '200 kg' }],
+      specialEquipment: answers(['yes', 'no', 'no']),
+    });
+    expect(s.saved).toBe(true);
+    expect(await checklistItem(taskId, 'equipment')).toMatchObject({ status: 'provided' });
+    expect(await checklistItem(taskId, 'materials')).toMatchObject({ status: 'provided' });
+    expect(await checklistItem(taskId, 'special_equipment')).toBeUndefined();
+
+    await save({ ...s.step, specialEquipment: answers(['no', 'no', 'no', 'no']) });
+    expect(await checklistItem(taskId, 'special_equipment')).toMatchObject({ status: 'none' });
+    await save({ ...s.step, specialEquipment: answers(['photo', 'no', 'no', 'no']) });
+    expect(await checklistItem(taskId, 'special_equipment')).toMatchObject({
+      status: 'photo_for_expert',
+      expertJudgement: { result: 'pending' },
+    });
+    await save({ ...s.step, specialEquipment: answers(['yes', 'no', 'no', 'no']) });
+    expect(await checklistItem(taskId, 'special_equipment')).toMatchObject({ status: 'provided' });
+
+    // 清掉数量、撤回一类回答，又回到未回答
+    await save({
+      ...s.step,
+      equipment: [{ id: 'e1', name: '螺杆空压机' }],
+      specialEquipment: answers(['yes', 'no', 'no']),
+    });
+    expect(await checklistItem(taskId, 'equipment')).toBeUndefined();
+    expect(await checklistItem(taskId, 'special_equipment')).toBeUndefined();
+    expect(await checklistItem(taskId, 'materials')).toMatchObject({ status: 'provided' });
+  });
+
+  it('包装标签、台账引用上传过的文件，页面拿到文件名', async () => {
+    const { id, taskId, agent } = await withTask('丙三公司');
+    const photo = await agent.post(`/api/orgs/${org.a}/files?rule=image_or_pdf`).attach('file', PDF, '油漆标签.pdf');
+    const ledger = await agent.post(`/api/orgs/${org.a}/files`).attach('file', DOCX, '设备台账.docx');
+    const s = await production(id);
+
+    // 台账挂到「生产设备设施」上即已提供，之后保存内容（没有设备行）也不撤回
+    await agent.post(`/api/tasks/${taskId}/checklist/equipment/files`).send({ fileId: ledger.body.id });
+    const res = await agent.put(`/api/enterprises/${id}/production-step`).send({
+      version: s.version,
+      step: {
+        ...s.step,
+        materials: [{ id: 'm1', name: '油漆', labelPhotoFileIds: [photo.body.id] }],
+        ledgers: { equipment: [ledger.body.id] },
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.fileNames).toEqual({ [photo.body.id]: '油漆标签.pdf', [ledger.body.id]: '设备台账.docx' });
+    expect(await checklistItem(taskId, 'equipment')).toMatchObject({ status: 'provided', fileIds: [ledger.body.id] });
+  });
+
+  it('和前两步共用版本号；格式不对、引用别的组织的文件时不保存', async () => {
+    const id = await newEnterprise('丙四公司');
+    const agent = await as('a-admin@test.cn');
+    const s = await production(id);
+    await agent.put(`/api/enterprises/${id}/basic-step`).send({ version: s.version, identity: { name: '丙四公司' }, basic: {} });
+    const stale = await agent.put(`/api/enterprises/${id}/production-step`).send({ version: s.version, step: s.step });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ reason: 'stale', version: s.version + 1 });
+
+    const fresh = await production(id);
+    const put = (step: object) => agent.put(`/api/enterprises/${id}/production-step`).send({ version: fresh.version, step });
+    expect((await put({ ...fresh.step, sites: ['moon_base'] })).status).toBe(400);
+    expect((await put({ ...fresh.step, equipment: [{ id: 'e', name: '冲'.repeat(51) }] })).status).toBe(400);
+
+    const other = await (await as('b-admin@test.cn')).post(`/api/orgs/${org.b}/files`).attach('file', PDF, 'b.pdf');
+    expect((await put({ ...fresh.step, ledgers: { materials: [other.body.id] } })).status).toBe(404);
+  });
+
+  it('别的组织读不到也改不了', async () => {
+    const id = await newEnterprise('丙五公司');
+    const s = await production(id);
+    const b = await as('b-admin@test.cn');
+    expect((await b.get(`/api/enterprises/${id}/production-step`)).status).toBe(404);
+    expect((await b.put(`/api/enterprises/${id}/production-step`).send({ version: s.version, step: s.step })).status).toBe(404);
+  });
+});
+
 describe('营业执照', () => {
   async function uploadLicense(data = PDF, name = '营业执照.pdf') {
     const res = await (
