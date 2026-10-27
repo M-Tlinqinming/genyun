@@ -8,6 +8,7 @@ import { Logo } from '../components/Logo';
 import { membershipsIn, useLogout, useSession } from '../auth/session';
 import { gy, layout } from '../theme/tokens';
 import { NAVIGATION } from './navigation';
+import type { WorkspaceContext } from './workspace';
 
 // 三端共用的框架：顶栏 64 + 侧栏 224。只有该工作区的成员才能进入。
 export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
@@ -148,7 +149,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
         </Layout.Header>
         <Layout.Content>
           <div style={{ maxWidth: layout.content, margin: '0 auto', padding: '36px 0 48px' }}>
-            <Outlet />
+            <Outlet context={{ orgId: current.orgId, role: current.role } satisfies WorkspaceContext} />
           </div>
         </Layout.Content>
       </Layout>
