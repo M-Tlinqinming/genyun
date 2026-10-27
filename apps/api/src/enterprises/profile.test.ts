@@ -461,6 +461,60 @@ describe('企业自填第 3 步 · 场所、设备与物料', () => {
   });
 });
 
+describe('企业自填第 3 步 · 工艺流程', () => {
+  async function withTask(name: string) {
+    const id = await newEnterprise(name);
+    const agent = await as('a-admin@test.cn');
+    const task = (await agent.post(`/api/enterprises/${id}/tasks`).send({ name: '2026 年应急预案编制' })).body;
+    const s = (await agent.get(`/api/enterprises/${id}/production-step`)).body;
+    return { id, taskId: task.id as string, agent, s };
+  }
+
+  it('选模板带出工序后「生产工艺流程」为已提供，删光工序又回到未回答；第 1 页内容不受影响', async () => {
+    const { id, taskId, agent, s } = await withTask('丁一公司');
+    expect(s.step.process).toEqual({ sketchFileIds: [], steps: [] });
+    const steps = [
+      { id: 'p1', name: '下料', equipment: ['剪板机'] },
+      { id: 'p2', name: '冲压成型', equipment: ['冲床'] },
+    ];
+    const first = await agent.put(`/api/enterprises/${id}/production-step`).send({
+      version: s.version,
+      step: { ...s.step, process: { source: 'template', templateId: 'metal_stamping', steps } },
+    });
+    expect(first.status).toBe(200);
+    expect(first.body.step.process).toMatchObject({ source: 'template', templateId: 'metal_stamping', steps });
+    expect(first.body.step.sites).toEqual(s.step.sites);
+    expect(await checklistItem(taskId, 'process_flow')).toMatchObject({ status: 'provided' });
+
+    const cleared = await agent.put(`/api/enterprises/${id}/production-step`).send({
+      version: first.body.version,
+      step: { ...first.body.step, process: { source: 'template', templateId: 'metal_stamping', steps: [] } },
+    });
+    expect(cleared.status).toBe(200);
+    expect(await checklistItem(taskId, 'process_flow')).toBeUndefined();
+  });
+
+  it('只写一句话、只传流程图照片也算已提供；不认识的模板、别的组织的照片不保存', async () => {
+    const { id, taskId, agent, s } = await withTask('丁二公司');
+    const put = (version: number, process: object) =>
+      agent.put(`/api/enterprises/${id}/production-step`).send({ version, step: { ...s.step, process } });
+
+    const text = await put(s.version, { source: 'text', description: '熔融、压铸、包装出货' });
+    expect(text.status).toBe(200);
+    expect(await checklistItem(taskId, 'process_flow')).toMatchObject({ status: 'provided' });
+
+    const photo = await agent.post(`/api/orgs/${org.a}/files?rule=image_or_pdf`).attach('file', PDF, '流程图.pdf');
+    const sketch = await put(text.body.version, { source: 'sketch', sketchFileIds: [photo.body.id] });
+    expect(sketch.status).toBe(200);
+    expect(sketch.body.fileNames).toEqual({ [photo.body.id]: '流程图.pdf' });
+    expect(await checklistItem(taskId, 'process_flow')).toMatchObject({ status: 'provided' });
+
+    expect((await put(sketch.body.version, { templateId: 'shipyard' })).status).toBe(400);
+    const other = await (await as('b-admin@test.cn')).post(`/api/orgs/${org.b}/files`).attach('file', PDF, 'b.pdf');
+    expect((await put(sketch.body.version, { sketchFileIds: [other.body.id] })).status).toBe(404);
+  });
+});
+
 describe('营业执照', () => {
   async function uploadLicense(data = PDF, name = '营业执照.pdf') {
     const res = await (

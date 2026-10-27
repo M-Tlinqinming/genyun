@@ -11,6 +11,7 @@ import {
   LICENSE_FIELDS,
   materialsStartReady,
   organizationStepSaveSchema,
+  processStartReady,
   productionStepSaveSchema,
   specialEquipmentStatus,
   type BasicStep,
@@ -71,7 +72,7 @@ function emptyStep(): BasicStepStored {
 }
 
 // 企业自填（12 页 S01、S02、S03a）：第 1 步读取、自动保存、上传营业执照并识别；第 2 步读取、自动保存、上传花名册；
-// 第 3 步读取、自动保存（照片、台账先上传，再随内容一起保存）
+// 第 3 步两页（S03a、S03b）读取、自动保存（照片、台账、流程图照片先上传，再随内容一起保存）
 @Controller('enterprises/:id')
 export class EnterpriseProfileController {
   constructor(
@@ -321,6 +322,7 @@ export class EnterpriseProfileController {
           await this.syncItem(tx, user, row.id, 'equipment', provided(equipmentStartReady(step)));
           await this.syncItem(tx, user, row.id, 'materials', provided(materialsStartReady(step)));
           await this.syncItem(tx, user, row.id, 'special_equipment', specialEquipmentStatus(step.specialEquipment));
+          await this.syncItem(tx, user, row.id, 'process_flow', provided(processStartReady(step.process)));
         }
         return saved;
       });
