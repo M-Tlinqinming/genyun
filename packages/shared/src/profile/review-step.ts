@@ -33,11 +33,9 @@ const SPECIAL_SHORT: Record<SpecialCategory, string> = {
   storageTanks: '储罐 / 油库',
 };
 
-// 第 1 步可点「稍后补」或交付前补齐的字段
+// 第 1 步交付前要补的字段（设计稿 S05 只列这两项；技术管理人员、主管负责人专家整理时顺带问）
 const BASIC_LATER_LABELS = {
   safetyManagementCount: '安全管理人员数',
-  technicalManagementCount: '技术管理人员数',
-  responsiblePerson: '主管负责人',
   landAreaM2: '厂区占地面积',
 } as const;
 // 「其他工商与经营信息」折叠卡片里的字段，有一项没填就整体算一项稍后补
