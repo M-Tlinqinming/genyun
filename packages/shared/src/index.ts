@@ -9,3 +9,4 @@ export * from './profile/organization.ts';
 export * from './profile/production.ts';
 export * from './enterprise.ts';
 export * from './task.ts';
+export * from './files.ts';

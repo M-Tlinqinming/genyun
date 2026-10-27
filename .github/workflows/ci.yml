@@ -36,7 +36,7 @@ jobs:
       - run: docker build -t genyun:${{ github.sha }} .
       - name: 冒烟测试
         run: |
-          docker run -d --name app -e DATABASE_URL=/tmp/db -p 3000:3000 genyun:${{ github.sha }}
+          docker run -d --name app -e DATABASE_URL=/tmp/db -e FILE_STORAGE_DIR=/tmp/files -e FILE_URL_SECRET=ci-smoke-test -p 3000:3000 genyun:${{ github.sha }}
           for i in $(seq 1 30); do curl -sf localhost:3000/api/health && break; sleep 1; done
           curl -sf localhost:3000/api/health
           curl -sf localhost:3000/login | grep -q '<div id="root">'

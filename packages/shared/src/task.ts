@@ -34,6 +34,9 @@ export const checklistItemUpdateSchema = z.object({
 });
 export type ChecklistItemUpdate = z.infer<typeof checklistItemUpdateSchema>;
 
+// 把已上传的文件挂到资料项上
+export const checklistFileLinkSchema = z.object({ fileId: z.uuid('请选择文件') });
+
 // 全平台按年流水：GY-2026-001；超过 999 自然变长
 export function formatTaskNumber(year: number, seq: number): string {
   return `GY-${year}-${String(seq).padStart(3, '0')}`;

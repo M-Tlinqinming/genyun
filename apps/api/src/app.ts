@@ -8,6 +8,8 @@ import { AuthService } from './auth/auth.service.ts';
 import { Public, SessionGuard } from './auth/session.guard.ts';
 import { DATABASE, type Database } from './db/client.ts';
 import { EnterprisesController } from './enterprises/enterprises.controller.ts';
+import { FilesController } from './files/files.controller.ts';
+import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
 import { TasksService } from './tasks/tasks.service.ts';
@@ -23,13 +25,16 @@ class HealthController {
 
 export interface AppOptions {
   loginLimitPerMinute?: number;
+  // 文件存储；不传时按环境变量使用本机磁盘
+  storage?: FileStorage;
 }
 
 export async function createApp(db: Database, options: AppOptions = {}): Promise<INestApplication> {
   @Module({
-    controllers: [HealthController, AuthController, OrgsController, EnterprisesController, TasksController],
+    controllers: [HealthController, AuthController, OrgsController, EnterprisesController, TasksController, FilesController],
     providers: [
       { provide: DATABASE, useValue: db },
+      { provide: FILE_STORAGE, useValue: options.storage ?? defaultStorage() },
       AuthService,
       TasksService,
       { provide: APP_GUARD, useClass: SessionGuard },
