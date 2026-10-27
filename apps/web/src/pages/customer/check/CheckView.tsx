@@ -13,6 +13,7 @@ import { useTaskCheck, type Task, type TaskCheck } from '../../../api/tasks';
 import { gy } from '../../../theme/tokens';
 import { OnSiteDialog } from '../OnSiteVisit';
 import { CheckDrawer } from './CheckDrawer';
+import { BusinessQuestions } from './SpecialCards';
 
 const STATUS_COLOR: Record<CategoryStatus, string> = {
   done: gy.success,
@@ -123,6 +124,7 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
                 : '危化品、特种设备、耐火等级等专业判断由注册安全工程师完成。'
             }
           />
+          <BusinessQuestions task={task} />
           <div style={{ height: 1, background: gy.split }} />
           <Button
             size="large"
@@ -147,7 +149,13 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
         </aside>
       </div>
 
-      <CheckDrawer task={task} category={opened} check={check.data} onClose={() => setOpenCategory(null)} />
+      <CheckDrawer
+        task={task}
+        category={opened}
+        check={check.data}
+        onClose={() => setOpenCategory(null)}
+        onBook={() => setBooking(true)}
+      />
       <OnSiteDialog taskId={task.id} open={booking} onClose={() => setBooking(false)} />
     </div>
   );
