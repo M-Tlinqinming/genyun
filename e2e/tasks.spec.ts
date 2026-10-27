@@ -84,7 +84,7 @@ test('填表期间同事已建好任务：提交时提示并带到那个任务�
   await expect(page).toHaveURL(/\/start$/);
 
   await page.getByRole('button', { name: '上传资料' }).click();
-  await expect(page.getByText(/· 上传已有资料/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: '先准备企业已有资料' })).toBeVisible();
 });
 
 test('合同不在有效期内时不能新建任务', async () => {
