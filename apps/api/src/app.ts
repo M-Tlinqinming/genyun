@@ -8,8 +8,10 @@ import { AuthService } from './auth/auth.service.ts';
 import { Public, SessionGuard } from './auth/session.guard.ts';
 import { DATABASE, type Database } from './db/client.ts';
 import { EnterprisesController } from './enterprises/enterprises.controller.ts';
+import { EnterpriseProfileController } from './enterprises/profile.controller.ts';
 import { FilesController } from './files/files.controller.ts';
 import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.ts';
+import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
 import { TasksService } from './tasks/tasks.service.ts';
@@ -27,14 +29,28 @@ export interface AppOptions {
   loginLimitPerMinute?: number;
   // 文件存储；不传时按环境变量使用本机磁盘
   storage?: FileStorage;
+  // 营业执照识别；不传时按环境变量 LICENSE_OCR 选用，null 表示未配置
+  recognizer?: LicenseRecognizer | null;
 }
 
 export async function createApp(db: Database, options: AppOptions = {}): Promise<INestApplication> {
   @Module({
-    controllers: [HealthController, AuthController, OrgsController, EnterprisesController, TasksController, FilesController],
+    controllers: [
+      HealthController,
+      AuthController,
+      OrgsController,
+      EnterprisesController,
+      EnterpriseProfileController,
+      TasksController,
+      FilesController,
+    ],
     providers: [
       { provide: DATABASE, useValue: db },
       { provide: FILE_STORAGE, useValue: options.storage ?? defaultStorage() },
+      {
+        provide: LICENSE_RECOGNIZER,
+        useValue: options.recognizer === undefined ? defaultRecognizer() : options.recognizer,
+      },
       AuthService,
       TasksService,
       { provide: APP_GUARD, useClass: SessionGuard },

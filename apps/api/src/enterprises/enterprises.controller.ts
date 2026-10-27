@@ -13,7 +13,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { canEditOrganizationData, canViewOrganization } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
@@ -77,7 +77,8 @@ export class EnterprisesController {
     try {
       const [updated] = await this.db
         .update(enterprises)
-        .set({ ...parsed.data, updatedAt: new Date() })
+        // 与自填第 1 步共用版本号，别人在填写页里看到的旧内容不会覆盖这次修改
+        .set({ ...parsed.data, version: sql`${enterprises.version} + 1`, updatedAt: new Date() })
         .where(eq(enterprises.id, id))
         .returning(columns);
       return updated;

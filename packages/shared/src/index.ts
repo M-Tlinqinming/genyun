@@ -10,3 +10,5 @@ export * from './profile/production.ts';
 export * from './enterprise.ts';
 export * from './task.ts';
 export * from './files.ts';
+export * from './profile/industries.ts';
+export * from './profile/basic-step.ts';

@@ -1,9 +1,10 @@
-import { ITEM_STATUSES } from '@genyun/shared';
+import { ITEM_STATUSES, type EnterpriseProfile } from '@genyun/shared';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
   date,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -71,6 +72,10 @@ export const enterprises = pgTable(
     socialCreditCode: text('social_credit_code'),
     registeredAddress: text('registered_address'),
     legalRepresentative: text('legal_representative'),
+    // 企业自填的资料（第 1 步其余字段等），按步骤分块存；下一年度的任务直接复用
+    profile: jsonb('profile').$type<EnterpriseProfile>().notNull().default({}),
+    // 每次保存加 1；保存时带上读到的版本，别人已改过就拒绝，避免互相覆盖
+    version: integer('version').notNull().default(1),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
