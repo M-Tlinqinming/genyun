@@ -15,7 +15,12 @@ export class OrgsController {
     // 无权访问与不存在返回同样的结果，不暴露别家组织是否存在
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
     const [org] = await this.db
-      .select({ id: organizations.id, name: organizations.name, serviceEndsAt: organizations.serviceEndsAt })
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        contractStartsAt: organizations.contractStartsAt,
+        contractEndsAt: organizations.contractEndsAt,
+      })
       .from(organizations)
       .where(eq(organizations.id, orgId))
       .limit(1);

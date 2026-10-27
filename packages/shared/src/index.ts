@@ -7,3 +7,5 @@ export * from './profile/basic.ts';
 export * from './profile/location.ts';
 export * from './profile/organization.ts';
 export * from './profile/production.ts';
+export * from './enterprise.ts';
+export * from './task.ts';

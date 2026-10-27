@@ -7,7 +7,10 @@ import { AuthController } from './auth/auth.controller.ts';
 import { AuthService } from './auth/auth.service.ts';
 import { Public, SessionGuard } from './auth/session.guard.ts';
 import { DATABASE, type Database } from './db/client.ts';
+import { EnterprisesController } from './enterprises/enterprises.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
+import { TasksController } from './tasks/tasks.controller.ts';
+import { TasksService } from './tasks/tasks.service.ts';
 
 @Controller('health')
 class HealthController {
@@ -24,10 +27,11 @@ export interface AppOptions {
 
 export async function createApp(db: Database, options: AppOptions = {}): Promise<INestApplication> {
   @Module({
-    controllers: [HealthController, AuthController, OrgsController],
+    controllers: [HealthController, AuthController, OrgsController, EnterprisesController, TasksController],
     providers: [
       { provide: DATABASE, useValue: db },
       AuthService,
+      TasksService,
       { provide: APP_GUARD, useClass: SessionGuard },
     ],
   })

@@ -3,7 +3,7 @@
 import { z } from 'zod';
 
 // 18 位统一社会信用代码（不含 I/O/S/V/Z）
-const SOCIAL_CREDIT_CODE = /^[0-9A-HJ-NPQRTUWXY]{18}$/;
+export const SOCIAL_CREDIT_CODE = /^[0-9A-HJ-NPQRTUWXY]{18}$/;
 
 const optionalText = z.string().trim().optional();
 const count = z.coerce.number().int().min(0).optional();
