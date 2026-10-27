@@ -36,6 +36,13 @@
       "when": 1793113532483,
       "tag": "0004_on_site_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793116474507,
+      "tag": "0005_enterprise_documents",
+      "breakpoints": true
     }
   ]
 }

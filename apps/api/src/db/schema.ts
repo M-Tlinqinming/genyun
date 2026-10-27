@@ -234,3 +234,69 @@ export const onSiteRequests = pgTable('on_site_requests', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// 企业资料库：企业名下的原始资料，同一份资料可以有多个版本（Paper 11 页 C03 企业资料、12 页 P03）。
+// 两种开始方式上传的文件都进这里，下一年度的任务可以直接选用
+export const enterpriseDocuments = pgTable('enterprise_documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  enterpriseId: uuid('enterprise_id')
+    .notNull()
+    .references(() => enterprises.id, { onDelete: 'cascade' }),
+  // 显示名，默认取第一版的文件名
+  name: text('name').notNull(),
+  // 资料清单的分类（CATEGORIES 的 key）；为空表示待整理，以后由专家或自动归类补上
+  category: text('category'),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const enterpriseDocumentVersions = pgTable(
+  'enterprise_document_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => enterpriseDocuments.id, { onDelete: 'cascade' }),
+    // 1、2、3…，界面显示为 V1、V2
+    version: integer('version').notNull(),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('enterprise_document_versions_number').on(t.documentId, t.version),
+    // 同一个文件只登记一次
+    uniqueIndex('enterprise_document_versions_file').on(t.fileId),
+  ],
+);
+
+// 任务用的是资料库里哪一份资料的哪个版本；上传新版本不会自动替换，已提交的任务保留原版本
+export const taskDocuments = pgTable(
+  'task_documents',
+  {
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => enterpriseDocuments.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => enterpriseDocumentVersions.id, { onDelete: 'cascade' }),
+    linkedBy: uuid('linked_by')
+      .notNull()
+      .references(() => users.id),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.documentId] })],
+);
