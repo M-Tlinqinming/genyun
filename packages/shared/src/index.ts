@@ -16,3 +16,5 @@ export * from './profile/organization-step.ts';
 export * from './profile/production-step.ts';
 export * from './profile/process-flow.ts';
 export * from './profile/resources-step.ts';
+export * from './profile/review-step.ts';
+export * from './on-site.ts';
