@@ -6,6 +6,7 @@ import { basicInfoSchema } from './basic.ts';
 import { INDUSTRY_NAMES } from './industries.ts';
 import type { OrganizationStepStored } from './organization-step.ts';
 import type { ProductionStepStored } from './production-step.ts';
+import type { ResourcesStepStored } from './resources-step.ts';
 
 export const basicStepSchema = basicInfoSchema
   .omit({ companyName: true, socialCreditCode: true, legalRepresentative: true, registeredAddress: true })
@@ -86,4 +87,5 @@ export interface EnterpriseProfile {
   basicStep?: BasicStepStored;
   organizationStep?: OrganizationStepStored;
   productionStep?: ProductionStepStored;
+  resourcesStep?: ResourcesStepStored;
 }

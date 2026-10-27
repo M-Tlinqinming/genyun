@@ -9,9 +9,10 @@ import { FILL_STEPS, FillFrame } from './FillFrame';
 import { OrganizationStepPage } from './OrganizationStepPage';
 import { ProcessStepPage } from './ProcessStepPage';
 import { ProductionStepPage } from './ProductionStepPage';
+import { ResourcesStepPage } from './ResourcesStepPage';
 
 // 企业自填 /customer/tasks/:taskId/fill/:step（全屏，不在工作区框架里）。第 3 步分两页，第 2 页为 ?page=process。
-// 第 4–5 步在第 8–9 项做，目前先占位
+// 第 5 步在第 9 项做，目前先占位
 export function SelfFillPage() {
   const { taskId = '', step: stepParam = '1' } = useParams();
   const session = useSession();
@@ -45,6 +46,7 @@ export function SelfFillPage() {
       <ProductionStepPage key={task.data.id} task={task.data} />
     );
   }
+  if (step === 4) return <ResourcesStepPage key={task.data.id} task={task.data} />;
   return (
     <PendingStep
       step={step}
@@ -78,11 +80,7 @@ function PendingStep({
         <>
           <span style={{ fontSize: 14, lineHeight: '22px', color: gy.tertiary }}>第 {step} 步，共 5 步</span>
           <div style={{ display: 'flex', gap: 12 }}>
-            <Button
-              size="large"
-              // 第 4 步的上一步是第 3 步第 2 页（工艺流程）
-              onClick={() => navigate(`/customer/tasks/${taskId}/fill/${step - 1}${step === 4 ? '?page=process' : ''}`)}
-            >
+            <Button size="large" onClick={() => navigate(`/customer/tasks/${taskId}/fill/${step - 1}`)}>
               上一步
             </Button>
             {next && (

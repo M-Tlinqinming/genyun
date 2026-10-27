@@ -1,6 +1,8 @@
 import type {
   BasicStep,
   BasicStepField,
+  DraftMaterial,
+  DraftPerson,
   BasicStepSave,
   EnterpriseInput,
   FieldSource,
@@ -9,6 +11,9 @@ import type {
   OrganizationStepSave,
   ProductionStep,
   ProductionStepSave,
+  ResourcesStep,
+  ResourcesStepSave,
+  SiteType,
 } from '@genyun/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, request } from './request';
@@ -22,6 +27,8 @@ export interface BasicStepView {
   sources: Partial<Record<string, FieldSource>>;
   license: { fileId: string; originalName: string } | null;
   recognizerAvailable: boolean;
+  // 第 4 步建筑面积合计，还没填为 null
+  totalBuildingAreaM2: number | null;
   updatedAt: string;
 }
 
@@ -117,6 +124,41 @@ export function useProductionStep(enterpriseId: string | undefined) {
 
 export function saveProductionStep(enterpriseId: string, body: ProductionStepSave) {
   return request<ProductionStepView>(`/enterprises/${enterpriseId}/production-step`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+export interface ResourcesStepView {
+  enterpriseId: string;
+  version: number;
+  step: ResourcesStep;
+  // 台账、照片、图纸的文件名
+  fileNames: Record<string, string>;
+  // 第 2 步填过的人员（选保管人）
+  people: DraftPerson[];
+  // 第 3 步勾的场所（物资排序）
+  sites: SiteType[];
+  // 第 3 步的物料（列出 MSDS）
+  materials: DraftMaterial[];
+  // false = 还没保存过，页面显示的是预选内容
+  saved: boolean;
+  updatedAt: string;
+}
+
+export const resourcesStepKey = (enterpriseId: string) => ['enterprises', enterpriseId, 'resources-step'] as const;
+
+export function useResourcesStep(enterpriseId: string | undefined) {
+  return useQuery({
+    queryKey: resourcesStepKey(enterpriseId ?? ''),
+    queryFn: () => request<ResourcesStepView>(`/enterprises/${enterpriseId}/resources-step`),
+    enabled: Boolean(enterpriseId),
+    ...fillQueryOptions,
+  });
+}
+
+export function saveResourcesStep(enterpriseId: string, body: ResourcesStepSave) {
+  return request<ResourcesStepView>(`/enterprises/${enterpriseId}/resources-step`, {
     method: 'PUT',
     body: JSON.stringify(body),
   });

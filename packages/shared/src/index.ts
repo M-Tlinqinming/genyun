@@ -15,3 +15,4 @@ export * from './profile/basic-step.ts';
 export * from './profile/organization-step.ts';
 export * from './profile/production-step.ts';
 export * from './profile/process-flow.ts';
+export * from './profile/resources-step.ts';

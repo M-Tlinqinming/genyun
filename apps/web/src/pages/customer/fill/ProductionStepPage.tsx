@@ -29,8 +29,8 @@ type Ledger = keyof ProductionStep['ledgers'];
 const LEDGER_ITEMS = { equipment: 'equipment', materials: 'materials' } as const;
 const LEDGER_LABELS: Record<Ledger, string> = { equipment: '设备台账', materials: '原辅材料台账' };
 
-const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.pdf';
-const MATERIAL_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp';
+export const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.pdf';
+export const MATERIAL_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp';
 
 const filled = (v?: string) => Boolean(v && v.trim() !== '');
 const blankEquipment = (): DraftEquipment => ({ id: newId('e'), name: '' });
@@ -189,7 +189,7 @@ export function ProductionStepPage({ task }: { task: Task }) {
   );
 }
 
-function CardHeading({ title, description, extra }: { title: string; description: string; extra?: ReactNode }) {
+export function CardHeading({ title, description, extra }: { title: ReactNode; description: string; extra?: ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -310,7 +310,7 @@ const ANSWER_OPTIONS: { value: SpecialAnswer; label: string }[] = [
   { value: 'photo', label: '拍照给耕云看' },
 ];
 
-function AnswerSwitch<T extends string>({
+export function AnswerSwitch<T extends string>({
   value,
   options,
   width,
@@ -445,7 +445,7 @@ function Field({ label, flex, width, children }: { label: string; flex?: number;
   );
 }
 
-function RemoveButton({ label, onClick, hidden }: { label: string; onClick: () => void; hidden?: boolean }) {
+export function RemoveButton({ label, onClick, hidden }: { label: string; onClick: () => void; hidden?: boolean }) {
   return (
     <span style={{ width: 24, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
       {!hidden && (
@@ -615,7 +615,7 @@ function SpecialParams({
   );
 }
 
-function PhotoRow({
+export function PhotoRow({
   label,
   button,
   fileIds,
@@ -661,7 +661,7 @@ function PhotoRow({
   );
 }
 
-function FileChip({ name, onRemove }: { name: string; onRemove: () => void }) {
+export function FileChip({ name, onRemove }: { name: string; onRemove: () => void }) {
   return (
     <div
       style={{
@@ -684,7 +684,7 @@ function FileChip({ name, onRemove }: { name: string; onRemove: () => void }) {
   );
 }
 
-function CameraIcon({ color = gy.primary }: { color?: string }) {
+export function CameraIcon({ color = gy.primary }: { color?: string }) {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style={{ flexShrink: 0 }}>
       <rect x="1.5" y="3.5" width="11" height="8" rx="1.5" fill="none" stroke={color} strokeWidth="1.2" />

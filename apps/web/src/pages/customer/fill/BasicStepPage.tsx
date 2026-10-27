@@ -394,7 +394,14 @@ export function BasicStepPage({ task }: { task: Task }) {
                   decimals
                 />
                 <Item label={<Label text="总建筑面积" hint="第 4 步填写建筑后自动合计" />}>
-                  <InputNumber disabled placeholder="自动合计" suffix="m²" style={{ width: '100%' }} />
+                  <InputNumber
+                    disabled
+                    aria-label="总建筑面积"
+                    value={step.data?.totalBuildingAreaM2 ?? undefined}
+                    placeholder="自动合计"
+                    suffix="m²"
+                    style={{ width: '100%' }}
+                  />
                 </Item>
               </Row>
             </FillCard>
