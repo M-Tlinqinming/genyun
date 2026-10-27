@@ -16,7 +16,7 @@ const passwordHash = await hashPassword(password);
 const [internal] = await db.insert(organizations).values({ name: '耕云', kind: 'internal' }).returning();
 const [agency] = await db
   .insert(organizations)
-  .values({ name: '示例安全咨询机构', kind: 'customer', serviceEndsAt: new Date('2026-12-31T23:59:59+08:00') })
+  .values({ name: '示例安全咨询机构', kind: 'customer', contractStartsAt: '2026-01-01', contractEndsAt: '2027-12-31' })
   .returning();
 
 const people = [

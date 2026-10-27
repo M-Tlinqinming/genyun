@@ -1,4 +1,17 @@
-import { pgEnum, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { ITEM_STATUSES } from '@genyun/shared';
+import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  date,
+  integer,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 // 组织分两类：客户组织（中小企业 / 安全服务机构）、耕云内部（运营与专业人员所在的组织）
 export const orgKind = pgEnum('org_kind', ['customer', 'internal']);
@@ -8,8 +21,9 @@ export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   kind: orgKind('kind').notNull(),
-  // 安全服务机构的年度服务到期日；按次付费的组织为空
-  serviceEndsAt: timestamp('service_ends_at', { withTimezone: true }),
+  // 合同有效期（北京时间日期，起止日都算在内）；有效期内才能新建任务。运营开通时登记，未登记为空
+  contractStartsAt: date('contract_starts_at', { mode: 'string' }),
+  contractEndsAt: date('contract_ends_at', { mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -44,3 +58,102 @@ export const sessions = pgTable('sessions', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// 企业档案。一个客户组织（尤其是安全服务机构）可以管理多家企业
+export const enterprises = pgTable(
+  'enterprises',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    socialCreditCode: text('social_credit_code'),
+    registeredAddress: text('registered_address'),
+    legalRepresentative: text('legal_representative'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  // 同一组织里不能有两家统一社会信用代码相同的企业；没填代码的不限制
+  (t) => [
+    uniqueIndex('enterprises_org_credit_code_unique')
+      .on(t.orgId, t.socialCreditCode)
+      .where(sql`${t.socialCreditCode} is not null`),
+  ],
+);
+
+export const businessType = pgEnum('business_type', ['emergency_plan']);
+export const taskStatus = pgEnum('task_status', ['preparing', 'submitted']);
+export const startMethod = pgEnum('start_method', ['self_fill', 'upload']);
+
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // 冗余存所属组织，权限查询不必再连企业表；创建时取自企业，之后不变
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    enterpriseId: uuid('enterprise_id')
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    number: text('number').notNull().unique(),
+    businessType: businessType('business_type').notNull(),
+    name: text('name').notNull(),
+    // 还没选开始方式时为空
+    startMethod: startMethod('start_method'),
+    status: taskStatus('status').notNull().default('preparing'),
+    // 负责专家，运营分派前为空
+    assignedExpertId: uuid('assigned_expert_id').references(() => users.id),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    // 交付完成或关闭的时间；为空表示任务还没结束
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+  },
+  // 同一家企业同一种业务只能有一个没结束的任务
+  (t) => [
+    uniqueIndex('tasks_one_open_per_enterprise')
+      .on(t.enterpriseId, t.businessType)
+      .where(sql`${t.closedAt} is null`),
+  ],
+);
+
+// 任务编号按年流水，全平台共用一个计数
+export const taskNumberCounters = pgTable('task_number_counters', {
+  year: integer('year').primaryKey(),
+  last: integer('last').notNull(),
+});
+
+export const itemStatus = pgEnum('item_status', ITEM_STATUSES);
+export const expertResult = pgEnum('expert_result', ['pending', 'yes', 'no']);
+
+// 资料清单 19 项的状态，每个任务每项一行；客户还没回答的项没有这一行
+export const checklistItems = pgTable(
+  'checklist_items',
+  {
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    itemKey: text('item_key').notNull(),
+    status: itemStatus('status').notNull(),
+    confirmedBy: uuid('confirmed_by').references(() => users.id),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    // 客户点了「请专家电话联系」
+    callRequested: boolean('call_requested').notNull().default(false),
+    expertResult: expertResult('expert_result'),
+    expertJudgedBy: uuid('expert_judged_by').references(() => users.id),
+    expertJudgedAt: timestamp('expert_judged_at', { withTimezone: true }),
+    updatedBy: uuid('updated_by')
+      .notNull()
+      .references(() => users.id),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.taskId, t.itemKey] })],
+);
