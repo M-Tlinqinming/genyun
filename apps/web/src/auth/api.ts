@@ -1,4 +1,5 @@
 import type { LoginInput, Role } from '@genyun/shared';
+import { request } from '../api/request';
 
 export interface Membership {
   orgId: string;
@@ -13,27 +14,7 @@ export interface SessionUser {
   memberships: Membership[];
 }
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { message?: string } | null;
-    throw new ApiError(res.status, body?.message ?? '请求失败，请稍后重试');
-  }
-  return (res.status === 204 ? undefined : await res.json()) as T;
-}
+export { ApiError } from '../api/request';
 
 export const authApi = {
   me: () => request<SessionUser>('/auth/me'),

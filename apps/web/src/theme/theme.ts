@@ -67,5 +67,10 @@ export const theme: ThemeConfig = {
       titleMarginBottom: 0,
       titleMarginTop: 0,
     },
+    // 40 高的输入框与按钮仍用 14 号字（设计稿 P01）
+    Input: { inputFontSizeLG: 14 },
+    Button: { contentFontSizeLG: 14 },
+    // 表头：画布底色、正文色加粗
+    Table: { headerBg: gy.canvas, headerColor: gy.text, headerSplitColor: 'transparent' },
   },
 };

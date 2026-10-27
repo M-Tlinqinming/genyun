@@ -14,7 +14,7 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ConfigProvider theme={theme} locale={zhCN}>
+    <ConfigProvider theme={theme} locale={zhCN} button={{ autoInsertSpace: false }}>
       <App>
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />

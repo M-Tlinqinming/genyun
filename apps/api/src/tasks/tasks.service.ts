@@ -57,6 +57,7 @@ const taskColumns = {
   createdAt: tasks.createdAt,
   updatedAt: tasks.updatedAt,
   submittedAt: tasks.submittedAt,
+  closedAt: tasks.closedAt,
 };
 
 export type TaskView = Awaited<ReturnType<TasksService['load']>>;
