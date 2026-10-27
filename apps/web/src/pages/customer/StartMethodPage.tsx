@@ -1,12 +1,13 @@
 import type { StartMethod } from '@genyun/shared';
 import { App, Button, Result, Spin } from 'antd';
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { ApiError } from '../../api/request';
 import { useTask, useUpdateTask } from '../../api/tasks';
 import { useSession } from '../../auth/session';
 import { WizardHeader } from '../../components/WizardHeader';
 import { gy } from '../../theme/tokens';
+import { OnSiteBanner, OnSiteDialog } from './OnSiteVisit';
 
 const STEPS = ['企业基本信息', '人员与应急组织', '生产情况：场所、设备、物料、工艺', '应急资源与图纸', '核对并提交'];
 const UPLOAD_EXAMPLES = [
@@ -18,8 +19,7 @@ const FOOTNOTES = ['先签约付款，再开通使用', '依据 GB/T 29639-2020 
 
 const muted = '#3F4A5C';
 
-// S00 选择开始方式：全屏页，不带侧栏。两种方式写入同一份资料清单。
-// 「预约上门」卡片在第 9 项与预约弹窗一起做
+// S00 选择开始方式：全屏页，不带侧栏。两种方式写入同一份资料清单；资料不齐的可以先预约耕云上门。
 export function StartMethodPage() {
   const { taskId = '' } = useParams();
   const session = useSession();
@@ -27,6 +27,7 @@ export function StartMethodPage() {
   const update = useUpdateTask(taskId);
   const navigate = useNavigate();
   const { message } = App.useApp();
+  const [booking, setBooking] = useState(false);
 
   if (session.isPending) return <Spin fullscreen />;
   if (!session.data) return <Navigate to="/login" replace />;
@@ -173,6 +174,15 @@ export function StartMethodPage() {
             footnote="专家整理后，缺什么会告诉您"
           />
         </div>
+
+        <div style={{ width: 960 }}>
+          <OnSiteBanner
+            title="资料不齐、没人手整理？请耕云专家上门"
+            description="注册安全工程师到厂查看并整理图纸、设备参数和化学品资料。留下联系方式即可，耕云会电话联系您商定。"
+            onBook={() => setBooking(true)}
+          />
+        </div>
+        <OnSiteDialog taskId={taskId} open={booking} onClose={() => setBooking(false)} withLaterItems={false} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
           {FOOTNOTES.map((f, i) => (

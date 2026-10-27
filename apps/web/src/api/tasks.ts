@@ -1,6 +1,10 @@
 import type {
   BusinessType,
+  CallTime,
   ContractPeriod,
+  OnSiteRequestInput,
+  OnSiteStatus,
+  Review,
   StartMethod,
   TaskCreateInput,
   TaskStatus,
@@ -85,6 +89,50 @@ export function useUpdateTask(id: string) {
     onSuccess: (updated) => {
       client.setQueryData(taskKey(id), updated);
       void client.invalidateQueries({ queryKey: orgTasksKey(updated.orgId) });
+    },
+  });
+}
+
+// 企业自填第 5 步「核对」（另带预约上门的默认联系人、合同有效期、最近一次上门需求）
+export interface OnSiteRequest {
+  id: string;
+  contactName: string;
+  contactPhone: string;
+  callTime: CallTime | null;
+  helpItems: string[];
+  note: string | null;
+  status: OnSiteStatus;
+  createdAt: string;
+}
+
+export interface TaskReview {
+  review: Review;
+  contact: { name: string; phone: string };
+  contract: { startsAt: string | null; endsAt: string | null };
+  onSiteRequest: OnSiteRequest | null;
+}
+
+export const taskReviewKey = (id: string) => ['tasks', id, 'review'] as const;
+
+// 每次进入都重新读，前几步刚改过的内容马上反映出来
+export function useTaskReview(id: string) {
+  return useQuery({
+    queryKey: taskReviewKey(id),
+    queryFn: () => request<TaskReview>(`/tasks/${id}/review`),
+    gcTime: 0,
+  });
+}
+
+export function useRequestOnSite(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OnSiteRequestInput) =>
+      request<OnSiteRequest>(`/tasks/${taskId}/on-site-requests`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (created) => {
+      client.setQueryData<TaskReview>(taskReviewKey(taskId), (old) => old && { ...old, onSiteRequest: created });
     },
   });
 }
