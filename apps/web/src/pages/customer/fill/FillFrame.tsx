@@ -261,14 +261,20 @@ export function SidePanel({ why, after, top }: { why: string[]; after: string[];
           </div>
         ))}
       </section>
-      <div style={{ display: 'flex', gap: 10, padding: '0 4px', fontSize: 12, lineHeight: '20px', color: gy.tertiary }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style={{ flexShrink: 0, marginTop: 3 }}>
-          <rect x="2.5" y="6" width="9" height="6" rx="1" fill="none" stroke={gy.tertiary} strokeWidth="1.3" />
-          <path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" fill="none" stroke={gy.tertiary} strokeWidth="1.3" />
-        </svg>
-        企业资料加密存储，仅用于生成您的文档。
-      </div>
+      <SecureNote />
     </aside>
+  );
+}
+
+export function SecureNote() {
+  return (
+    <div style={{ display: 'flex', gap: 10, padding: '0 4px', fontSize: 12, lineHeight: '20px', color: gy.tertiary }}>
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style={{ flexShrink: 0, marginTop: 3 }}>
+        <rect x="2.5" y="6" width="9" height="6" rx="1" fill="none" stroke={gy.tertiary} strokeWidth="1.3" />
+        <path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" fill="none" stroke={gy.tertiary} strokeWidth="1.3" />
+      </svg>
+      企业资料加密存储，仅用于生成您的文档。
+    </div>
   );
 }
 

@@ -1,4 +1,10 @@
-import { checklistFileLinkSchema, checklistItemUpdateSchema, taskCreateSchema, taskUpdateSchema } from '@genyun/shared';
+import {
+  checklistFileLinkSchema,
+  checklistItemUpdateSchema,
+  onSiteRequestSchema,
+  taskCreateSchema,
+  taskUpdateSchema,
+} from '@genyun/shared';
 import {
   BadRequestException,
   Body,
@@ -88,5 +94,15 @@ export class TasksController {
     @Param('fileId', ParseUUIDPipe) fileId: string,
   ) {
     return this.tasks.unlinkFile(user, id, itemKey, fileId);
+  }
+
+  @Get('tasks/:id/review')
+  review(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tasks.review(user, id);
+  }
+
+  @Post('tasks/:id/on-site-requests')
+  requestOnSite(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.tasks.requestOnSite(user, id, parse(onSiteRequestSchema, body));
   }
 }

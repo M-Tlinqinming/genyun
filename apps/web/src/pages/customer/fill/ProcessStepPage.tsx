@@ -18,6 +18,7 @@ import { App, Button, Input, Modal, Popconfirm, Spin, Upload } from 'antd';
 import { Fragment, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Task } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
+import { OnSiteDialog } from '../OnSiteVisit';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
 import { useProductionDraft } from './useProductionDraft';
 
@@ -41,6 +42,7 @@ export function ProcessStepPage({ task }: { task: Task }) {
   const { modal } = App.useApp();
   const { step, saved, fileNames, uploading, leaving, autosave, update, leave, upload, removeLinked } =
     useProductionDraft(task);
+  const [booking, setBooking] = useState(false);
   const process = step?.process;
   const setProcess = (p: ProcessDraft) => step && update({ ...step, process: p });
 
@@ -146,6 +148,7 @@ export function ProcessStepPage({ task }: { task: Task }) {
                   'process_flow',
                 )
               }
+              onOnSite={() => setBooking(true)}
               onRemoveSketch={(fileId) =>
                 void removeLinked('process_flow', fileId, (s, id) => ({
                   ...s,
@@ -166,6 +169,7 @@ export function ProcessStepPage({ task }: { task: Task }) {
         ]}
         after={AFTER_FILLING}
       />
+      <OnSiteDialog taskId={task.id} open={booking} onClose={() => setBooking(false)} />
     </FillFrame>
   );
 }
@@ -212,6 +216,7 @@ function TemplateCard({
   onSplit,
   onSketch,
   onRemoveSketch,
+  onOnSite,
 }: {
   process: ProcessDraft;
   businessScope: string | null;
@@ -222,6 +227,7 @@ function TemplateCard({
   onSplit: () => void;
   onSketch: (file: File) => void;
   onRemoveSketch: (fileId: string) => void;
+  onOnSite: () => void;
 }) {
   const recommended = recommendedTemplate(businessScope ?? undefined);
   // 推荐的排在最前
@@ -299,6 +305,9 @@ function TemplateCard({
             拍照上传已有流程图
           </button>
         </Upload>
+        <button type="button" style={link} onClick={onOnSite}>
+          预约耕云上门整理
+        </button>
       </div>
       {writing && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

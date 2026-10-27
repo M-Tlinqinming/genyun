@@ -1,4 +1,4 @@
-import { ITEM_STATUSES, type EnterpriseProfile } from '@genyun/shared';
+import { CALL_TIMES, ITEM_STATUSES, ON_SITE_STATUSES, type CallTime, type EnterpriseProfile } from '@genyun/shared';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -204,3 +204,33 @@ export const checklistItemFiles = pgTable(
   },
   (t) => [primaryKey({ columns: [t.taskId, t.itemKey, t.fileId] })],
 );
+
+export const onSiteStatus = pgEnum('on_site_status', ON_SITE_STATUSES);
+export const callTime = pgEnum('call_time', Object.keys(CALL_TIMES) as [CallTime, ...CallTime[]]);
+
+// 上门工单：客户请耕云专家上门整理资料。独立于编制任务（关联任务可空），运营在 M3 处理；
+// 报价、排期、现场交接全部线下
+export const onSiteRequests = pgTable('on_site_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  enterpriseId: uuid('enterprise_id')
+    .notNull()
+    .references(() => enterprises.id, { onDelete: 'cascade' }),
+  taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+  contactName: text('contact_name').notNull(),
+  contactPhone: text('contact_phone').notNull(),
+  callTime: callTime('call_time'),
+  // 需要帮忙整理的内容，默认带出待补的项
+  helpItems: jsonb('help_items').$type<string[]>().notNull().default([]),
+  note: text('note'),
+  status: onSiteStatus('status').notNull().default('new'),
+  // 运营内部备注，客户看不到（M3）
+  internalNote: text('internal_note'),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

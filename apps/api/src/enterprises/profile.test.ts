@@ -715,3 +715,69 @@ describe('企业自填第 4 步 · 应急资源与图纸', () => {
     ).toBe(404);
   });
 });
+
+describe('企业自填第 5 步 · 核对与预约上门', () => {
+  async function withTask(name: string) {
+    const id = await newEnterprise(name);
+    const agent = await as('a-admin@test.cn');
+    const task = (await agent.post(`/api/enterprises/${id}/tasks`).send({ name: '2026 年应急预案编制' })).body;
+    return { id, taskId: task.id as string, agent };
+  }
+
+  it('核对页按步骤列出已填内容和还缺的必需资料，带出联系人', async () => {
+    const { id, taskId, agent } = await withTask('戊一公司');
+    const s = await step(id);
+    const saved = await agent.put(`/api/enterprises/${id}/basic-step`).send({
+      version: s.version,
+      identity: s.identity,
+      basic: { contactPerson: '林小明', contactPhone: '13600003340', employeeCount: 86, mainProducts: '灯头' },
+      later: ['safetyManagementCount'],
+    });
+    expect(saved.status).toBe(200);
+
+    const res = await agent.get(`/api/tasks/${taskId}/review`);
+    expect(res.status).toBe(200);
+    const { review, contact, contract, onSiteRequest } = res.body;
+    expect(review.steps[0].facts).toEqual(['戊一公司', '86 人', '联系人 林小明']);
+    expect(review.steps[0].missing).toEqual(['营业执照']);
+    expect(review.steps[0].later).toContain('安全管理人员数');
+    expect(review.steps[3].missing).toEqual(['应急物资及装备', '总平面布置图', '紧急疏散示意图']);
+    expect(review.canSubmit).toBe(false);
+    expect(contact).toEqual({ name: '林小明', phone: '13600003340' });
+    expect(contract).toEqual({ startsAt: '2026-01-01', endsAt: '2099-12-31' });
+    expect(onSiteRequest).toBeNull();
+  });
+
+  it('提交预约上门后核对页显示已提交；联系人、电话必填', async () => {
+    const { taskId, agent } = await withTask('戊二公司');
+    expect((await agent.post(`/api/tasks/${taskId}/on-site-requests`).send({ contactName: '林小明' })).status).toBe(400);
+    expect(
+      (await agent.post(`/api/tasks/${taskId}/on-site-requests`).send({ contactName: '林小明', contactPhone: '找门卫' }))
+        .status,
+    ).toBe(400);
+
+    const res = await agent.post(`/api/tasks/${taskId}/on-site-requests`).send({
+      contactName: '林小明',
+      contactPhone: '136 0000 3340',
+      callTime: 'weekday_afternoon',
+      helpItems: ['消防设施布置图', '消防水池容积'],
+      note: '厂里没人懂图纸，希望有人来现场看一下。',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ status: 'new', callTime: 'weekday_afternoon', helpItems: ['消防设施布置图', '消防水池容积'] });
+    expect(res.body).not.toHaveProperty('internalNote');
+
+    const review = (await agent.get(`/api/tasks/${taskId}/review`)).body;
+    expect(review.onSiteRequest).toMatchObject({ id: res.body.id, contactName: '林小明' });
+  });
+
+  it('别的组织看不到核对内容，也不能替人预约；专家不能代客户预约', async () => {
+    const { taskId } = await withTask('戊三公司');
+    const b = await as('b-admin@test.cn');
+    expect((await b.get(`/api/tasks/${taskId}/review`)).status).toBe(404);
+    const body = { contactName: '张三', contactPhone: '13800000000' };
+    expect((await b.post(`/api/tasks/${taskId}/on-site-requests`).send(body)).status).toBe(404);
+    const expert = await as('expert@test.cn');
+    expect((await expert.post(`/api/tasks/${taskId}/on-site-requests`).send(body)).status).not.toBe(201);
+  });
+});
