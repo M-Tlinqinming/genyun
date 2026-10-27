@@ -7,6 +7,9 @@ import { PendingPage } from './pages/PendingPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
 import { EnterpriseDetailPage } from './pages/customer/EnterpriseDetailPage';
 import { EnterpriseListPage } from './pages/customer/EnterpriseListPage';
+import { StartMethodPage } from './pages/customer/StartMethodPage';
+import { TaskCreatePage } from './pages/customer/TaskCreatePage';
+import { TaskPage } from './pages/customer/TaskPage';
 
 const EYEBROW: Record<Workspace, string> = {
   customer: '客户工作台',
@@ -20,6 +23,11 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { index: true, element: <EnterpriseListPage /> },
     { path: 'new', element: <EnterpriseCreatePage /> },
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
+    { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
+  ],
+  '/customer/tasks': [
+    { index: true, element: <PendingPage eyebrow={EYEBROW.customer} title="业务任务" /> },
+    { path: ':taskId', element: <TaskPage /> },
   ],
 };
 
@@ -43,6 +51,8 @@ function workspaceRoutes(workspace: Workspace): RouteObject {
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  // 选择开始方式是全屏页，不在工作区框架里
+  { path: '/customer/tasks/:taskId/start', element: <StartMethodPage /> },
   workspaceRoutes('customer'),
   workspaceRoutes('expert'),
   workspaceRoutes('operator'),
