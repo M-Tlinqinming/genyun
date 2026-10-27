@@ -37,7 +37,8 @@ export function checkChecklist(state: ChecklistState): ChecklistCheck {
       awaitingExpert.push(def.key);
     }
 
-    const done = s !== undefined && s.status !== 'later';
+    // 必需项点了「请专家电话联系」也算已处理（Martin 10-28 确认），提交后由负责专家打电话问清
+    const done = s !== undefined && (s.status !== 'later' || (def.requirement === 'start' && s.callRequested));
     if (done) continue;
     if (def.requirement === 'start') {
       blocking.push({ key: def.key, label: def.label, reason: s ? 'later' : 'unanswered' });

@@ -20,3 +20,4 @@ export * from './profile/review-step.ts';
 export * from './on-site.ts';
 export * from './profile/library.ts';
 export * from './documents.ts';
+export * from './checklist/overview.ts';
