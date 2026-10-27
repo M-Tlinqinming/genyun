@@ -21,6 +21,8 @@ COPY --from=build /app/packages/shared/src packages/shared/src
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/drizzle apps/api/drizzle
 COPY --from=build /app/apps/web/dist apps/web/dist
+# 上传文件目录（部署时挂持久化卷）：先建好并交给 node 用户，新建的卷会继承这个权限
+RUN mkdir -p /data/files && chown node:node /data/files
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

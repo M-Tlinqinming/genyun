@@ -6,7 +6,7 @@
 
 | 里程碑 | 状态 | 说明 |
 |---|---|---|
-| M0 地基 | 已完成（PR #1） | 预览环境未部署，见下方「预览环境」 |
+| M0 地基 | 已完成（PR #1） | 预览环境已上线 https://preview.gengyun.net.cn ，见下方「预览环境」 |
 | M1 客户提交 | 进行中 · 3/14 | 清单 2026-10-27 经 Martin 确认 |
 | M2 专家处理 | 未开始 | 末尾加客户「成果文档」页（11 页 C06） |
 | M3 运营 | 未开始 | 含客户「组织管理」页（11 页 C08：成员、企业分配、年度服务） |
@@ -54,18 +54,19 @@
 
 ## 预览环境（独立任务）
 
-- 状态：**阻塞**，等 Martin 完成阿里云香港轻量服务器的三件事
-  1. 导入公钥并绑定（公钥 = 本机 `~/.ssh/id_ed25519.pub`，备注改为 `genyun-preview`）
-  2. 防火墙只开 22 / 80 / 443
-  3. 云解析 DNS：`preview.genyun.net.cn` A 记录 → 服务器公网 IP
-- 服务器：Ubuntu，2 核 4G，中国香港；只放虚构样例数据，ICP 备案完成后退订
-- 公网 IP：（待填）
-- 目标：Docker 运行现有镜像、Caddy 自动 HTTPS、数据持久化、开机自动恢复、写入演示账号；之后加「合并到 main 自动更新预览」
-- 做法：在 worktree 分支 `deploy-preview` 进行，不改 `apps/` 业务代码；每次改服务器前先告诉 Martin
+- 状态：**已上线** https://preview.gengyun.net.cn （10-27）。发布方法、密钥位置、演示账号见 `deploy/preview/README.md`
+- 已验证：HTTPS 证书自动申请、HTTP 跳转 HTTPS、演示账号登录、上传与下载、重新发布后数据保留、服务器重启后自动恢复
+- 服务器：阿里云香港轻量 2 核 4G（47.82.104.179，Ubuntu 24.04，加了 2G 交换空间）；只放虚构样例数据，ICP 备案完成后退订。阿里云防火墙只开 22/80/443（另有 ICMP）
+- 域名是 `gengyun.net.cn`（不是 genyun），DNS 在阿里云
+- SSH 注意：本机用户目录是中文名，Git Bash 的 ssh 默认找不到 `~/.ssh` 里的文件，会报 `Host key verification failed`（不是服务器变了）。连接时写全路径：`ssh -F /dev/null -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts" root@47.82.104.179`
+- 目前手动发布：`bash deploy/preview/deploy.sh`。下一步「合并到 main 自动更新预览」需要 Martin 在 GitHub 仓库设置里加一把专用部署密钥，待定
+- 文件存储暂用服务器磁盘（数据卷），阿里云对象存储的实现留到正式环境
 
 ## 会话记录
 
 最新在上。每条：日期 · 做了什么 · 分支/PR · 留给下一个会话的话。
+
+- 2026-10-27 · 预览环境上线 https://preview.gengyun.net.cn（Docker Compose：应用 + PostgreSQL + Caddy）；域名更正为 gengyun.net.cn；Dockerfile 预建上传目录修复数据卷不可写 · 分支 `deploy-preview` · 下一个会话：合并后需要时再做「合并到 main 自动更新预览」
 
 - 2026-10-27 · 完成第 3 项：文件上传与存储（按内容判断格式、加收 .doc/.xls/.xlsx 经 Martin 确认、私有存储、5 分钟签名下载链接、资料项挂文件）；新增测试 33 项 · 分支 `m1-3-file-storage` · 下一个会话：等此分支合并后 `/next`，做第 4 项企业列表、新建企业、企业详情
 

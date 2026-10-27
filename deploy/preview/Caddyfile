@@ -1,0 +1,6 @@
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	# 预览环境不让搜索引擎收录
+	header X-Robots-Tag "noindex, nofollow"
+	reverse_proxy app:3000
+}
