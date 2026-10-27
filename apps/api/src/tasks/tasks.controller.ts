@@ -96,6 +96,11 @@ export class TasksController {
     return this.tasks.unlinkFile(user, id, itemKey, fileId);
   }
 
+  @Get('tasks/:id/check')
+  check(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tasks.check(user, id);
+  }
+
   @Get('tasks/:id/review')
   review(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasks.review(user, id);

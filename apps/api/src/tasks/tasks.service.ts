@@ -23,7 +23,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { canEditOrganizationData, canViewOrganization, canViewTask } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
@@ -169,7 +169,7 @@ export class TasksService {
 
   async updateChecklistItem(user: SessionUser, id: string, key: string, input: ChecklistItemUpdate) {
     const { itemKey } = await this.editableItem(user, id, key);
-    const reason = statusNotAllowedReason(itemKey, input.status);
+    const reason = statusNotAllowedReason(itemKey, input.status, input.callRequested);
     if (reason) throw new BadRequestException(reason);
 
     // 「已提供」「没有」由当前账号确认；改为其他状态时清掉确认记录
@@ -178,6 +178,8 @@ export class TasksService {
     const values = {
       status: input.status,
       callRequested: input.callRequested,
+      // 说明只跟「由我确认」走，改成别的状态时清掉
+      note: input.status === 'provided' && input.note ? input.note : null,
       confirmedBy: confirms ? user.id : null,
       confirmedAt: confirms ? now : null,
       // 拍照给耕云看：等专家判断
@@ -335,6 +337,25 @@ export class TasksService {
       .orderBy(desc(onSiteRequests.createdAt));
   }
 
+  // 资料检查页（12 页 P05）：各项状态，加上挂的文件名、确认人姓名，页面按类别汇总
+  async check(user: SessionUser, id: string) {
+    await this.load(user, id);
+    const { items } = await this.checklistResult(id);
+    const fileIds = [...new Set(Object.values(items).flatMap((i) => i?.fileIds ?? []))];
+    const userIds = [...new Set(Object.values(items).flatMap((i) => (i?.confirmedBy ? [i.confirmedBy] : [])))];
+    const fileRows = fileIds.length
+      ? await this.db.select({ id: files.id, name: files.originalName }).from(files).where(inArray(files.id, fileIds))
+      : [];
+    const userRows = userIds.length
+      ? await this.db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, userIds))
+      : [];
+    return {
+      items,
+      fileNames: Object.fromEntries(fileRows.map((f) => [f.id, f.name])),
+      userNames: Object.fromEntries(userRows.map((u) => [u.id, u.name])),
+    };
+  }
+
   private async checklistResult(taskId: string) {
     const rows = await this.db.select().from(checklistItems).where(eq(checklistItems.taskId, taskId));
     const links = await this.db
@@ -348,6 +369,7 @@ export class TasksService {
         status: r.status,
         fileIds: links.filter((l) => l.itemKey === r.itemKey).map((l) => l.fileId),
         callRequested: r.callRequested,
+        note: r.note ?? undefined,
         confirmedBy: r.confirmedBy ?? undefined,
         confirmedAt: r.confirmedAt?.toISOString(),
       };
