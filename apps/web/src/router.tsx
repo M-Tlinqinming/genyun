@@ -7,6 +7,7 @@ import { PendingPage } from './pages/PendingPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
 import { EnterpriseDetailPage } from './pages/customer/EnterpriseDetailPage';
 import { EnterpriseListPage } from './pages/customer/EnterpriseListPage';
+import { SelfFillPage } from './pages/customer/fill/SelfFillPage';
 import { StartMethodPage } from './pages/customer/StartMethodPage';
 import { TaskCreatePage } from './pages/customer/TaskCreatePage';
 import { TaskPage } from './pages/customer/TaskPage';
@@ -53,6 +54,7 @@ export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   // 选择开始方式是全屏页，不在工作区框架里
   { path: '/customer/tasks/:taskId/start', element: <StartMethodPage /> },
+  { path: '/customer/tasks/:taskId/fill/:step', element: <SelfFillPage /> },
   workspaceRoutes('customer'),
   workspaceRoutes('expert'),
   workspaceRoutes('operator'),

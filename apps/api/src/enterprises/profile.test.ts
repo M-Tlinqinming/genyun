@@ -233,7 +233,7 @@ describe('营业执照', () => {
     expect(res.body.recognition).toEqual({ status: 'recognized', count: 8 });
     expect(res.body).toMatchObject({
       version: 2,
-      identity: { name: '惠阳飞宇电器有限公司', socialCreditCode: '91441300726483224B', legalRepresentative: '李文聪' },
+      identity: { name: '惠阳飞宇电器有限公司', socialCreditCode: '91441303MA4W12345X', legalRepresentative: '李文聪' },
       basic: { registrationAuthority: '惠州市惠阳区市场监督管理局' },
       sources: { name: 'license', businessScope: 'license' },
       license: { fileId, originalName: '营业执照.pdf' },

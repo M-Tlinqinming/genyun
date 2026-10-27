@@ -17,7 +17,7 @@ export class FakeLicenseRecognizer implements LicenseRecognizer {
   async recognize(): Promise<RecognizedLicense> {
     return {
       name: '惠阳飞宇电器有限公司',
-      socialCreditCode: '91441300726483224B',
+      socialCreditCode: '91441303MA4W12345X',
       legalRepresentative: '李文聪',
       registeredAddress: '惠州市惠阳区淡水街道金惠大道 18 号',
       companyType: '有限责任公司（自然人投资或控股）',
