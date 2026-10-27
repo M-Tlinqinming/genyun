@@ -6,7 +6,6 @@ import {
   msdsHintOf,
   newId,
   pressureVolumeOf,
-  productionStepSchema,
   SITE_TYPES,
   sitesFromBusinessScope,
   SPECIAL_CATEGORIES,
@@ -18,24 +17,12 @@ import {
   type SpecialAnswer,
   type SpecialCategory,
 } from '@genyun/shared';
-import { useQueryClient } from '@tanstack/react-query';
-import { App, AutoComplete, Button, Dropdown, Input, InputNumber, Popconfirm, Radio, Select, Spin, Upload } from 'antd';
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
-import {
-  isStale,
-  linkItemFile,
-  productionStepKey,
-  saveProductionStep,
-  unlinkItemFile,
-  uploadFile,
-  useProductionStep,
-  type ProductionStepView,
-} from '../../../api/profile';
+import { AutoComplete, Button, Dropdown, Input, InputNumber, Popconfirm, Radio, Select, Spin, Upload } from 'antd';
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Task } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
-import { useAutosave } from './useAutosave';
+import { useProductionDraft } from './useProductionDraft';
 
 type Ledger = keyof ProductionStep['ledgers'];
 // 台账代替逐行填写，同时挂到任务对应的资料项上；铭牌、包装标签照片只存在企业资料里，供专家判断
@@ -59,128 +46,32 @@ const hint = { fontSize: 12, lineHeight: '18px', color: '#8A93A3' } as const;
 
 // S03a 企业自填第 3 步第 1 页「场所、设备与物料」：边填边自动保存
 export function ProductionStepPage({ task }: { task: Task }) {
-  const query = useProductionStep(task.enterpriseId);
-  const client = useQueryClient();
-  const navigate = useNavigate();
-  const { message } = App.useApp();
-
-  const [step, setStep] = useState<ProductionStep | null>(null);
-  const [fileNames, setFileNames] = useState<Record<string, string>>({});
   // 因为设备里有空压机，系统替客户选了压力容器「有」
   const [vesselAutoPicked, setVesselAutoPicked] = useState(false);
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [leaving, setLeaving] = useState(false);
-  const saved = useRef<ProductionStepView | null>(null);
-  const current = useRef<ProductionStep | null>(null);
-
-  const remember = useCallback(
-    (view: ProductionStepView) => {
-      saved.current = view;
-      setFileNames((names) => ({ ...names, ...view.fileNames }));
-      client.setQueryData(productionStepKey(view.enterpriseId), view);
-    },
-    [client],
-  );
-
-  const apply = useCallback(
-    (view: ProductionStepView) => {
-      remember(view);
+  const { step, saved, fileNames, uploading, leaving, autosave, update, leave, upload, removeLinked } =
+    useProductionDraft(task, {
       // 设备、物料至少留一行空白，方便直接填
-      const next = {
-        ...view.step,
-        equipment: view.step.equipment.length > 0 ? view.step.equipment : [blankEquipment()],
-        materials: view.step.materials.length > 0 ? view.step.materials : [blankMaterial()],
-      };
-      current.current = next;
-      setStep(next);
-    },
-    [remember],
-  );
-
-  useEffect(() => {
-    if (!query.data || saved.current) return;
-    apply(query.data);
-  }, [query.data, apply]);
-
-  const autosave = useAutosave<ProductionStep>(
-    async (data) => {
-      remember(await saveProductionStep(task.enterpriseId, { version: saved.current!.version, step: data }));
-    },
-    (err) => {
-      if (!isStale(err)) return false;
-      message.warning(err.message);
-      void query.refetch().then((r) => r.data && apply(r.data));
-      return true;
-    },
-  );
-
-  const update = (next: ProductionStep) => {
-    const prev = current.current;
-    // 刚填进空压机、压力容器还没回答：一般带储气罐，替客户预选「有」
-    const vessels = next.specialEquipment.pressureVessels;
-    if (prev && !hasAirCompressor(prev.equipment) && hasAirCompressor(next.equipment) && !vessels.answer) {
-      next = {
-        ...next,
-        specialEquipment: { ...next.specialEquipment, pressureVessels: { ...vessels, answer: 'yes' } },
-      };
-      setVesselAutoPicked(true);
-    }
-    current.current = next;
-    setStep(next);
-    if (productionStepSchema.safeParse(next).success) autosave.schedule(next);
-  };
-
-  const leave = async (to: string) => {
-    setLeaving(true);
-    try {
-      await autosave.flush();
-      navigate(to);
-    } catch {
-      message.error('还有内容没保存成功，请稍后再试');
-    } finally {
-      setLeaving(false);
-    }
-  };
-
-  // 逐份上传（每次保存版本加 1，同时发会互相冲突）：传完把文件 ID 写进内容并立即保存
-  const uploads = useRef(Promise.resolve());
-  const upload = (
-    key: string,
-    file: File,
-    rule: 'material' | 'image_or_pdf',
-    attach: (s: ProductionStep, fileId: string) => ProductionStep,
-    ledger?: Ledger,
-  ) => {
-    setUploading(key);
-    const next = uploads.current.then(async () => {
-      try {
-        await autosave.flush();
-        const fileId = await uploadFile(task.orgId, file, rule);
-        if (ledger) await linkItemFile(task.id, LEDGER_ITEMS[ledger], fileId);
-        setFileNames((names) => ({ ...names, [fileId]: file.name }));
-        update(attach(current.current!, fileId));
-        await autosave.flush();
-      } catch (err) {
-        message.error(err instanceof Error ? `${file.name}：${err.message}` : '上传失败，请稍后重试');
-      }
+      normalize: (s) => ({
+        ...s,
+        equipment: s.equipment.length > 0 ? s.equipment : [blankEquipment()],
+        materials: s.materials.length > 0 ? s.materials : [blankMaterial()],
+      }),
+      // 刚填进空压机、压力容器还没回答：一般带储气罐，替客户预选「有」
+      adjust: (prev, next) => {
+        const vessels = next.specialEquipment.pressureVessels;
+        if (!prev || hasAirCompressor(prev.equipment) || !hasAirCompressor(next.equipment) || vessels.answer) {
+          return next;
+        }
+        setVesselAutoPicked(true);
+        return { ...next, specialEquipment: { ...next.specialEquipment, pressureVessels: { ...vessels, answer: 'yes' } } };
+      },
     });
-    uploads.current = next;
-    void next.then(() => {
-      if (uploads.current === next) setUploading(null);
-    });
-  };
 
-  const removeLedger = async (ledger: Ledger, fileId: string) => {
-    try {
-      await autosave.flush();
-      await unlinkItemFile(task.id, LEDGER_ITEMS[ledger], fileId);
-      const s = current.current!;
-      update({ ...s, ledgers: { ...s.ledgers, [ledger]: s.ledgers[ledger].filter((f) => f !== fileId) } });
-      await autosave.flush();
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '移除失败，请稍后重试');
-    }
-  };
+  const removeLedger = (ledger: Ledger, fileId: string) =>
+    removeLinked(LEDGER_ITEMS[ledger], fileId, (s, id) => ({
+      ...s,
+      ledgers: { ...s.ledgers, [ledger]: s.ledgers[ledger].filter((f) => f !== id) },
+    }));
 
   const siteCount = step ? step.sites.length + step.customSites.length : 0;
   const specialYes = step ? SPECIAL_CATEGORY_KEYS.filter((k) => step.specialEquipment[k].answer === 'yes').length : 0;
@@ -269,7 +160,7 @@ export function ProductionStepPage({ task }: { task: Task }) {
                   file,
                   'material',
                   (s, fileId) => ({ ...s, ledgers: { ...s.ledgers, [ledger]: [...s.ledgers[ledger], fileId] } }),
-                  ledger,
+                  LEDGER_ITEMS[ledger],
                 )
               }
               onRemoveLedger={(ledger, fileId) => void removeLedger(ledger, fileId)}

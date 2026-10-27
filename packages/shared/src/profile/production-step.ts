@@ -1,8 +1,9 @@
 // 企业自填第 3 步「生产情况」第 1 页：场所、特种设备、设备与原辅材料、两个业务问题（Paper 12 页 S03a）。
-// 第 2 页工艺流程（S03b）在第 7b 项加到同一块里。
+// 第 2 页工艺流程（S03b）在同一块的 process 里，规则见 process-flow.ts。
 // 边填边保存，数量、用量按客户习惯写（如「6 台」「200 kg」），交付前由注册安全工程师按 productionSchema 整理。
 // 是否危化品、是否属于压力容器等专业判断不在这里，由专家完成。
 import { z } from 'zod';
+import { processDraftSchema } from './process-flow.ts';
 
 const id = z.string().min(1).max(40);
 const text = (max: number, label: string) => z.string().trim().max(max, `${label}最多 ${max} 个字`).optional();
@@ -130,6 +131,7 @@ export const productionStepSchema = z.object({
   ledgers: z.object({ equipment: fileIds, materials: fileIds }).prefault({}),
   leasesPremises: z.boolean().optional(),
   ownVehicles: z.boolean().optional(),
+  process: processDraftSchema.prefault({}),
 });
 export type ProductionStep = z.infer<typeof productionStepSchema>;
 export type SpecialEquipmentDraft = ProductionStep['specialEquipment'];
@@ -155,6 +157,7 @@ export function fileIdsOfProductionStep(step: ProductionStep): string[] {
     ...step.materials.flatMap((m) => m.labelPhotoFileIds),
     ...step.ledgers.equipment,
     ...step.ledgers.materials,
+    ...step.process.sketchFileIds,
   ];
   return [...new Set(ids)];
 }
