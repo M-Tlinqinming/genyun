@@ -4,8 +4,11 @@ import type {
   BasicStepSave,
   EnterpriseInput,
   FieldSource,
+  ChecklistItemKey,
   OrganizationStep,
   OrganizationStepSave,
+  ProductionStep,
+  ProductionStepSave,
 } from '@genyun/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, request } from './request';
@@ -86,6 +89,46 @@ export async function addRoster(taskId: string, enterpriseId: string, fileId: st
 export async function removeRoster(taskId: string, enterpriseId: string, fileId: string) {
   await request(`/tasks/${taskId}/checklist/emergency_groups/files/${fileId}`, { method: 'DELETE' });
   return request<OrganizationStepView>(`/enterprises/${enterpriseId}/roster/${fileId}`, { method: 'DELETE' });
+}
+
+export interface ProductionStepView {
+  enterpriseId: string;
+  version: number;
+  step: ProductionStep;
+  // 照片、台账的文件名
+  fileNames: Record<string, string>;
+  // 第 1 步填的经营范围
+  businessScope: string | null;
+  // false = 还没保存过，页面显示的是预选内容
+  saved: boolean;
+  updatedAt: string;
+}
+
+export const productionStepKey = (enterpriseId: string) => ['enterprises', enterpriseId, 'production-step'] as const;
+
+export function useProductionStep(enterpriseId: string | undefined) {
+  return useQuery({
+    queryKey: productionStepKey(enterpriseId ?? ''),
+    queryFn: () => request<ProductionStepView>(`/enterprises/${enterpriseId}/production-step`),
+    enabled: Boolean(enterpriseId),
+    ...fillQueryOptions,
+  });
+}
+
+export function saveProductionStep(enterpriseId: string, body: ProductionStepSave) {
+  return request<ProductionStepView>(`/enterprises/${enterpriseId}/production-step`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+// 把文件挂到任务的资料项上（台账、铭牌、包装标签），或移除
+export async function linkItemFile(taskId: string, itemKey: ChecklistItemKey, fileId: string) {
+  await request(`/tasks/${taskId}/checklist/${itemKey}/files`, { method: 'POST', body: JSON.stringify({ fileId }) });
+}
+
+export async function unlinkItemFile(taskId: string, itemKey: ChecklistItemKey, fileId: string) {
+  await request(`/tasks/${taskId}/checklist/${itemKey}/files/${fileId}`, { method: 'DELETE' });
 }
 
 export function saveBasicStep(enterpriseId: string, body: BasicStepSave) {
