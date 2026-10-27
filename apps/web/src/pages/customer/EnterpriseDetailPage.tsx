@@ -22,15 +22,19 @@ const card = {
   borderRadius: 8,
 } as const;
 
-const cardTitle = { fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text } as const;
+const cardTitle = {
+  fontSize: 16,
+  lineHeight: '24px',
+  fontWeight: 500,
+  color: gy.text,
+} as const;
 
 const STAGE_HINT = {
   preparing: '资料还没有提交给耕云，可以分次填写，随时回来继续。',
   submitted: '资料已提交，耕云专家正在处理，进度会在这里更新。',
 } as const;
 
-// C03 企业详情 · 概览。「企业资料」标签在第 10 项、「成果文档」在 M2 加上；
-// 「创建编制任务」入口在第 5 项接入
+// C03 企业详情 · 概览。「企业资料」标签在第 10 项、「成果文档」在 M2 加上
 export function EnterpriseDetailPage() {
   const { enterpriseId = '' } = useParams();
   const { orgId } = useWorkspace();
@@ -60,7 +64,16 @@ export function EnterpriseDetailPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Breadcrumb items={[{ title: <Link to="/customer/enterprises">企业</Link> }, { title: e.name }]} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <Typography.Title level={1} style={{ flex: 1, fontSize: 28, lineHeight: '40px', fontWeight: 500, margin: 0 }}>
+          <Typography.Title
+            level={1}
+            style={{
+              flex: 1,
+              fontSize: 28,
+              lineHeight: '40px',
+              fontWeight: 500,
+              margin: 0,
+            }}
+          >
             {e.name}
           </Typography.Title>
           <Button onClick={() => setEditing(true)}>编辑企业信息</Button>
@@ -71,8 +84,16 @@ export function EnterpriseDetailPage() {
       <Tabs
         defaultActiveKey="overview"
         items={[
-          { key: 'overview', label: '概览', children: <Overview enterprise={e} open={open} /> },
-          { key: 'tasks', label: `业务 ${all.length}`, children: <TaskTable tasks={all} loading={tasks.isPending} /> },
+          {
+            key: 'overview',
+            label: '概览',
+            children: <Overview enterprise={e} open={open} />,
+          },
+          {
+            key: 'tasks',
+            label: `业务 ${all.length}`,
+            children: <TaskTable tasks={all} loading={tasks.isPending} />,
+          },
         ]}
       />
 
@@ -92,12 +113,20 @@ function Overview({ enterprise: e, open }: { enterprise: Enterprise; open: TaskS
             borderRadius: 8,
             border: `1px solid ${taskStageTone(current.status).color}`,
             background: taskStageTone(current.status).bg,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
           }}
         >
-          <div style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500 }}>
-            {current.name} · {TASK_STATUSES[current.status]}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500 }}>
+              {current.name} · {TASK_STATUSES[current.status]}
+            </div>
+            <Typography.Text type="secondary">{STAGE_HINT[current.status]}</Typography.Text>
           </div>
-          <Typography.Text type="secondary">{STAGE_HINT[current.status]}</Typography.Text>
+          <Link to={`/customer/tasks/${current.id}`}>
+            <Button type="primary">{current.status === 'preparing' ? '继续准备资料' : '查看任务'}</Button>
+          </Link>
         </div>
       )}
 
@@ -109,25 +138,51 @@ function Overview({ enterprise: e, open }: { enterprise: Enterprise; open: TaskS
           <InfoRow label="注册地址" value={e.registeredAddress} last />
         </section>
 
-        <section style={{ ...card, width: 340, flexShrink: 0, padding: '20px 24px' }}>
-          <h2 style={{ ...cardTitle, margin: '0 0 14px' }}>这家企业</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <Stat label="在办任务" value={open.length > 0 ? `${open.length} 项` : '无'} />
-            <Stat label="已交付成果" value="暂无" />
-          </div>
-          <div
+        <div
+          style={{
+            width: 340,
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 20,
+          }}
+        >
+          <section style={{ ...card, padding: '20px 24px' }}>
+            <h2 style={{ ...cardTitle, margin: '0 0 14px' }}>这家企业</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Stat label="在办任务" value={open.length > 0 ? `${open.length} 项` : '无'} />
+              <Stat label="已交付成果" value="暂无" />
+            </div>
+            <div
+              style={{
+                marginTop: 14,
+                paddingTop: 12,
+                borderTop: `1px solid ${gy.split}`,
+                fontSize: 13,
+                lineHeight: '20px',
+                color: gy.secondary,
+              }}
+            >
+              企业资料可在下一年度的编制任务中直接复用，只需更新变化部分。
+            </div>
+          </section>
+
+          <section
             style={{
-              marginTop: 14,
-              paddingTop: 12,
-              borderTop: `1px solid ${gy.split}`,
-              fontSize: 13,
-              lineHeight: '20px',
-              color: gy.secondary,
+              ...card,
+              padding: '20px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
             }}
           >
-            企业资料可在下一年度的编制任务中直接复用，只需更新变化部分。
-          </div>
-        </section>
+            <h2 style={{ ...cardTitle, margin: 0 }}>新的编制需求？</h2>
+            <Typography.Text type="secondary">同一企业已有在办任务时，建议先完成当前任务。</Typography.Text>
+            <Link to={`/customer/enterprises/${e.id}/tasks/new`} style={{ alignSelf: 'flex-start' }}>
+              <Button>创建编制任务</Button>
+            </Link>
+          </section>
+        </div>
       </div>
     </div>
   );
@@ -171,12 +226,20 @@ function TaskTable({ tasks, loading }: { tasks: TaskSummary[]; loading: boolean 
       columns={[
         { title: '任务编号', dataIndex: 'number', width: 160 },
         { title: '任务名称', dataIndex: 'name' },
-        { title: '进展', key: 'status', width: 200, render: (_, t) => <TaskStageTag status={t.status} /> },
+        {
+          title: '进展',
+          key: 'status',
+          width: 200,
+          render: (_, t) => <TaskStageTag status={t.status} />,
+        },
         {
           title: '创建日期',
           key: 'createdAt',
           width: 160,
-          render: (_, t) => new Date(t.createdAt).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }),
+          render: (_, t) =>
+            new Date(t.createdAt).toLocaleDateString('zh-CN', {
+              timeZone: 'Asia/Shanghai',
+            }),
         },
       ]}
     />
