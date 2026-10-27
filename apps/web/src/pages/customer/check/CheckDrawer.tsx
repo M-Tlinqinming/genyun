@@ -1,4 +1,11 @@
-import { ITEM_STATUS_LABELS, ITEM_STEP, type CategoryCheck, type CategoryCheckItem } from '@genyun/shared';
+import {
+  DRAWINGS,
+  ITEM_STATUS_LABELS,
+  ITEM_STEP,
+  type CategoryCheck,
+  type CategoryCheckItem,
+  type DrawingKey,
+} from '@genyun/shared';
 import { CheckOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Checkbox, Drawer, Input, Select, Upload } from 'antd';
@@ -9,31 +16,54 @@ import { linkItemFile, uploadFile } from '../../../api/profile';
 import { ApiError } from '../../../api/request';
 import { taskCheckKey, updateChecklistItem, type Task, type TaskCheck } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
+import { MsdsCard, NeighborsCard, SpecialEquipmentCard } from './SpecialCards';
+
+// 有专用卡片的项（12 页 P05C、P05D）：答案写进企业资料，状态由后台同步
+const SPECIAL_KEYS = new Set(['special_equipment', 'external_resources', 'msds']);
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp';
 const IMAGE_ACCEPT = 'image/*,.pdf';
 const muted = '#3F4A5C';
 
-// 检查明细抽屉（12 页 P05B）：已满足的事实与来源在上，需要客户处理的项在下，交付前补齐的项最后
+// 检查明细抽屉（12 页 P05B）：已满足的事实与来源在上，需要客户处理的项在下，交付前补齐的项最后。
+// 特种设备、相邻企业、包装标签与说明书用专用卡片（P05C、P05D）
 export function CheckDrawer({
   task,
   category,
   check,
   onClose,
+  onBook,
 }: {
   task: Task;
   category: CategoryCheck | null;
   check: TaskCheck;
   onClose: () => void;
+  onBook: () => void;
 }) {
-  const done = category?.items.filter((i) => i.state === 'done') ?? [];
-  const action = category?.items.filter((i) => i.state === 'missing') ?? [];
-  const waiting = category?.items.filter((i) => i.state === 'expert' || i.state === 'call') ?? [];
-  const later = category?.items.filter((i) => i.state === 'later') ?? [];
+  const all = category?.items ?? [];
+  const generic = all.filter((i) => !SPECIAL_KEYS.has(i.key));
+  const done = generic.filter((i) => i.state === 'done');
+  const action = generic.filter((i) => i.state === 'missing');
+  const waiting = generic.filter((i) => i.state === 'expert' || i.state === 'call');
+  const later = generic.filter((i) => i.state === 'later');
+  const count = (...states: string[]) => all.filter((i) => states.includes(i.state)).length;
+  const single = (i: CategoryCheckItem) =>
+    i.state === 'done' ? (
+      <ul style={doneList}>
+        <DoneRow task={task} item={i} check={check} first />
+      </ul>
+    ) : i.state === 'expert' || i.state === 'call' ? (
+      <WaitingCard task={task} item={i} onBook={onBook} />
+    ) : (
+      <ActionCard task={task} item={i} tone={i.state === 'missing' ? 'action' : 'later'} onBook={onBook} />
+    );
+  const specialEquipment = all.find((i) => i.key === 'special_equipment');
+  const neighbors = all.find((i) => i.key === 'external_resources');
+  const msds = all.find((i) => i.key === 'msds');
   const summary = [
-    action.length && `${action.length} 项待补充`,
-    waiting.length && `${waiting.length} 项耕云处理中`,
-    later.length && `${later.length} 项可稍后补`,
+    count('missing') && `${count('missing')} 项待补充`,
+    count('expert', 'call') && `${count('expert', 'call')} 项耕云处理中`,
+    count('later') && `${count('later')} 项可稍后补`,
   ].filter(Boolean);
 
   return (
@@ -61,20 +91,23 @@ export function CheckDrawer({
       {category && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {done.length > 0 && (
-            <ul style={{ margin: 0, padding: 0, listStyle: 'none', borderRadius: 8, border: `1px solid ${gy.split}` }}>
+            <ul style={doneList}>
               {done.map((i, n) => (
                 <DoneRow key={i.key} task={task} item={i} check={check} first={n === 0} />
               ))}
             </ul>
           )}
+          {specialEquipment && <SpecialEquipmentCard task={task} item={specialEquipment} />}
           {action.map((i) => (
-            <ActionCard key={i.key} task={task} item={i} tone="action" />
+            <ActionCard key={i.key} task={task} item={i} tone="action" onBook={onBook} />
           ))}
           {waiting.map((i) => (
-            <WaitingCard key={i.key} task={task} item={i} />
+            <WaitingCard key={i.key} task={task} item={i} onBook={onBook} />
           ))}
+          {msds && <MsdsCard task={task} item={msds} fallback={single(msds)} />}
+          {neighbors && <NeighborsCard task={task} item={neighbors} />}
           {later.map((i) => (
-            <ActionCard key={i.key} task={task} item={i} tone="later" />
+            <ActionCard key={i.key} task={task} item={i} tone="later" onBook={onBook} />
           ))}
         </div>
       )}
@@ -138,9 +171,11 @@ function DoneRow({ task, item, check, first }: { task: Task; item: CategoryCheck
 }
 
 // 等耕云的项：拍照等专家判断、等专家电话联系。电话联系可以撤回，改为自己补
-function WaitingCard({ task, item }: { task: Task; item: CategoryCheckItem }) {
+function WaitingCard({ task, item, onBook }: { task: Task; item: CategoryCheckItem; onBook: () => void }) {
   const [reopen, setReopen] = useState(false);
-  if (reopen) return <ActionCard task={task} item={item} tone={item.requirement === 'start' ? 'action' : 'later'} />;
+  if (reopen) {
+    return <ActionCard task={task} item={item} tone={item.requirement === 'start' ? 'action' : 'later'} onBook={onBook} />;
+  }
   return (
     <section
       data-testid={`item-${item.key}`}
@@ -165,7 +200,17 @@ function WaitingCard({ task, item }: { task: Task; item: CategoryCheckItem }) {
 }
 
 // 需要客户处理的一项：对应已传文件或补传、直接告诉我们（由我确认），也可以没有 / 拍照 / 电话联系 / 稍后补
-function ActionCard({ task, item, tone }: { task: Task; item: CategoryCheckItem; tone: 'action' | 'later' }) {
+function ActionCard({
+  task,
+  item,
+  tone,
+  onBook,
+}: {
+  task: Task;
+  item: CategoryCheckItem;
+  tone: 'action' | 'later';
+  onBook: () => void;
+}) {
   const client = useQueryClient();
   const navigate = useNavigate();
   const { message } = App.useApp();
@@ -228,6 +273,7 @@ function ActionCard({ task, item, tone }: { task: Task; item: CategoryCheckItem;
             : '开始编制需要这一项。'}
         {item.item?.status === 'later' && !item.item.callRequested && '（已标为稍后补）'}
       </p>
+      {item.key in DRAWINGS && <DrawingHint drawing={item.key as DrawingKey} onBook={onBook} />}
 
       {isLater && !open ? (
         <button type="button" style={link} onClick={() => setOpen(true)}>
@@ -336,6 +382,25 @@ function ActionCard({ task, item, tone }: { task: Task; item: CategoryCheckItem;
   );
 }
 
+// 图纸怎么准备（12 页 P05D）：拍照、手画都可以；必需的图纸不能稍后补，实在没有可以请耕云上门绘制
+function DrawingHint({ drawing, onBook }: { drawing: DrawingKey; onBook: () => void }) {
+  const def = DRAWINGS[drawing];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, lineHeight: '20px', color: muted }}>
+      <span>{def.hint}</span>
+      {def.required && (
+        <span>
+          必需项不能稍后补。实在没有，可以
+          <button type="button" style={{ ...link, alignSelf: 'auto', margin: '0 4px' }} onClick={onBook}>
+            预约耕云上门
+          </button>
+          现场绘制。
+        </span>
+      )}
+    </div>
+  );
+}
+
 function Block({ title, hint, highlight, children }: { title: string; hint: string; highlight?: boolean; children: ReactNode }) {
   return (
     <div
@@ -364,6 +429,7 @@ function monthDay(iso: string | undefined): string {
   return `${m}.${d}`;
 }
 
+const doneList: CSSProperties = { margin: 0, padding: 0, listStyle: 'none', borderRadius: 8, border: `1px solid ${gy.split}` };
 const card: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 8 };
 const cardTitle: CSSProperties = { margin: 0, fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text };
 const cardText: CSSProperties = { margin: 0, fontSize: 13, lineHeight: '20px', color: muted };
