@@ -1,19 +1,29 @@
 import {
   basicInfoStartReady,
   basicStepSaveSchema,
+  buildingsReady,
   defaultOrganizationStep,
   defaultProductionStep,
+  defaultResourcesStep,
   dutyPhoneOfStep,
   emergencyGroupsStartReady,
   enterpriseInputSchema,
   equipmentStartReady,
   fileIdsOfProductionStep,
+  fileIdsOfResourcesStep,
+  firePoolStatus,
+  firstAidKitStatus,
   LICENSE_FIELDS,
   materialsStartReady,
+  neighborsReady,
   organizationStepSaveSchema,
+  peopleOf,
   processStartReady,
   productionStepSaveSchema,
+  resourcesStepSaveSchema,
   specialEquipmentStatus,
+  suppliesStartReady,
+  totalBuildingArea,
   type BasicStep,
   type BasicStepStored,
   type ChecklistItemKey,
@@ -23,6 +33,7 @@ import {
   type OrganizationStepStored,
   type ProductionStep,
   type RecognizedLicense,
+  type ResourcesStep,
 } from '@genyun/shared';
 import {
   BadRequestException,
@@ -71,8 +82,8 @@ function emptyStep(): BasicStepStored {
   return { basic: {}, later: [], sources: {} };
 }
 
-// 企业自填（12 页 S01、S02、S03a）：第 1 步读取、自动保存、上传营业执照并识别；第 2 步读取、自动保存、上传花名册；
-// 第 3 步两页（S03a、S03b）读取、自动保存（照片、台账、流程图照片先上传，再随内容一起保存）
+// 企业自填（12 页 S01–S04）：第 1 步读取、自动保存、上传营业执照并识别；第 2 步读取、自动保存、上传花名册；
+// 第 3 步两页（S03a、S03b）、第 4 步读取、自动保存（照片、台账、图纸先上传，再随内容一起保存）
 @Controller('enterprises/:id')
 export class EnterpriseProfileController {
   constructor(
@@ -221,16 +232,69 @@ export class EnterpriseProfileController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     if (parsed.data.version !== row.version) throw this.stale(row.version);
     const { step } = parsed.data;
-    // 照片、台账只能引用本组织上传的文件
-    const ids = fileIdsOfProductionStep(step);
-    if (ids.length > 0) {
-      const found = await this.db
-        .select({ id: files.id })
-        .from(files)
-        .where(and(inArray(files.id, ids), eq(files.orgId, row.orgId), eq(files.kind, 'customer_material')));
-      if (found.length !== ids.length) throw new NotFoundException('找不到该文件');
-    }
+    await this.ownFiles(row, fileIdsOfProductionStep(step));
     return this.productionView(await this.write(user, row, row.version, { productionStep: { step } }));
+  }
+
+  @Get('resources-step')
+  async getResources(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.resourcesView(await this.load(user, id));
+  }
+
+  @Put('resources-step')
+  async saveResources(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const row = await this.editable(user, id);
+    const parsed = resourcesStepSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+    if (parsed.data.version !== row.version) throw this.stale(row.version);
+    const { step } = parsed.data;
+    await this.ownFiles(row, fileIdsOfResourcesStep(step));
+    if (step.custodianId) {
+      const people = row.profile.organizationStep ? peopleOf(row.profile.organizationStep.step) : [];
+      if (!people.some((p) => p.id === step.custodianId)) throw new BadRequestException('保管人请从已填人员中选');
+    }
+    return this.resourcesView(await this.write(user, row, row.version, { resourcesStep: { step } }));
+  }
+
+  // 照片、台账、图纸只能引用本组织上传的文件
+  private async ownFiles(row: Row, ids: string[]) {
+    if (ids.length === 0) return;
+    const found = await this.db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(inArray(files.id, ids), eq(files.orgId, row.orgId), eq(files.kind, 'customer_material')));
+    if (found.length !== ids.length) throw new NotFoundException('找不到该文件');
+  }
+
+  private resourcesStep(row: Row): ResourcesStep {
+    return row.profile.resourcesStep?.step ?? defaultResourcesStep(this.productionStep(row).sites);
+  }
+
+  private async resourcesView(row: Row) {
+    const step = this.resourcesStep(row);
+    const production = this.productionStep(row);
+    const ids = fileIdsOfResourcesStep(step);
+    const named =
+      ids.length === 0
+        ? []
+        : await this.db
+            .select({ id: files.id, originalName: files.originalName })
+            .from(files)
+            .where(inArray(files.id, ids));
+    return {
+      enterpriseId: row.id,
+      version: row.version,
+      step,
+      fileNames: Object.fromEntries(named.map((f) => [f.id, f.originalName])),
+      // 统一保管人从第 2 步填过的人里选
+      people: row.profile.organizationStep ? peopleOf(row.profile.organizationStep.step) : [],
+      // 物资按第 3 步勾的场所排序
+      sites: production.sites,
+      // MSDS 按第 3 步的物料列出
+      materials: production.materials.filter((m) => m.name.trim() !== ''),
+      saved: Boolean(row.profile.resourcesStep),
+      updatedAt: row.updatedAt,
+    };
   }
 
   private productionStep(row: Row): ProductionStep {
@@ -323,6 +387,15 @@ export class EnterpriseProfileController {
           await this.syncItem(tx, user, row.id, 'materials', provided(materialsStartReady(step)));
           await this.syncItem(tx, user, row.id, 'special_equipment', specialEquipmentStatus(step.specialEquipment));
           await this.syncItem(tx, user, row.id, 'process_flow', provided(processStartReady(step.process)));
+        }
+        // 图纸、MSDS、物资台账由页面挂到资料项上，挂上文件即已提供，这里不再同步
+        if (patch.resourcesStep) {
+          const { step } = patch.resourcesStep;
+          await this.syncItem(tx, user, row.id, 'emergency_supplies', provided(suppliesStartReady(step)));
+          await this.syncItem(tx, user, row.id, 'first_aid_kit', firstAidKitStatus(step.firstAidKit));
+          await this.syncItem(tx, user, row.id, 'fire_pool', firePoolStatus(step.firePool));
+          await this.syncItem(tx, user, row.id, 'buildings', provided(buildingsReady(step)));
+          await this.syncItem(tx, user, row.id, 'external_resources', provided(neighborsReady(step.neighbors)));
         }
         return saved;
       });
@@ -422,6 +495,10 @@ export class EnterpriseProfileController {
       sources: step.sources,
       license,
       recognizerAvailable: Boolean(this.recognizer),
+      // 第 4 步填了建筑面积后自动合计；还没填为 null
+      totalBuildingAreaM2: row.profile.resourcesStep
+        ? totalBuildingArea(row.profile.resourcesStep.step.buildings) || null
+        : null,
       updatedAt: row.updatedAt,
     };
   }

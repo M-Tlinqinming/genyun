@@ -579,3 +579,139 @@ describe('营业执照', () => {
     expect((await agent.post(`/api/enterprises/${id}/license`).send({ fileId: other.body.id })).status).toBe(404);
   });
 });
+
+describe('企业自填第 4 步 · 应急资源与图纸', () => {
+  async function resources(id: string) {
+    const res = await (await as('a-admin@test.cn')).get(`/api/enterprises/${id}/resources-step`);
+    expect(res.status).toBe(200);
+    return res.body;
+  }
+
+  async function withTask(name: string) {
+    const id = await newEnterprise(name);
+    const agent = await as('a-admin@test.cn');
+    const task = (await agent.post(`/api/enterprises/${id}/tasks`).send({ name: '2026 年应急预案编制' })).body;
+    return { id, taskId: task.id as string, agent };
+  }
+
+  it('第一次打开按第 3 步的场所列出建筑，带出第 2 步的人员和第 3 步的物料', async () => {
+    const id = await newEnterprise('丁一公司');
+    const agent = await as('a-admin@test.cn');
+    let v = (await resources(id)).version;
+    const org2 = await agent.get(`/api/enterprises/${id}/organization-step`);
+    const commander = { id: 'p1', name: '赵六', phone: '13500007786' };
+    v = (
+      await agent
+        .put(`/api/enterprises/${id}/organization-step`)
+        .send({ version: v, step: { ...org2.body.step, commander } })
+    ).body.version;
+    const prod = await agent.get(`/api/enterprises/${id}/production-step`);
+    const step3 = {
+      ...prod.body.step,
+      sites: ['workshop', 'warehouse', 'dormitory'],
+      materials: [
+        { id: 'm1', name: '油漆' },
+        { id: 'm2', name: '' },
+      ],
+    };
+    expect((await agent.put(`/api/enterprises/${id}/production-step`).send({ version: v, step: step3 })).status).toBe(
+      200,
+    );
+
+    const s = await resources(id);
+    expect(s.saved).toBe(false);
+    expect(s.step.buildings.map((b: { name: string }) => b.name)).toEqual(['生产车间', '仓库', '员工宿舍']);
+    expect(s.step.supplies).toHaveLength(4);
+    expect(s.people).toEqual([commander]);
+    expect(s.materials.map((m: { name: string }) => m.name)).toEqual(['油漆']);
+  });
+
+  it('物资、药箱、水池、建筑、相邻企业填好后各自变为相应状态，撤回后回到未回答', async () => {
+    const { id, taskId, agent } = await withTask('丁二公司');
+    let s = await resources(id);
+    const save = async (step: object) => {
+      const res = await agent.put(`/api/enterprises/${id}/resources-step`).send({ version: s.version, step });
+      expect(res.status).toBe(200);
+      s = res.body;
+    };
+    const base = s.step;
+
+    await save({
+      ...base,
+      supplies: [{ id: 'r1', name: '手提式干粉灭火器', unit: '具', quantity: 50, location: '厂区各处' }],
+      firstAidKit: { ...base.firstAidKit, answer: 'yes' },
+      firePool: { answer: 'yes', count: 1, volumeLater: true },
+      buildings: [{ id: 'b1', name: '生产车间（A 栋）', fireRating: '2', floors: 3, areaM2: 20079.92 }],
+      neighbors: { answer: 'none' },
+    });
+    for (const key of ['emergency_supplies', 'first_aid_kit', 'fire_pool', 'buildings', 'external_resources']) {
+      expect(await checklistItem(taskId, key)).toMatchObject({ status: 'provided' });
+    }
+    expect((await step(id)).totalBuildingAreaM2).toBe(20079.92);
+
+    // 没有药箱、没有水池；只传药箱照片交给专家
+    await save({ ...s.step, firstAidKit: { ...s.step.firstAidKit, answer: 'no' }, firePool: { answer: 'no' } });
+    expect(await checklistItem(taskId, 'first_aid_kit')).toMatchObject({ status: 'none' });
+    expect(await checklistItem(taskId, 'fire_pool')).toMatchObject({ status: 'none' });
+    const photo = await agent.post(`/api/orgs/${org.a}/files?rule=image_or_pdf`).attach('file', PDF, '药箱.pdf');
+    await save({ ...s.step, firstAidKit: { answer: 'yes', mode: 'photo', items: [], photoFileIds: [photo.body.id] } });
+    expect(await checklistItem(taskId, 'first_aid_kit')).toMatchObject({
+      status: 'photo_for_expert',
+      expertJudgement: { result: 'pending' },
+    });
+    expect(s.fileNames).toMatchObject({ [photo.body.id]: '药箱.pdf' });
+
+    // 数量清空、建筑没面积、相邻企业不清楚
+    await save({
+      ...s.step,
+      supplies: [{ id: 'r1', name: '手提式干粉灭火器', unit: '具' }],
+      buildings: [{ id: 'b1', name: '生产车间', fireRating: 'expert' }],
+      neighbors: { answer: 'unknown' },
+    });
+    expect(await checklistItem(taskId, 'emergency_supplies')).toBeUndefined();
+    expect(await checklistItem(taskId, 'buildings')).toBeUndefined();
+    expect(await checklistItem(taskId, 'external_resources')).toBeUndefined();
+    expect((await step(id)).totalBuildingAreaM2).toBeNull();
+  });
+
+  it('图纸挂到资料项上即已提供，内容里记着文件名', async () => {
+    const { id, taskId, agent } = await withTask('丁三公司');
+    const plan = await agent.post(`/api/orgs/${org.a}/files?rule=image_or_pdf`).attach('file', PDF, '总平面图.pdf');
+    await agent.post(`/api/tasks/${taskId}/checklist/site_plan/files`).send({ fileId: plan.body.id });
+    const s = await resources(id);
+    const res = await agent.put(`/api/enterprises/${id}/resources-step`).send({
+      version: s.version,
+      step: { ...s.step, drawings: { site_plan: [plan.body.id] } },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.fileNames).toEqual({ [plan.body.id]: '总平面图.pdf' });
+    expect(await checklistItem(taskId, 'site_plan')).toMatchObject({ status: 'provided', fileIds: [plan.body.id] });
+    expect(await checklistItem(taskId, 'evacuation_plan')).toBeUndefined();
+  });
+
+  it('保管人必须是已填人员；格式不对、版本过期、引用别的组织的文件时不保存', async () => {
+    const id = await newEnterprise('丁四公司');
+    const agent = await as('a-admin@test.cn');
+    const s = await resources(id);
+    const put = (step: object) => agent.put(`/api/enterprises/${id}/resources-step`).send({ version: s.version, step });
+    expect((await put({ ...s.step, custodianId: 'nobody' })).status).toBe(400);
+    expect((await put({ ...s.step, buildings: [{ id: 'b', name: '仓库', fireRating: '9' }] })).status).toBe(400);
+    const other = await (await as('b-admin@test.cn')).post(`/api/orgs/${org.b}/files`).attach('file', PDF, 'b.pdf');
+    expect((await put({ ...s.step, drawings: { evacuation_plan: [other.body.id] } })).status).toBe(404);
+
+    expect((await put(s.step)).status).toBe(200);
+    const stale = await put(s.step);
+    expect(stale.status).toBe(409);
+    expect(stale.body).toMatchObject({ reason: 'stale', version: s.version + 1 });
+  });
+
+  it('别的组织读不到也改不了', async () => {
+    const id = await newEnterprise('丁五公司');
+    const s = await resources(id);
+    const b = await as('b-admin@test.cn');
+    expect((await b.get(`/api/enterprises/${id}/resources-step`)).status).toBe(404);
+    expect(
+      (await b.put(`/api/enterprises/${id}/resources-step`).send({ version: s.version, step: s.step })).status,
+    ).toBe(404);
+  });
+});
