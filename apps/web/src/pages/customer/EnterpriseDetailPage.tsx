@@ -1,7 +1,7 @@
 import { TASK_STATUSES, type EnterpriseInput } from '@genyun/shared';
 import { App, Breadcrumb, Button, Form, Modal, Result, Spin, Table, Tabs, Typography } from 'antd';
 import { useState, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useParams, useSearchParams } from 'react-router';
 import {
   openTasksOf,
   useEnterprise,
@@ -14,6 +14,7 @@ import { ApiError } from '../../api/request';
 import { TaskStageTag, taskStageTone } from '../../components/TaskStageTag';
 import { useWorkspace } from '../../layouts/workspace';
 import { gy } from '../../theme/tokens';
+import { EnterpriseDocumentsTab } from './EnterpriseDocumentsTab';
 import { EnterpriseFields, enterpriseRequiredMark, showEnterpriseError } from './EnterpriseFields';
 
 const card = {
@@ -34,13 +35,15 @@ const STAGE_HINT = {
   submitted: '资料已提交，耕云专家正在处理，进度会在这里更新。',
 } as const;
 
-// C03 企业详情 · 概览。「企业资料」标签在第 10 项、「成果文档」在 M2 加上
+// C03 企业详情：概览、企业资料、业务。「成果文档」在 M2 加上；?tab=documents 直接打开企业资料
 export function EnterpriseDetailPage() {
   const { enterpriseId = '' } = useParams();
   const { orgId } = useWorkspace();
   const enterprise = useEnterprise(enterpriseId);
   const tasks = useOrgTasks(orgId);
   const [editing, setEditing] = useState(false);
+  const [search, setSearch] = useSearchParams();
+  const tab = search.get('tab') ?? 'overview';
 
   if (enterprise.isPending) return <Spin style={{ display: 'block', padding: '96px 0' }} />;
   if (enterprise.isError) {
@@ -82,12 +85,18 @@ export function EnterpriseDetailPage() {
       </div>
 
       <Tabs
-        defaultActiveKey="overview"
+        activeKey={tab}
+        onChange={(key) => setSearch(key === 'overview' ? {} : { tab: key }, { replace: true })}
         items={[
           {
             key: 'overview',
             label: '概览',
             children: <Overview enterprise={e} open={open} />,
+          },
+          {
+            key: 'documents',
+            label: '企业资料',
+            children: <EnterpriseDocumentsTab enterpriseId={e.id} orgId={orgId} />,
           },
           {
             key: 'tasks',

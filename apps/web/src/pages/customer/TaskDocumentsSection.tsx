@@ -15,6 +15,7 @@ import {
 import { uploadFile } from '../../api/profile';
 import { ApiError } from '../../api/request';
 import type { Task } from '../../api/tasks';
+import { LibraryPickerModal } from './LibraryPickerModal';
 import { gy } from '../../theme/tokens';
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp';
@@ -27,7 +28,7 @@ interface Pending {
   error?: string;
 }
 
-// 「上传已有资料」路线：任务页「资料与检查」（12 页 P03 上传、P04 部分失败只重试失败项）。
+// 「上传已有资料」路线：任务页「资料与检查」（12 页 P03 上传、P03B 从企业资料中选用、P04 部分失败只重试失败项）。
 // 每个文件单独上传、单独登记进企业资料库并关联到任务，一个失败不影响其他文件
 export function TaskDocumentsSection({ task }: { task: Task }) {
   const docs = useTaskDocuments(task.id);
@@ -36,6 +37,8 @@ export function TaskDocumentsSection({ task }: { task: Task }) {
   const { message, modal } = App.useApp();
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const dropZone = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
 
   const patch = (key: string, next: Partial<Pending> | null) =>
@@ -121,6 +124,7 @@ export function TaskDocumentsSection({ task }: { task: Task }) {
       {!locked && (
         <div
           data-testid="drop-zone"
+          ref={dropZone}
           onDragOver={(e) => {
             e.preventDefault();
             setDragging(true);
@@ -142,18 +146,21 @@ export function TaskDocumentsSection({ task }: { task: Task }) {
             <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>拖入资料，或选择多个文件</span>
             <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>{uploadRuleHint('material')}</span>
           </div>
-          <Upload
-            accept={ACCEPT}
-            multiple
-            showUploadList={false}
-            beforeUpload={(_file, list) => {
-              // 多选时 beforeUpload 每个文件调一次，只在第一个时整批加入
-              if (_file === list[0]) add(list);
-              return false;
-            }}
-          >
-            <Button type="primary">选择文件上传</Button>
-          </Upload>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <Button onClick={() => setPicking(true)}>从企业资料中选择</Button>
+            <Upload
+              accept={ACCEPT}
+              multiple
+              showUploadList={false}
+              beforeUpload={(_file, list) => {
+                // 多选时 beforeUpload 每个文件调一次，只在第一个时整批加入
+                if (_file === list[0]) add(list);
+                return false;
+              }}
+            >
+              <Button type="primary">选择文件上传</Button>
+            </Upload>
+          </div>
         </div>
       )}
 
@@ -162,14 +169,19 @@ export function TaskDocumentsSection({ task }: { task: Task }) {
           <span style={{ ...nameCell, fontWeight: 500 }}>
             {saved.length > 0 ? `已关联 ${saved.length} 份原始文件` : '还没有关联文件'}
           </span>
-          <span style={{ ...cell, width: 64 }}>版本</span>
+          <span style={{ ...cell, width: 96 }}>版本</span>
           <span style={{ ...cell, width: 110 }}>保存状态</span>
           <span style={{ ...cell, width: 96 }}>操作</span>
         </Row>
         {saved.map((d) => (
           <Row key={d.documentId}>
             <span style={nameCell}>{d.name}</span>
-            <span style={{ ...cell, width: 64 }}>V{d.version}</span>
+            <span style={{ ...cell, width: 96, display: 'flex', flexDirection: 'column' }}>
+              V{d.version}
+              {d.latestVersion > d.version && (
+                <span style={{ fontSize: 12, lineHeight: '18px', color: gy.warning, whiteSpace: 'nowrap' }}>有新版本 V{d.latestVersion}</span>
+              )}
+            </span>
             <span style={{ ...cell, width: 110, color: gy.success }}>已保存并关联</span>
             <span style={{ width: 96, flexShrink: 0, display: 'flex', gap: 14 }}>
               <button type="button" style={link} aria-label={`预览${d.name}`} onClick={() => void preview(d.fileId)}>
@@ -189,7 +201,7 @@ export function TaskDocumentsSection({ task }: { task: Task }) {
               {p.file.name}
               {p.error && <span style={{ fontSize: 12, lineHeight: '20px', color: gy.error }}>{p.error}</span>}
             </span>
-            <span style={{ ...cell, width: 64, color: gy.tertiary }}>—</span>
+            <span style={{ ...cell, width: 96, color: gy.tertiary }}>—</span>
             {p.status === 'uploading' ? (
               <span style={{ ...cell, width: 110, color: gy.secondary }}>
                 <LoadingOutlined style={{ marginRight: 6 }} />
@@ -222,6 +234,15 @@ export function TaskDocumentsSection({ task }: { task: Task }) {
           </Row>
         ))}
       </div>
+
+      <LibraryPickerModal
+        task={task}
+        linked={saved}
+        open={picking}
+        onClose={() => setPicking(false)}
+        onSaved={(list) => client.setQueryData(taskDocumentsKey(task.id), list)}
+        onUploadLocal={() => dropZone.current?.querySelector<HTMLInputElement>('input[type=file]')?.click()}
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, paddingTop: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 14, lineHeight: '22px', color: gy.secondary }}>

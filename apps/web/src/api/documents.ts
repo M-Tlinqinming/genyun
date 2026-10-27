@@ -1,4 +1,4 @@
-import type { Category } from '@genyun/shared';
+import type { Category, TaskDocumentSelection, TaskStatus } from '@genyun/shared';
 import { useQuery } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -14,6 +14,8 @@ export interface TaskDocument {
   contentType: string;
   sizeBytes: number;
   linkedAt: string;
+  // 资料库里这份资料的最新版本；比 version 新时提示，不自动替换
+  latestVersion: number;
 }
 
 export const taskDocumentsKey = (taskId: string) => ['tasks', taskId, 'documents'] as const;
@@ -27,6 +29,11 @@ export function useTaskDocuments(taskId: string) {
 
 export function addTaskDocument(taskId: string, fileId: string) {
   return request<TaskDocument[]>(`/tasks/${taskId}/documents`, { method: 'POST', body: JSON.stringify({ fileId }) });
+}
+
+// 从企业资料中选用：确认后任务关联的就是这些资料与版本
+export function selectTaskDocuments(taskId: string, input: TaskDocumentSelection) {
+  return request<TaskDocument[]>(`/tasks/${taskId}/documents`, { method: 'PUT', body: JSON.stringify(input) });
 }
 
 export function removeTaskDocument(taskId: string, documentId: string) {
@@ -45,4 +52,85 @@ export async function openFile(fileId: string) {
     win?.close();
     throw err;
   }
+}
+
+// ---- 企业资料库（11 页 C03 企业资料） ----
+
+export interface DocumentVersion {
+  versionId: string;
+  version: number;
+  fileId: string;
+  originalName: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface EnterpriseDocument {
+  id: string;
+  name: string;
+  category: Category | null;
+  updatedAt: string;
+  latest: DocumentVersion;
+  versionCount: number;
+}
+
+export interface DocumentDetail {
+  id: string;
+  name: string;
+  category: Category | null;
+  versions: (DocumentVersion & { tasks: { taskId: string; number: string; name: string; status: TaskStatus }[] })[];
+}
+
+export const enterpriseDocumentsKey = (enterpriseId: string) => ['enterprises', enterpriseId, 'documents'] as const;
+export const documentDetailKey = (enterpriseId: string, documentId: string) =>
+  [...enterpriseDocumentsKey(enterpriseId), documentId] as const;
+
+export function useEnterpriseDocuments(enterpriseId: string, enabled = true) {
+  return useQuery({
+    queryKey: enterpriseDocumentsKey(enterpriseId),
+    queryFn: () => request<EnterpriseDocument[]>(`/enterprises/${enterpriseId}/documents`),
+    enabled,
+  });
+}
+
+export function useDocumentDetail(enterpriseId: string, documentId: string | null) {
+  return useQuery({
+    queryKey: documentDetailKey(enterpriseId, documentId ?? ''),
+    queryFn: () => request<DocumentDetail>(`/enterprises/${enterpriseId}/documents/${documentId}`),
+    enabled: documentId !== null,
+  });
+}
+
+export function uploadEnterpriseDocument(enterpriseId: string, fileId: string) {
+  return request<EnterpriseDocument[]>(`/enterprises/${enterpriseId}/documents`, {
+    method: 'POST',
+    body: JSON.stringify({ fileId }),
+  });
+}
+
+export function addDocumentVersion(enterpriseId: string, documentId: string, fileId: string) {
+  return request<DocumentDetail>(`/enterprises/${enterpriseId}/documents/${documentId}/versions`, {
+    method: 'POST',
+    body: JSON.stringify({ fileId }),
+  });
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// 「09.20 09:55」
+export function shortDateTime(iso: string): string {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('month')}.${get('day')} ${get('hour')}:${get('minute')}`;
 }
