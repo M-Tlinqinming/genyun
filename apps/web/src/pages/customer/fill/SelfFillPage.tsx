@@ -1,5 +1,5 @@
 import { Button, Empty, Result, Spin } from 'antd';
-import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../../api/request';
 import { useTask } from '../../../api/tasks';
 import { useSession } from '../../../auth/session';
@@ -7,14 +7,17 @@ import { gy } from '../../../theme/tokens';
 import { BasicStepPage } from './BasicStepPage';
 import { FILL_STEPS, FillFrame } from './FillFrame';
 import { OrganizationStepPage } from './OrganizationStepPage';
+import { ProductionStepPage } from './ProductionStepPage';
 
-// 企业自填 /customer/tasks/:taskId/fill/:step（全屏，不在工作区框架里）。
-// 第 3–5 步在第 7–9 项做，目前先占位
+// 企业自填 /customer/tasks/:taskId/fill/:step（全屏，不在工作区框架里）。第 3 步分两页，第 2 页为 ?page=process。
+// 第 3 步第 2 页（工艺流程）在第 7b 项做，第 4–5 步在第 8–9 项做，目前先占位
 export function SelfFillPage() {
   const { taskId = '', step: stepParam = '1' } = useParams();
   const session = useSession();
   const task = useTask(taskId);
   const step = Number(stepParam);
+  const [search] = useSearchParams();
+  const processPage = step === 3 && search.get('page') === 'process';
 
   if (session.isPending) return <Spin fullscreen />;
   if (!session.data) return <Navigate to="/login" replace />;
@@ -34,9 +37,11 @@ export function SelfFillPage() {
 
   if (step === 1) return <BasicStepPage key={task.data.id} task={task.data} />;
   if (step === 2) return <OrganizationStepPage key={task.data.id} task={task.data} />;
+  if (step === 3 && !processPage) return <ProductionStepPage key={task.data.id} task={task.data} />;
   return (
     <PendingStep
       step={step}
+      back={processPage ? `/customer/tasks/${task.data.id}/fill/3` : undefined}
       taskId={task.data.id}
       enterpriseId={task.data.enterpriseId}
       enterpriseName={task.data.enterpriseName}
@@ -46,11 +51,14 @@ export function SelfFillPage() {
 
 function PendingStep({
   step,
+  back,
   taskId,
   enterpriseId,
   enterpriseName,
 }: {
   step: number;
+  // 返回的页面，默认上一步
+  back?: string;
   taskId: string;
   enterpriseId: string;
   enterpriseName: string;
@@ -67,8 +75,8 @@ function PendingStep({
         <>
           <span style={{ fontSize: 14, lineHeight: '22px', color: gy.tertiary }}>第 {step} 步，共 5 步</span>
           <div style={{ display: 'flex', gap: 12 }}>
-            <Button size="large" onClick={() => navigate(`/customer/tasks/${taskId}/fill/${step - 1}`)}>
-              上一步
+            <Button size="large" onClick={() => navigate(back ?? `/customer/tasks/${taskId}/fill/${step - 1}`)}>
+              {back ? '上一页' : '上一步'}
             </Button>
             {next && (
               <Button

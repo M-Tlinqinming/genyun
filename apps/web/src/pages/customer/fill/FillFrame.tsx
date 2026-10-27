@@ -60,6 +60,8 @@ export function FillFrame({
           style={{
             position: 'sticky',
             bottom: 0,
+            // 选中的单选按钮自带层级，底栏要盖住它
+            zIndex: 10,
             height: 72,
             flexShrink: 0,
             display: 'flex',

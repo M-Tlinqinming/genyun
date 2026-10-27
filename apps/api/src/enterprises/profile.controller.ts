@@ -2,17 +2,25 @@ import {
   basicInfoStartReady,
   basicStepSaveSchema,
   defaultOrganizationStep,
+  defaultProductionStep,
   dutyPhoneOfStep,
   emergencyGroupsStartReady,
   enterpriseInputSchema,
+  equipmentStartReady,
+  fileIdsOfProductionStep,
   LICENSE_FIELDS,
+  materialsStartReady,
   organizationStepSaveSchema,
+  productionStepSaveSchema,
+  specialEquipmentStatus,
   type BasicStep,
   type BasicStepStored,
   type ChecklistItemKey,
   type EnterpriseInput,
   type EnterpriseProfile,
+  type ItemStatus,
   type OrganizationStepStored,
+  type ProductionStep,
   type RecognizedLicense,
 } from '@genyun/shared';
 import {
@@ -51,6 +59,10 @@ const LICENSE_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
 const fileIdSchema = z.object({ fileId: z.uuid('请选择文件') });
 
+// 资料清单里由自填内容自动得出的状态；清空时只撤回这几种，且有文件作凭证的不动
+type SyncedStatus = Exclude<ItemStatus, 'later'>;
+const SYNCED_STATUSES: SyncedStatus[] = ['provided', 'none', 'photo_for_expert'];
+
 type Row = typeof enterprises.$inferSelect;
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -58,7 +70,8 @@ function emptyStep(): BasicStepStored {
   return { basic: {}, later: [], sources: {} };
 }
 
-// 企业自填（12 页 S01、S02）：第 1 步读取、自动保存、上传营业执照并识别；第 2 步读取、自动保存、上传花名册
+// 企业自填（12 页 S01、S02、S03a）：第 1 步读取、自动保存、上传营业执照并识别；第 2 步读取、自动保存、上传花名册；
+// 第 3 步读取、自动保存（照片、台账先上传，再随内容一起保存）
 @Controller('enterprises/:id')
 export class EnterpriseProfileController {
   constructor(
@@ -195,6 +208,57 @@ export class EnterpriseProfileController {
     return this.organizationView(await this.write(user, row, row.version, { organizationStep: stored }));
   }
 
+  @Get('production-step')
+  async getProduction(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.productionView(await this.load(user, id));
+  }
+
+  @Put('production-step')
+  async saveProduction(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const row = await this.editable(user, id);
+    const parsed = productionStepSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+    if (parsed.data.version !== row.version) throw this.stale(row.version);
+    const { step } = parsed.data;
+    // 照片、台账只能引用本组织上传的文件
+    const ids = fileIdsOfProductionStep(step);
+    if (ids.length > 0) {
+      const found = await this.db
+        .select({ id: files.id })
+        .from(files)
+        .where(and(inArray(files.id, ids), eq(files.orgId, row.orgId), eq(files.kind, 'customer_material')));
+      if (found.length !== ids.length) throw new NotFoundException('找不到该文件');
+    }
+    return this.productionView(await this.write(user, row, row.version, { productionStep: { step } }));
+  }
+
+  private productionStep(row: Row): ProductionStep {
+    return row.profile.productionStep?.step ?? defaultProductionStep(row.profile.basicStep?.basic.businessScope);
+  }
+
+  private async productionView(row: Row) {
+    const step = this.productionStep(row);
+    const ids = fileIdsOfProductionStep(step);
+    const named =
+      ids.length === 0
+        ? []
+        : await this.db
+            .select({ id: files.id, originalName: files.originalName })
+            .from(files)
+            .where(inArray(files.id, ids));
+    return {
+      enterpriseId: row.id,
+      version: row.version,
+      step,
+      // 页面显示照片、台账的文件名
+      fileNames: Object.fromEntries(named.map((f) => [f.id, f.originalName])),
+      // 第 1 步填的经营范围，用于说明预选了哪些场所
+      businessScope: row.profile.basicStep?.basic.businessScope ?? null,
+      saved: Boolean(row.profile.productionStep),
+      updatedAt: row.updatedAt,
+    };
+  }
+
   private organizationStored(row: Row): OrganizationStepStored {
     const employeeCount = row.profile.basicStep?.basic.employeeCount;
     return row.profile.organizationStep ?? { step: defaultOrganizationStep(employeeCount), rosterFileIds: [] };
@@ -243,13 +307,20 @@ export class EnterpriseProfileController {
           .returning();
         // 读与写之间别人刚好保存了
         if (!saved) throw this.stale(version + 1);
+        const provided = (ready: boolean) => (ready ? ('provided' as const) : null);
         if (patch.basicStep) {
-          await this.syncItem(tx, user, row.id, 'basic_info', basicInfoStartReady(patch.basicStep.basic));
+          await this.syncItem(tx, user, row.id, 'basic_info', provided(basicInfoStartReady(patch.basicStep.basic)));
         }
         if (patch.organizationStep) {
           const { step } = patch.organizationStep;
-          await this.syncItem(tx, user, row.id, 'emergency_groups', emergencyGroupsStartReady(step));
-          await this.syncItem(tx, user, row.id, 'duty_phone', Boolean(dutyPhoneOfStep(step)));
+          await this.syncItem(tx, user, row.id, 'emergency_groups', provided(emergencyGroupsStartReady(step)));
+          await this.syncItem(tx, user, row.id, 'duty_phone', provided(Boolean(dutyPhoneOfStep(step))));
+        }
+        if (patch.productionStep) {
+          const { step } = patch.productionStep;
+          await this.syncItem(tx, user, row.id, 'equipment', provided(equipmentStartReady(step)));
+          await this.syncItem(tx, user, row.id, 'materials', provided(materialsStartReady(step)));
+          await this.syncItem(tx, user, row.id, 'special_equipment', specialEquipmentStatus(step.specialEquipment));
         }
         return saved;
       });
@@ -261,9 +332,15 @@ export class EnterpriseProfileController {
     }
   }
 
-  // 资料清单跟着填写情况走：开始编制需要的内容都填了就是「已提供」，
-  // 删掉其中一项又回到未回答（有文件作凭证的不动）。只改还在准备资料的任务
-  private async syncItem(tx: Tx, user: SessionUser, enterpriseId: string, itemKey: ChecklistItemKey, ready: boolean) {
+  // 资料清单跟着填写情况走：开始编制需要的内容都填了就是「已提供」（特种设备也可能是「没有」或
+  // 「拍照给耕云看」），删掉其中一项又回到未回答（有文件作凭证的不动）。只改还在准备资料的任务
+  private async syncItem(
+    tx: Tx,
+    user: SessionUser,
+    enterpriseId: string,
+    itemKey: ChecklistItemKey,
+    target: SyncedStatus | null,
+  ) {
     const open = await tx
       .select({ id: tasks.id })
       .from(tasks)
@@ -271,12 +348,12 @@ export class EnterpriseProfileController {
     if (open.length === 0) return;
     const ids = open.map((t) => t.id);
 
-    if (!ready) {
+    if (!target) {
       await tx.delete(checklistItems).where(
         and(
           inArray(checklistItems.taskId, ids),
           eq(checklistItems.itemKey, itemKey),
-          eq(checklistItems.status, 'provided'),
+          inArray(checklistItems.status, SYNCED_STATUSES),
           notExists(
             tx
               .select({ one: checklistItemFiles.fileId })
@@ -297,14 +374,15 @@ export class EnterpriseProfileController {
         .from(checklistItems)
         .where(and(eq(checklistItems.taskId, taskId), eq(checklistItems.itemKey, itemKey)))
         .limit(1);
-      if (item?.status === 'provided') continue;
-      // 客户直接填写的「已提供」由当前账号确认
+      if (item?.status === target) continue;
+      // 客户直接填写的「已提供」「没有」由当前账号确认；「拍照给耕云看」等专家判断
+      const confirms = target !== 'photo_for_expert';
       const values = {
-        status: 'provided' as const,
-        confirmedBy: user.id,
-        confirmedAt: now,
+        status: target,
+        confirmedBy: confirms ? user.id : null,
+        confirmedAt: confirms ? now : null,
         callRequested: false,
-        expertResult: null,
+        expertResult: confirms ? null : ('pending' as const),
         expertJudgedBy: null,
         expertJudgedAt: null,
         updatedBy: user.id,
