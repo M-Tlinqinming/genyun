@@ -21,7 +21,7 @@ import { canEditOrganizationData, canViewFile, canViewOrganization } from '../au
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser, Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { checklistItemFiles, files, tasks } from '../db/schema.ts';
+import { checklistItemFiles, enterpriseDocumentVersions, files, taskDocuments, tasks } from '../db/schema.ts';
 import { DOWNLOAD_TTL_SECONDS, FILE_STORAGE, type FileStorage, LocalDiskStorage } from './storage.ts';
 
 const NOT_FOUND = '找不到该文件';
@@ -166,6 +166,15 @@ export class FilesController {
       .innerJoin(tasks, eq(tasks.id, checklistItemFiles.taskId))
       .where(and(eq(checklistItemFiles.fileId, fileId), eq(tasks.assignedExpertId, user.id)))
       .limit(1);
-    return row !== undefined;
+    if (row) return true;
+    // 任务关联的企业原始资料
+    const [doc] = await this.db
+      .select({ taskId: taskDocuments.taskId })
+      .from(taskDocuments)
+      .innerJoin(enterpriseDocumentVersions, eq(enterpriseDocumentVersions.id, taskDocuments.versionId))
+      .innerJoin(tasks, eq(tasks.id, taskDocuments.taskId))
+      .where(and(eq(enterpriseDocumentVersions.fileId, fileId), eq(tasks.assignedExpertId, user.id)))
+      .limit(1);
+    return doc !== undefined;
   }
 }
