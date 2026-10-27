@@ -36,7 +36,8 @@ export function StartMethodPage() {
     update.mutate(
       { startMethod },
       {
-        onSuccess: () => navigate(`/customer/tasks/${taskId}`),
+        // 按提示填写直接进第 1 步；上传已有资料进任务页上传
+        onSuccess: () => navigate(startMethod === 'self_fill' ? `/customer/tasks/${taskId}/fill/1` : `/customer/tasks/${taskId}`),
         onError: (err) => message.error(err.message),
       },
     );

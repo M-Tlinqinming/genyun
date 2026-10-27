@@ -66,7 +66,8 @@ test('再点创建任务，被带到已有任务', async () => {
   await expect(page.getByText(/GY-\d{4}-\d{3} · \d{4} 年应急预案编制 · 资料准备中/)).toBeVisible();
   await expect(page.getByRole('button', { name: '创建草稿并准备资料' })).toHaveCount(0);
   await page.getByRole('button', { name: '继续已有任务' }).click();
-  await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}\/fill\/1$/);
+  await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}$/);
+  await expect(page.getByText('资料来自企业自填')).toBeVisible();
 });
 
 test('填表期间同事已建好任务：提交时提示并带到那个任务，还没选方式就先选', async () => {

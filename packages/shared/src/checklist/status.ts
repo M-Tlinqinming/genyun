@@ -32,6 +32,8 @@ export const itemStateSchema = z
     confirmedAt: z.iso.datetime().optional(),
     // 客户点了「请专家电话联系」
     callRequested: z.boolean().default(false),
+    // 客户在检查页直接填写的说明（「由我确认」）
+    note: z.string().optional(),
     expertJudgement: expertJudgementSchema.optional(),
   })
   .refine(
@@ -45,16 +47,18 @@ export type ItemState = z.infer<typeof itemStateSchema>;
 export const checklistStateSchema = z.partialRecord(z.enum(CHECKLIST_ITEM_KEYS), itemStateSchema);
 export type ChecklistState = z.infer<typeof checklistStateSchema>;
 
-// 某项能否设为某状态；不能时返回给客户看的原因
+// 某项能否设为某状态；不能时返回给客户看的原因。
+// 开始编制必需的项不能单纯稍后补，但可以「请专家电话联系」（稍后补 + 请联系，提交后由负责专家打电话问清）
 export function statusNotAllowedReason(
   key: ChecklistItemKey,
   status: ItemStatus,
+  callRequested = false,
 ): string | null {
   const def = getItemDef(key);
   if (def.requirement === 'system' && status !== 'provided') {
     return `${def.label}由耕云生成，只需确认`;
   }
-  if (status === 'later' && def.requirement === 'start') {
+  if (status === 'later' && def.requirement === 'start' && !callRequested) {
     return `${def.label}是开始编制必需的资料，不能稍后补`;
   }
   if (status === 'none' && !def.allowNone) {

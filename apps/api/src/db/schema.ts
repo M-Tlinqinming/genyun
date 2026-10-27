@@ -152,6 +152,8 @@ export const checklistItems = pgTable(
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     // 客户点了「请专家电话联系」
     callRequested: boolean('call_requested').notNull().default(false),
+    // 「由我确认」时直接填写的实际情况
+    note: text('note'),
     expertResult: expertResult('expert_result'),
     expertJudgedBy: uuid('expert_judged_by').references(() => users.id),
     expertJudgedAt: timestamp('expert_judged_at', { withTimezone: true }),

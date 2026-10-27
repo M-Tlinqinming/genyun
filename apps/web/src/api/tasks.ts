@@ -1,6 +1,9 @@
 import type {
   BusinessType,
   CallTime,
+  ChecklistItemKey,
+  ChecklistItemUpdate,
+  ChecklistState,
   ContractPeriod,
   OnSiteRequestInput,
   OnSiteStatus,
@@ -135,4 +138,24 @@ export function useRequestOnSite(taskId: string) {
       client.setQueryData<TaskReview>(taskReviewKey(taskId), (old) => old && { ...old, onSiteRequest: created });
     },
   });
+}
+
+// 资料检查页（12 页 P05）：各项状态、挂的文件名、确认人姓名；页面用 checkOverview() 按类别汇总
+export interface TaskCheck {
+  items: ChecklistState;
+  fileNames: Record<string, string>;
+  userNames: Record<string, string>;
+}
+
+export const taskCheckKey = (id: string) => ['tasks', id, 'check'] as const;
+
+export function useTaskCheck(id: string) {
+  return useQuery({
+    queryKey: taskCheckKey(id),
+    queryFn: () => request<TaskCheck>(`/tasks/${id}/check`),
+  });
+}
+
+export function updateChecklistItem(taskId: string, key: ChecklistItemKey, input: ChecklistItemUpdate) {
+  return request(`/tasks/${taskId}/checklist/${key}`, { method: 'PUT', body: JSON.stringify(input) });
 }

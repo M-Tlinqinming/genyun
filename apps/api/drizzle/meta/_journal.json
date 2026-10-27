@@ -43,6 +43,13 @@
       "when": 1793116474507,
       "tag": "0005_enterprise_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793119072088,
+      "tag": "0006_checklist_item_note",
+      "breakpoints": true
     }
   ]
 }

@@ -31,6 +31,8 @@ export type TaskUpdateInput = z.infer<typeof taskUpdateSchema>;
 export const checklistItemUpdateSchema = z.object({
   status: z.enum(ITEM_STATUSES),
   callRequested: z.boolean().default(false),
+  // 「由我确认」时直接填写的实际情况，如「2 人」
+  note: z.string().trim().max(500, '说明最多 500 个字').optional(),
 });
 export type ChecklistItemUpdate = z.infer<typeof checklistItemUpdateSchema>;
 

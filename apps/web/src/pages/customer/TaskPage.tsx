@@ -1,18 +1,20 @@
 import { Breadcrumb, Button, Empty, Result, Spin, Tabs } from 'antd';
-import { Link, Navigate, useParams } from 'react-router';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../api/request';
 import { useTask } from '../../api/tasks';
 import { PageHeader } from '../../components/PageHeader';
 import { gy } from '../../theme/tokens';
+import { CheckView } from './check/CheckView';
 import { TaskDocumentsSection } from './TaskDocumentsSection';
 
 const STAGES = ['资料准备', '耕云编制', '专家审核', '成果交付'];
 
-// 任务入口：还没选开始方式先去选；按提示填写转到填写向导。
-// 上传已有资料：任务详情（12 页 P03），「资料与检查」里上传与关联企业原始资料
+// 任务详情（12 页 P03、P05）：还没选开始方式先去选。「资料与检查」：上传路线先上传与关联企业原始资料，
+// 再进资料检查；按提示填写的任务直接看资料检查，从那里继续填写
 export function TaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
+  const [search, setSearch] = useSearchParams();
 
   if (task.isPending) return <Spin style={{ display: 'block', padding: '96px 0' }} />;
   if (task.isError) {
@@ -29,8 +31,16 @@ export function TaskPage() {
 
   const t = task.data;
   if (t.startMethod === null) return <Navigate to={`/customer/tasks/${t.id}/start`} replace />;
-  // 按提示填写：进入填写向导（停在哪一步的记忆在后续项目里做，先从第 1 步开始）
-  if (t.startMethod === 'self_fill') return <Navigate to={`/customer/tasks/${t.id}/fill/1`} replace />;
+  // 上传路线先看文件，点「检查资料」进检查页（?view=check）；自填路线直接看检查页，从那里继续填写
+  const checking = t.startMethod === 'self_fill' || search.get('view') === 'check';
+  const materials = checking ? (
+    <CheckView
+      task={t}
+      onBackToFiles={t.startMethod === 'upload' ? () => setSearch({}, { replace: true }) : undefined}
+    />
+  ) : (
+    <TaskDocumentsSection task={t} onCheck={() => setSearch({ view: 'check' })} />
+  );
 
   return (
     <>
@@ -57,7 +67,7 @@ export function TaskPage() {
       <Tabs
         style={{ marginTop: 8 }}
         items={[
-          { key: 'materials', label: '资料与检查', children: <TaskDocumentsSection task={t} /> },
+          { key: 'materials', label: '资料与检查', children: materials },
           { key: 'records', label: '处理记录', children: <Empty description="提交后，耕云的处理记录会显示在这里" /> },
           { key: 'versions', label: '成果版本', children: <Empty description="审核完成后，成果文档会显示在这里" /> },
         ]}

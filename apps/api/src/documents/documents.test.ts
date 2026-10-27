@@ -249,3 +249,41 @@ describe('企业资料库 · 版本与选用', () => {
     ]);
   });
 });
+
+describe('资料检查 · 逐项处理', () => {
+  it('由我确认：记下填写的说明和确认人；改成别的状态时说明清掉', async () => {
+    const { taskId, agent } = await newTask('丁一公司');
+    let res = await agent.put(`/api/tasks/${taskId}/checklist/basic_info`).send({ status: 'provided', note: '员工 86 人，安全员 2 人' });
+    expect(res.status).toBe(200);
+    let check = (await agent.get(`/api/tasks/${taskId}/check`)).body;
+    expect(check.items.basic_info).toMatchObject({ status: 'provided', note: '员工 86 人，安全员 2 人' });
+    expect(check.userNames[check.items.basic_info.confirmedBy]).toBe('a-admin@test.cn');
+
+    res = await agent.put(`/api/tasks/${taskId}/checklist/basic_info`).send({ status: 'later', callRequested: true });
+    expect(res.status).toBe(200);
+    check = (await agent.get(`/api/tasks/${taskId}/check`)).body;
+    expect(check.items.basic_info).toMatchObject({ status: 'later', callRequested: true });
+    expect(check.items.basic_info.note).toBeUndefined();
+  });
+
+  it('必需项不能单纯稍后补，请专家电话联系可以', async () => {
+    const { taskId, agent } = await newTask('丁二公司');
+    const plain = await agent.put(`/api/tasks/${taskId}/checklist/site_plan`).send({ status: 'later' });
+    expect(plain.status).toBe(400);
+    expect(plain.body.message).toContain('不能稍后补');
+    const call = await agent.put(`/api/tasks/${taskId}/checklist/site_plan`).send({ status: 'later', callRequested: true });
+    expect(call.status).toBe(200);
+    expect(call.body.check.blocking.map((b: { key: string }) => b.key)).not.toContain('site_plan');
+  });
+
+  it('把已传的资料对应到资料项：检查结果带出文件名；别的组织看不到', async () => {
+    const { taskId, agent } = await newTask('丁三公司');
+    const fileId = await upload('总平面图.pdf');
+    await agent.post(`/api/tasks/${taskId}/documents`).send({ fileId });
+    await agent.post(`/api/tasks/${taskId}/checklist/site_plan/files`).send({ fileId });
+    const check = (await agent.get(`/api/tasks/${taskId}/check`)).body;
+    expect(check.items.site_plan).toMatchObject({ status: 'provided', fileIds: [fileId] });
+    expect(check.fileNames[fileId]).toBe('总平面图.pdf');
+    expect((await (await as('b-admin@test.cn')).get(`/api/tasks/${taskId}/check`)).status).toBe(404);
+  });
+});
