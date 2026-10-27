@@ -100,8 +100,93 @@ test('别人刚改过时提示并显示最新内容，不会覆盖', async () =>
   await expect(page.getByLabel('主要产品')).toHaveValue('电热水壶、电饭煲');
 });
 
-test('下一步进入第 2 步（下次做）', async () => {
+async function itemStatus(key: string) {
+  const res = await page.request.get(`/api/tasks/${taskId}/checklist`);
+  const body = (await res.json()) as { items: Record<string, { status: string } | undefined> };
+  return body.items[key]?.status;
+}
+
+const chart = () => page.getByRole('region', { name: '应急救援组织体系图' });
+const chartGroups = () => chart().getByRole('listitem');
+// 「总指挥姓名」也包含在「副总指挥姓名」里，要精确匹配
+const commander = (field: string) => page.getByLabel(`总指挥${field}`, { exact: true });
+
+// 第 6b 项：第 2 步，用飞宇样例填写
+test('下一步进入第 2 步：按 86 人预设 3 个小组，体系图已画出', async () => {
   await page.getByRole('button', { name: '下一步：人员与应急组织' }).click();
   await expect(page).toHaveURL(/\/fill\/2$/);
-  await expect(page.getByText('这一步正在建设中')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '出了事，谁来指挥、谁去处置' })).toBeVisible();
+  await expect(page.getByText('已按 86 人的规模预设 3 个小组')).toBeVisible();
+  await expect(page.getByText('建议 3–4 组')).toBeVisible();
+  await expect(chartGroups()).toHaveText(['抢险救灾组', '综合保障组', '通讯联络组']);
+  await expect(chart().getByText('副总指挥', { exact: true })).toHaveCount(0);
+});
+
+test('填总指挥及手机后两项资料变为已提供，值班电话默认同总指挥', async () => {
+  await commander('姓名').fill('李文聪');
+  await commander('职位').fill('总经理');
+  expect(await itemStatus('emergency_groups')).toBeUndefined();
+  await commander('手机').fill('13800000001');
+  await expect(page.getByLabel('24 小时值班电话')).toHaveAttribute('placeholder', '13800000001');
+  await expect(page.getByText('同总指挥')).toBeVisible();
+  await expect.poll(() => itemStatus('emergency_groups')).toBe('provided');
+  await expect.poll(() => itemStatus('duty_phone')).toBe('provided');
+});
+
+test('填副总指挥、组长和组员，体系图和编制小组跟着变', async () => {
+  await page.getByLabel('副总指挥姓名').fill('陈志刚');
+  await page.getByLabel('副总指挥职位').fill('副总经理');
+  await expect(chart().getByText('副总指挥', { exact: true })).toBeVisible();
+
+  await page.getByLabel('抢险救灾组组长姓名').fill('刘海涛');
+  await page.getByLabel('抢险救灾组组长手机').fill('13800000010');
+  // 组员从已填人员中选（总指挥兼任）
+  await page.getByRole('button', { name: '+ 添加组员（可从已填人员中选）' }).click();
+  await page.getByRole('menuitem', { name: '李文聪 · 总经理' }).click();
+  await expect(page.getByLabel('抢险救灾组组员 1 姓名')).toHaveValue('李文聪');
+
+  // 综合保障组还没填组长：收起时提示可稍后补
+  await expect(page.getByRole('region', { name: '综合保障组' }).getByText('组长待填 · 可稍后补')).toBeVisible();
+  await expect(page.getByText('3 个小组，2 位组长可稍后补')).toBeVisible();
+
+  // 加一个医疗救护组：体系图按规定顺序插在中间
+  await page.getByRole('button', { name: '+ 医疗救护组' }).click();
+  await expect(chartGroups()).toHaveText(['抢险救灾组', '医疗救护组', '综合保障组', '通讯联络组']);
+
+  const team = page.getByRole('table', { name: '应急预案编制小组' });
+  await expect(team.getByRole('row')).toHaveCount(1 + 3);
+  await expect(team.getByText('重点编写风险评估与现场处置')).toBeVisible();
+});
+
+test('去掉副总指挥、删掉小组后体系图自动调整', async () => {
+  await page.getByRole('button', { name: '移除副总指挥' }).click();
+  await expect(chart().getByText('副总指挥', { exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: '删除这个小组' }).last().click();
+  await page.getByRole('button', { name: '删除', exact: true }).click();
+  await expect(chartGroups()).toHaveText(['抢险救灾组', '综合保障组', '通讯联络组']);
+  await expect(page.getByRole('status')).toHaveText(/已自动保存/);
+});
+
+test('第 2 步填一半退出，回来内容还在', async () => {
+  await page.getByRole('button', { name: '保存并退出' }).click();
+  await expect(page).toHaveURL(new RegExp(`/customer/enterprises/${enterpriseId}$`));
+  await page.goto(`/customer/tasks/${taskId}/fill/2`);
+  await expect(commander('姓名')).toHaveValue('李文聪');
+  await expect(page.getByLabel('抢险救灾组组长姓名')).toHaveValue('刘海涛');
+  await expect(chartGroups()).toHaveText(['抢险救灾组', '综合保障组', '通讯联络组']);});
+
+test('也可以上传花名册，由专家整理', async () => {
+  await page.getByText('上传花名册', { exact: true }).first().click();
+  await page
+    .locator('input[type=file]')
+    .setInputFiles({ name: '应急通讯录.pdf', mimeType: 'application/pdf', buffer: PDF });
+  await expect(page.getByText('应急通讯录.pdf')).toBeVisible();
+  await expect(page.getByText('已上传 1 份花名册')).toBeVisible();
+
+  // 切回逐项填写，之前填的还在
+  await page.getByText('逐项填写', { exact: true }).click();
+  await expect(commander('姓名')).toHaveValue('李文聪');
+  await page.getByRole('button', { name: '下一步：生产情况' }).click();
+  await expect(page).toHaveURL(/\/fill\/3$/);
 });
