@@ -54,12 +54,14 @@
 
 ## 预览环境（独立任务）
 
-- 状态：**阻塞**，等 Martin 完成阿里云香港轻量服务器的三件事
+- 状态：服务器准备三件事已完成（10-27 核实），可以开始部署
   1. 导入公钥并绑定（公钥 = 本机 `~/.ssh/id_ed25519.pub`，备注改为 `genyun-preview`）
   2. 防火墙只开 22 / 80 / 443
-  3. 云解析 DNS：`preview.genyun.net.cn` A 记录 → 服务器公网 IP
+  3. 云解析 DNS：`preview.gengyun.net.cn` A 记录 → 服务器公网 IP
 - 服务器：Ubuntu，2 核 4G，中国香港；只放虚构样例数据，ICP 备案完成后退订
-- 公网 IP：（待填）
+- 公网 IP：47.82.104.179；root 公钥登录已通（Ubuntu 24.04，未装 Docker，系统防火墙未启用，靠阿里云防火墙）
+- 10-27 检查：域名实为 `gengyun.net.cn`（之前文档误写为 genyun），DNS 在阿里云，`preview.gengyun.net.cn` → 47.82.104.179 已在公网生效。防火墙已核实只开 22/80/443（另有 ICMP）。服务器主机指纹与本机记录一致
+- SSH 注意：本机用户目录是中文名，Git Bash 的 ssh 默认找不到 `~/.ssh` 里的文件，会报 `Host key verification failed`（不是服务器变了）。连接时写全路径：`ssh -F /dev/null -i "$HOME/.ssh/id_ed25519" -o UserKnownHostsFile="$HOME/.ssh/known_hosts" root@47.82.104.179`
 - 目标：Docker 运行现有镜像、Caddy 自动 HTTPS、数据持久化、开机自动恢复、写入演示账号；之后加「合并到 main 自动更新预览」
 - 做法：在 worktree 分支 `deploy-preview` 进行，不改 `apps/` 业务代码；每次改服务器前先告诉 Martin
 
