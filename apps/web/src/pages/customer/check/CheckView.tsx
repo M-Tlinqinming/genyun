@@ -5,13 +5,15 @@ import {
   type CategoryCheck,
   type CategoryStatus,
 } from '@genyun/shared';
-import { App, Button, Result, Spin } from 'antd';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button, Result, Spin } from 'antd';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { useTaskDocuments } from '../../../api/documents';
-import { useTaskCheck, type Task, type TaskCheck } from '../../../api/tasks';
+import { taskDocumentsKey, useTaskDocuments } from '../../../api/documents';
+import { taskCheckKey, useTaskCheck, type Task, type TaskCheck } from '../../../api/tasks';
 import { gy } from '../../../theme/tokens';
 import { OnSiteDialog } from '../OnSiteVisit';
+import { SubmitDialog } from '../submit/SubmitDialog';
 import { CheckDrawer } from './CheckDrawer';
 import { BusinessQuestions } from './SpecialCards';
 
@@ -22,14 +24,17 @@ const STATUS_COLOR: Record<CategoryStatus, string> = {
 };
 
 // 资料检查页（12 页 P05、P06）：两种开始方式共用。六类按资料项是否满足判断，不按文件数；
-// 明细抽屉里逐项处理。「提交生成申请」在第 12 项接上
+// 明细抽屉里逐项处理。上传路线在这里提交（13 页 F01–F07），自填路线到第 5 步核对后提交
 export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?: () => void }) {
   const check = useTaskCheck(task.id);
   const docs = useTaskDocuments(task.id);
   const navigate = useNavigate();
-  const { message } = App.useApp();
+  const client = useQueryClient();
   const [openCategory, setOpenCategory] = useState<Category | null>(null);
   const [booking, setBooking] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  // 确认之后资料有变化，这次没提交（F07）
+  const [changed, setChanged] = useState<string[] | null>(null);
 
   if (check.isPending) return <Spin style={{ display: 'block', padding: '64px 0' }} />;
   if (check.isError) return <Result status="error" title="资料检查加载失败" subTitle={check.error.message} />;
@@ -40,9 +45,26 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
   const firstMissingCategory = o.categories.find((c) => c.items.some((i) => i.key === firstMissing?.key));
   const selfFill = task.startMethod === 'self_fill';
 
+  const recheck = () => {
+    setChanged(null);
+    void client.invalidateQueries({ queryKey: taskCheckKey(task.id) });
+    void client.invalidateQueries({ queryKey: taskDocumentsKey(task.id) });
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {firstMissing && firstMissingCategory ? (
+      {changed ? (
+        <Banner
+          tone="warning"
+          title="本任务的资料已更新，请重新检查"
+          text={`提交时发现${changed.join('；')}。本次申请尚未提交，请检查新版本后再确认；其他未变更的资料保留，无需重复上传。`}
+          action={
+            <Button type="primary" onClick={recheck}>
+              重新检查资料
+            </Button>
+          }
+        />
+      ) : firstMissing && firstMissingCategory ? (
         <Banner
           tone="warning"
           title={`请补充${firstMissing.label}${o.missing.length > 1 ? ` 等 ${o.missing.length} 项` : ''}`}
@@ -131,11 +153,7 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
             block
             type={o.canSubmit ? 'primary' : 'default'}
             disabled={!o.canSubmit}
-            onClick={() =>
-              selfFill
-                ? navigate(`/customer/tasks/${task.id}/fill/5`)
-                : message.info('资料已检查完毕，提交功能即将开放；资料都已保存。')
-            }
+            onClick={() => (selfFill ? navigate(`/customer/tasks/${task.id}/fill/5`) : setSubmitting(true))}
           >
             提交生成申请
           </Button>
@@ -157,6 +175,15 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
         onBook={() => setBooking(true)}
       />
       <OnSiteDialog taskId={task.id} open={booking} onClose={() => setBooking(false)} />
+      <SubmitDialog
+        task={task}
+        open={submitting}
+        onClose={() => setSubmitting(false)}
+        onChanged={(changes) => {
+          setChanged(changes);
+          void client.invalidateQueries({ queryKey: taskCheckKey(task.id) });
+        }}
+      />
     </div>
   );
 }

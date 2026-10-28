@@ -5,17 +5,21 @@ import type {
   ChecklistItemUpdate,
   ChecklistState,
   ContractPeriod,
+  DocumentVersionRef,
   OnSiteRequestInput,
   OnSiteStatus,
   Review,
   StartMethod,
+  SubmitRequest,
+  SubmittedAnswer,
+  SubmittedDocument,
   TaskCreateInput,
   TaskStatus,
   TaskUpdateInput,
 } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enterpriseKeys, orgTasksKey } from './enterprises';
-import { request } from './request';
+import { ApiError, request } from './request';
 
 export interface Task {
   id: string;
@@ -158,4 +162,62 @@ export function useTaskCheck(id: string) {
 
 export function updateChecklistItem(taskId: string, key: ChecklistItemKey, input: ChecklistItemUpdate) {
   return request(`/tasks/${taskId}/checklist/${key}`, { method: 'PUT', body: JSON.stringify(input) });
+}
+
+// 提交生成申请（13 页 F01–F08）。确认框与「查询提交结果」读同一个接口
+export interface Submission {
+  submittedAt: string;
+  submittedByName: string;
+  documents: SubmittedDocument[];
+  items: ChecklistState;
+  answers: SubmittedAnswer[];
+  pendingKeys: ChecklistItemKey[];
+}
+
+export interface SubmissionPreview {
+  documents: SubmittedDocument[];
+  taskDocuments: DocumentVersionRef[];
+  answers: SubmittedAnswer[];
+  canSubmit: boolean;
+  pendingCount: number;
+  fingerprint: string;
+}
+
+export type SubmissionState = { submitted: true; submission: Submission } | { submitted: false; preview: SubmissionPreview };
+
+export const taskSubmissionKey = (id: string) => ['tasks', id, 'submission'] as const;
+
+export function useTaskSubmission(id: string, enabled = true) {
+  return useQuery({
+    queryKey: taskSubmissionKey(id),
+    queryFn: () => request<SubmissionState>(`/tasks/${id}/submission`),
+    enabled,
+  });
+}
+
+export function fetchTaskSubmission(id: string) {
+  return request<SubmissionState>(`/tasks/${id}/submission`);
+}
+
+// 提交结果分三种：成功；确定没交上（如资料已变、规则不允许），可以照提示处理；
+// 不确定（断网、超时、服务器出错），可能已经交上，只能先查询，不能直接再交
+export class SubmitUnknownError extends Error {}
+
+const SUBMIT_TIMEOUT_MS = 30_000;
+
+export async function submitTask(id: string, input: SubmitRequest): Promise<Submission> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SUBMIT_TIMEOUT_MS);
+  try {
+    return await request<Submission>(`/tasks/${id}/submission`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.status < 500) throw err;
+    throw new SubmitUnknownError(err instanceof Error ? err.message : '提交结果未知');
+  } finally {
+    clearTimeout(timer);
+  }
 }
