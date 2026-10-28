@@ -161,8 +161,9 @@ export class DocumentsService {
   }
 
   // 刚上传的文件登记进任务所属企业的资料库并关联到任务。同一文件已登记过的，直接关联那个版本
+  // 提交以后仍可以加新文件（补待补清单里的项），已提交的资料版本不动
   async addToTask(user: SessionUser, taskId: string, fileId: string) {
-    const task = await this.editableTask(user, taskId);
+    const task = await this.editableTask(user, taskId, true);
     await this.db.transaction(async (tx) => {
       const version = await registerFile(tx, user.id, task, fileId);
       await tx
@@ -276,11 +277,13 @@ export class DocumentsService {
       .orderBy(desc(enterpriseDocumentVersions.version));
   }
 
-  // 客户才能改；已提交的任务资料锁定（提交后的更新走补件，M2）
-  private async editableTask(user: SessionUser, taskId: string) {
+  // 客户才能改；已提交的任务，选用的资料版本锁定，只能再加新文件
+  private async editableTask(user: SessionUser, taskId: string, addOnly = false) {
     const task = await this.tasks.load(user, taskId);
     if (!canEditOrganizationData(user, task.orgId)) throw new ForbiddenException('资料由客户上传');
-    if (task.status !== 'preparing') throw new BadRequestException('任务已提交，资料不能再改；需要更新请在补件中提交');
+    if (task.status !== 'preparing' && !addOnly) {
+      throw new BadRequestException('申请已提交，已提交的资料不能更换或移除；需要更正请联系负责专家');
+    }
     return task;
   }
 

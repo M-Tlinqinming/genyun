@@ -2,6 +2,7 @@ import {
   checklistFileLinkSchema,
   checklistItemUpdateSchema,
   onSiteRequestSchema,
+  submitRequestSchema,
   taskCreateSchema,
   taskUpdateSchema,
 } from '@genyun/shared';
@@ -11,6 +12,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Inject,
   Param,
   ParseUUIDPipe,
@@ -20,6 +22,7 @@ import {
 } from '@nestjs/common';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
+import { SubmissionService } from './submission.service.ts';
 import { TasksService } from './tasks.service.ts';
 
 type Schema<T> = {
@@ -34,7 +37,10 @@ function parse<T>(schema: Schema<T>, body: unknown): T {
 
 @Controller()
 export class TasksController {
-  constructor(@Inject(TasksService) private readonly tasks: TasksService) {}
+  constructor(
+    @Inject(TasksService) private readonly tasks: TasksService,
+    @Inject(SubmissionService) private readonly submissions: SubmissionService,
+  ) {}
 
   @Get('orgs/:orgId/tasks')
   list(@CurrentUser() user: SessionUser, @Param('orgId', ParseUUIDPipe) orgId: string) {
@@ -109,5 +115,18 @@ export class TasksController {
   @Post('tasks/:id/on-site-requests')
   requestOnSite(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.tasks.requestOnSite(user, id, parse(onSiteRequestSchema, body));
+  }
+
+  // 确认框内容；提交结果不确定时也用它查询
+  @Get('tasks/:id/submission')
+  submission(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.submissions.get(user, id);
+  }
+
+  // 同一个 requestId 重发只记一次；成功和「已经交过」都返回 200
+  @Post('tasks/:id/submission')
+  @HttpCode(200)
+  submit(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.submissions.submit(user, id, parse(submitRequestSchema, body));
   }
 }

@@ -1,4 +1,14 @@
-import { CALL_TIMES, ITEM_STATUSES, ON_SITE_STATUSES, type CallTime, type EnterpriseProfile } from '@genyun/shared';
+import {
+  CALL_TIMES,
+  ITEM_STATUSES,
+  ON_SITE_STATUSES,
+  type CallTime,
+  type ChecklistItemKey,
+  type ChecklistState,
+  type EnterpriseProfile,
+  type SubmittedAnswer,
+  type SubmittedDocument,
+} from '@genyun/shared';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -129,6 +139,27 @@ export const tasks = pgTable(
       .where(sql`${t.closedAt} is null`),
   ],
 );
+
+// 提交生成申请的记录（13 页 F02、F03）：谁在什么时候提交、用了哪些资料的哪个版本、当时各项的处理情况。
+// 一个任务提交一次；requestId 由页面生成，同一次提交重发（如断网后）只记一次
+export const taskSubmissions = pgTable('task_submissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  taskId: uuid('task_id')
+    .notNull()
+    .unique()
+    .references(() => tasks.id, { onDelete: 'cascade' }),
+  requestId: uuid('request_id').notNull().unique(),
+  submittedBy: uuid('submitted_by')
+    .notNull()
+    .references(() => users.id),
+  submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+  documents: jsonb('documents').$type<SubmittedDocument[]>().notNull(),
+  items: jsonb('items').$type<ChecklistState>().notNull(),
+  // 由客户自己确认的事项（直接填写、没有、业务问题），确认框里显示的就是这些
+  answers: jsonb('answers').$type<SubmittedAnswer[]>().notNull(),
+  // 提交时还没给的项：提交后仍可以补，其余已处理的项锁定
+  pendingKeys: jsonb('pending_keys').$type<ChecklistItemKey[]>().notNull(),
+});
 
 // 任务编号按年流水，全平台共用一个计数
 export const taskNumberCounters = pgTable('task_number_counters', {

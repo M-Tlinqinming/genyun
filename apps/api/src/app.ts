@@ -15,6 +15,7 @@ import { FilesController } from './files/files.controller.ts';
 import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.ts';
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
+import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
 import { TasksService } from './tasks/tasks.service.ts';
 
@@ -57,6 +58,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       },
       AuthService,
       TasksService,
+      SubmissionService,
       DocumentsService,
       { provide: APP_GUARD, useClass: SessionGuard },
     ],
