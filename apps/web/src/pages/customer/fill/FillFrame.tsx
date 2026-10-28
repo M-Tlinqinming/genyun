@@ -2,6 +2,7 @@ import { CheckOutlined, LoadingOutlined } from '@ant-design/icons';
 import { Button, ConfigProvider } from 'antd';
 import type { ReactNode } from 'react';
 import { WizardHeader } from '../../../components/WizardHeader';
+import { FadeSwap } from '../../../theme/motion';
 import { gy } from '../../../theme/tokens';
 import type { SaveState } from './useAutosave';
 
@@ -101,7 +102,7 @@ function SaveStatus({ state, savedAt }: { state: SaveState; savedAt?: Date }) {
   }
   return (
     <span role="status" style={{ fontSize: 14, lineHeight: '22px' }}>
-      {content}
+      <FadeSwap id={state === 'saving' || state === 'pending' ? 'saving' : state === 'error' ? 'error' : `saved-${time}`}>{content}</FadeSwap>
     </span>
   );
 }

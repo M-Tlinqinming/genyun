@@ -41,9 +41,10 @@ export const theme: ThemeConfig = {
     borderRadiusLG: 8,
     borderRadiusSM: 4,
 
+    // 动效时长（Martin 10-28 选定，与 theme/motion.tsx 一致）：弹窗进出 150ms，抽屉滑入 200ms
     motionDurationFast: '0.1s',
-    motionDurationMid: '0.2s',
-    motionDurationSlow: '0.3s',
+    motionDurationMid: '0.15s',
+    motionDurationSlow: '0.2s',
   },
   components: {
     Layout: {

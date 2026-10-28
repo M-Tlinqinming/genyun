@@ -38,6 +38,7 @@ import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './Fill
 import { OrgChart } from './OrgChart';
 import { useAutosave } from './useAutosave';
 import { Loading } from '../../../components/ui';
+import { useListMotion } from '../../../theme/motion';
 
 type PersonPatch = Partial<Omit<DraftPerson, 'id'>>;
 
@@ -463,6 +464,7 @@ function GroupsCard({
   onExpanded: (s: Set<string>) => void;
   onChange: (s: OrganizationStep) => void;
 }) {
+  const groupList = useListMotion<HTMLDivElement>();
   const suggest = suggestedGroups(employeeCount ?? undefined);
   const range = suggest.min === suggest.max ? `${suggest.min}` : `${suggest.min}–${suggest.max}`;
   const people = peopleOf(step);
@@ -489,7 +491,8 @@ function GroupsCard({
         description={`${employeeCount !== null ? `已按 ${employeeCount} 人的规模` : '已'}预设 ${suggest.min} 个小组。先填组长，组员可交付前补齐。`}
         extra={<SystemTag padding="2px 8px">{`建议 ${range} 组`}</SystemTag>}
       />
-      {step.groups.map((g) => (
+      <div ref={groupList} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {step.groups.map((g) => (
         <GroupPanel
           key={g.id}
           group={g}
@@ -510,6 +513,7 @@ function GroupsCard({
           }
         />
       ))}
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, paddingTop: 4 }}>
         <span style={{ fontSize: 13, lineHeight: '20px', color: gy.tertiary }}>添加小组</span>
         {canAdd ? (
@@ -578,6 +582,7 @@ function GroupPanel({
   onRename: (name: string) => void;
   onRemove?: () => void;
 }) {
+  const memberList = useListMotion<HTMLDivElement>();
   const title = group.name.trim() || '自定义小组';
   const hasLeader = filled(group.leader?.name);
   const memberCount = group.members.filter((m) => filled(m.name)).length;
@@ -647,7 +652,8 @@ function GroupPanel({
           )}
           <Columns label="职务" labelWidth={64} small />
           <PersonRow role="组长" strong labelWidth={64} label={`${title}组长`} value={group.leader} onChange={onLeader} />
-          {group.members.map((m, i) => (
+          <div ref={memberList} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {group.members.map((m, i) => (
             <PersonRow
               key={m.id}
               role="组员"
@@ -658,6 +664,7 @@ function GroupPanel({
               onRemove={() => onRemoveMember(m.id)}
             />
           ))}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             {group.members.length >= MAX_MEMBERS ? (
               <span style={{ fontSize: 13, lineHeight: '20px', color: gy.tertiary }}>每组最多 {MAX_MEMBERS} 名组员</span>

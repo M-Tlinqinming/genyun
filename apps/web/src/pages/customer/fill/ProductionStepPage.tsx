@@ -24,6 +24,7 @@ import { gy, source } from '../../../theme/tokens';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
 import { useProductionDraft } from './useProductionDraft';
 import { Loading } from '../../../components/ui';
+import { useListMotion } from '../../../theme/motion';
 
 type Ledger = keyof ProductionStep['ledgers'];
 // 台账代替逐行填写，同时挂到任务对应的资料项上；铭牌、包装标签照片只存在企业资料里，供专家判断
@@ -716,6 +717,8 @@ function AssetsCard({
   onRemoveLedger: (ledger: Ledger, fileId: string) => void;
   onLabel: (materialId: string, file: File) => void;
 }) {
+  const materialList = useListMotion<HTMLDivElement>();
+  const equipmentList = useListMotion<HTMLDivElement>();
   const ledgerInput = useRef<HTMLInputElement>(null);
   const [ledgerTarget, setLedgerTarget] = useState<Ledger>('equipment');
   const putEquipment = (id: string, p: Partial<DraftEquipment>) =>
@@ -782,7 +785,8 @@ function AssetsCard({
         <span style={colLabel(fixed(92))}>使用状况</span>
         <span style={fixed(24)} />
       </div>
-      {step.equipment.map((e, i) => (
+      <div ref={equipmentList} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {step.equipment.map((e, i) => (
         <div key={e.id} data-testid="equipment-row" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <Input
             style={{ ...grow(1.4), ...cellInput }}
@@ -832,6 +836,7 @@ function AssetsCard({
           />
         </div>
       ))}
+      </div>
       <Button
         type="link"
         style={{ alignSelf: 'flex-start', padding: 0, height: 22 }}
@@ -853,7 +858,8 @@ function AssetsCard({
         <span style={colLabel(fixed(168))}>包装标签 / MSDS</span>
         <span style={fixed(24)} />
       </div>
-      {step.materials.map((m, i) => (
+      <div ref={materialList} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {step.materials.map((m, i) => (
         <div key={m.id} data-testid="material-row" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <Input
             style={{ ...grow(1.2), ...cellInput }}
@@ -935,6 +941,7 @@ function AssetsCard({
           />
         </div>
       ))}
+      </div>
       <div style={{ display: 'flex', gap: 16 }}>
         {(['material', 'cylinder'] as const).map((kind) => (
           <Button

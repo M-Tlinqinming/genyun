@@ -22,6 +22,7 @@ import { OnSiteDialog } from '../OnSiteVisit';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
 import { useProductionDraft } from './useProductionDraft';
 import { linkButton, Loading } from '../../../components/ui';
+import { useListMotion } from '../../../theme/motion';
 
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.pdf';
 const newStepId = () => newId('p');
@@ -350,6 +351,7 @@ function TemplateCard({
 }
 
 function StepsCard({ step, onChange }: { step: ProductionStep; onChange: (s: ProductionStep) => void }) {
+  const stepList = useListMotion<HTMLOListElement>();
   const steps = step.process.steps;
   const [editing, setEditing] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -399,7 +401,7 @@ function StepsCard({ step, onChange }: { step: ProductionStep; onChange: (s: Pro
           还没有工序。选上面的行业模板，或者直接添加。
         </p>
       ) : null}
-      <ol
+      <ol ref={stepList}
         aria-label="工序"
         style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: 0, padding: 0, listStyle: 'none' }}
       >

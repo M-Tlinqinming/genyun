@@ -11,6 +11,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { taskDocumentsKey, useTaskDocuments } from '../../../api/documents';
 import { taskCheckKey, useTaskCheck, type Task, type TaskCheck } from '../../../api/tasks';
+import { FlashOnDone, MOTION } from '../../../theme/motion';
 import { gy } from '../../../theme/tokens';
 import { OnSiteDialog } from '../OnSiteVisit';
 import { SubmitDialog } from '../submit/SubmitDialog';
@@ -198,7 +199,8 @@ function CategoryRow({ category: c, check, onOpen }: { category: CategoryCheck; 
     Boolean,
   );
   return (
-    <div
+    <FlashOnDone
+      done={c.status === 'done'}
       data-testid={`category-${c.category}`}
       style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '14px 24px', borderTop: `1px solid ${gy.split}` }}
     >
@@ -206,11 +208,11 @@ function CategoryRow({ category: c, check, onOpen }: { category: CategoryCheck; 
         <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>{c.label}</span>
         <span style={{ fontSize: 12, lineHeight: '20px', color: gy.tertiary }}>{parts.join(' · ')}</span>
       </div>
-      <span style={{ width: 72, flexShrink: 0, fontSize: 14, color: STATUS_COLOR[c.status] }}>{CATEGORY_STATUS_LABELS[c.status]}</span>
+      <span style={{ width: 72, flexShrink: 0, fontSize: 14, color: STATUS_COLOR[c.status], transition: `color ${MOTION.mid}s` }}>{CATEGORY_STATUS_LABELS[c.status]}</span>
       <button type="button" style={{ ...link, width: 72, flexShrink: 0, textAlign: 'left' }} aria-label={`${c.label}明细`} onClick={onOpen}>
         {c.status === 'missing' ? '补充资料' : c.status === 'verifying' ? '查看说明' : '明细'}
       </button>
-    </div>
+    </FlashOnDone>
   );
 }
 

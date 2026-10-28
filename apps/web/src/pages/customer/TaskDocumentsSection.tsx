@@ -17,6 +17,7 @@ import { ApiError } from '../../api/request';
 import type { Task } from '../../api/tasks';
 import { LibraryPickerModal } from './LibraryPickerModal';
 import { FileTypeIcon } from '../../components/FileTypeIcon';
+import { useListMotion } from '../../theme/motion';
 import { gy } from '../../theme/tokens';
 import { linkButton } from '../../components/ui';
 
@@ -34,6 +35,7 @@ interface Pending {
 // 每个文件单独上传、单独登记进企业资料库并关联到任务，一个失败不影响其他文件
 export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: () => void }) {
   const docs = useTaskDocuments(task.id);
+  const rows = useListMotion<HTMLDivElement>();
   const client = useQueryClient();
   const navigate = useNavigate();
   const { message, modal } = App.useApp();
@@ -166,7 +168,7 @@ export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: (
         </div>
       )}
 
-      <div role="table" aria-label="本次原始资料" style={{ borderRadius: 6, border: `1px solid ${gy.split}` }}>
+      <div ref={rows} role="table" aria-label="本次原始资料" style={{ borderRadius: 6, border: `1px solid ${gy.split}` }}>
         <Row header>
           <span style={{ ...nameCell, fontWeight: 500 }}>
             {saved.length > 0 ? `已关联 ${saved.length} 份原始文件` : '还没有关联文件'}

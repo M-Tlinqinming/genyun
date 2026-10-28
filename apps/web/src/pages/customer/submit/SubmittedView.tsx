@@ -9,6 +9,7 @@ import { Button, Progress, Result } from 'antd';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useTaskCheck, useTaskSubmission, type Submission, type Task } from '../../../api/tasks';
+import { FlashOnDone } from '../../../theme/motion';
 import { gy, source, stage } from '../../../theme/tokens';
 import { CheckDrawer } from '../check/CheckDrawer';
 import { OnSiteDialog } from '../OnSiteVisit';
@@ -218,7 +219,9 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
 function SupplementRow({ item, first, onOpen }: { item: CategoryCheckItem; first: boolean; onOpen: () => void }) {
   const done = item.state === 'done';
   return (
-    <li
+    <FlashOnDone
+      as="li"
+      done={done}
       data-testid={`supplement-${item.key}`}
       style={{
         display: 'flex',
@@ -242,7 +245,7 @@ function SupplementRow({ item, first, onOpen }: { item: CategoryCheckItem; first
           </button>
         </>
       )}
-    </li>
+    </FlashOnDone>
   );
 }
 
