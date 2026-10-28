@@ -1,7 +1,7 @@
 import type { SubmittedAnswer, SubmittedDocument } from '@genyun/shared';
 import { ExclamationCircleFilled, LoadingOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { App, Button, Modal, Result, Spin } from 'antd';
+import { App, Button, Modal, Result } from 'antd';
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { ApiError } from '../../../api/request';
@@ -15,6 +15,7 @@ import {
 } from '../../../api/tasks';
 import { ContactLink } from '../../../components/ContactLink';
 import { gy } from '../../../theme/tokens';
+import { Loading } from '../../../components/ui';
 
 // confirm = 确认资料版本（F02）；submitting = 提交中（F04）；unknown = 结果未知，先查询（F06、F08）；
 // failed = 查过确认没交上，可以重试（F05）
@@ -192,7 +193,7 @@ export function SubmitDialog({
       {loadError ? (
         <Result status="error" title="资料加载失败" subTitle={loadError} />
       ) : phase === 'loading' || !preview ? (
-        <Spin style={{ display: 'block', padding: '48px 0' }} />
+        <Loading rows={4} card={false} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingTop: 8 }} data-testid="submit-dialog" data-phase={phase}>
           <p style={{ margin: 0, fontSize: 14, lineHeight: '22px', color: gy.secondary }}>{head?.text}</p>

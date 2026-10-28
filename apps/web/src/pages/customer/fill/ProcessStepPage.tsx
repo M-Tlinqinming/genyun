@@ -14,28 +14,20 @@ import {
   type ProcessTemplateId,
   type ProductionStep,
 } from '@genyun/shared';
-import { App, Button, Input, Modal, Popconfirm, Spin, Upload } from 'antd';
+import { App, Button, Input, Modal, Popconfirm, Upload } from 'antd';
 import { Fragment, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Task } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
 import { OnSiteDialog } from '../OnSiteVisit';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
 import { useProductionDraft } from './useProductionDraft';
+import { linkButton, Loading } from '../../../components/ui';
 
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.pdf';
 const newStepId = () => newId('p');
 const named = (steps: DraftProcessStep[]) => steps.filter((s) => s.name.trim() !== '');
 
-const link: CSSProperties = {
-  padding: 0,
-  border: 'none',
-  background: 'none',
-  color: gy.primary,
-  fontSize: 14,
-  lineHeight: '22px',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-};
+const link: CSSProperties = linkButton;
 
 // S03b 企业自填第 3 步第 2 页「工艺流程」：选行业模板再增删工序，或写一句话、拍照上传；流程图自动生成
 export function ProcessStepPage({ task }: { task: Task }) {
@@ -108,7 +100,7 @@ export function ProcessStepPage({ task }: { task: Task }) {
           description="选一个最接近的行业模板，再按实际情况增删工序。不用自己画图，系统会自动生成。"
         />
         {!step || !process ? (
-          <Spin style={{ padding: '96px 0' }} />
+          <div style={{ flex: 1 }}><Loading rows={8} /></div>
         ) : (
           <>
             <TemplateCard

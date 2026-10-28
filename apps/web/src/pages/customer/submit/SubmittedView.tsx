@@ -4,8 +4,8 @@ import {
   type Category,
   type CategoryCheckItem,
 } from '@genyun/shared';
-import { CheckCircleFilled, CheckOutlined } from '@ant-design/icons';
-import { Button, Progress, Result, Spin } from 'antd';
+import { CheckOutlined } from '@ant-design/icons';
+import { Button, Progress, Result } from 'antd';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useTaskCheck, useTaskSubmission, type Submission, type Task } from '../../../api/tasks';
@@ -13,6 +13,7 @@ import { gy, source, stage } from '../../../theme/tokens';
 import { CheckDrawer } from '../check/CheckDrawer';
 import { OnSiteDialog } from '../OnSiteVisit';
 import { AnswerList, DocumentList } from './SubmitDialog';
+import { linkButton, Loading, Notice, panel } from '../../../components/ui';
 
 const AFTER_SUBMIT = [
   { title: '耕云继续编制', text: '基于本次资料整理信息，生成三份文档初稿。' },
@@ -72,7 +73,7 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
   const [openCategory, setOpenCategory] = useState<Category | null>(null);
   const [booking, setBooking] = useState(false);
 
-  if (isPending) return <Spin style={{ display: 'block', padding: '64px 0' }} />;
+  if (isPending) return <Loading rows={6} />;
   if (error || !submission || !check.data) {
     return <Result status="error" title="处理记录加载失败" subTitle={error?.message ?? '请刷新页面重试'} />;
   }
@@ -87,30 +88,15 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div
-        role="status"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          padding: '20px 24px',
-          borderRadius: 8,
-          background: gy.successBg,
-          border: `1px solid ${gy.success}`,
-        }}
-      >
-        <CheckCircleFilled style={{ color: gy.success, fontSize: 20 }} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>
-            {remaining.length > 0 ? '申请已提交，耕云已开始整理' : '申请已提交，当前无需您操作'}
-          </span>
-          <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>
-            {remaining.length > 0
-              ? `还有 ${remaining.length} 项可稍后补，不影响编制；专家审核前补齐，初稿会更准确。`
-              : '本次资料版本已记录。需要您补充企业事实时，会在本任务中说明。'}
-          </span>
-        </div>
-      </div>
+      <Notice
+        tone="success"
+        title={remaining.length > 0 ? '申请已提交，耕云已开始整理' : '申请已提交，当前无需您操作'}
+        text={
+          remaining.length > 0
+            ? `还有 ${remaining.length} 项可稍后补，不影响编制；专家审核前补齐，初稿会更准确。`
+            : '本次资料版本已记录。需要您补充企业事实时，会在本任务中说明。'
+        }
+      />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -295,7 +281,7 @@ function AfterSubmit() {
 // 「资料与检查」标签在提交后显示当时提交的资料版本与确认事项
 export function SubmittedMaterials({ task }: { task: Task }) {
   const submission = useTaskSubmission(task.id);
-  if (submission.isPending) return <Spin style={{ display: 'block', padding: '64px 0' }} />;
+  if (submission.isPending) return <Loading rows={5} />;
   if (submission.isError || !submission.data.submitted) {
     return <Result status="error" title="提交资料加载失败" subTitle={submission.error?.message ?? '请刷新页面重试'} />;
   }
@@ -334,14 +320,5 @@ function dateTime(iso: string): string {
   return `${get('month')}.${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
-const panel: CSSProperties = { borderRadius: 8, background: gy.surface, border: `1px solid ${gy.split}` };
 const h2: CSSProperties = { margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text };
-const link: CSSProperties = {
-  padding: 0,
-  border: 'none',
-  background: 'none',
-  cursor: 'pointer',
-  fontSize: 14,
-  lineHeight: '22px',
-  color: gy.primary,
-};
+const link: CSSProperties = linkButton;

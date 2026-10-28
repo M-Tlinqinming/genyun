@@ -1,5 +1,5 @@
 import { FIELD_SOURCES, INDUSTRY_NAMES, TASK_STATUSES, type EnterpriseInput } from '@genyun/shared';
-import { App, Breadcrumb, Button, Form, Modal, Result, Spin, Table, Tabs, Typography } from 'antd';
+import { App, Breadcrumb, Button, Form, Modal, Result, Table, Tabs, Typography } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import {
@@ -18,12 +18,9 @@ import { useWorkspace } from '../../layouts/workspace';
 import { gy } from '../../theme/tokens';
 import { EnterpriseDocumentsTab } from './EnterpriseDocumentsTab';
 import { EnterpriseFields, enterpriseRequiredMark, showEnterpriseError } from './EnterpriseFields';
+import { Loading, panel } from '../../components/ui';
 
-const card = {
-  background: gy.surface,
-  border: `1px solid ${gy.split}`,
-  borderRadius: 8,
-} as const;
+const card = panel;
 
 const cardTitle = {
   fontSize: 16,
@@ -50,7 +47,7 @@ export function EnterpriseDetailPage() {
   const basicStep = useBasicStep(enterpriseId);
   const documents = useEnterpriseDocuments(enterpriseId);
 
-  if (enterprise.isPending) return <Spin style={{ display: 'block', padding: '96px 0' }} />;
+  if (enterprise.isPending) return <Loading rows={6} />;
   if (enterprise.isError) {
     const notFound = enterprise.error instanceof ApiError && enterprise.error.status === 404;
     return (

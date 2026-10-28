@@ -16,6 +16,7 @@ import type { Task } from '../../../api/tasks';
 import { gy } from '../../../theme/tokens';
 import { AnswerSwitch } from '../fill/ProductionStepPage';
 import { useCheckProfile, useProfileWriter } from './useProfileWriter';
+import { linkButtonSmall } from '../../../components/ui';
 
 const IMAGE_ACCEPT = 'image/*,.pdf';
 const DOC_ACCEPT = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.webp';
@@ -437,12 +438,4 @@ function Shell({
   );
 }
 
-const link: CSSProperties = {
-  padding: 0,
-  border: 'none',
-  background: 'none',
-  cursor: 'pointer',
-  fontSize: 13,
-  lineHeight: '20px',
-  color: gy.primary,
-};
+const link: CSSProperties = linkButtonSmall;

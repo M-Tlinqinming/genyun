@@ -1,5 +1,5 @@
 import { BUSINESS_TYPES, TASK_STATUSES, chinaToday, isContractActive, taskCreateSchema } from '@genyun/shared';
-import { App, Breadcrumb, Button, Form, Input, Result, Spin, Typography } from 'antd';
+import { App, Breadcrumb, Button, Form, Input, Result, Typography } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { openTasksOf, useEnterprise, useOrgTasks } from '../../api/enterprises';
@@ -7,6 +7,7 @@ import { ApiError } from '../../api/request';
 import { useCreateTask, useOrganization, type ExistingTask } from '../../api/tasks';
 import { useWorkspace } from '../../layouts/workspace';
 import { gy } from '../../theme/tokens';
+import { Loading } from '../../components/ui';
 
 const help = { fontSize: 12, lineHeight: '20px', color: gy.secondary } as const;
 
@@ -29,7 +30,7 @@ export function TaskCreatePage() {
   const [expired, setExpired] = useState(false);
 
   if (enterprise.isPending || tasks.isPending || org.isPending) {
-    return <Spin style={{ display: 'block', padding: '96px 0' }} />;
+    return <Loading rows={6} />;
   }
   if (enterprise.isError) {
     return (

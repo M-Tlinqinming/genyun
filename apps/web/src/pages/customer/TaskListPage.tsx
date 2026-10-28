@@ -1,10 +1,11 @@
 import { ArrowRightOutlined, SearchOutlined } from '@ant-design/icons';
 import { TASK_BUCKETS, TASK_STAGES, type TaskBucket } from '@genyun/shared';
-import { Input, Result, Select, Spin, Table, Tabs } from 'antd';
+import { Input, Result, Select, Table, Tabs } from 'antd';
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useOrgTasks } from '../../api/enterprises';
 import { PageHeader } from '../../components/PageHeader';
+import { Loading } from '../../components/ui';
 import { useWorkspace } from '../../layouts/workspace';
 import { gy, stage } from '../../theme/tokens';
 import { ContractNotice } from './WorkbenchPage';
@@ -47,7 +48,7 @@ export function TaskListPage() {
       <ContractNotice state={contract.state} daysLeft={contract.daysLeft} endsAt={contract.endsAt} />
 
       {tasks.isPending ? (
-        <Spin style={{ display: 'block', padding: '64px 0' }} />
+        <Loading rows={6} />
       ) : tasks.isError ? (
         <Result status="error" title="任务加载失败" subTitle={tasks.error.message} />
       ) : (

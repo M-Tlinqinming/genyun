@@ -19,7 +19,7 @@ import {
   type PresetGroupKey,
 } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { App, Button, Dropdown, Input, Popconfirm, Segmented, Spin, Upload } from 'antd';
+import { App, Button, Dropdown, Input, Popconfirm, Segmented, Upload } from 'antd';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -37,6 +37,7 @@ import { gy, source } from '../../../theme/tokens';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
 import { OrgChart } from './OrgChart';
 import { useAutosave } from './useAutosave';
+import { Loading } from '../../../components/ui';
 
 type PersonPatch = Partial<Omit<DraftPerson, 'id'>>;
 
@@ -209,7 +210,7 @@ export function OrganizationStepPage({ task }: { task: Task }) {
         />
 
         {!step ? (
-          <Spin style={{ padding: '96px 0' }} />
+          <div style={{ flex: 1 }}><Loading rows={8} /></div>
         ) : (
           <>
             <ModeSwitch mode={step.mode} onChange={(mode) => update({ ...step, mode })} />

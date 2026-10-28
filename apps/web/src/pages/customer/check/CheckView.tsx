@@ -6,7 +6,7 @@ import {
   type CategoryStatus,
 } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Result, Spin } from 'antd';
+import { Button, Result } from 'antd';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { taskDocumentsKey, useTaskDocuments } from '../../../api/documents';
@@ -16,6 +16,7 @@ import { OnSiteDialog } from '../OnSiteVisit';
 import { SubmitDialog } from '../submit/SubmitDialog';
 import { CheckDrawer } from './CheckDrawer';
 import { BusinessQuestions } from './SpecialCards';
+import { linkButton, Loading, Notice, panel } from '../../../components/ui';
 
 const STATUS_COLOR: Record<CategoryStatus, string> = {
   done: gy.success,
@@ -36,7 +37,7 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
   // 确认之后资料有变化，这次没提交（F07）
   const [changed, setChanged] = useState<string[] | null>(null);
 
-  if (check.isPending) return <Spin style={{ display: 'block', padding: '64px 0' }} />;
+  if (check.isPending) return <Loading rows={6} />;
   if (check.isError) return <Result status="error" title="资料检查加载失败" subTitle={check.error.message} />;
 
   const o = checkOverview(check.data.items);
@@ -54,7 +55,7 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {changed ? (
-        <Banner
+        <Notice
           tone="warning"
           title="本任务的资料已更新，请重新检查"
           text={`提交时发现${changed.join('；')}。本次申请尚未提交，请检查新版本后再确认；其他未变更的资料保留，无需重复上传。`}
@@ -65,7 +66,7 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
           }
         />
       ) : firstMissing && firstMissingCategory ? (
-        <Banner
+        <Notice
           tone="warning"
           title={`请补充${firstMissing.label}${o.missing.length > 1 ? ` 等 ${o.missing.length} 项` : ''}`}
           text={`${firstMissing.startPart ? `开始编制需要：${firstMissing.startPart}。` : '这是开始编制必需的资料。'}没有文件可以直接告诉我们，拿不准可以请专家电话联系。`}
@@ -76,7 +77,7 @@ export function CheckView({ task, onBackToFiles }: { task: Task; onBackToFiles?:
           }
         />
       ) : (
-        <Banner
+        <Notice
           tone="info"
           title={o.withExpert.length > 0 ? '必需资料已齐，其余由耕云核实' : '必需资料已齐，可以提交'}
           text={
@@ -213,29 +214,6 @@ function CategoryRow({ category: c, check, onOpen }: { category: CategoryCheck; 
   );
 }
 
-function Banner({ tone, title, text, action }: { tone: 'warning' | 'info'; title: string; text: string; action?: ReactNode }) {
-  return (
-    <div
-      role="status"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 24,
-        padding: '20px 24px',
-        borderRadius: 8,
-        background: tone === 'warning' ? '#FFF7E6' : gy.selected,
-        border: `1px solid ${tone === 'warning' ? '#D9A441' : '#9DB7EE'}`,
-      }}
-    >
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>{title}</span>
-        <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>{text}</span>
-      </div>
-      {action}
-    </div>
-  );
-}
-
 function Side({ title, text }: { title: string; text: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -245,15 +223,4 @@ function Side({ title, text }: { title: string; text: string }) {
   );
 }
 
-const panel: CSSProperties = { borderRadius: 8, background: gy.surface, border: `1px solid ${gy.split}` };
-const link: CSSProperties = {
-  alignSelf: 'flex-start',
-  textAlign: 'left',
-  padding: 0,
-  border: 'none',
-  background: 'none',
-  cursor: 'pointer',
-  fontSize: 14,
-  lineHeight: '22px',
-  color: gy.primary,
-};
+const link: CSSProperties = { ...linkButton, alignSelf: 'flex-start' };
