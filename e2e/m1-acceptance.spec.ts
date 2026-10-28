@@ -81,12 +81,12 @@ test.describe('按提示填写：飞宇样例从建档填到提交', () => {
     await page.getByRole('button', { name: '下一步：人员与应急组织' }).click();
   });
 
-  test('第 2 步：总指挥及手机，值班电话默认同总指挥，体系图自动画出', async () => {
+  test('第 2 步：总指挥及手机、值班电话，体系图自动画出', async () => {
     await expect(page.getByRole('heading', { name: '出了事，谁来指挥、谁去处置' })).toBeVisible();
     await page.getByLabel('总指挥姓名', { exact: true }).fill('李文聪');
     await page.getByLabel('总指挥职位', { exact: true }).fill('总经理');
     await page.getByLabel('总指挥手机', { exact: true }).fill('13800000001');
-    await expect(page.getByText('同总指挥')).toBeVisible();
+    await page.getByLabel('24 小时值班电话').fill('0752-3324567');
     await expect(page.getByRole('region', { name: '应急救援组织体系图' }).getByRole('listitem')).toHaveCount(3);
     await expect(page.getByText(/已自动保存/)).toBeVisible();
     await shot('s02-organization', true);

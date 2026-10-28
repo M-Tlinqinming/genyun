@@ -61,10 +61,10 @@ describe('企业自填第 2 步 · 人员与应急组织', () => {
     expect(defaultOrganizationStep(120).groups).toHaveLength(5);
   });
 
-  it('值班电话默认取总指挥手机，填了就用填的', () => {
-    expect(dutyPhoneOfStep(feiyu)).toBe('13800000001');
+  it('值班电话由客户自己填，不默认带出总指挥手机', () => {
+    expect(dutyPhoneOfStep({ ...feiyu, dutyPhone: undefined })).toBeUndefined();
     expect(dutyPhoneOfStep({ ...feiyu, dutyPhone: '0752-3324567' })).toBe('0752-3324567');
-    expect(dutyPhoneOfStep({ ...feiyu, commander: undefined })).toBeUndefined();
+    expect(dutyPhoneOfStep({ ...feiyu, dutyPhone: '  ' })).toBeUndefined();
   });
 });
 

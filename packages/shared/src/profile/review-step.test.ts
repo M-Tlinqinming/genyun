@@ -16,6 +16,7 @@ const organization: OrganizationStep = organizationStepSchema.parse({
   commander: feiyuOrganization.commander,
   deputies: feiyuOrganization.deputies,
   groups: feiyuOrganization.groups.map((g, i) => ({ ...g, id: `g${i}` })),
+  dutyPhone: '0752-3324567',
 });
 
 const production: ProductionStep = productionStepSchema.parse({

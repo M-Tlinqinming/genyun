@@ -50,8 +50,8 @@ describe('应急组织', () => {
     expect(organizationSchema.safeParse({ ...base, deputies: [deputy('a'), deputy('b'), deputy('c')] }).success).toBe(false);
   });
 
-  it('值班电话默认取总指挥手机', () => {
-    expect(dutyPhoneOf(feiyuOrganization)).toBe('13800000001');
+  it('值班电话不默认取总指挥手机', () => {
+    expect(dutyPhoneOf({ ...feiyuOrganization, dutyPhone: undefined })).toBeUndefined();
     expect(dutyPhoneOf({ ...feiyuOrganization, dutyPhone: '0752-1234567' })).toBe('0752-1234567');
   });
 });

@@ -1,5 +1,5 @@
 // 应急组织（旧仓库 E3）。TECH-PLAN 3.5：默认 3 组，可加警戒疏散、医疗救护、自定义，2–6 组；
-// 副总指挥 0–2 人；24 小时值班电话默认总指挥手机；编制小组可添加非应急组成员。
+// 副总指挥 0–2 人；24 小时值班电话由客户填写（不默认总指挥手机）；编制小组可添加非应急组成员。
 import { z } from 'zod';
 
 export const personSchema = z.object({
@@ -45,7 +45,7 @@ export const organizationSchema = z.object({
     .array(groupSchema)
     .min(2, '至少设 2 个应急小组')
     .max(6, '最多设 6 个应急小组'),
-  // 不填时取总指挥手机，见 dutyPhoneOf
+  // 由客户填写；值班的往往不是总指挥
   dutyPhone: z.string().trim().optional(),
   compilationTeam: z
     .object({
@@ -61,5 +61,5 @@ export function defaultGroups(): EmergencyGroup[] {
 }
 
 export function dutyPhoneOf(org: Organization): string | undefined {
-  return org.dutyPhone || org.commander?.phone;
+  return org.dutyPhone || undefined;
 }

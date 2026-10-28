@@ -706,8 +706,6 @@ function GroupPanel({
 }
 
 function DutyPhoneCard({ step, onChange }: { step: OrganizationStep; onChange: (s: OrganizationStep) => void }) {
-  const commanderPhone = filled(step.commander?.phone) ? step.commander!.phone!.trim() : undefined;
-  const followsCommander = !filled(step.dutyPhone) && Boolean(dutyPhoneOfStep(step));
   const error = phoneError(step.dutyPhone);
   return (
     <section
@@ -724,7 +722,7 @@ function DutyPhoneCard({ step, onChange }: { step: OrganizationStep; onChange: (
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
         <h2 style={{ margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 600, color: gy.text }}>24 小时值班电话</h2>
         <p style={{ margin: 0, fontSize: 13, lineHeight: '20px', color: gy.tertiary }}>
-          发生事故时第一时间接报。默认用总指挥手机，有值班室可改。
+          发生事故时第一时间接报。填值班室、门卫或值班负责人的电话。
         </p>
       </div>
       <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -733,10 +731,8 @@ function DutyPhoneCard({ step, onChange }: { step: OrganizationStep; onChange: (
           value={step.dutyPhone ?? ''}
           maxLength={30}
           inputMode="tel"
-          placeholder={commanderPhone ?? '如 0752-1234567'}
+          placeholder="如 0752-1234567"
           status={error ? 'error' : undefined}
-          // 后缀始终占位：输入时标签出现或消失不会让输入框失去焦点
-          suffix={followsCommander ? <SystemTag>同总指挥</SystemTag> : <span />}
           onChange={(e) => onChange({ ...step, dutyPhone: e.target.value || undefined })}
         />
         {error && <span style={{ fontSize: 12, lineHeight: '18px', color: gy.error }}>{error}</span>}
