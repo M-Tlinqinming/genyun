@@ -14,6 +14,7 @@ import {
   isContractActive,
   reviewOf,
   statusNotAllowedReason,
+  supplementProgress,
 } from '@genyun/shared';
 import {
   BadRequestException,
@@ -78,9 +79,35 @@ export class TasksService {
       .leftJoin(expert, eq(expert.id, tasks.assignedExpertId));
   }
 
+  // 工作台与业务任务列表（11 页 C01、C04）：每个任务附带进展——还缺的必需资料、提交后还没补的项、
+  // 最近一次有人动过资料的时间
   async listForOrg(user: SessionUser, orgId: string) {
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
-    return this.selectTasks().where(eq(tasks.orgId, orgId)).orderBy(desc(tasks.createdAt));
+    const list = await this.selectTasks().where(eq(tasks.orgId, orgId)).orderBy(desc(tasks.createdAt));
+    if (list.length === 0) return [];
+    const ids = list.map((t) => t.id);
+    const rows = await this.db.select().from(checklistItems).where(inArray(checklistItems.taskId, ids));
+    const submissions = await this.db
+      .select({ taskId: taskSubmissions.taskId, pendingKeys: taskSubmissions.pendingKeys })
+      .from(taskSubmissions)
+      .where(inArray(taskSubmissions.taskId, ids));
+
+    return list.map((t) => {
+      const mine = rows.filter((r) => r.taskId === t.id);
+      const items: ChecklistState = {};
+      for (const r of mine) {
+        items[r.itemKey as ChecklistItemKey] = { status: r.status, fileIds: [], callRequested: r.callRequested };
+      }
+      const pending = submissions.find((s) => s.taskId === t.id)?.pendingKeys ?? [];
+      const progress = supplementProgress(pending, items);
+      const times = [t.updatedAt, t.submittedAt, ...mine.map((r) => r.updatedAt)].filter((d): d is Date => d !== null);
+      return {
+        ...t,
+        missing: checkChecklist(items).blocking.map((b) => b.label),
+        remaining: progress.total - progress.done,
+        activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
+      };
+    });
   }
 
   // 无权访问与不存在返回同样的结果，不暴露别家任务是否存在

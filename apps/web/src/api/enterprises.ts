@@ -1,4 +1,4 @@
-import type { EnterpriseInput, EnterpriseUpdate, TaskStatus } from '@genyun/shared';
+import type { EnterpriseInput, EnterpriseUpdate, StartMethod, TaskStatus } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -13,15 +13,22 @@ export interface Enterprise {
   updatedAt: string;
 }
 
-// 企业页只用到任务的这些字段；完整任务详情在任务页取
+// 组织下的任务列表（企业页、工作台、业务任务列表共用）；完整任务详情在任务页取。
+// missing = 还缺的开始编制必需资料；remaining = 提交后还没补的项；activityAt = 最近一次有人动过资料
 export interface TaskSummary {
   id: string;
   enterpriseId: string;
+  enterpriseName: string;
   number: string;
   name: string;
   status: TaskStatus;
+  startMethod: StartMethod | null;
   createdAt: string;
+  submittedAt: string | null;
   closedAt: string | null;
+  missing: string[];
+  remaining: number;
+  activityAt: string;
 }
 
 export const enterpriseKeys = {

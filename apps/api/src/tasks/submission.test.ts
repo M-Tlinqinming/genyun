@@ -196,3 +196,29 @@ describe('提交生成申请', () => {
     expect((await agent.get(`/api/tasks/${taskId}`)).body.status).toBe('preparing');
   });
 });
+
+describe('业务任务列表的进展', () => {
+  it('列出还缺的必需资料、提交后还没补的项与最近更新时间', async () => {
+    const agent = await as('a-admin@test.cn');
+    const ent = await agent.post(`/api/orgs/${org.a}/enterprises`).send({ name: '列表进展公司' });
+    const fresh = (await agent.post(`/api/enterprises/${ent.body.id}/tasks`).send({ name: '2026 年应急预案编制' })).body;
+    const { taskId } = await readyTask('列表已提交公司');
+    await submit(agent, taskId, await preview(agent, taskId));
+    await agent.put(`/api/tasks/${taskId}/checklist/msds`).send({ status: 'none' });
+
+    const list = (await agent.get(`/api/orgs/${org.a}/tasks`)).body as {
+      id: string;
+      missing: string[];
+      remaining: number;
+      activityAt: string;
+      submittedAt: string;
+    }[];
+    const notStarted = list.find((t) => t.id === fresh.id)!;
+    expect(notStarted.missing).toContain('营业执照');
+    const submitted = list.find((t) => t.id === taskId)!;
+    expect(submitted.missing).toEqual([]);
+    // 提交时待补：建筑、MSDS、值班电话、外部资源、药箱、消防水池、消防设施图；补了 MSDS
+    expect(submitted.remaining).toBe(6);
+    expect(Date.parse(submitted.activityAt)).toBeGreaterThan(Date.parse(submitted.submittedAt));
+  });
+});

@@ -63,3 +63,66 @@ export function isContractActive(c: ContractPeriod, today: string = chinaToday()
     today <= c.contractEndsAt
   );
 }
+
+// 合同到期前这么多天开始提醒续约（CLAUDE.md：到期前 30 天提醒）
+export const CONTRACT_REMIND_DAYS = 30;
+
+// none = 还没登记合同；upcoming = 还没到开始日；expiring = 30 天内到期；expired = 已过期
+export type ContractState = 'none' | 'upcoming' | 'active' | 'expiring' | 'expired';
+
+export function contractState(c: ContractPeriod, today: string = chinaToday()): { state: ContractState; daysLeft: number | null } {
+  if (c.contractStartsAt === null || c.contractEndsAt === null) return { state: 'none', daysLeft: null };
+  if (today < c.contractStartsAt) return { state: 'upcoming', daysLeft: null };
+  const daysLeft = (Date.parse(c.contractEndsAt) - Date.parse(today)) / 86_400_000;
+  if (daysLeft < 0) return { state: 'expired', daysLeft };
+  return { state: daysLeft <= CONTRACT_REMIND_DAYS ? 'expiring' : 'active', daysLeft };
+}
+
+// 任务列表里每个任务的进展（后台按资料清单算好）：还缺的必需资料、提交后还没补的项
+export interface TaskProgressFacts {
+  status: TaskStatus;
+  startMethod: StartMethod | null;
+  closedAt: string | null;
+  missing: string[];
+  remaining: number;
+}
+
+// mine = 待我处理；gengyun = 耕云处理中；delivered = 已交付
+export type TaskBucket = 'mine' | 'gengyun' | 'delivered';
+export const TASK_BUCKETS: Record<TaskBucket, string> = { mine: '待我处理', gengyun: '耕云处理中', delivered: '已交付' };
+
+export const TASK_STAGES = ['资料准备', '耕云编制', '专家审核', '成果交付'] as const;
+
+export interface TaskTodo {
+  bucket: TaskBucket;
+  // 当前在第几个阶段（0–3）和一句阶段说明
+  stage: number;
+  stageText: string;
+  next: string;
+  action: string;
+}
+
+// 工作台和业务任务列表共用：任务归在哪一栏、下一步做什么、按钮叫什么。
+// M1 只有资料准备与已提交；专家补件请求（M2）来了以后也算待我处理
+export function taskTodo(t: TaskProgressFacts): TaskTodo {
+  if (t.closedAt !== null) {
+    return { bucket: 'delivered', stage: 3, stageText: '成果交付', next: '成果已发布，可查看和下载', action: '查看成果' };
+  }
+  if (t.status === 'submitted') {
+    return {
+      bucket: 'gengyun',
+      stage: 1,
+      stageText: '耕云编制 · 申请已提交',
+      next: t.remaining > 0 ? `耕云整理中 · 还有 ${t.remaining} 项可稍后补` : '耕云整理资料并生成初稿',
+      action: '查看进度',
+    };
+  }
+  if (t.startMethod === null) {
+    return { bucket: 'mine', stage: 0, stageText: '资料准备 · 尚未开始', next: '选择开始方式', action: '开始准备' };
+  }
+  if (t.missing.length > 0) {
+    const more = t.missing.length > 1 ? ` 等 ${t.missing.length} 项` : '';
+    return { bucket: 'mine', stage: 0, stageText: '资料准备 · 尚未提交', next: `补充${t.missing[0]}${more}`, action: '继续准备' };
+  }
+  return { bucket: 'mine', stage: 0, stageText: '资料准备 · 尚未提交', next: '必需资料已齐，可以提交生成申请', action: '去提交' };
+}
