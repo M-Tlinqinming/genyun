@@ -52,7 +52,7 @@ export const organizationStepSchema = z
       .array(draftGroupSchema)
       .min(MIN_GROUPS, `至少设 ${MIN_GROUPS} 个应急小组`)
       .max(MAX_GROUPS, `最多设 ${MAX_GROUPS} 个应急小组`),
-    // 空着表示同总指挥手机
+    // 由客户填写，不默认总指挥手机
     dutyPhone: phone,
     // 编制小组里总指挥、副总指挥、各组组长之外另加的成员
     compilationExtras: z.array(compilationExtraSchema).max(20).default([]),
@@ -125,10 +125,9 @@ export function emergencyGroupsStartReady(step: OrganizationStep): boolean {
   return step.mode === 'form' && filled(step.commander?.name) && filled(step.commander?.phone);
 }
 
-// 24 小时值班电话：没单独填时用总指挥手机
+// 24 小时值班电话：由客户自己填，不默认带出总指挥手机——值班的往往是值班室、门卫等其他人（Martin 10-28 确认）
 export function dutyPhoneOfStep(step: OrganizationStep): string | undefined {
-  if (filled(step.dutyPhone)) return step.dutyPhone!.trim();
-  return filled(step.commander?.phone) ? step.commander!.phone!.trim() : undefined;
+  return filled(step.dutyPhone) ? step.dutyPhone!.trim() : undefined;
 }
 
 // 组织体系图：总指挥 →（有副总指挥时）副总指挥 → 各小组，组名竖排、只写职务

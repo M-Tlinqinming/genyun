@@ -11,6 +11,7 @@ import type {
   OrganizationStepSave,
   ProductionStep,
   ProductionStepSave,
+  RecognizedLicense,
   ResourcesStep,
   ResourcesStepSave,
   SiteType,
@@ -210,5 +211,21 @@ export async function attachLicense(taskId: string, enterpriseId: string, fileId
   return request<LicenseResult>(`/enterprises/${enterpriseId}/license`, {
     method: 'POST',
     body: JSON.stringify({ fileId }),
+  });
+}
+
+// 新建企业时先识别营业执照、填进表单（只识别，不保存）
+export function recognizeLicense(orgId: string, fileId: string) {
+  return request<{ status: RecognitionStatus; recognized: RecognizedLicense }>(`/orgs/${orgId}/license-recognition`, {
+    method: 'POST',
+    body: JSON.stringify({ fileId }),
+  });
+}
+
+// 建档后把执照挂到企业上；表单里客户核对过的身份信息不被识别结果覆盖
+export function attachEnterpriseLicense(enterpriseId: string, fileId: string) {
+  return request<LicenseResult>(`/enterprises/${enterpriseId}/license`, {
+    method: 'POST',
+    body: JSON.stringify({ fileId, keepIdentity: true }),
   });
 }

@@ -1,4 +1,4 @@
-import { TASK_STATUSES, type EnterpriseInput } from '@genyun/shared';
+import { FIELD_SOURCES, INDUSTRY_NAMES, TASK_STATUSES, type EnterpriseInput } from '@genyun/shared';
 import { App, Breadcrumb, Button, Form, Modal, Result, Spin, Table, Tabs, Typography } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
@@ -10,6 +10,8 @@ import {
   type Enterprise,
   type TaskSummary,
 } from '../../api/enterprises';
+import { useEnterpriseDocuments } from '../../api/documents';
+import { useBasicStep, type BasicStepView } from '../../api/profile';
 import { ApiError } from '../../api/request';
 import { TaskStageTag, taskStageTone } from '../../components/TaskStageTag';
 import { useWorkspace } from '../../layouts/workspace';
@@ -44,6 +46,9 @@ export function EnterpriseDetailPage() {
   const [editing, setEditing] = useState(false);
   const [search, setSearch] = useSearchParams();
   const tab = search.get('tab') ?? 'overview';
+  // 自填第 1 步的内容（行业、生产地址、联系人、人数），概览里一并显示
+  const basicStep = useBasicStep(enterpriseId);
+  const documents = useEnterpriseDocuments(enterpriseId);
 
   if (enterprise.isPending) return <Spin style={{ display: 'block', padding: '96px 0' }} />;
   if (enterprise.isError) {
@@ -61,6 +66,9 @@ export function EnterpriseDetailPage() {
   const e = enterprise.data;
   const all = (tasks.data ?? []).filter((t) => t.enterpriseId === e.id);
   const open = openTasksOf(tasks.data, e.id);
+  const basic = basicStep.data;
+  const industry = basic?.basic.industry ? INDUSTRY_NAMES[basic.basic.industry] : undefined;
+  const summary = [industry, districtOf(basic?.basic.siteAddress || e.registeredAddress)].filter(Boolean).join(' · ');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -81,7 +89,7 @@ export function EnterpriseDetailPage() {
           </Typography.Title>
           <Button onClick={() => setEditing(true)}>编辑企业信息</Button>
         </div>
-        {e.registeredAddress && <Typography.Text type="secondary">{e.registeredAddress}</Typography.Text>}
+        {(summary || e.registeredAddress) && <Typography.Text type="secondary">{summary || e.registeredAddress}</Typography.Text>}
       </div>
 
       <Tabs
@@ -91,11 +99,11 @@ export function EnterpriseDetailPage() {
           {
             key: 'overview',
             label: '概览',
-            children: <Overview enterprise={e} open={open} />,
+            children: <Overview enterprise={e} open={open} basic={basic} documentCount={documents.data?.length} />,
           },
           {
             key: 'documents',
-            label: '企业资料',
+            label: documents.data ? `企业资料 ${documents.data.length}` : '企业资料',
             children: <EnterpriseDocumentsTab enterpriseId={e.id} orgId={orgId} />,
           },
           {
@@ -111,8 +119,26 @@ export function EnterpriseDetailPage() {
   );
 }
 
-function Overview({ enterprise: e, open }: { enterprise: Enterprise; open: TaskSummary[] }) {
+function Overview({
+  enterprise: e,
+  open,
+  basic,
+  documentCount,
+}: {
+  enterprise: Enterprise;
+  open: TaskSummary[];
+  basic: BasicStepView | undefined;
+  documentCount: number | undefined;
+}) {
   const current = open[0];
+  const b = basic?.basic;
+  const sourceOf = (field: string, value: unknown) => {
+    const s = basic?.sources[field];
+    if (s) return FIELD_SOURCES[s];
+    return value ? '企业自填' : undefined;
+  };
+  const contact = [b?.contactPerson, b?.contactPhone].filter(Boolean).join(' · ') || null;
+  const siteAddress = b?.siteAddress || null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {current && (
@@ -142,9 +168,17 @@ function Overview({ enterprise: e, open }: { enterprise: Enterprise; open: TaskS
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
         <section style={{ ...card, flex: 1, padding: '8px 24px 16px' }}>
           <h2 style={{ ...cardTitle, margin: 0, padding: '14px 0 8px' }}>企业基本信息</h2>
-          <InfoRow label="统一社会信用代码" value={e.socialCreditCode} />
-          <InfoRow label="法定代表人" value={e.legalRepresentative} />
-          <InfoRow label="注册地址" value={e.registeredAddress} last />
+          <InfoRow label="统一社会信用代码" value={e.socialCreditCode} source={sourceOf('socialCreditCode', e.socialCreditCode)} />
+          <InfoRow label="法定代表人" value={e.legalRepresentative} source={sourceOf('legalRepresentative', e.legalRepresentative)} />
+          <InfoRow label="注册地址" value={e.registeredAddress} source={sourceOf('registeredAddress', e.registeredAddress)} />
+          <InfoRow label="实际生产地址" value={siteAddress} source={sourceOf('siteAddress', siteAddress)} />
+          <InfoRow label="企业联系人" value={contact} source={sourceOf('contactPerson', contact)} />
+          <InfoRow
+            label="员工人数"
+            value={b?.employeeCount !== undefined ? `${b.employeeCount} 人` : null}
+            source={sourceOf('employeeCount', b?.employeeCount)}
+            last
+          />
         </section>
 
         <div
@@ -159,6 +193,7 @@ function Overview({ enterprise: e, open }: { enterprise: Enterprise; open: TaskS
           <section style={{ ...card, padding: '20px 24px' }}>
             <h2 style={{ ...cardTitle, margin: '0 0 14px' }}>这家企业</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Stat label="企业资料" value={documentCount ? `${documentCount} 份原件` : '暂无'} />
               <Stat label="在办任务" value={open.length > 0 ? `${open.length} 项` : '无'} />
               <Stat label="已交付成果" value="暂无" />
             </div>
@@ -197,7 +232,7 @@ function Overview({ enterprise: e, open }: { enterprise: Enterprise; open: TaskS
   );
 }
 
-function InfoRow({ label, value, last }: { label: string; value: string | null; last?: boolean }) {
+function InfoRow({ label, value, source, last }: { label: string; value: string | null; source?: string; last?: boolean }) {
   return (
     <div
       style={{
@@ -210,6 +245,7 @@ function InfoRow({ label, value, last }: { label: string; value: string | null; 
     >
       <span style={{ width: 140, flexShrink: 0, color: gy.secondary }}>{label}</span>
       <span style={{ flex: 1, color: value ? gy.text : gy.tertiary }}>{value ?? '暂未填写'}</span>
+      {value && source && <span style={{ flexShrink: 0, fontSize: 13, color: gy.tertiary }}>{source}</span>}
     </div>
   );
 }
@@ -296,4 +332,9 @@ function EditModal({ enterprise, open, onClose }: { enterprise: Enterprise; open
       </Form>
     </Modal>
   );
+}
+
+// 地址里的区县，如「惠州市惠阳区淡水街道…」→「惠阳区」；找不到就不显示
+function districtOf(address: string | null | undefined): string | undefined {
+  return address?.match(/市([^市区县]{1,6}?[区县])/)?.[1];
 }

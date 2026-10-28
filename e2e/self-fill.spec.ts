@@ -125,14 +125,15 @@ test('下一步进入第 2 步：按 86 人预设 3 个小组，体系图已画�
   await expect(chart().getByText('副总指挥', { exact: true })).toHaveCount(0);
 });
 
-test('填总指挥及手机后两项资料变为已提供，值班电话默认同总指挥', async () => {
+test('填总指挥及手机后「各应急小组成员」变为已提供；值班电话另填，不默认同总指挥', async () => {
   await commander('姓名').fill('李文聪');
   await commander('职位').fill('总经理');
   expect(await itemStatus('emergency_groups')).toBeUndefined();
   await commander('手机').fill('13800000001');
-  await expect(page.getByLabel('24 小时值班电话')).toHaveAttribute('placeholder', '13800000001');
-  await expect(page.getByText('同总指挥')).toBeVisible();
   await expect.poll(() => itemStatus('emergency_groups')).toBe('provided');
+  await expect(page.getByLabel('24 小时值班电话')).toHaveValue('');
+  expect(await itemStatus('duty_phone')).toBeUndefined();
+  await page.getByLabel('24 小时值班电话').fill('0752-3324567');
   await expect.poll(() => itemStatus('duty_phone')).toBe('provided');
 });
 

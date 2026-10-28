@@ -4,6 +4,7 @@ import { Avatar, Button, Divider, Dropdown, Layout, Menu, Select, Spin, Typograp
 import type { ItemType } from 'antd/es/menu/interface';
 import { useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
+import { ContactLink } from '../components/ContactLink';
 import { Logo } from '../components/Logo';
 import { membershipsIn, useLogout, useSession } from '../auth/session';
 import { gy, layout } from '../theme/tokens';
@@ -137,9 +138,13 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
           <Typography.Text type="secondary">{nav.headerTitle}</Typography.Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
             {nav.showContact && (
-              <Button type="text" icon={<QuestionCircleOutlined />} style={{ color: gy.secondary, padding: 0 }}>
-                联系耕云
-              </Button>
+              <ContactLink
+                trigger={(open) => (
+                  <Button type="text" icon={<QuestionCircleOutlined />} style={{ color: gy.secondary, padding: 0 }} onClick={open}>
+                    联系耕云
+                  </Button>
+                )}
+              />
             )}
             <Button type="text" icon={<BellOutlined />} aria-label="通知" style={{ color: gy.text }} />
             <Avatar size={28} style={{ background: '#F2F4F7', color: gy.text }}>

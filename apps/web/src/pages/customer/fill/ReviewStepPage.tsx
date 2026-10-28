@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useTaskReview, type Task } from '../../../api/tasks';
 import { gy } from '../../../theme/tokens';
+import { ContactLink, GENGYUN_PHONE } from '../../../components/ContactLink';
 import { OnSiteBanner, OnSiteDialog } from '../OnSiteVisit';
 import { SubmitDialog } from '../submit/SubmitDialog';
 import { FILL_STEPS, FillCard, FillFrame, SecureNote, StepTitle } from './FillFrame';
@@ -180,6 +181,10 @@ export function ReviewStepPage({ task }: { task: Task }) {
         </SideCard>
         <SideCard heading="拿不准？先问问我们" tone="plain">
           <p style={sideText}>提交后由负责专家审核，有疑问会在任务里问您，或直接打电话。</p>
+          <p style={sideText}>
+            产品咨询电话 <span style={{ color: gy.text, fontWeight: 500 }}>{GENGYUN_PHONE}</span>
+          </p>
+          <ContactLink hint="填写或提交中有疑问，可以直接联系耕云。">微信扫码咨询</ContactLink>
           {onSiteRequest ? (
             <span style={{ fontSize: 14, lineHeight: '22px', color: gy.success }}>已提交上门需求，耕云会电话联系您</span>
           ) : (

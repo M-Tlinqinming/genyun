@@ -244,7 +244,7 @@ describe('企业自填第 2 步 · 人员与应急组织', () => {
     expect(s.step.groups).toHaveLength(5);
   });
 
-  it('总指挥及手机填了「各应急小组成员」为已提供，值班电话默认同总指挥', async () => {
+  it('总指挥及手机填了「各应急小组成员」为已提供；值班电话要另填，不默认同总指挥', async () => {
     const { id, taskId, agent } = await withTask('寅公司');
     const s = await organization(id);
     const commander = { id: 'p1', name: '陈大文', position: '总经理' };
@@ -262,9 +262,9 @@ describe('企业自填第 2 步 · 人员与应急组织', () => {
     expect(full.status).toBe(200);
     expect(full.body.step.commander.phone).toBe('13800002071');
     expect(await checklistItem(taskId, 'emergency_groups')).toMatchObject({ status: 'provided' });
-    expect(await checklistItem(taskId, 'duty_phone')).toMatchObject({ status: 'provided' });
+    expect(await checklistItem(taskId, 'duty_phone')).toBeUndefined();
 
-    // 删掉手机：两项都回到未回答；另填值班电话则值班电话仍为已提供
+    // 删掉手机：「各应急小组成员」回到未回答；另填值班电话则值班电话为已提供
     await agent
       .put(`/api/enterprises/${id}/organization-step`)
       .send({ version: full.body.version, step: { ...s.step, commander, dutyPhone: '0752-3324567' } });
@@ -539,6 +539,29 @@ describe('营业执照', () => {
       sources: { name: 'license', businessScope: 'license' },
       license: { fileId, originalName: '营业执照.pdf' },
     });
+  });
+
+  it('新建企业时先识别：只返回识别结果，不保存；别的组织不能用', async () => {
+    const fileId = await uploadLicense();
+    const res = await (await as('a-admin@test.cn')).post(`/api/orgs/${org.a}/license-recognition`).send({ fileId });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ status: 'recognized', recognized: { name: '惠阳飞宇电器有限公司', legalRepresentative: '李文聪' } });
+    const other = await (await as('b-admin@test.cn')).post(`/api/orgs/${org.a}/license-recognition`).send({ fileId });
+    expect(other.status).toBe(403);
+    const wrongOrg = await (await as('b-admin@test.cn')).post(`/api/orgs/${org.b}/license-recognition`).send({ fileId });
+    expect(wrongOrg.status).toBe(404);
+  });
+
+  it('建档后挂执照（保留表单内容）：客户改过的身份信息不被识别结果覆盖，一致的标「来自营业执照」', async () => {
+    const agent = await as('a-admin@test.cn');
+    const ent = await agent.post(`/api/orgs/${org.a}/enterprises`).send({ name: '飞宇电器（客户改过名）', legalRepresentative: '李文聪' });
+    const fileId = await uploadLicense();
+    const res = await agent.post(`/api/enterprises/${ent.body.id}/license`).send({ fileId, keepIdentity: true });
+    expect(res.status).toBe(201);
+    expect(res.body.identity).toMatchObject({ name: '飞宇电器（客户改过名）', legalRepresentative: '李文聪', socialCreditCode: null });
+    expect(res.body.sources).toMatchObject({ legalRepresentative: 'license', businessScope: 'license' });
+    expect(res.body.sources.name).toBeUndefined();
+    expect(res.body.license).toMatchObject({ fileId });
   });
 
   it('识别出的信用代码已被本组织另一家企业使用时提示，不改动', async () => {

@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useOrgTasks } from '../../api/enterprises';
 import { useSession } from '../../auth/session';
+import { ContactLink } from '../../components/ContactLink';
 import { PageHeader } from '../../components/PageHeader';
 import { useWorkspace } from '../../layouts/workspace';
 import { gy, stage } from '../../theme/tokens';
@@ -138,13 +139,13 @@ export function ContractNotice({
     state === 'expiring'
       ? {
           title: daysLeft === 0 ? '年度服务今天到期' : `年度服务将于 ${endsAt} 到期，还有 ${daysLeft} 天`,
-          text: '到期后不能创建新的编制任务；在办任务和已交付成果不受影响。请联系耕云续约。',
+          text: '到期后不能创建新的编制任务；在办任务和已交付成果不受影响。',
         }
       : state === 'expired'
-        ? { title: '年度服务已到期', text: '新任务暂不可创建。在办任务按服务约定处理，历史成果仍可查看和下载。请联系耕云续约。' }
+        ? { title: '年度服务已到期', text: '新任务暂不可创建。在办任务按服务约定处理，历史成果仍可查看和下载。' }
         : state === 'upcoming'
           ? { title: '年度服务尚未开始', text: '服务开始后即可创建编制任务。' }
-          : { title: '年度服务尚未开通', text: '耕云登记合同后即可创建编制任务，请联系耕云。' };
+          : { title: '年度服务尚未开通', text: '耕云登记合同后即可创建编制任务。' };
   return (
     <div
       role="status"
@@ -161,10 +162,19 @@ export function ContractNotice({
       }}
     >
       <ExclamationCircleFilled style={{ color: gy.warning, fontSize: 20 }} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>{notice.title}</span>
         <span style={{ fontSize: 14, lineHeight: '22px', color: gy.text }}>{notice.text}</span>
       </div>
+      <ContactLink
+        title="联系耕云续约"
+        hint="续约或开通年度服务，请直接联系耕云。"
+        trigger={(open) => (
+          <Button type="primary" onClick={open}>
+            {state === 'upcoming' ? '联系耕云' : state === 'none' ? '联系耕云开通' : '联系耕云续约'}
+          </Button>
+        )}
+      />
     </div>
   );
 }
