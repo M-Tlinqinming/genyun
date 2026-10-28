@@ -24,7 +24,7 @@ import {
   type ResourcesStep,
   type SiteType,
 } from '@genyun/shared';
-import { Button, Input, InputNumber, Select, Spin, Upload } from 'antd';
+import { Button, Input, InputNumber, Select, Upload } from 'antd';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { Task } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
@@ -40,6 +40,8 @@ import {
   RemoveButton,
 } from './ProductionStepPage';
 import { useResourcesDraft } from './useProductionDraft';
+import { Loading } from '../../../components/ui';
+import { useListMotion } from '../../../theme/motion';
 
 type Change = (s: ResourcesStep) => void;
 
@@ -119,7 +121,7 @@ export function ResourcesStepPage({ task }: { task: Task }) {
           description="勾选厂里已有的应急物资，上传平面图和疏散图。数量填大概即可，没有的不勾。"
         />
         {!step || !view ? (
-          <Spin style={{ padding: '96px 0' }} />
+          <div style={{ flex: 1 }}><Loading rows={8} /></div>
         ) : (
           <>
             <SuppliesCard
@@ -336,6 +338,7 @@ function SuppliesCard({
   onLedger: (file: File) => void;
   onRemoveLedger: (fileId: string) => void;
 }) {
+  const supplyList = useListMotion<HTMLDivElement>();
   const [expanded, setExpanded] = useState(false);
   const checkedKeys = new Set(step.supplies.map((s) => s.catalogKey));
   const unchecked = supplyKeysForSites(sites).filter((k) => !checkedKeys.has(k));
@@ -380,7 +383,8 @@ function SuppliesCard({
           <span style={{ ...muted, ...fixed(200) }}>位置</span>
         </div>
       )}
-      {step.supplies.map((s, i) => (
+      <div ref={supplyList} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {step.supplies.map((s, i) => (
         <div key={s.id} data-testid="supply-row" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Checkbox
             checked
@@ -420,6 +424,7 @@ function SuppliesCard({
           />
         </div>
       ))}
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingLeft: 30 }}>
         {unchecked.length > 0 && <span style={{ ...body, color: gy.tertiary }}>未勾选：</span>}
         {shown.map((key) => (
@@ -718,6 +723,7 @@ function BuildingsCard({
   onChange: Change;
   onFile: (file: File) => void;
 }) {
+  const buildingList = useListMotion<HTMLDivElement>();
   const put = (id: string, p: Partial<DraftBuilding>) =>
     onChange({ ...step, buildings: step.buildings.map((b) => (b.id === id ? { ...b, ...p } : b)) });
   const total = totalBuildingArea(step.buildings);
@@ -742,7 +748,8 @@ function BuildingsCard({
         <span style={{ ...muted, ...fixed(106) }}>建筑面积</span>
         <span style={fixed(24)} />
       </div>
-      {step.buildings.map((b, i) => (
+      <div ref={buildingList} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {step.buildings.map((b, i) => (
         <div key={b.id} data-testid="building-row" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Input
             style={grow(1)}
@@ -788,6 +795,7 @@ function BuildingsCard({
           />
         </div>
       ))}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <button
           type="button"

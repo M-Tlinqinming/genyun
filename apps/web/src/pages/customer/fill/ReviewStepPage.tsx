@@ -1,6 +1,6 @@
 import type { ReviewStepSummary } from '@genyun/shared';
-import { App, Button, Checkbox, Result, Spin } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { App, Button, Checkbox, Result } from 'antd';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useTaskReview, type Task } from '../../../api/tasks';
 import { gy } from '../../../theme/tokens';
@@ -8,6 +8,7 @@ import { ContactLink, GENGYUN_PHONE } from '../../../components/ContactLink';
 import { OnSiteBanner, OnSiteDialog } from '../OnSiteVisit';
 import { SubmitDialog } from '../submit/SubmitDialog';
 import { FILL_STEPS, FillCard, FillFrame, SecureNote, StepTitle } from './FillFrame';
+import { linkButton, Loading } from '../../../components/ui';
 
 const muted = '#3F4A5C';
 const rowLine = '1px solid #EEF0F3';
@@ -70,7 +71,7 @@ export function ReviewStepPage({ task }: { task: Task }) {
     return (
       <FillFrame step={5} enterpriseName={task.enterpriseName} saveState="idle" onExit={exit} footer={footer}>
         {data.isPending ? (
-          <Spin style={{ flex: 1, padding: '96px 0' }} />
+          <div style={{ flex: 1 }}><Loading rows={8} /></div>
         ) : (
           <Result status="error" title="核对内容加载失败" subTitle={data.error.message} style={{ flex: 1 }} />
         )}
@@ -328,13 +329,4 @@ function SideCard({ heading, tone, children }: { heading: string; tone: 'tinted'
 }
 
 const sideText = { margin: 0, fontSize: 13, lineHeight: '21px', color: muted } as const;
-const link = {
-  padding: 0,
-  border: 'none',
-  background: 'none',
-  cursor: 'pointer',
-  textAlign: 'left',
-  fontSize: 14,
-  lineHeight: '22px',
-  color: gy.primary,
-} as const;
+const link: CSSProperties = linkButton;

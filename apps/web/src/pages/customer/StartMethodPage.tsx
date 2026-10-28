@@ -8,6 +8,7 @@ import { useSession } from '../../auth/session';
 import { WizardHeader } from '../../components/WizardHeader';
 import { gy } from '../../theme/tokens';
 import { OnSiteBanner, OnSiteDialog } from './OnSiteVisit';
+import { Loading } from '../../components/ui';
 
 const STEPS = ['企业基本信息', '人员与应急组织', '生产情况：场所、设备、物料、工艺', '应急资源与图纸', '核对并提交'];
 const UPLOAD_EXAMPLES = [
@@ -44,7 +45,7 @@ export function StartMethodPage() {
 
   let body: ReactNode;
   if (task.isPending) {
-    body = <Spin style={{ padding: '96px 0' }} />;
+    body = <Loading rows={6} />;
   } else if (task.isError) {
     const notFound = task.error instanceof ApiError && task.error.status === 404;
     body = (

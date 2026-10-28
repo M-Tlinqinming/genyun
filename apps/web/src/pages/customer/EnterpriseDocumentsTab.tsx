@@ -1,7 +1,7 @@
 import { CATEGORIES, documentCategoryLabel, TASK_STATUSES, uploadRuleHint, type Category } from '@genyun/shared';
 import { UploadOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { Alert, App, Button, Drawer, Input, Select, Spin, Table, Upload } from 'antd';
+import { Alert, App, Button, Drawer, Input, Select, Table, Upload } from 'antd';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import {
@@ -21,6 +21,7 @@ import { uploadFile } from '../../api/profile';
 import { ApiError } from '../../api/request';
 import { FileTypeIcon } from '../../components/FileTypeIcon';
 import { gy } from '../../theme/tokens';
+import { Loading, panel } from '../../components/ui';
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp';
 const PENDING = 'pending';
@@ -68,7 +69,7 @@ export function EnterpriseDocumentsTab({ enterpriseId, orgId }: { enterpriseId: 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <section style={{ borderRadius: 8, background: gy.surface, border: `1px solid ${gy.split}` }}>
+      <section style={panel}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 24px' }}>
           <h2 style={{ margin: 0, fontSize: 18, lineHeight: '26px', fontWeight: 500, color: gy.text }}>资料库</h2>
           <span style={{ flex: 1, fontSize: 14, color: gy.secondary }}>{all.length} 份文件</span>
@@ -279,7 +280,7 @@ function VersionsDrawer({
       }
     >
       {!d ? (
-        <Spin style={{ display: 'block', padding: '48px 0' }} />
+        <Loading rows={6} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <p style={{ margin: 0, fontSize: 13, lineHeight: '21px', color: gy.secondary }}>

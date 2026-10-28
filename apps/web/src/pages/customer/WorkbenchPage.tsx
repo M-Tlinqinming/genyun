@@ -1,13 +1,14 @@
-import { ArrowRightOutlined, CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleFilled } from '@ant-design/icons';
-import { Button, Result, Spin } from 'antd';
+import { ArrowRightOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { Button, Result } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useOrgTasks } from '../../api/enterprises';
 import { useSession } from '../../auth/session';
 import { ContactLink } from '../../components/ContactLink';
+import { Loading, Notice, panel } from '../../components/ui';
 import { PageHeader } from '../../components/PageHeader';
 import { useWorkspace } from '../../layouts/workspace';
-import { gy, stage } from '../../theme/tokens';
+import { gy } from '../../theme/tokens';
 import { CreateTaskButton, taskHref, taskRows, useContract, whenText, type TaskRow } from './tasks/shared';
 
 const MAX_TODO = 5;
@@ -40,7 +41,7 @@ export function WorkbenchPage() {
       <ContractNotice state={contract.state} daysLeft={contract.daysLeft} endsAt={contract.endsAt} />
 
       {tasks.isPending ? (
-        <Spin style={{ display: 'block', padding: '64px 0' }} />
+        <Loading rows={6} />
       ) : tasks.isError ? (
         <Result status="error" title="任务加载失败" subTitle={tasks.error.message} />
       ) : (
@@ -147,33 +148,23 @@ export function ContractNotice({
           ? { title: '年度服务尚未开始', text: '服务开始后即可创建编制任务。' }
           : { title: '年度服务尚未开通', text: '耕云登记合同后即可创建编制任务。' };
   return (
-    <div
-      role="status"
-      aria-label="年度服务提醒"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        marginBottom: 24,
-        padding: '20px 24px',
-        borderRadius: 8,
-        background: stage.action.bg,
-        border: `1px solid ${gy.warning}`,
-      }}
-    >
-      <ExclamationCircleFilled style={{ color: gy.warning, fontSize: 20 }} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>{notice.title}</span>
-        <span style={{ fontSize: 14, lineHeight: '22px', color: gy.text }}>{notice.text}</span>
-      </div>
-      <ContactLink
-        title="联系耕云续约"
-        hint="续约或开通年度服务，请直接联系耕云。"
-        trigger={(open) => (
-          <Button type="primary" onClick={open}>
-            {state === 'upcoming' ? '联系耕云' : state === 'none' ? '联系耕云开通' : '联系耕云续约'}
-          </Button>
-        )}
+    <div style={{ marginBottom: 24 }}>
+      <Notice
+        tone="warning"
+        label="年度服务提醒"
+        title={notice.title}
+        text={notice.text}
+        action={
+          <ContactLink
+            title="联系耕云续约"
+            hint="续约或开通年度服务，请直接联系耕云。"
+            trigger={(open) => (
+              <Button type="primary" onClick={open}>
+                {state === 'upcoming' ? '联系耕云' : state === 'none' ? '联系耕云开通' : '联系耕云续约'}
+              </Button>
+            )}
+          />
+        }
       />
     </div>
   );
@@ -252,7 +243,6 @@ function SummaryCard({
   );
 }
 
-const panel: CSSProperties = { borderRadius: 8, background: gy.surface, border: `1px solid ${gy.split}` };
 const badge: CSSProperties = {
   padding: '0 6px',
   borderRadius: 10,

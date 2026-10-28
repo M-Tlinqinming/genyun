@@ -18,6 +18,7 @@ import type { Task } from '../../api/tasks';
 import { LibraryPickerModal } from './LibraryPickerModal';
 import { FileTypeIcon } from '../../components/FileTypeIcon';
 import { gy } from '../../theme/tokens';
+import { linkButton } from '../../components/ui';
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp';
 
@@ -315,12 +316,4 @@ function Row({
 
 const cell: CSSProperties = { flexShrink: 0, fontSize: 14, lineHeight: '22px', color: gy.text };
 const nameCell: CSSProperties = { flex: '1 1 0', minWidth: 0, fontSize: 14, lineHeight: '22px', color: gy.text };
-const link: CSSProperties = {
-  padding: 0,
-  border: 'none',
-  background: 'none',
-  cursor: 'pointer',
-  fontSize: 14,
-  lineHeight: '22px',
-  color: gy.primary,
-};
+const link: CSSProperties = linkButton;

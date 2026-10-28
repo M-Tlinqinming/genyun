@@ -17,6 +17,7 @@ import { ApiError } from '../../../api/request';
 import { taskCheckKey, updateChecklistItem, type Task, type TaskCheck } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
 import { MsdsCard, NeighborsCard, SpecialEquipmentCard } from './SpecialCards';
+import { linkButtonSmall } from '../../../components/ui';
 
 // 有专用卡片的项（12 页 P05C、P05D）：答案写进企业资料，状态由后台同步
 const SPECIAL_KEYS = new Set(['special_equipment', 'external_resources', 'msds']);
@@ -436,14 +437,4 @@ const doneList: CSSProperties = { margin: 0, padding: 0, listStyle: 'none', bord
 const card: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 8 };
 const cardTitle: CSSProperties = { margin: 0, fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text };
 const cardText: CSSProperties = { margin: 0, fontSize: 13, lineHeight: '20px', color: muted };
-const link: CSSProperties = {
-  alignSelf: 'flex-start',
-  textAlign: 'left',
-  padding: 0,
-  border: 'none',
-  background: 'none',
-  cursor: 'pointer',
-  fontSize: 13,
-  lineHeight: '20px',
-  color: gy.primary,
-};
+const link: CSSProperties = { ...linkButtonSmall, alignSelf: 'flex-start' };

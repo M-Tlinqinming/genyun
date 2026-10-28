@@ -1,4 +1,4 @@
-import { Breadcrumb, Button, Empty, Result, Spin, Tabs } from 'antd';
+import { Breadcrumb, Button, Empty, Result, Tabs } from 'antd';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../api/request';
 import { useTask } from '../../api/tasks';
@@ -7,6 +7,7 @@ import { gy } from '../../theme/tokens';
 import { CheckView } from './check/CheckView';
 import { SubmittedMaterials, SubmittedRecords, SubmittedStatusBar } from './submit/SubmittedView';
 import { TaskDocumentsSection } from './TaskDocumentsSection';
+import { Loading } from '../../components/ui';
 
 const STAGES = ['资料准备', '耕云编制', '专家审核', '成果交付'];
 
@@ -17,7 +18,7 @@ export function TaskPage() {
   const task = useTask(taskId);
   const [search, setSearch] = useSearchParams();
 
-  if (task.isPending) return <Spin style={{ display: 'block', padding: '96px 0' }} />;
+  if (task.isPending) return <Loading rows={6} />;
   if (task.isError) {
     const notFound = task.error instanceof ApiError && task.error.status === 404;
     return (

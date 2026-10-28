@@ -11,7 +11,7 @@ import {
   type FieldSource,
 } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { App, Button, Form, Input, InputNumber, Select, Spin, Upload } from 'antd';
+import { App, Button, Form, Input, InputNumber, Select, Upload } from 'antd';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -30,6 +30,7 @@ import { useSession } from '../../../auth/session';
 import { gy } from '../../../theme/tokens';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
 import { useAutosave } from './useAutosave';
+import { Loading } from '../../../components/ui';
 
 const IDENTITY = ['name', 'socialCreditCode', 'legalRepresentative', 'registeredAddress'] as const;
 type IdentityField = (typeof IDENTITY)[number];
@@ -295,7 +296,7 @@ export function BasicStepPage({ task }: { task: Task }) {
         />
 
         {step.isPending ? (
-          <Spin style={{ padding: '96px 0' }} />
+          <div style={{ flex: 1 }}><Loading rows={8} /></div>
         ) : (
           <Form<Values>
             form={form}
