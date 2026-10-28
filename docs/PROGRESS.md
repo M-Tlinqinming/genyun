@@ -206,7 +206,7 @@
 
 最新在上。每条：日期 · 做了什么 · 分支/PR · 留给下一个会话的话。
 
-- 2026-10-28 · 设计对齐第 2 步进行中（用量到上限暂停）：已完成——合并公共组件（`components/ui.tsx`：提示条、面板、文字链接、骨架屏加载）；动效按 Martin 在选型页的选择接入（`theme/motion.tsx` + 主题时长 + `global.css` 弹窗淡入上移；列表增删用 AutoAnimate，自动保存文字淡入，资料项变已满足时整行轻闪；选型页 https://claude.ai/artifact/KPCnxruU7BnNynxQe2BQoK ）；Paper 补画了 S03a 压力容器行、S03a 设备与物料行删除按钮、S04「上传消防验收资料」。**还剩**：①S05 缺必需资料的核对页（复制 S05 画板改成缺资料状态）；②从 12 页说明板删掉已补画的 4 条；③跑完整浏览器测试确认动效改动（上次后台运行结果未读到）；④更新 DESIGN-DIFF.md 状态、提交、给 Martin 推送命令 · 分支 `design-align-2`
+- 2026-10-28 · 设计对齐第 2 步进行中（用量到上限暂停）：已完成——合并公共组件（`components/ui.tsx`：提示条、面板、文字链接、骨架屏加载）；动效按 Martin 在选型页的选择接入（`theme/motion.tsx` + 主题时长 + `global.css` 弹窗淡入上移；列表增删用 AutoAnimate，自动保存文字淡入，资料项变已满足时整行轻闪；选型页 https://claude.ai/artifact/KPCnxruU7BnNynxQe2BQoK ）；Paper 补画了 S03a 压力容器行、S03a 设备与物料行删除按钮、S04「上传消防验收资料」。**还剩**：①S05 缺必需资料的核对页（复制 S05 画板改成缺资料状态）；②从 12 页说明板删掉已补画的 4 条；③修浏览器测试：动效接入后 3 项失败——`upload-documents.spec.ts` 第 1 项「本次原始资料」表里同一行出现两次（很可能是给上传文件表加的列表动效在过渡时多复制了一行，先去掉 `TaskDocumentsSection.tsx` 的 `useListMotion` 再试）；`enterprises.spec.ts`、`library.spec.ts` 各 1 项报「浏览器已关闭」（1 毫秒就失败，像是环境问题，重跑确认）；④更新 DESIGN-DIFF.md 状态、提交、给 Martin 推送命令 · 分支 `design-align-2`
 
 - 2026-10-28 · 设计对齐第 2 步的范围（Martin 确认）：①合并重复的公共组件（提示条、面板、状态标签）；②定动效参数（Motion + AutoAnimate，Mobbin MCP 已配好可参考）并做动效演示页给 Martin 选；③把 12 页说明板上的 4 处补画进 Paper：S03a 压力容器行（介质 / 压力 / 容积 + PV 自动算）、S03a 设备与物料行的删除按钮和可写的使用状况、S04 建筑卡片的「上传消防验收资料」入口、S05 缺必需资料时的核对页（新画一张）。补画后从说明板删掉对应条目 · 分支 `design-align-2` · 下一个会话：在这个分支上接着做（不用回 main）
 
