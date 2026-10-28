@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// 第 12 项：提交生成申请（13 页 F01–F08）。正常提交、断网后先查询不重复提交、确认后资料有变化、
-// 提交后补待补项、窄屏。只登录一次、共用同一个页面；企业、任务和资料用接口直接准备
+// 第 12 项：提交生成申请（13 页 F01–F07）。正常提交、断网后先查询不重复提交、确认后资料有变化、
+// 提交后补待补项。只登录一次、共用同一个页面；企业、任务和资料用接口直接准备
 test.describe.configure({ mode: 'serial' });
 
 const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.7\n% ${name}\n`) });
@@ -202,22 +202,4 @@ test('按提示填写：第 5 步「提交给耕云」走同一个确认框', as
   await expect(page).toHaveURL(/tab=records/);
   await page.goto(`/customer/tasks/${id}/fill/5`);
   await expect(page.getByRole('button', { name: '申请已提交，查看进度' })).toBeVisible();
-});
-
-test('窄屏：结果待确认时按钮整行，只能查询', async () => {
-  const { id } = await readyTask('窄屏测试有限公司');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/customer/tasks/${id}?view=check`);
-  await page.route(submitUrl(id), (route) =>
-    route.request().method() === 'POST' ? route.abort('timedout') : route.continue(),
-  );
-  await page.getByRole('button', { name: '提交生成申请' }).click();
-  await page.getByRole('button', { name: '确认提交' }).click();
-  const query = page.getByRole('button', { name: '查询提交结果' });
-  await expect(query).toBeVisible();
-  // 等弹窗展开动画结束再量
-  await expect.poll(async () => (await query.boundingBox())!.width).toBeGreaterThan(300);
-  await page.screenshot({ path: 'test-results/submit-narrow.png' });
-  await page.unroute(submitUrl(id));
-  await page.setViewportSize({ width: 1440, height: 1000 });
 });

@@ -1,7 +1,7 @@
 import type { SubmittedAnswer, SubmittedDocument } from '@genyun/shared';
 import { ExclamationCircleFilled, LoadingOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { App, Button, Grid, Modal, Result, Spin } from 'antd';
+import { App, Button, Modal, Result, Spin } from 'antd';
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { ApiError } from '../../../api/request';
@@ -33,7 +33,7 @@ function requestIdFor(taskId: string): string {
   }
 }
 
-// 提交生成申请的确认框（13 页 F02、F04、F05、F06，窄屏 F08）。资料在确认之后有变化（F07）时
+// 提交生成申请的确认框（13 页 F02、F04、F05、F06）。资料在确认之后有变化（F07）时
 // 不提交，交给 onChanged 在检查页提示重新检查
 export function SubmitDialog({
   task,
@@ -49,7 +49,6 @@ export function SubmitDialog({
   const client = useQueryClient();
   const navigate = useNavigate();
   const { message } = App.useApp();
-  const narrow = !Grid.useBreakpoint().md;
   const [phase, setPhase] = useState<Phase>('loading');
   const [preview, setPreview] = useState<SubmissionPreview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -121,43 +120,41 @@ export function SubmitDialog({
   const head = HEADS[phase === 'querying' ? 'unknown' : phase];
   const status = phase === 'unknown' || phase === 'querying' ? '提交结果待确认' : phase === 'failed' ? '本次未提交' : '资料检查已满足';
 
-  // 窄屏（F08）：按钮整行宽、主按钮在上
-  const big = narrow ? { block: true, size: 'large' as const } : {};
   const leave = () => navigate(`/customer/enterprises/${task.enterpriseId}`);
   const buttons: ReactNode[] =
     phase === 'confirm'
       ? [
-          <Button key="back" {...big} onClick={onClose}>
+          <Button key="back" onClick={onClose}>
             返回核对
           </Button>,
-          <Button key="ok" type="primary" {...big} onClick={() => void send()}>
+          <Button key="ok" type="primary" onClick={() => void send()}>
             确认提交
           </Button>,
         ]
       : phase === 'submitting'
         ? [
-            <Button key="leave" {...big} onClick={leave}>
+            <Button key="leave" onClick={leave}>
               返回业务任务
             </Button>,
-            <Button key="busy" {...big} disabled>
+            <Button key="busy" disabled>
               提交中…
             </Button>,
           ]
         : phase === 'unknown' || phase === 'querying'
           ? [
-              <Button key="leave" {...big} onClick={leave}>
+              <Button key="leave" onClick={leave}>
                 返回业务任务
               </Button>,
-              <Button key="query" type="primary" {...big} loading={phase === 'querying'} onClick={() => void query()}>
+              <Button key="query" type="primary" loading={phase === 'querying'} onClick={() => void query()}>
                 查询提交结果
               </Button>,
             ]
           : phase === 'failed'
             ? [
-                <Button key="back" {...big} onClick={onClose}>
+                <Button key="back" onClick={onClose}>
                   返回检查
                 </Button>,
-                <Button key="retry" type="primary" {...big} onClick={() => void send()}>
+                <Button key="retry" type="primary" onClick={() => void send()}>
                   重试提交
                 </Button>,
               ]
@@ -170,8 +167,7 @@ export function SubmitDialog({
       closable={closable}
       mask={{ closable: false }}
       keyboard={closable}
-      width={narrow ? '100%' : 560}
-      style={narrow ? { top: 0, maxWidth: '100vw', margin: 0, paddingBottom: 0 } : undefined}
+      width={560}
       title={
         head && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 20, lineHeight: '28px', fontWeight: 500 }}>
@@ -181,14 +177,7 @@ export function SubmitDialog({
         )
       }
       footer={
-        <div
-          style={
-            narrow
-              ? { display: 'flex', flexDirection: 'column', gap: 12 }
-              : { display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 4 }
-          }
-        >
-          {narrow ? [...buttons].reverse() : buttons}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 4 }}>{buttons}
         </div>
       }
       destroyOnHidden
