@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { enterpriseInputSchema } from './enterprise.ts';
-import { chinaToday, formatTaskNumber, isContractActive } from './task.ts';
+import { chinaToday, contractState, formatTaskNumber, isContractActive, taskTodo } from './task.ts';
 
 describe('企业档案输入', () => {
   it('只填企业名称即可保存，空的选填项存为空', () => {
@@ -47,5 +47,38 @@ describe('合同有效期', () => {
   it('按北京时间算日期', () => {
     // UTC 12-31 16:00 已是北京时间次年 1 月 1 日
     expect(chinaToday(new Date('2026-12-31T16:00:00Z'))).toBe('2027-01-01');
+  });
+});
+
+describe('年度服务提醒', () => {
+  const c = { contractStartsAt: '2026-01-01', contractEndsAt: '2026-12-31' };
+  it('到期前 30 天开始提醒，过期后算已到期', () => {
+    expect(contractState(c, '2026-11-30')).toEqual({ state: 'active', daysLeft: 31 });
+    expect(contractState(c, '2026-12-01')).toEqual({ state: 'expiring', daysLeft: 30 });
+    expect(contractState(c, '2026-12-31')).toEqual({ state: 'expiring', daysLeft: 0 });
+    expect(contractState(c, '2027-01-01').state).toBe('expired');
+    expect(contractState(c, '2025-12-31').state).toBe('upcoming');
+    expect(contractState({ contractStartsAt: null, contractEndsAt: null }).state).toBe('none');
+  });
+});
+
+describe('任务的下一步', () => {
+  const base = { status: 'preparing' as const, startMethod: 'upload' as const, closedAt: null, missing: [], remaining: 0 };
+  it('资料准备中归待我处理，按情况给出下一步', () => {
+    expect(taskTodo({ ...base, startMethod: null })).toMatchObject({ bucket: 'mine', next: '选择开始方式' });
+    expect(taskTodo({ ...base, missing: ['总平面布置图', '营业执照'] })).toMatchObject({
+      bucket: 'mine',
+      next: '补充总平面布置图 等 2 项',
+      action: '继续准备',
+    });
+    expect(taskTodo(base)).toMatchObject({ bucket: 'mine', action: '去提交' });
+  });
+  it('已提交归耕云处理中，可稍后补的项写在下一步里；结束的归已交付', () => {
+    expect(taskTodo({ ...base, status: 'submitted', remaining: 3 })).toMatchObject({
+      bucket: 'gengyun',
+      stage: 1,
+      next: '耕云整理中 · 还有 3 项可稍后补',
+    });
+    expect(taskTodo({ ...base, status: 'submitted', closedAt: '2026-11-01T00:00:00Z' }).bucket).toBe('delivered');
   });
 });

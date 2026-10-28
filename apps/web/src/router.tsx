@@ -10,12 +10,19 @@ import { EnterpriseListPage } from './pages/customer/EnterpriseListPage';
 import { SelfFillPage } from './pages/customer/fill/SelfFillPage';
 import { StartMethodPage } from './pages/customer/StartMethodPage';
 import { TaskCreatePage } from './pages/customer/TaskCreatePage';
+import { TaskListPage } from './pages/customer/TaskListPage';
 import { TaskPage } from './pages/customer/TaskPage';
+import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 
 const EYEBROW: Record<Workspace, string> = {
   customer: '客户工作台',
   expert: '耕云内部 / 专业处理',
   operator: '耕云运营',
+};
+
+// 已做好的工作区首页
+const HOME: Partial<Record<Workspace, RouteObject['element']>> = {
+  customer: <WorkbenchPage />,
 };
 
 // 已做好的页面；菜单项下可以有子页面
@@ -27,7 +34,7 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
   '/customer/tasks': [
-    { index: true, element: <PendingPage eyebrow={EYEBROW.customer} title="业务任务" /> },
+    { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
   ],
 };
@@ -40,7 +47,9 @@ function workspaceRoutes(workspace: Workspace): RouteObject {
     path: base,
     element: <WorkspaceLayout workspace={workspace} />,
     children: items.map((item): RouteObject => {
-      if (item.path === base) return { index: true, element: <PendingPage eyebrow={EYEBROW[workspace]} title={item.label} /> };
+      if (item.path === base) {
+        return { index: true, element: HOME[workspace] ?? <PendingPage eyebrow={EYEBROW[workspace]} title={item.label} /> };
+      }
       const path = item.path.slice(base.length + 1);
       const pages = PAGES[item.path];
       return pages
