@@ -14,7 +14,13 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ConfigProvider theme={theme} locale={zhCN} button={{ autoInsertSpace: false }}>
+    <ConfigProvider
+      theme={theme}
+      locale={zhCN}
+      button={{ autoInsertSpace: false }}
+      // 抽屉关闭按钮放右上角（设计稿如此；组件库默认在左）
+      drawer={{ closable: { placement: 'end' } }}
+    >
       <App>
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />

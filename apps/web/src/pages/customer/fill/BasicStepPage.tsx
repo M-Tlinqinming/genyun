@@ -147,6 +147,11 @@ export function BasicStepPage({ task }: { task: Task }) {
         v.responsiblePerson = v.legalRepresentative;
         tags.responsiblePerson = 'legal_rep';
       }
+      // 实际生产地址默认同注册地址，不同再改（设计差异清单 10-28 定为改代码）
+      if (!isEmpty(v.registeredAddress) && (isEmpty(v.siteAddress) || tags.siteAddress === 'registered_address')) {
+        v.siteAddress = v.registeredAddress;
+        tags.siteAddress = 'registered_address';
+      }
       form.setFieldsValue(Object.fromEntries(ALL_FIELDS.map((f) => [f, v[f]])));
       setSources(tags);
       return tags;
@@ -200,6 +205,10 @@ export function BasicStepPage({ task }: { task: Task }) {
     if ('legalRepresentative' in changed && sources.responsiblePerson === 'legal_rep') {
       form.setFieldValue('responsiblePerson', changed.legalRepresentative);
       next.responsiblePerson = 'legal_rep';
+    }
+    if ('registeredAddress' in changed && sources.siteAddress === 'registered_address') {
+      form.setFieldValue('siteAddress', changed.registeredAddress);
+      next.siteAddress = 'registered_address';
     }
     if ('socialCreditCode' in changed) rejectedCodes.current.clear();
     setSources(next);
@@ -348,13 +357,10 @@ export function BasicStepPage({ task }: { task: Task }) {
             <FillCard title="生产地址与规模" gap={20}>
               <Item
                 name="siteAddress"
-                label={<Label text="实际生产地址" />}
+                label={<Label text="实际生产地址" source={tag('siteAddress')} />}
                 extra="如与营业执照注册地址不同，请填工厂实际所在地。"
               >
-                <Input
-                  maxLength={200}
-                  placeholder={values.registeredAddress ? String(values.registeredAddress) : undefined}
-                />
+                <Input maxLength={200} />
               </Item>
               <Row>
                 <NumberField name="employeeCount" label="员工人数" unit="人" />

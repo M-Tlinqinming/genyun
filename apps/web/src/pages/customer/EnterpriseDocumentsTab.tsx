@@ -19,6 +19,7 @@ import {
 } from '../../api/documents';
 import { uploadFile } from '../../api/profile';
 import { ApiError } from '../../api/request';
+import { FileTypeIcon } from '../../components/FileTypeIcon';
 import { gy } from '../../theme/tokens';
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp';
@@ -114,11 +115,14 @@ export function EnterpriseDocumentsTab({ enterpriseId, orgId }: { enterpriseId: 
             {
               title: '文件名称',
               render: (_, d) => (
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>{d.name}</span>
-                  <span style={{ fontSize: 12, lineHeight: '20px', color: gy.tertiary }}>
-                    {formatSize(d.latest.sizeBytes)} · 原始资料
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <FileTypeIcon contentType={d.latest.contentType} />
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>{d.name}</span>
+                    <span style={{ fontSize: 12, lineHeight: '20px', color: gy.tertiary }}>
+                      {formatSize(d.latest.sizeBytes)} · 原始资料
+                    </span>
+                  </div>
                 </div>
               ),
             },

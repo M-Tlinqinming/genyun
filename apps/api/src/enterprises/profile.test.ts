@@ -541,6 +541,29 @@ describe('营业执照', () => {
     });
   });
 
+  it('新建企业时先识别：只返回识别结果，不保存；别的组织不能用', async () => {
+    const fileId = await uploadLicense();
+    const res = await (await as('a-admin@test.cn')).post(`/api/orgs/${org.a}/license-recognition`).send({ fileId });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ status: 'recognized', recognized: { name: '惠阳飞宇电器有限公司', legalRepresentative: '李文聪' } });
+    const other = await (await as('b-admin@test.cn')).post(`/api/orgs/${org.a}/license-recognition`).send({ fileId });
+    expect(other.status).toBe(403);
+    const wrongOrg = await (await as('b-admin@test.cn')).post(`/api/orgs/${org.b}/license-recognition`).send({ fileId });
+    expect(wrongOrg.status).toBe(404);
+  });
+
+  it('建档后挂执照（保留表单内容）：客户改过的身份信息不被识别结果覆盖，一致的标「来自营业执照」', async () => {
+    const agent = await as('a-admin@test.cn');
+    const ent = await agent.post(`/api/orgs/${org.a}/enterprises`).send({ name: '飞宇电器（客户改过名）', legalRepresentative: '李文聪' });
+    const fileId = await uploadLicense();
+    const res = await agent.post(`/api/enterprises/${ent.body.id}/license`).send({ fileId, keepIdentity: true });
+    expect(res.status).toBe(201);
+    expect(res.body.identity).toMatchObject({ name: '飞宇电器（客户改过名）', legalRepresentative: '李文聪', socialCreditCode: null });
+    expect(res.body.sources).toMatchObject({ legalRepresentative: 'license', businessScope: 'license' });
+    expect(res.body.sources.name).toBeUndefined();
+    expect(res.body.license).toMatchObject({ fileId });
+  });
+
   it('识别出的信用代码已被本组织另一家企业使用时提示，不改动', async () => {
     const id = await newEnterprise('壬公司');
     const fileId = await uploadLicense();

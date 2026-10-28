@@ -19,6 +19,8 @@ export const theme: ThemeConfig = {
     colorTextSecondary: gy.secondary,
     colorTextTertiary: gy.tertiary,
     colorTextDescription: gy.secondary,
+    // 输入框提示文字：组件库默认太浅，看不清（设计差异清单 10-28 定为改代码）
+    colorTextPlaceholder: gy.tertiary,
 
     colorBgLayout: gy.canvas,
     colorBgContainer: gy.surface,

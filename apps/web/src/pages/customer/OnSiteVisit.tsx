@@ -297,17 +297,17 @@ export function OnSiteBanner({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 16,
-        padding: '16px 20px',
-        borderRadius: 8,
+        gap: 20,
+        padding: '20px 32px',
+        borderRadius: 12,
         border: '1px dashed #C9CED6',
         background: gy.surface,
       }}
     >
       <span
         style={{
-          width: 40,
-          height: 40,
+          width: 48,
+          height: 48,
           flexShrink: 0,
           borderRadius: 10,
           display: 'flex',
@@ -316,7 +316,7 @@ export function OnSiteBanner({
           background: '#F1F3F6',
         }}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
           <path
             d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"
             fill="none"
@@ -327,9 +327,9 @@ export function OnSiteBanner({
           <circle cx="12" cy="10" r="2.4" fill="none" stroke={muted} strokeWidth="1.6" />
         </svg>
       </span>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 600, color: gy.text }}>{title}</span>
-        <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>{description}</span>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 600, color: gy.text }}>{title}</span>
+        <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>{description}</span>
       </div>
       {submittedAt ? (
         <span style={{ flexShrink: 0, fontSize: 13, lineHeight: '20px', color: gy.success }}>
@@ -337,7 +337,7 @@ export function OnSiteBanner({
           已提交上门需求 · {shortDate(submittedAt)}
         </span>
       ) : (
-        <Button style={{ flexShrink: 0, fontWeight: 500 }} onClick={onBook}>
+        <Button size="large" style={{ flexShrink: 0, fontWeight: 500, fontSize: 15, paddingInline: 20 }} onClick={onBook}>
           预约上门
         </Button>
       )}

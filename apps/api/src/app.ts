@@ -13,6 +13,7 @@ import { EnterprisesController } from './enterprises/enterprises.controller.ts';
 import { EnterpriseProfileController } from './enterprises/profile.controller.ts';
 import { FilesController } from './files/files.controller.ts';
 import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.ts';
+import { LicenseReader, LicenseRecognitionController } from './license/license-reader.ts';
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
@@ -48,6 +49,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       TaskDocumentsController,
       EnterpriseDocumentsController,
       FilesController,
+      LicenseRecognitionController,
     ],
     providers: [
       { provide: DATABASE, useValue: db },
@@ -58,6 +60,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       },
       AuthService,
       TasksService,
+      LicenseReader,
       SubmissionService,
       DocumentsService,
       { provide: APP_GUARD, useClass: SessionGuard },

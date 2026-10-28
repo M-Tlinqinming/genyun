@@ -46,7 +46,6 @@ import {
   Get,
   Inject,
   NotFoundException,
-  Optional,
   Param,
   ParseUUIDPipe,
   Post,
@@ -62,16 +61,17 @@ import { isUniqueViolation } from '../db/errors.ts';
 import { checklistItemFiles, checklistItems, enterprises, files, tasks } from '../db/schema.ts';
 import { registerFile } from '../documents/documents.service.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
-import { LICENSE_RECOGNIZER, type LicenseRecognizer } from '../license/recognizer.ts';
+import { LicenseReader, type RecognitionStatus } from '../license/license-reader.ts';
 
 const NOT_FOUND = '找不到该企业';
 const DUPLICATE_CODE = '本组织已有使用该统一社会信用代码的企业';
 const STALE = '资料刚被其他人修改过，已为您显示最新内容，请核对后继续填写';
 
 const IDENTITY_KEYS = ['name', 'socialCreditCode', 'legalRepresentative', 'registeredAddress'] as const;
-const LICENSE_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 
 const fileIdSchema = z.object({ fileId: z.uuid('请选择文件') });
+// 新建企业时已经识别过、客户在表单里核对过身份四项：挂执照时不再用识别结果覆盖，只在一致时标「来自营业执照」
+const licenseSchema = fileIdSchema.extend({ keepIdentity: z.boolean().optional() });
 
 // 资料清单里由自填内容自动得出的状态；清空时只撤回这几种，且有文件作凭证的不动
 type SyncedStatus = Exclude<ItemStatus, 'later'>;
@@ -91,7 +91,7 @@ export class EnterpriseProfileController {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
-    @Optional() @Inject(LICENSE_RECOGNIZER) private readonly recognizer: LicenseRecognizer | null,
+    @Inject(LicenseReader) private readonly licenseReader: LicenseReader,
   ) {}
 
   @Get('basic-step')
@@ -116,27 +116,12 @@ export class EnterpriseProfileController {
   @Post('license')
   async license(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     const row = await this.editable(user, id);
-    const parsed = fileIdSchema.safeParse(body);
+    const parsed = licenseSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请选择文件');
-    const [file] = await this.db
-      .select({ id: files.id, storageKey: files.storageKey, contentType: files.contentType })
-      .from(files)
-      .where(and(eq(files.id, parsed.data.fileId), eq(files.orgId, row.orgId), eq(files.kind, 'customer_material')))
-      .limit(1);
-    if (!file) throw new NotFoundException('找不到该文件');
-    if (!LICENSE_TYPES.includes(file.contentType)) throw new BadRequestException('营业执照请上传 JPG、PNG 图片或 PDF');
-
-    let recognized: RecognizedLicense = {};
-    let status: 'recognized' | 'unrecognized' | 'unavailable' | 'failed' = 'unavailable';
-    if (this.recognizer) {
-      try {
-        recognized = await this.recognizer.recognize(await this.storage.read(file.storageKey), file.contentType);
-        status = 'recognized';
-      } catch (err) {
-        console.warn('营业执照识别失败', err);
-        status = 'failed';
-      }
-    }
+    const read = await this.licenseReader.read(row.orgId, parsed.data.fileId);
+    const recognized: RecognizedLicense = read.recognized;
+    let status: RecognitionStatus = read.status;
+    const file = { id: parsed.data.fileId };
 
     const step: BasicStepStored = { ...(row.profile.basicStep ?? emptyStep()), licenseFileId: file.id };
     const identity: EnterpriseInput = {
@@ -156,6 +141,7 @@ export class EnterpriseProfileController {
         const key = field as (typeof IDENTITY_KEYS)[number];
         const check = enterpriseInputSchema.shape[key].safeParse(value);
         if (!check.success || !check.data) continue;
+        if (parsed.data.keepIdentity && identity[key] !== check.data) continue;
         identity[key] = check.data;
       } else {
         basic[field as 'companyType' | 'registeredCapital' | 'registrationAuthority' | 'businessScope'] = value;
@@ -503,7 +489,7 @@ export class EnterpriseProfileController {
       later: step.later,
       sources: step.sources,
       license,
-      recognizerAvailable: Boolean(this.recognizer),
+      recognizerAvailable: this.licenseReader.available,
       // 第 4 步填了建筑面积后自动合计；还没填为 null
       totalBuildingAreaM2: row.profile.resourcesStep
         ? totalBuildingArea(row.profile.resourcesStep.step.buildings) || null

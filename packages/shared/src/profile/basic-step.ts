@@ -36,6 +36,7 @@ export const FIELD_SOURCES = {
   license: '来自营业执照',
   account: '当前账号',
   legal_rep: '同法定代表人',
+  registered_address: '同注册地址',
 } as const;
 export type FieldSource = keyof typeof FIELD_SOURCES;
 

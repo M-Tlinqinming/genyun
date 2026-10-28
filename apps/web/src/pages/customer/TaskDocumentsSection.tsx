@@ -16,6 +16,7 @@ import { uploadFile } from '../../api/profile';
 import { ApiError } from '../../api/request';
 import type { Task } from '../../api/tasks';
 import { LibraryPickerModal } from './LibraryPickerModal';
+import { FileTypeIcon } from '../../components/FileTypeIcon';
 import { gy } from '../../theme/tokens';
 
 const ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp';
@@ -175,7 +176,10 @@ export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: (
         </Row>
         {saved.map((d) => (
           <Row key={d.documentId}>
-            <span style={nameCell}>{d.name}</span>
+            <span style={{ ...nameCell, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <FileTypeIcon contentType={d.contentType} />
+              {d.name}
+            </span>
             <span style={{ ...cell, width: 96, display: 'flex', flexDirection: 'column' }}>
               V{d.version}
               {d.latestVersion > d.version && (
