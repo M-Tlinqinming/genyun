@@ -26,7 +26,8 @@ const IMAGE_ACCEPT = 'image/*,.pdf';
 const muted = '#3F4A5C';
 
 // 检查明细抽屉（12 页 P05B）：已满足的事实与来源在上，需要客户处理的项在下，交付前补齐的项最后。
-// 特种设备、相邻企业、包装标签与说明书用专用卡片（P05C、P05D）
+// 特种设备、相邻企业、包装标签与说明书用专用卡片（P05C、P05D）。专用卡片写的是企业资料，提交后不再同步到任务，
+// 所以提交后的待补项一律用普通卡片（上传、由我确认等直接记在任务上）
 export function CheckDrawer({
   task,
   category,
@@ -41,7 +42,9 @@ export function CheckDrawer({
   onBook: () => void;
 }) {
   const all = category?.items ?? [];
-  const generic = all.filter((i) => !SPECIAL_KEYS.has(i.key));
+  const submitted = task.status !== 'preparing';
+  const special = (i: CategoryCheckItem) => !submitted && SPECIAL_KEYS.has(i.key);
+  const generic = all.filter((i) => !special(i));
   const done = generic.filter((i) => i.state === 'done');
   const action = generic.filter((i) => i.state === 'missing');
   const waiting = generic.filter((i) => i.state === 'expert' || i.state === 'call');
@@ -57,9 +60,9 @@ export function CheckDrawer({
     ) : (
       <ActionCard task={task} item={i} tone={i.state === 'missing' ? 'action' : 'later'} onBook={onBook} />
     );
-  const specialEquipment = all.find((i) => i.key === 'special_equipment');
-  const neighbors = all.find((i) => i.key === 'external_resources');
-  const msds = all.find((i) => i.key === 'msds');
+  const specialEquipment = all.find((i) => i.key === 'special_equipment' && special(i));
+  const neighbors = all.find((i) => i.key === 'external_resources' && special(i));
+  const msds = all.find((i) => i.key === 'msds' && special(i));
   const summary = [
     count('missing') && `${count('missing')} 项待补充`,
     count('expert', 'call') && `${count('expert', 'call')} 项耕云处理中`,
@@ -336,7 +339,7 @@ function ActionCard({
 
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 16px', fontSize: 13, color: gy.secondary }}>
             <span>也可以</span>
-            {task.startMethod === 'self_fill' && step && (
+            {task.startMethod === 'self_fill' && task.status === 'preparing' && step && (
               <button type="button" style={link} onClick={() => navigate(`/customer/tasks/${task.id}/fill/${step}`)}>
                 去第 {step} 步填写
               </button>

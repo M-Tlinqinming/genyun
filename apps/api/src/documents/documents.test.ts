@@ -108,13 +108,20 @@ describe('上传已有资料 · 任务关联的企业原始资料', () => {
     expect((await agent.get(`/api/files/${fileId}/download-url`)).status).toBe(200);
   });
 
-  it('已提交的任务不能再改关联', async () => {
+  it('已提交的任务：已关联的资料不能更换或移除，只能再加新文件（补待补项）', async () => {
     const { taskId, agent } = await newTask('甲三公司');
-    const fileId = await upload('疏散图.pdf');
+    const first = await upload('疏散图.pdf');
+    const [doc] = (await agent.post(`/api/tasks/${taskId}/documents`).send({ fileId: first })).body;
     await handle.db.update(tasks).set({ status: 'submitted', submittedAt: new Date() }).where(eq(tasks.id, taskId));
-    const res = await agent.post(`/api/tasks/${taskId}/documents`).send({ fileId });
-    expect(res.status).toBe(400);
-    expect(res.body.message).toContain('任务已提交');
+    const removed = await agent.delete(`/api/tasks/${taskId}/documents/${doc.documentId}`);
+    expect(removed.status).toBe(400);
+    expect(removed.body.message).toContain('申请已提交');
+    const reselect = await agent.put(`/api/tasks/${taskId}/documents`).send({ selections: [] });
+    expect(reselect.status).toBe(400);
+    const fire = await upload('消防设施布置图.pdf');
+    const added = await agent.post(`/api/tasks/${taskId}/documents`).send({ fileId: fire });
+    expect(added.status).toBe(201);
+    expect(added.body).toHaveLength(2);
   });
 
   it('别的组织看不到、改不了，也不能挂别家的文件；负责专家能看到并预览，其他专家不能', async () => {

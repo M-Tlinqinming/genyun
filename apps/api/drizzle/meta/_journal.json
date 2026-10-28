@@ -57,6 +57,13 @@
       "when": 1793120320485,
       "tag": "0007_checklist_item_synced",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793152686053,
+      "tag": "0008_task_submissions",
+      "breakpoints": true
     }
   ]
 }

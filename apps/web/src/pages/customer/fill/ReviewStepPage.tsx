@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import { useTaskReview, type Task } from '../../../api/tasks';
 import { gy } from '../../../theme/tokens';
 import { OnSiteBanner, OnSiteDialog } from '../OnSiteVisit';
+import { SubmitDialog } from '../submit/SubmitDialog';
 import { FILL_STEPS, FillCard, FillFrame, SecureNote, StepTitle } from './FillFrame';
 
 const muted = '#3F4A5C';
@@ -18,13 +19,15 @@ const AFTER_SUBMIT = [
 ];
 
 // S05 企业自填第 5 步「核对并提交」：前 4 步的概括、还缺的必需资料、专家判断与稍后补、预约上门。
-// 「提交给耕云」的提交流程（确认资料版本、提交中、结果未知先查询）在第 12 项接上
+// 「提交给耕云」打开确认框（13 页 F02–F06）；已提交的任务回到任务页
 export function ReviewStepPage({ task }: { task: Task }) {
   const navigate = useNavigate();
   const { message } = App.useApp();
   const data = useTaskReview(task.id);
   const [agreed, setAgreed] = useState(true);
   const [booking, setBooking] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const submitted = task.status !== 'preparing';
   const exit = () => navigate(`/customer/enterprises/${task.enterpriseId}`);
 
   const footer = (
@@ -34,16 +37,31 @@ export function ReviewStepPage({ task }: { task: Task }) {
         <Button size="large" onClick={() => navigate(`/customer/tasks/${task.id}/fill/4`)}>
           上一步
         </Button>
-        <Button
-          size="large"
-          type="primary"
-          style={{ fontWeight: 600 }}
-          disabled={!data.data?.review.canSubmit || !agreed}
-          onClick={() => message.info('资料已核对完毕，提交功能即将开放；填写的内容都已保存。')}
-        >
-          提交给耕云
-        </Button>
+        {submitted ? (
+          <Button size="large" type="primary" style={{ fontWeight: 600 }} onClick={() => navigate(`/customer/tasks/${task.id}?tab=records`)}>
+            申请已提交，查看进度
+          </Button>
+        ) : (
+          <Button
+            size="large"
+            type="primary"
+            style={{ fontWeight: 600 }}
+            disabled={!data.data?.review.canSubmit || !agreed}
+            onClick={() => setSubmitting(true)}
+          >
+            提交给耕云
+          </Button>
+        )}
       </div>
+      <SubmitDialog
+        task={task}
+        open={submitting}
+        onClose={() => setSubmitting(false)}
+        onChanged={(changes) => {
+          message.warning(`资料已更新（${changes.join('；')}），本次没有提交，请核对后再提交`, 6);
+          void data.refetch();
+        }}
+      />
     </>
   );
 

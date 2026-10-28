@@ -37,6 +37,7 @@ import {
   onSiteRequests,
   organizations,
   taskNumberCounters,
+  taskSubmissions,
   tasks,
   users,
 } from '../db/schema.ts';
@@ -159,12 +160,27 @@ export class TasksService {
     return this.checklistResult(id);
   }
 
-  // 客户修改资料项前的共同检查：能看到任务、是本组织客户、有这一项
+  // 客户修改资料项前的共同检查：能看到任务、是本组织客户、有这一项。
+  // 提交以后只有待补清单里的项还能补，其余随提交锁定
   private async editableItem(user: SessionUser, id: string, key: string) {
     const task = await this.load(user, id);
     if (!canEditOrganizationData(user, task.orgId)) throw new ForbiddenException('资料由客户填写');
     if (!(CHECKLIST_ITEM_KEYS as readonly string[]).includes(key)) throw new NotFoundException('没有这一项资料');
-    return { task, itemKey: key as ChecklistItemKey };
+    const itemKey = key as ChecklistItemKey;
+    const submission = task.status === 'preparing' ? null : await this.submissionOf(id);
+    if (submission && !submission.pendingKeys.includes(itemKey)) {
+      throw new BadRequestException(`${getItemDef(itemKey).label}已随申请提交，需要更正请联系负责专家`);
+    }
+    return { task, itemKey, submission };
+  }
+
+  private async submissionOf(taskId: string) {
+    const [row] = await this.db
+      .select({ pendingKeys: taskSubmissions.pendingKeys, items: taskSubmissions.items })
+      .from(taskSubmissions)
+      .where(eq(taskSubmissions.taskId, taskId))
+      .limit(1);
+    return row ?? null;
   }
 
   async updateChecklistItem(user: SessionUser, id: string, key: string, input: ChecklistItemUpdate) {
@@ -239,7 +255,10 @@ export class TasksService {
 
   // 移除关联不删除文件本身。最后一个文件移除后，靠文件作凭证的「已提供」恢复为未回答
   async unlinkFile(user: SessionUser, id: string, key: string, fileId: string) {
-    const { itemKey } = await this.editableItem(user, id, key);
+    const { itemKey, submission } = await this.editableItem(user, id, key);
+    if (submission?.items[itemKey]?.fileIds.includes(fileId)) {
+      throw new BadRequestException('这份文件已随申请提交，不能移除');
+    }
     await this.db.transaction(async (tx) => {
       await tx
         .delete(checklistItemFiles)
@@ -358,7 +377,7 @@ export class TasksService {
     };
   }
 
-  private async checklistResult(taskId: string) {
+  async checklistResult(taskId: string) {
     const rows = await this.db.select().from(checklistItems).where(eq(checklistItems.taskId, taskId));
     const links = await this.db
       .select({ itemKey: checklistItemFiles.itemKey, fileId: checklistItemFiles.fileId })
