@@ -13,6 +13,7 @@ import {
   type SubmissionPreview,
   type Task,
 } from '../../../api/tasks';
+import { ContactLink } from '../../../components/ContactLink';
 import { gy } from '../../../theme/tokens';
 
 // confirm = 确认资料版本（F02）；submitting = 提交中（F04）；unknown = 结果未知，先查询（F06、F08）；
@@ -177,7 +178,13 @@ export function SubmitDialog({
         )
       }
       footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 4 }}>{buttons}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, paddingTop: 4 }}>
+          {(phase === 'unknown' || phase === 'querying') && (
+            <span style={{ marginRight: 'auto' }}>
+              <ContactLink hint="提交结果长时间无法确认时，耕云可以帮您核实。" />
+            </span>
+          )}
+          {buttons}
         </div>
       }
       destroyOnHidden
