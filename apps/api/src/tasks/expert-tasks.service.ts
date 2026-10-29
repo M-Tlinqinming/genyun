@@ -3,6 +3,7 @@ import {
   CONTACT_WORKING_DAYS,
   addWorkingDays,
   getItemDef,
+  reachedCustomer,
 } from '@genyun/shared';
 import { Controller, ForbiddenException, Get, Inject, Injectable } from '@nestjs/common';
 import { desc, eq, inArray } from 'drizzle-orm';
@@ -10,7 +11,7 @@ import { isExpert } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { checklistItems, enterprises, organizations, tasks, users } from '../db/schema.ts';
+import { checklistItems, enterprises, organizations, taskContacts, tasks, users } from '../db/schema.ts';
 
 export interface VerifyItem {
   key: ChecklistItemKey;
@@ -81,6 +82,15 @@ export class ExpertTasksService {
           list.map((t) => t.id),
         ),
       );
+    const contacts = await this.db
+      .select({ taskId: taskContacts.taskId, method: taskContacts.method, result: taskContacts.result, createdAt: taskContacts.createdAt })
+      .from(taskContacts)
+      .where(
+        inArray(
+          taskContacts.taskId,
+          list.map((t) => t.id),
+        ),
+      );
     // 等专家核实的项：拍照给耕云看、请专家电话联系，且专家还没判定
     const pending = items.filter(
       (i) =>
@@ -102,12 +112,16 @@ export class ExpertTasksService {
       if (t.submittedAt !== null && t.closedAt === null && calls.length > 0) {
         const first = calls.reduce((a, b) => (a.updatedAt <= b.updatedAt ? a : b));
         const requestedAt = new Date(Math.max(first.updatedAt.getTime(), t.submittedAt.getTime()));
-        contact = {
-          requestedAt,
-          requestedBy: first.updatedByName,
-          labels: calls.map((p) => getItemDef(p.itemKey as ChecklistItemKey).label),
-          deadline: addWorkingDays(requestedAt, CONTACT_WORKING_DAYS),
-        };
+        const records = contacts.filter((c) => c.taskId === t.id).map((c) => ({ ...c, createdAt: c.createdAt.toISOString() }));
+        // 电话联系上客户以后不再进倒计时横幅（未接通不算）
+        if (!reachedCustomer(records, requestedAt)) {
+          contact = {
+            requestedAt,
+            requestedBy: first.updatedByName,
+            labels: calls.map((p) => getItemDef(p.itemKey as ChecklistItemKey).label),
+            deadline: addWorkingDays(requestedAt, CONTACT_WORKING_DAYS),
+          };
+        }
       }
 
       if (t.submittedAt) events.push({ at: t.submittedAt, taskId: t.id, kind: 'submitted', text: `${t.enterpriseName}提交生成申请` });

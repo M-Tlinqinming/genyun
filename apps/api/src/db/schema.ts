@@ -5,6 +5,8 @@ import {
   type CallTime,
   type ChecklistItemKey,
   type ChecklistState,
+  type ContactQuestion,
+  type ContactTarget,
   type EnterpriseProfile,
   type SubmittedAnswer,
   type SubmittedDocument,
@@ -15,6 +17,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   date,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -177,6 +180,53 @@ export const taskWorkups = pgTable('task_workups', {
   updatedBy: uuid('updated_by').references(() => users.id),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const contactMethod = pgEnum('contact_method', ['request', 'phone']);
+export const contactResult = pgEnum('contact_result', ['clarified', 'later', 'unreachable']);
+
+// 联系记录（14 页 E18-00E）：负责专家每联系客户一次记一条。任务内补充请求进客户待补清单，客户回答后记下回答；
+// 电话记下拨打对象、结果和回答。客户只看到发给他的问题，看不到电话记录
+export const taskContacts = pgTable(
+  'task_contacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    method: contactMethod('method').notNull(),
+    questions: jsonb('questions').$type<ContactQuestion[]>().notNull(),
+    // 电话才有
+    target: jsonb('target').$type<ContactTarget>(),
+    result: contactResult('result'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // 任务内补充：客户回答的人和时间；为空表示还在等客户回答
+    answeredBy: uuid('answered_by').references(() => users.id),
+    answeredAt: timestamp('answered_at', { withTimezone: true }),
+  },
+  (t) => [index('task_contacts_task').on(t.taskId, t.createdAt)],
+);
+
+// 站内提醒（顶栏铃铛）：业务提醒只在站内，不发邮件、短信（2026-10-28 Martin 确认）
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    // 点开去哪个页面
+    link: text('link').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('notifications_user').on(t.userId, t.createdAt)],
+);
 
 // 任务编号按年流水，全平台共用一个计数
 export const taskNumberCounters = pgTable('task_number_counters', {

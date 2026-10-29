@@ -32,6 +32,7 @@ import {
   enterprises,
   files,
   taskDocuments,
+  taskContacts,
   tasks,
   taskWorkups,
   users,
@@ -66,7 +67,9 @@ export class WorkupService {
     if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
     const parsed = factSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
-    const { version, key, value, source, fileId } = parsed.data;
+    const { version, key, value, fileId, contactId } = parsed.data;
+    // 采用客户在任务里的回答：来源是客户确认 · 任务内补充
+    const source = contactId ? 'customer' : parsed.data.source;
 
     const row = await this.ensure(task);
     if (version !== row.version) throw this.stale(row.version);
@@ -75,12 +78,21 @@ export class WorkupService {
     if (fileId && !(await this.originals(task.id)).some((o) => o.fileId === fileId)) {
       throw new BadRequestException('对照的原件不在这个任务里');
     }
+    if (contactId && value !== null) {
+      const [contact] = await this.db
+        .select({ answeredAt: taskContacts.answeredAt })
+        .from(taskContacts)
+        .where(and(eq(taskContacts.id, contactId), eq(taskContacts.taskId, task.id), eq(taskContacts.method, 'request')))
+        .limit(1);
+      if (!contact?.answeredAt) throw new BadRequestException('客户还没有回答这条补充请求');
+    }
 
     const overrides = { ...row.data.overrides };
     if (value === null) delete overrides[key];
     else {
       const entry: FactOverride = { value, source, by: user.id, byName: user.name, at: new Date().toISOString() };
       if (fileId) entry.fileId = fileId;
+      if (contactId) Object.assign(entry, { via: 'request', contactId });
       overrides[key] = entry;
     }
     const [saved] = await this.db
@@ -91,6 +103,35 @@ export class WorkupService {
     // 读与写之间别人刚好保存了
     if (!saved) throw this.stale(version + 1);
     return this.view(task.id, saved);
+  }
+
+  // 电话问清后把回答回填到企业事实，来源记为「客户确认 · 电话确认」。和专家正在编辑的页面同时保存时重读再写
+  async applyPhoneAnswers(
+    user: SessionUser,
+    task: { id: string; enterpriseId: string },
+    contactId: string,
+    answers: { key: string; value: FactOverride['value'] }[],
+  ) {
+    if (answers.length === 0) return;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const row = await this.ensure(task);
+      const overrides = { ...row.data.overrides };
+      const at = new Date().toISOString();
+      for (const a of answers) {
+        overrides[a.key] = { value: a.value, source: 'customer', via: 'phone', contactId, by: user.id, byName: user.name, at };
+      }
+      const [saved] = await this.db
+        .update(taskWorkups)
+        .set({ data: { overrides }, version: row.version + 1, updatedBy: user.id, updatedAt: new Date() })
+        .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
+        .returning({ version: taskWorkups.version });
+      if (saved) return;
+    }
+    throw this.stale((await this.row(task.id))!.version);
+  }
+
+  async snapshotOf(task: { id: string; enterpriseId: string }) {
+    return (await this.ensure(task)).snapshot;
   }
 
   // 第一次打开时复制企业资料作快照；两人同时打开只留先写入的那份
@@ -175,9 +216,16 @@ export class WorkupService {
   }
 
   // 负责专家、运营可以打开；客户和其他专家看不到（与不存在同样返回）。客户提交以后才开始整理
-  private async task(user: SessionUser, id: string) {
+  async task(user: SessionUser, id: string) {
     const [task] = await this.db
-      .select({ id: tasks.id, enterpriseId: tasks.enterpriseId, assignedExpertId: tasks.assignedExpertId, status: tasks.status })
+      .select({
+        id: tasks.id,
+        orgId: tasks.orgId,
+        enterpriseId: tasks.enterpriseId,
+        assignedExpertId: tasks.assignedExpertId,
+        status: tasks.status,
+        submittedAt: tasks.submittedAt,
+      })
       .from(tasks)
       .where(eq(tasks.id, id))
       .limit(1);
