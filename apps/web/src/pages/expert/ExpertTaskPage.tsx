@@ -1,9 +1,11 @@
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import {
+  awaitingAdoption,
   FACT_SECTIONS,
   nextMissing,
   workupFacts,
   workupProgress,
+  type ChecklistItemKey,
   type Fact,
   type FactSection,
   type FactValue,
@@ -12,13 +14,16 @@ import { App, Button, Result, Tooltip } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { useContacts } from '../../api/contacts';
 import { ApiError } from '../../api/request';
-import { useTask } from '../../api/tasks';
+import { useTask, useTaskCheck } from '../../api/tasks';
 import { useSaveFact, useWorkup, workupKey } from '../../api/workup';
 import { linkButton, Loading } from '../../components/ui';
 import { FadeSwap } from '../../theme/motion';
 import { gy, stage } from '../../theme/tokens';
-import { FactsPanel, SourceTag, type EditMode } from './workup/FactsPanel';
+import { ContactDialog } from './workup/ContactDialog';
+import { ContactRecords } from './workup/ContactRecords';
+import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 
 const STAGES = ['资料核实', '专业编制', '审核与修订', '成果发布'];
@@ -44,13 +49,18 @@ export function ExpertTaskPage() {
   const task = useTask(taskId);
   const workup = useWorkup(taskId);
   const save = useSaveFact(taskId);
+  const contacts = useContacts(taskId);
+  const check = useTaskCheck(taskId);
   const client = useQueryClient();
   const navigate = useNavigate();
   const { message } = App.useApp();
 
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [focusKey, setFocusKey] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ key: string; mode: EditMode } | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
+  // 联系客户对话框：从顶部打开带全部缺失项和客户请求电话联系的项，从某一项「发起补件」只带这一项
+  const [contact, setContact] = useState<{ keys: string[]; withCalls: boolean } | null>(null);
+  const [showRecords, setShowRecords] = useState(false);
   const [fileId, setFileId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<FactSection>('basic');
   const sections = useRef(new Map<FactSection, HTMLElement>());
@@ -63,6 +73,18 @@ export function ExpertTaskPage() {
   const progress = useMemo(() => workupProgress(facts), [facts]);
   const originals = useMemo(() => workup.data?.originals ?? [], [workup.data]);
   const currentFile = originals.find((o) => o.fileId === fileId) ?? originals[0];
+  const awaiting = useMemo(
+    () => (workup.data && contacts.data ? awaitingAdoption(contacts.data, workup.data.data) : new Map()),
+    [workup.data, contacts.data],
+  );
+  // 客户请专家电话联系、还没问清的资料项
+  const callItems = useMemo(
+    () =>
+      Object.entries(check.data?.items ?? {})
+        .filter(([, s]) => s?.callRequested)
+        .map(([k]) => k as ChecklistItemKey),
+    [check.data],
+  );
 
   const scrollTo = (el: HTMLElement | undefined) => el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
@@ -95,7 +117,7 @@ export function ExpertTaskPage() {
     [originals],
   );
 
-  const saveFact = async (fact: Fact, value: FactValue | null, mode: EditMode) => {
+  const saveFact = async (fact: Fact, value: FactValue | null, mode: Editing['mode'], contactId?: string) => {
     if (!workup.data) return;
     try {
       await save.mutateAsync({
@@ -104,6 +126,7 @@ export function ExpertTaskPage() {
         value,
         source: mode,
         fileId: mode === 'expert' && value !== null ? currentFile?.fileId : undefined,
+        contactId: value !== null ? contactId : undefined,
       });
       setEditing(null);
       setFocusKey(fact.key);
@@ -152,16 +175,26 @@ export function ExpertTaskPage() {
             整理中 · 必需项 {progress.done} / {progress.required}
           </span>
         </div>
-        <ol
-          aria-label="处理阶段"
-          style={{ display: 'flex', gap: 28, margin: 0, padding: '0 0 12px', listStyle: 'none', borderBottom: `1px solid ${gy.split}` }}
-        >
-          {STAGES.map((s, i) => (
-            <li key={s} aria-current={i === 1 ? 'step' : undefined} style={{ ...text14, color: i === 1 ? gy.primary : gy.secondary }}>
-              {i + 1}　{s}
-            </li>
-          ))}
-        </ol>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '0 0 12px', borderBottom: `1px solid ${gy.split}` }}>
+          <ol aria-label="处理阶段" style={{ display: 'flex', gap: 28, flex: 1, margin: 0, padding: 0, listStyle: 'none' }}>
+            {STAGES.map((s, i) => (
+              <li key={s} aria-current={i === 1 ? 'step' : undefined} style={{ ...text14, color: i === 1 ? gy.primary : gy.secondary }}>
+                {i + 1}　{s}
+              </li>
+            ))}
+          </ol>
+          {callItems.length > 0 && <span style={{ ...text13, color: stage.action.color }}>客户请专家电话联系 {callItems.length} 项</span>}
+          <button
+            type="button"
+            style={{ ...linkButton, ...text14 }}
+            onClick={() => setContact({ keys: progress.missing.map((f) => f.key), withCalls: true })}
+          >
+            联系客户
+          </button>
+          <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setShowRecords(true)}>
+            处理记录{contacts.data?.length ? `（${contacts.data.length}）` : ''}
+          </button>
+        </div>
       </header>
 
       <div style={{ display: 'flex', gap: 16, height: 640 }}>
@@ -232,10 +265,12 @@ export function ExpertTaskPage() {
           onOnlyMissingChange={setOnlyMissing}
           focusKey={focusKey}
           editing={editing}
-          onEdit={(key, mode) => {
-            setEditing({ key, mode });
+          onEdit={(key, mode, adopt) => {
+            setEditing({ key, mode, adopt });
             setFocusKey(key);
           }}
+          awaiting={awaiting}
+          onContact={(key) => setContact({ keys: [key], withCalls: false })}
           onCancelEdit={() => setEditing(null)}
           onSave={saveFact}
           onSourceClick={sourceHandler}
@@ -282,6 +317,16 @@ export function ExpertTaskPage() {
           </Button>
         </Tooltip>
       </section>
+
+      <ContactDialog
+        taskId={taskId}
+        open={contact !== null}
+        onClose={() => setContact(null)}
+        facts={facts}
+        initialKeys={contact?.keys ?? []}
+        callItems={contact?.withCalls ? callItems : []}
+      />
+      <ContactRecords taskId={taskId} open={showRecords} onClose={() => setShowRecords(false)} />
     </div>
   );
 }
