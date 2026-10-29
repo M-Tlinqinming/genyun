@@ -70,6 +70,8 @@ export const factSaveSchema = z.object({
   source: z.enum(['expert', 'customer']).default('expert'),
   // 整理时对照的原件
   fileId: z.uuid().optional(),
+  // 采用客户在任务里的回答（联系记录）
+  contactId: z.uuid().optional(),
 });
 export type FactSave = z.infer<typeof factSaveSchema>;
 
@@ -77,6 +79,9 @@ export interface FactOverride {
   value: FactValue;
   source: 'expert' | 'customer';
   fileId?: string;
+  // 来自联系客户：phone = 电话问清后回填，request = 采用客户在任务里的回答
+  via?: 'phone' | 'request';
+  contactId?: string;
   by: string;
   byName: string;
   at: string;
@@ -291,7 +296,7 @@ export function workupFacts(snapshot: WorkupSnapshot, data: WorkupData): Fact[] 
       ? {
           value: override.value,
           source: override.source,
-          sourceNote: override.source === 'customer' ? '电话确认' : undefined,
+          sourceNote: override.source === 'customer' ? (override.via === 'request' ? '任务内补充' : '电话确认') : undefined,
           fileId: override.fileId,
         }
       : base;
