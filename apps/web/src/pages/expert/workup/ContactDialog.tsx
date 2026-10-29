@@ -195,6 +195,8 @@ function DialogBody({
             <Select
               size="small"
               placeholder="添加要问的企业事实"
+              showSearch={{ optionFilterProp: 'label' }}
+              aria-label="添加要问的企业事实"
               value={null}
               style={{ width: 200 }}
               options={addable.map((f) => ({ value: f.key, label: f.label }))}
