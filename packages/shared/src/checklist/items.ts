@@ -75,10 +75,7 @@ export const CHECKLIST_ITEMS = [
   item('emergency_supplies', '应急物资及装备', 'resources', 'start', {
     startPart: '灭火器等消防器材数量',
   }),
-  item('first_aid_kit', '急救药箱药品清单', 'resources', 'before_delivery', {
-    conditional: true,
-    allowPhoto: true,
-  }),
+  item('first_aid_kit', '急救药箱药品清单', 'resources', 'before_delivery', { conditional: true }),
   item('fire_pool', '消防水池', 'resources', 'before_delivery', { conditional: true }),
 
   item('site_plan', '总平面布置图', 'drawings', 'start'),

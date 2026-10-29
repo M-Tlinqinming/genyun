@@ -127,7 +127,6 @@ export const productionSchema = z.object({
     .discriminatedUnion('answer', [
       z.object({ answer: z.literal('yes'), items: z.array(firstAidItemSchema).default([]) }),
       z.object({ answer: z.literal('no') }),
-      z.object({ answer: z.literal('photo'), photoFileIds: fileIds }),
     ])
     .optional(),
   firePool: z

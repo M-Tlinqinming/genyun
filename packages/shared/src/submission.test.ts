@@ -47,11 +47,11 @@ describe('提交 · 待补清单', () => {
     const items = {
       ...feiyuChecklist,
       duty_phone: { status: 'later' as const, fileIds: [], callRequested: true },
-      first_aid_kit: { status: 'photo_for_expert' as const, fileIds: ['f-kit'], callRequested: false },
+      special_equipment: { status: 'photo_for_expert' as const, fileIds: ['f-boiler'], callRequested: false },
     };
     const pending = pendingAfterSubmit(items);
     expect(pending).toContain('duty_phone');
-    expect(pending).not.toContain('first_aid_kit');
+    expect(pending).not.toContain('special_equipment');
   });
 
   it('补一项少一项', () => {

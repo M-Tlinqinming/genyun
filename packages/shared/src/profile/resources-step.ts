@@ -67,8 +67,8 @@ export const draftFirstAidItemSchema = z.object({
 });
 export type DraftFirstAidItem = z.infer<typeof draftFirstAidItemSchema>;
 
-// standard = 按常规配置；photo = 拍药箱照片，由专家整理清单；manual = 自己逐项填
-export const FIRST_AID_MODES = ['standard', 'photo', 'manual'] as const;
+// standard = 按常规配置；manual = 自己逐项填。药品清单由客户填写，药箱照片只作补充（Martin 10-29）
+export const FIRST_AID_MODES = ['standard', 'manual'] as const;
 export type FirstAidMode = (typeof FIRST_AID_MODES)[number];
 
 // 耐火等级默认「专家判断」，客户有消防验收资料、知道等级的可以直接选
@@ -226,11 +226,10 @@ export function suppliesStartReady(step: ResourcesStep): boolean {
   return step.supplies.some((s) => filled(s.name) && (s.quantity ?? 0) > 0);
 }
 
-// 「急救药箱药品清单」：没有 → 没有；按常规配置或逐项填了 → 已提供；只传了药箱照片 → 交给专家整理
-export function firstAidKitStatus(kit: ResourcesStep['firstAidKit']): 'provided' | 'none' | 'photo_for_expert' | null {
+// 「急救药箱药品清单」：没有 → 没有；按常规配置或逐项填了 → 已提供；只传了药箱照片不算
+export function firstAidKitStatus(kit: ResourcesStep['firstAidKit']): 'provided' | 'none' | null {
   if (kit.answer === 'no') return 'none';
   if (kit.answer !== 'yes') return null;
-  if (kit.mode === 'photo') return kit.photoFileIds.length > 0 ? 'photo_for_expert' : null;
   return kit.items.some((i) => filled(i.name)) ? 'provided' : null;
 }
 

@@ -105,6 +105,9 @@ test('填灭火器数量即「应急物资及装备」已提供；加一项物�
 test('急救药箱按常规配置、消防水池容积稍后补，两项都为已提供', async () => {
   await answer('厂里有急救药箱吗？', '有');
   await expect(page.getByText(/纱布绷带 2 卷 · 医用棉签 2 包/)).toBeVisible();
+  // 药品清单由客户填：只有常规配置和逐项填两种，药箱照片只作补充
+  await expect(page.getByRole('radiogroup', { name: '药品清单怎么填' }).getByRole('radio')).toHaveText(['按常规配置', '自己逐项填']);
+  await expect(page.getByTestId('first-aid-kit')).toContainText('药箱照片（选填）');
   await expect.poll(() => itemStatus('first_aid_kit')).toBe('provided');
 
   await answer('有消防水池吗？', '有');

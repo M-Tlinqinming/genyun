@@ -1,13 +1,14 @@
 import type { INestApplication } from '@nestjs/common';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { and, eq, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { memberships, organizations, users } from '../db/schema.ts';
+import { checklistItems, enterprises, memberships, organizations, users } from '../db/schema.ts';
 import { LocalDiskStorage } from '../files/storage.ts';
 import { FakeLicenseRecognizer } from '../license/recognizer.ts';
 
@@ -672,16 +673,15 @@ describe('企业自填第 4 步 · 应急资源与图纸', () => {
     }
     expect((await step(id)).totalBuildingAreaM2).toBe(20079.92);
 
-    // 没有药箱、没有水池；只传药箱照片交给专家
+    // 没有药箱、没有水池；只传药箱照片不算已提供，清单要客户填
     await save({ ...s.step, firstAidKit: { ...s.step.firstAidKit, answer: 'no' }, firePool: { answer: 'no' } });
     expect(await checklistItem(taskId, 'first_aid_kit')).toMatchObject({ status: 'none' });
     expect(await checklistItem(taskId, 'fire_pool')).toMatchObject({ status: 'none' });
     const photo = await agent.post(`/api/orgs/${org.a}/files?rule=image_or_pdf`).attach('file', PDF, '药箱.pdf');
-    await save({ ...s.step, firstAidKit: { answer: 'yes', mode: 'photo', items: [], photoFileIds: [photo.body.id] } });
-    expect(await checklistItem(taskId, 'first_aid_kit')).toMatchObject({
-      status: 'photo_for_expert',
-      expertJudgement: { result: 'pending' },
-    });
+    const kitPhotoOnly = { answer: 'yes', mode: 'manual', items: [], photoFileIds: [photo.body.id] };
+    expect((await agent.put(`/api/enterprises/${id}/resources-step`).send({ version: s.version, step: { ...s.step, firstAidKit: { ...kitPhotoOnly, mode: 'photo' } } })).status).toBe(400);
+    await save({ ...s.step, firstAidKit: kitPhotoOnly });
+    expect(await checklistItem(taskId, 'first_aid_kit')).toBeUndefined();
     expect(s.fileNames).toMatchObject({ [photo.body.id]: '药箱.pdf' });
 
     // 数量清空、建筑没面积、相邻企业不清楚
@@ -695,6 +695,35 @@ describe('企业自填第 4 步 · 应急资源与图纸', () => {
     expect(await checklistItem(taskId, 'buildings')).toBeUndefined();
     expect(await checklistItem(taskId, 'external_resources')).toBeUndefined();
     expect((await step(id)).totalBuildingAreaM2).toBeNull();
+  });
+
+  it('以前只传药箱照片交给专家的：迁移后改为自己逐项填、清单待补，资料项为稍后补', async () => {
+    const { id, taskId, agent } = await withTask('丁三公司');
+    const s = await resources(id);
+    const photo = await agent.post(`/api/orgs/${org.a}/files?rule=image_or_pdf`).attach('file', PDF, '药箱.pdf');
+    const saved = await agent
+      .put(`/api/enterprises/${id}/resources-step`)
+      .send({ version: s.version, step: { ...s.step, firstAidKit: { ...s.step.firstAidKit, answer: 'yes', photoFileIds: [photo.body.id] } } });
+    expect(saved.status).toBe(200);
+    // 造出改版前的数据：方式为「拍药箱照片」（还留着常规配置的清单），资料项等专家判断
+    const { db } = handle;
+    await db
+      .update(enterprises)
+      .set({ profile: sql`jsonb_set(${enterprises.profile}, '{resourcesStep,step,firstAidKit,mode}', '"photo"')` })
+      .where(eq(enterprises.id, id));
+    await db
+      .update(checklistItems)
+      .set({ status: 'photo_for_expert', expertResult: 'pending', confirmedBy: null, confirmedAt: null })
+      .where(and(eq(checklistItems.taskId, taskId), eq(checklistItems.itemKey, 'first_aid_kit')));
+
+    const migration = readFileSync(new URL('../../drizzle/0011_first_aid_list_by_customer.sql', import.meta.url), 'utf8');
+    for (const statement of migration.split('--> statement-breakpoint')) await db.execute(sql.raw(statement));
+
+    const after = await resources(id);
+    expect(after.step.firstAidKit).toMatchObject({ answer: 'yes', mode: 'manual', items: [], photoFileIds: [photo.body.id] });
+    const item = await checklistItem(taskId, 'first_aid_kit');
+    expect(item.status).toBe('later');
+    expect(item.expertJudgement).toBeUndefined();
   });
 
   it('图纸挂到资料项上即已提供，内容里记着文件名', async () => {

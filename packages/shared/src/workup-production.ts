@@ -327,8 +327,8 @@ export function productionView(snapshot: WorkupSnapshot, data: { production?: Pr
   const kit = res?.firstAidKit;
   const kitItems = (kit?.items ?? []).filter((i) => filled(i.name)).map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit }));
   const firstAid: FirstAidView = {
-    status: kit?.answer === 'no' ? 'none' : kit?.answer === 'yes' && kit.mode !== 'photo' && kitItems.length > 0 ? 'provided' : 'needs_customer',
-    items: kit?.mode === 'photo' ? [] : kitItems,
+    status: kit?.answer === 'no' ? 'none' : kit?.answer === 'yes' && kitItems.length > 0 ? 'provided' : 'needs_customer',
+    items: kitItems,
     photoFileIds: kit?.photoFileIds ?? [],
   };
   if (firstAid.status === 'needs_customer') pending.push({ list: 'firstAid', key: 'firstAid', label: '急救药箱清单（请客户补）' });
