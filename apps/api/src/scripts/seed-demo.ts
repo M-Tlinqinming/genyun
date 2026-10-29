@@ -80,6 +80,8 @@ const [feiyuTask, otherTask] = await db
       startMethod: 'self_fill' as const,
       status: 'submitted' as const,
       submittedAt,
+      createdAt: submittedAt,
+      updatedAt: submittedAt,
       assignedExpertId: uid[t.expert]!,
       createdBy: customer,
     })),
