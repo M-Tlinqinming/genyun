@@ -12,7 +12,6 @@ import { DocumentsService } from './documents/documents.service.ts';
 import { EnterprisesController } from './enterprises/enterprises.controller.ts';
 import { EnterpriseProfileController } from './enterprises/profile.controller.ts';
 import { FilesController } from './files/files.controller.ts';
-import { PreviewTrialController } from './generation/preview-trial.controller.ts';
 import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.ts';
 import { LicenseReader, LicenseRecognitionController } from './license/license-reader.ts';
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
@@ -51,8 +50,6 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EnterpriseDocumentsController,
       FilesController,
       LicenseRecognitionController,
-      // 第 2 项预览方式小样，只在本机和测试里用
-      ...(process.env.NODE_ENV === 'production' ? [] : [PreviewTrialController]),
     ],
     providers: [
       { provide: DATABASE, useValue: db },

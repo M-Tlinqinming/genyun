@@ -1,6 +1,7 @@
-// Word 转 PDF（「后台转 PDF」预览方式，第 2 项小样）：用 LibreOffice 打开、更新目录页码后导出，见 soffice-pdf.py。
+// Word 转 PDF，给专家的 Word 校对页预览（Martin 2026-10-29 选定后台转 PDF）：
+// 用 LibreOffice 打开、更新目录页码后导出，见 soffice-pdf.py。
 // 本机用 SOFFICE_PATH 指向 soffice 可执行文件，自动用同目录下 LibreOffice 自带的 Python；
-// 服务器镜像装 libreoffice-writer、python3-uno 后直接用 soffice 和 python3。
+// 服务器镜像已装 LibreOffice 和 python3-uno（见 Dockerfile），直接用 soffice 和 python3。
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';

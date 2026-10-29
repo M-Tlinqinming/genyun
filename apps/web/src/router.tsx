@@ -13,7 +13,6 @@ import { TaskCreatePage } from './pages/customer/TaskCreatePage';
 import { TaskListPage } from './pages/customer/TaskListPage';
 import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
-import { PreviewTrialPage } from './pages/expert/PreviewTrialPage';
 
 const EYEBROW: Record<Workspace, string> = {
   customer: '客户工作台',
@@ -65,8 +64,6 @@ export const router = createBrowserRouter([
   // 选择开始方式是全屏页，不在工作区框架里
   { path: '/customer/tasks/:taskId/start', element: <StartMethodPage /> },
   { path: '/customer/tasks/:taskId/fill/:step', element: <SelfFillPage /> },
-  // 第 2 项小样，Martin 选定预览方式后删掉
-  { path: '/expert/preview-trial', element: <PreviewTrialPage /> },
   workspaceRoutes('customer'),
   workspaceRoutes('expert'),
   workspaceRoutes('operator'),

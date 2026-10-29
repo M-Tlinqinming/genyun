@@ -20,6 +20,17 @@ export const SIZE = {
 const LINE_1_5 = 360;
 const LINE_SINGLE = 240;
 
+/** 仿宋的单倍行高是字号的这么多倍（Word 导出的 PDF 实测：四号 1.5 倍 = 27.25 磅） */
+const FANGSONG_LINE_HEIGHT = 1.2976;
+
+/**
+ * 行距写进 Word 时换成同样高度的固定值（缇）。Word 里看起来不变；LibreOffice 转 PDF 时按倍数算得矮一截，
+ * 飞宇预案会少 16 页、目录页码全错，写成固定值分页才和 Word 一致（Martin 2026-10-29 选定后台转 PDF 预览）。
+ */
+export function exactLine(line: number, size: number): number {
+  return Math.round(((size / 2) * FANGSONG_LINE_HEIGHT * (line / 240)) * 20);
+}
+
 export interface TextStyle {
   size: number;
   bold?: boolean;
