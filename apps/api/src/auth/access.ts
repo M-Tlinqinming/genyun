@@ -6,6 +6,10 @@ export function isOperator(user: SessionUser): boolean {
   return user.memberships.some((m) => m.role === 'operator');
 }
 
+export function isExpert(user: SessionUser): boolean {
+  return user.memberships.some((m) => m.role === 'expert');
+}
+
 // 本组织的客户账号（管理员或成员）
 function isCustomerOf(user: SessionUser, orgId: string): boolean {
   return user.memberships.some(
