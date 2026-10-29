@@ -4,6 +4,8 @@
 import { PLAN_TEMPLATES } from '@genyun/shared';
 
 const ID_TITLE = new Map(PLAN_TEMPLATES.map((t) => [t.id, t.title]));
+// 电梯（SP08a）与起重机（SP08b）10-29 合成一份，知识块里的旧编号仍指它
+for (const old of ['SP08a', 'SP08b']) ID_TITLE.set(old, ID_TITLE.get('SP08')!);
 
 // 导则章节 → 本预案结构里的 [章节号, 名称]：名称已紧跟其后时只留章节号，裸引用写「章节号 名称」
 const SECTION_REF: Record<string, [string, string]> = {

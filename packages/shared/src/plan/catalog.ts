@@ -1,4 +1,4 @@
-// 应急预案由哪些专项预案、现场处置方案组成：29 份模板与 20 个「适用范围」开关。
+// 应急预案由哪些专项预案、现场处置方案组成：28 份模板（起重致害电梯与起重机 10-29 合成一份）与 20 个「适用范围」开关。
 // 迁自旧仓库 lib/decision-engine/templates.ts 与 constants/e6-switches.ts，逻辑照搬，开关名改为业务含义。
 // 编号（P1、SP01…）只在代码和模板文件名里用，不进界面和交付文档。
 
@@ -35,15 +35,16 @@ export interface PlanTemplate {
   id: string;
   kind: PlanPartKind;
   title: string;
-  /** 没有开关的模板每家都有 */
-  trigger?: ScopeKey;
+  /** 没有开关的模板每家都有；多个开关时任一打开即生成 */
+  trigger?: ScopeKey | ScopeKey[];
 }
 
 // 顺序即交付文档里的顺序
 export const PLAN_TEMPLATES: PlanTemplate[] = [
-  { id: 'P1', kind: 'specialty', title: '火灾事故专项应急预案' },
+  // 名称按 Martin 10-29 给的新知识库（与实际交付成稿一致）
+  { id: 'P1', kind: 'specialty', title: '火灾爆炸事故专项应急预案' },
   { id: 'P2', kind: 'specialty', title: '粉尘爆炸事故专项应急预案', trigger: 'dustProcess' },
-  { id: 'P3', kind: 'specialty', title: '泄漏事故专项应急预案', trigger: 'chemicalsOver1t' },
+  { id: 'P3', kind: 'specialty', title: '化学品泄漏事故专项应急预案', trigger: 'chemicalsOver1t' },
   { id: 'P4', kind: 'specialty', title: '有限空间专项应急预案', trigger: 'confinedSpace' },
   { id: 'P5', kind: 'specialty', title: '人员疏散专项应急预案', trigger: 'highRise' },
   { id: 'P6', kind: 'specialty', title: '承租企业生产安全事故专项应急预案', trigger: 'landlord' },
@@ -55,8 +56,8 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
   { id: 'SP05', kind: 'site', title: '容器爆炸事故现场处置方案', trigger: 'pressureVessel' },
   { id: 'SP06', kind: 'site', title: '灼烫事故现场处置方案' },
   { id: 'SP07', kind: 'site', title: '厂内车辆致害事故现场处置方案', trigger: 'internalVehicle' },
-  { id: 'SP08a', kind: 'site', title: '起重致害（电梯）事故现场处置方案', trigger: 'elevator' },
-  { id: 'SP08b', kind: 'site', title: '起重致害（起重机）事故现场处置方案', trigger: 'craneHoist' },
+  // 电梯与起重机合成一份（Martin 10-29 定），正文按企业有哪种写对应内容
+  { id: 'SP08', kind: 'site', title: '起重致害事故现场处置方案', trigger: ['elevator', 'craneHoist'] },
   { id: 'SP09', kind: 'site', title: '泄漏事故现场处置方案', trigger: 'chemicalsOver1t' },
   { id: 'SP10', kind: 'site', title: '粉尘爆炸事故现场处置方案', trigger: 'dustProcess' },
   { id: 'SP11', kind: 'site', title: '高处坠落事故现场处置方案', trigger: 'highWork' },
@@ -80,14 +81,14 @@ export interface PlanSelection {
 
 /** 按开关选出要生成的专项预案与现场处置方案（专家确认后的开关） */
 export function selectPlans(scope: Scope): PlanSelection {
-  const included = PLAN_TEMPLATES.filter((t) => !t.trigger || scope[t.trigger]);
+  const included = PLAN_TEMPLATES.filter((t) => !t.trigger || [t.trigger].flat().some((k) => scope[k]));
   return {
     specialty: included.filter((t) => t.kind === 'specialty'),
     site: included.filter((t) => t.kind === 'site'),
   };
 }
 
-/** 「火灾事故专项应急预案」→「火灾」：适用范围里的事故类别 */
+/** 「火灾爆炸事故专项应急预案」→「火灾爆炸」：适用范围里的事故类别 */
 export function accidentTypeOf(title: string): string {
   return title.replace(/事故(专项应急预案|现场处置方案)$/, '').replace(/专项应急预案$/, '').trim();
 }

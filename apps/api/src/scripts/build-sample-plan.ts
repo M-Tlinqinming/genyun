@@ -3,13 +3,16 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { feiyuPlanInput } from '@genyun/shared/fixtures/feiyu-plan';
-import { FakeSlotDrafter } from '../generation/ai/drafter.ts';
+import { FakeSlotDrafter, defaultDrafter } from '../generation/ai/drafter.ts';
 import { generateDocuments } from '../generation/documents.ts';
 import { renderWord } from '../generation/word/render.ts';
 
 const dir = resolve(import.meta.dirname, '../../../../out');
 mkdirSync(dir, { recursive: true });
-const docs = await generateDocuments(feiyuPlanInput, { drafter: new FakeSlotDrafter() });
+// 配了 AI_DRAFTER（如 apps/api/.env 里的百炼密钥）就用它，否则用模拟
+const drafter = defaultDrafter() ?? new FakeSlotDrafter();
+console.log(`AI 起草：${drafter.name}`);
+const docs = await generateDocuments(feiyuPlanInput, { drafter });
 const names = { plan: '应急预案', risk: '风险评估报告', resource: '应急资源调查报告' } as const;
 for (const key of ['plan', 'risk', 'resource'] as const) {
   const base = resolve(dir, `样例-飞宇${names[key]}`);
