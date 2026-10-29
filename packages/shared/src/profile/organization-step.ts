@@ -88,7 +88,7 @@ export const GROUP_DESCRIPTIONS: Record<GroupKind, string> = {
 };
 
 // 体系图上小组的排列顺序：抢险救灾 → 警戒疏散 → 医疗救护 → 综合保障 → 通讯联络 → 自定义
-const CHART_ORDER: GroupKind[] = ['rescue', 'evacuation', 'medical', 'logistics', 'communication', 'custom'];
+export const CHART_ORDER: GroupKind[] = ['rescue', 'evacuation', 'medical', 'logistics', 'communication', 'custom'];
 
 // 建议规模（Martin 10-26 确认）：50 人以下 3 组；50–100 人 3–4 组；100 人以上 5 组。
 // 危化品在第 3 步之后才知道，由专家审核时调整
@@ -146,9 +146,9 @@ export function orgChartOf(step: OrganizationStep): OrgChart {
 }
 
 // 应急预案编制小组：总指挥任组长，副总指挥和各组组长任成员，分工按常规写好
-const COMMANDER_DUTY = '制定编制计划，组织编制、评审、修订，签署并颁布实施';
-const DEPUTY_DUTY = '汇总统稿，负责后期管理和维护';
-const GROUP_LEADER_DUTIES: Record<GroupKind, string> = {
+export const COMMANDER_DUTY = '制定编制计划，组织编制、评审、修订，签署并颁布实施';
+export const DEPUTY_DUTY = '汇总统稿，负责后期管理和维护';
+export const GROUP_LEADER_DUTIES: Record<GroupKind, string> = {
   rescue: '重点编写风险评估与现场处置',
   evacuation: '重点编写警戒疏散与人员安置',
   medical: '重点编写医疗救护与伤员转送',

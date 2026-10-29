@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed:demo": "tsx src/scripts/seed-demo.ts",
-    "sample:word": "tsx src/scripts/build-sample-word.ts"
+    "sample:word": "tsx src/scripts/build-sample-word.ts",
+    "sample:plan": "tsx src/scripts/build-sample-plan.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.11",

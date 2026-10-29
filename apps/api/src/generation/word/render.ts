@@ -40,6 +40,7 @@ const TWIPS_PER_PX = 15;
 
 const HEADING_LEVELS = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4];
 const LIST_REFERENCE = 'gy-list';
+const BULLET_REFERENCE = 'gy-bullet';
 
 export async function renderWord(doc: DeliveryDocument): Promise<Buffer> {
   return Packer.toBuffer(buildWord(doc));
@@ -107,6 +108,18 @@ export function buildWord(doc: DeliveryDocument): Document {
               level: 0,
               format: LevelFormat.DECIMAL,
               text: '%1.',
+              alignment: AlignmentType.LEFT,
+              style: { paragraph: { indent: { left: 480, hanging: 480 } } },
+            },
+          ],
+        },
+        {
+          reference: BULLET_REFERENCE,
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.BULLET,
+              text: '•',
               alignment: AlignmentType.LEFT,
               style: { paragraph: { indent: { left: 480, hanging: 480 } } },
             },
@@ -202,8 +215,8 @@ class Writer {
           out.push(this.para(block.text, block.align ? { ...text, align: block.align, firstLineChars: 0 } : text));
           break;
         case 'list': {
-          const instance = ++this.lists;
-          for (const item of block.items) out.push(this.para(item, this.layout.list, { list: instance }));
+          const list = block.ordered === false ? { reference: BULLET_REFERENCE, instance: 0 } : { reference: LIST_REFERENCE, instance: ++this.lists };
+          for (const item of block.items) out.push(this.para(item, this.layout.list, { list }));
           break;
         }
           break;
@@ -298,13 +311,13 @@ class Writer {
     });
   }
 
-  private para(text: string | Run[], style: TextStyle, opts: { list?: number } = {}): Paragraph {
+  private para(text: string | Run[], style: TextStyle, opts: { list?: { reference: string; instance: number } } = {}): Paragraph {
     const runs = typeof text === 'string' ? [text] : text;
     return new Paragraph({
       alignment: style.align ? ALIGN[style.align] : undefined,
       spacing: { before: style.before, after: style.after, line: style.line },
       indent: style.firstLineChars ? { firstLineChars: style.firstLineChars * 100 } : undefined,
-      numbering: opts.list ? { reference: LIST_REFERENCE, level: 0, instance: opts.list } : undefined,
+      numbering: opts.list ? { reference: opts.list.reference, level: 0, instance: opts.list.instance } : undefined,
       pageBreakBefore: this.takeBreak(),
       children: runs.map(
         (r) =>

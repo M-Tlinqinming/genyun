@@ -15,8 +15,8 @@ export type TextRun = string | { text: string; bold?: boolean };
 
 export type Block =
   | { type: 'paragraph'; text: TextRun[]; align?: 'center' | 'right' }
-  /** 编号列表：Word 里按 1. 2. 3. 自动编号 */
-  | { type: 'list'; items: TextRun[][] }
+  /** 列表：默认按 1. 2. 3. 自动编号；ordered 为 false 时是圆点列表 */
+  | { type: 'list'; items: TextRun[][]; ordered?: boolean }
   | {
       type: 'table';
       /** 表题，如「表 2-1 应急物资清单」，放在表格上方 */
