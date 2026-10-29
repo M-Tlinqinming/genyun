@@ -13,6 +13,8 @@ import { TaskCreatePage } from './pages/customer/TaskCreatePage';
 import { TaskListPage } from './pages/customer/TaskListPage';
 import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
+import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
+import { TaskCenterPage } from './pages/expert/TaskCenterPage';
 
 const EYEBROW: Record<Workspace, string> = {
   customer: '客户工作台',
@@ -23,6 +25,12 @@ const EYEBROW: Record<Workspace, string> = {
 // 已做好的工作区首页
 const HOME: Partial<Record<Workspace, RouteObject['element']>> = {
   customer: <WorkbenchPage />,
+  expert: <TaskCenterPage />,
+};
+
+// 不在菜单里的页面（从列表点进去）
+const EXTRA: Partial<Record<Workspace, RouteObject[]>> = {
+  expert: [{ path: 'tasks/:taskId', element: <ExpertTaskPage /> }],
 };
 
 // 已做好的页面；菜单项下可以有子页面
@@ -46,16 +54,19 @@ function workspaceRoutes(workspace: Workspace): RouteObject {
   return {
     path: base,
     element: <WorkspaceLayout workspace={workspace} />,
-    children: items.map((item): RouteObject => {
-      if (item.path === base) {
-        return { index: true, element: HOME[workspace] ?? <PendingPage eyebrow={EYEBROW[workspace]} title={item.label} /> };
-      }
-      const path = item.path.slice(base.length + 1);
-      const pages = PAGES[item.path];
-      return pages
-        ? { path, children: pages }
-        : { path, element: <PendingPage eyebrow={EYEBROW[workspace]} title={item.label} /> };
-    }),
+    children: [
+      ...items.map((item): RouteObject => {
+        if (item.path === base) {
+          return { index: true, element: HOME[workspace] ?? <PendingPage eyebrow={EYEBROW[workspace]} title={item.label} /> };
+        }
+        const path = item.path.slice(base.length + 1);
+        const pages = PAGES[item.path];
+        return pages
+          ? { path, children: pages }
+          : { path, element: <PendingPage eyebrow={EYEBROW[workspace]} title={item.label} /> };
+      }),
+      ...(EXTRA[workspace] ?? []),
+    ],
   };
 }
 
