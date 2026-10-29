@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { checklistItemFiles, enterprises, files, memberships, organizations, tasks, users } from '../db/schema.ts';
+import { checklistItemFiles, enterprises, files, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -227,5 +227,33 @@ describe('生产设备与物料', () => {
 
     const ops = await as('ops@test.cn');
     await ops.put(`/api/tasks/${feiyuTask}/workup/production`).send({ version: body.version, kind: 'fireRating', rowId: 'b1', value: '3' }).expect(403);
+  });
+});
+describe('原件对照里的自填照片', () => {
+  it('客户拍给耕云看的压力管道照片出现在右栏', async () => {
+    const { db } = handle;
+    const [task] = await db.select({ orgId: tasks.orgId }).from(tasks).where(eq(tasks.id, feiyuTask));
+    const [photo] = await db
+      .insert(files)
+      .values({
+        orgId: task!.orgId,
+        kind: 'customer_material',
+        originalName: '压缩空气管道.jpg',
+        contentType: 'image/jpeg',
+        sizeBytes: 100,
+        sha256: 'y',
+        storageKey: `${task!.orgId}/${crypto.randomUUID()}`,
+        uploadedBy: uid['feiyu@test.cn']!,
+      })
+      .returning();
+    const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, feiyuTask));
+    const snapshot = structuredClone(row!.snapshot);
+    snapshot.profile.productionStep!.step.specialEquipment.pressurePipelines.photoFileIds = [photo!.id];
+    await db.update(taskWorkups).set({ snapshot }).where(eq(taskWorkups.taskId, feiyuTask));
+
+    const { body } = await (await as('zhou@test.cn')).get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    expect(body.originals).toContainEqual(
+      expect.objectContaining({ fileId: photo!.id, name: '压缩空气管道.jpg', itemKeys: ['special_equipment'] }),
+    );
   });
 });
