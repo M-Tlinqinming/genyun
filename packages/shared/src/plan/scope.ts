@@ -4,10 +4,20 @@
 import { SCOPE_KEYS, type Scope, type ScopeKey } from './catalog.ts';
 import type { PlanInput } from './input.ts';
 
+/**
+ * 建议从哪来，决定专家要不要逐个确认（M2 第 8 项）：
+ * answer 客户明确回答 · default 工贸企业默认打开 · none 资料里没有依据 —— 直接算已确定；
+ * cue 名称里有关键词 · photo 客户拍照待专家看 —— 要专家确认
+ */
+export type ScopeBasis = 'answer' | 'default' | 'none' | 'cue' | 'photo';
+
 export interface ScopeSuggestion {
   value: boolean;
   /** 给专家看的依据，业务语言 */
   reason: string;
+  basis: ScopeBasis;
+  /** 命中关键词的那一项（设备、物料、建筑或工序名称） */
+  hit?: string;
 }
 
 // 旧仓库 constants/e6-switches.ts 的关键词
@@ -45,6 +55,9 @@ export function hazardousMaterialsOf(input: Pick<PlanInput, 'production' | 'expe
 }
 
 const answered = (a: { answer: string } | undefined) => a?.answer === 'yes' || a?.answer === 'photo';
+// 客户答了「否」才算明确回答，没答的按没有依据
+const answerOf = (v: boolean | undefined): ScopeBasis => (v === false ? 'answer' : 'none');
+const asDefault = (s: ScopeSuggestion | undefined) => s && { ...s, basis: 'default' as const };
 
 export function suggestScope(input: Pick<PlanInput, 'production' | 'business' | 'expert'>): Record<ScopeKey, ScopeSuggestion> {
   const { production: p, business } = input;
@@ -58,44 +71,50 @@ export function suggestScope(input: Pick<PlanInput, 'production' | 'business' | 
 
   const byCue = (key: ScopeKey, pool = names): ScopeSuggestion | undefined => {
     const hit = findCue(pool, CUES[key] ?? []);
-    return hit ? { value: true, reason: `资料里有「${hit}」` } : undefined;
+    return hit ? { value: true, reason: `资料里有「${hit}」`, basis: 'cue', hit } : undefined;
   };
-  const off = (reason: string): ScopeSuggestion => ({ value: false, reason });
+  const off = (reason: string, basis: ScopeBasis = 'none'): ScopeSuggestion => ({ value: false, reason, basis });
+  const yes = (reason: string, basis: ScopeBasis = 'answer'): ScopeSuggestion => ({ value: true, reason, basis });
+  const usual = (what: string): ScopeSuggestion => yes(`工贸企业一般都有${what}，确认没有可关闭`, 'default');
 
   const rules: Record<ScopeKey, () => ScopeSuggestion> = {
-    internalVehicle: () => byCue('internalVehicle') ?? { value: true, reason: '工贸企业一般都有厂内车辆，确认没有可关闭' },
-    highWork: () => byCue('highWork') ?? { value: true, reason: '工贸企业一般都有高处作业，确认没有可关闭' },
-    fallRisk: () => byCue('fallRisk') ?? { value: true, reason: '工贸企业一般都有跌落风险，确认没有可关闭' },
+    // 默认打开的三项，名称里命中关键词也只是印证，不用专家再确认
+    internalVehicle: () => asDefault(byCue('internalVehicle')) ?? usual('厂内车辆'),
+    highWork: () => asDefault(byCue('highWork')) ?? usual('高处作业'),
+    fallRisk: () => asDefault(byCue('fallRisk')) ?? usual('跌落风险'),
     pressureVessel: () => {
-      if (special.pressureVessels?.answer === 'yes') return { value: true, reason: '客户回答有压力容器' };
-      if (special.boilers?.answer === 'yes') return { value: true, reason: '客户回答有锅炉' };
+      if (special.pressureVessels?.answer === 'yes') return yes('客户回答有压力容器');
+      if (special.boilers?.answer === 'yes') return yes('客户回答有锅炉');
       if (answered(special.pressureVessels) || answered(special.boilers)) {
-        return { value: true, reason: '客户拍了压力容器或锅炉铭牌，待专家看照片确认' };
+        return yes('客户拍了压力容器或锅炉铭牌，待专家看照片确认', 'photo');
       }
-      if (business.sites.includes('compressor_room')) return { value: true, reason: '客户勾选了空压机房' };
-      if (business.sites.includes('boiler_room')) return { value: true, reason: '客户勾选了锅炉房' };
+      if (business.sites.includes('compressor_room')) return yes('客户勾选了空压机房');
+      if (business.sites.includes('boiler_room')) return yes('客户勾选了锅炉房');
       const cylinder = p.materials.find((m) => m.cylinderSpec);
-      if (cylinder) return { value: true, reason: `物料「${cylinder.name}」是瓶装气体` };
+      if (cylinder) return yes(`物料「${cylinder.name}」是瓶装气体`);
       return byCue('pressureVessel', equipment) ?? off('资料里没有压力容器');
     },
     pressurePipeline: () => {
-      if (special.pressurePipelines?.answer === 'yes') return { value: true, reason: '客户回答有压力管道' };
-      if (special.pressurePipelines?.answer === 'photo') return { value: true, reason: '客户拍了压力管道照片，待专家确认' };
-      return byCue('pressurePipeline') ?? off('客户回答没有压力管道');
+      if (special.pressurePipelines?.answer === 'yes') return yes('客户回答有压力管道');
+      if (special.pressurePipelines?.answer === 'photo') return yes('客户拍了压力管道照片，待专家确认', 'photo');
+      return (
+        byCue('pressurePipeline') ??
+        (special.pressurePipelines?.answer === 'no' ? off('客户回答没有压力管道', 'answer') : off('资料里没有压力管道'))
+      );
     },
     elevator: () => byCue('elevator', [...equipment, ...buildings]) ?? off('资料里没有电梯'),
     craneHoist: () => byCue('craneHoist', equipment) ?? off('资料里没有起重机械'),
     dustProcess: () => byCue('dustProcess', [...equipment, ...steps]) ?? off('设备和工序里没有产尘工序'),
     meltingProcess: () => byCue('meltingProcess', [...equipment, ...steps]) ?? off('设备和工序里没有熔融工序'),
     waterHazard: () => {
-      if (p.firePool?.answer === 'yes') return { value: true, reason: '客户回答有消防水池' };
-      if (p.hasEmergencyPool) return { value: true, reason: '客户回答有应急水池' };
+      if (p.firePool?.answer === 'yes') return yes('客户回答有消防水池');
+      if (p.hasEmergencyPool) return yes('客户回答有应急水池');
       return byCue('waterHazard') ?? off('没有消防水池等水体');
     },
     chemicalsOver1t: () => {
       const total = p.materials.filter((m) => hazardous.includes(m.name)).reduce((s, m) => s + (m.annualUsageTons ?? 0), 0);
       return total > 1
-        ? { value: true, reason: `危险化学品年用量合计 ${total} 吨，超过 1 吨` }
+        ? { ...yes(`危险化学品年用量合计 ${total} 吨，超过 1 吨`, 'cue'), hit: hazardous.join('、') }
         : off(hazardous.length ? `危险化学品年用量合计 ${total} 吨，不到 1 吨` : '没有危险化学品');
     },
     // 专家判定不是危化品的物料不算可燃气体、可燃液体、惰性气体
@@ -103,20 +122,21 @@ export function suggestScope(input: Pick<PlanInput, 'production' | 'business' | 
     flammableLiquid: () => byCue('flammableLiquid', hazardous) ?? off('物料里没有可燃液体'),
     toxicChemicals: () => {
       const hit = findCue(hazardous, TOXIC_CUES);
-      return hit ? { value: true, reason: `危险化学品「${hit}」有毒性，请专家复核` } : off('危险化学品里没有典型有毒物质');
+      return hit ? { value: true, reason: `危险化学品「${hit}」有毒性，请专家复核`, basis: 'cue', hit } : off('危险化学品里没有典型有毒物质');
     },
     confinedSpace: () =>
       business.sites.includes('confined_space')
-        ? { value: true, reason: '客户勾选了有限空间' }
+        ? yes('客户勾选了有限空间')
         : (byCue('confinedSpace') ?? off('没有勾选有限空间')),
     highRise: () => {
       const tall = p.buildings.find((b) => (b.floors ?? 0) >= 7);
-      return tall ? { value: true, reason: `「${tall.name}」有 ${tall.floors} 层` } : off('没有 7 层以上的建筑');
+      return tall ? yes(`「${tall.name}」有 ${tall.floors} 层`) : off('没有 7 层以上的建筑');
     },
     collapseRisk: () => byCue('collapseRisk') ?? off('资料里没有坍塌风险'),
     inertGas: () => byCue('inertGas', hazardous) ?? off('物料里没有惰性气体'),
-    landlord: () => (business.leasesPremises ? { value: true, reason: '客户回答有出租厂房' } : off('客户回答没有出租厂房')),
-    roadTransport: () => (business.ownVehicles ? { value: true, reason: '客户回答有自备运输车辆' } : off('客户回答没有自备运输车辆')),
+    landlord: () => (business.leasesPremises ? yes('客户回答有出租厂房') : off('客户回答没有出租厂房', answerOf(business.leasesPremises))),
+    roadTransport: () =>
+      business.ownVehicles ? yes('客户回答有自备运输车辆') : off('客户回答没有自备运输车辆', answerOf(business.ownVehicles)),
   };
 
   const out = {} as Record<ScopeKey, ScopeSuggestion>;

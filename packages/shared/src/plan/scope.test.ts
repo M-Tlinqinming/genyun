@@ -29,9 +29,9 @@ describe('适用范围', () => {
 
   it('每个开关都给出业务语言的依据', () => {
     const s = suggestScope(feiyuPlanInput);
-    expect(s.pressureVessel).toEqual({ value: true, reason: '客户回答有压力容器' });
+    expect(s.pressureVessel).toMatchObject({ value: true, reason: '客户回答有压力容器' });
     expect(s.waterHazard.reason).toBe('客户回答有消防水池');
-    expect(s.chemicalsOver1t).toEqual({ value: false, reason: '危险化学品年用量合计 0.2 吨，不到 1 吨' });
+    expect(s.chemicalsOver1t).toMatchObject({ value: false, reason: '危险化学品年用量合计 0.2 吨，不到 1 吨' });
     for (const v of Object.values(s)) expect(v.reason).not.toMatch(/[A-Z]{2,}\d|E\d|SP\d|true|false/);
   });
 
@@ -47,7 +47,7 @@ describe('适用范围', () => {
       { business: { sites: ['workshop', 'confined_space'], leasesPremises: true, ownVehicles: true } },
     );
     const s = suggestScope(input);
-    expect(s.pressureVessel).toEqual({ value: true, reason: '客户回答有锅炉' });
+    expect(s.pressureVessel).toMatchObject({ value: true, reason: '客户回答有锅炉' });
     expect(ids(input).specialty).toEqual(expect.arrayContaining(['P4', 'P6']));
     expect(ids(input).site).toContain('SP16');
   });

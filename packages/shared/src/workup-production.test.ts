@@ -140,7 +140,7 @@ describe('换算与适用范围预览', () => {
 
   it('飞宇：酒精按建议算可燃液体；专家判定不是危化品后开关跟着关', () => {
     const before = scopeImpact(feiyuSnapshot, productionView(feiyuSnapshot, none), 'materials');
-    expect(before.find((s) => s.key === 'flammableLiquid')?.suggestion).toEqual({ value: true, reason: '资料里有「酒精」' });
+    expect(before.find((s) => s.key === 'flammableLiquid')?.suggestion).toMatchObject({ value: true, reason: '资料里有「酒精」' });
     expect(before.find((s) => s.key === 'chemicalsOver1t')?.suggestion.value).toBe(false);
 
     const view = productionView(feiyuSnapshot, withWork({ hazardous: { m5: judged(false) } }));
@@ -151,7 +151,7 @@ describe('换算与适用范围预览', () => {
     const pipeline = (data: Parameters<typeof productionView>[1]) =>
       scopeImpact(feiyuSnapshot, productionView(feiyuSnapshot, data), 'special').find((s) => s.key === 'pressurePipeline')!.suggestion;
     expect(pipeline(none).value).toBe(true);
-    expect(pipeline(withWork({ special: { pressurePipelines: judged({ answer: 'no', items: [] }) } }))).toEqual({
+    expect(pipeline(withWork({ special: { pressurePipelines: judged({ answer: 'no', items: [] }) } }))).toMatchObject({
       value: false,
       reason: '客户回答没有压力管道',
     });

@@ -8,6 +8,7 @@ import {
   productionSaveSchema,
   riskSaveError,
   riskSaveSchema,
+  scopeSaveSchema,
   SPECIAL_CATEGORY_KEYS,
   type FactOverride,
   type WorkupData,
@@ -205,6 +206,29 @@ export class WorkupService {
     return this.view(task.id, saved);
   }
 
+  // 适用范围（14 页 E18-00D）：一次确认或改一个开关，带版本号，value 为 null 撤回到系统建议
+  async saveScope(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    const parsed = scopeSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+    const switches = { ...row.data.scope?.switches };
+    if (save.value === null) delete switches[save.key];
+    else switches[save.key] = { by: user.id, byName: user.name, at: new Date().toISOString(), value: save.value };
+
+    const [saved] = await this.db
+      .update(taskWorkups)
+      .set({ data: { ...row.data, scope: { switches } }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
+      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
+      .returning();
+    if (!saved) throw this.stale(save.version + 1);
+    return this.view(task.id, saved);
+  }
+
   // 电话问清后把回答回填到企业事实，来源记为「客户确认 · 电话确认」。和专家正在编辑的页面同时保存时重读再写
   async applyPhoneAnswers(
     user: SessionUser,
@@ -376,5 +400,10 @@ export class WorkupController {
   @Put('risks')
   saveRisk(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.saveRisk(user, id, body);
+  }
+
+  @Put('scope')
+  saveScope(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveScope(user, id, body);
   }
 }

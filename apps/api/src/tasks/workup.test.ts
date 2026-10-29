@@ -266,6 +266,36 @@ describe('危险源辨识', () => {
     await ops.put(`/api/tasks/${feiyuTask}/workup/risks`).send({ version: body.version, rowId: 'SP01', value: fire }).expect(403);
   });
 });
+describe('适用范围', () => {
+  it('确认开关、改已确定的开关；撤回回到系统建议；其他整理内容不受影响', async () => {
+    const zhou = await as('zhou@test.cn');
+    let { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    const put = async (payload: object) => {
+      ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/scope`).send({ version: body.version, ...payload }).expect(200));
+    };
+    await put({ key: 'dustProcess', value: false });
+    await put({ key: 'landlord', value: true });
+    expect(body.data.scope.switches.dustProcess).toMatchObject({ value: false, byName: '周工' });
+    expect(Object.keys(body.data.scope.switches).sort()).toEqual(['dustProcess', 'landlord']);
+
+    await put({ key: 'landlord', value: null });
+    expect(Object.keys(body.data.scope.switches)).toEqual(['dustProcess']);
+    ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, key: 'hospital', value: '仲恺人民医院' }).expect(200));
+    expect(body.data.scope.switches.dustProcess.value).toBe(false);
+    await put({ key: 'dustProcess', value: null });
+  });
+
+  it('不存在的开关、过期版本都拒绝；运营不能改', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`);
+    const url = `/api/tasks/${feiyuTask}/workup/scope`;
+    expect((await zhou.put(url).send({ version: body.version, key: 'P2', value: true }).expect(400)).body.message).toBe('没有这个开关');
+    await zhou.put(url).send({ version: body.version - 1, key: 'dustProcess', value: true }).expect(409);
+    const ops = await as('ops@test.cn');
+    await ops.put(url).send({ version: body.version, key: 'dustProcess', value: true }).expect(403);
+  });
+});
+
 describe('原件对照里的自填照片', () => {
   it('客户拍给耕云看的压力管道照片出现在右栏', async () => {
     const { db } = handle;
