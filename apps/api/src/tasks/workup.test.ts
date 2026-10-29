@@ -229,6 +229,43 @@ describe('生产设备与物料', () => {
     await ops.put(`/api/tasks/${feiyuTask}/workup/production`).send({ version: body.version, kind: 'fireRating', rowId: 'b1', value: '3' }).expect(403);
   });
 });
+
+describe('危险源辨识', () => {
+  const fire = { factor: '火灾', workplace: '1 号生产厂房', l: 1, e: 6, c: 7 };
+
+  it('改候选的取值、新增一行；撤回回到系统推荐；其他整理内容不受影响', async () => {
+    const zhou = await as('zhou@test.cn');
+    let { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    const put = async (payload: object) => {
+      ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/risks`).send({ version: body.version, ...payload }).expect(200));
+    };
+    await put({ rowId: 'SP01', value: { ...fire, c: 40, note: '仓库紧邻车间' } });
+    await put({ rowId: 'xr1', value: { factor: '其他爆炸', workplace: '气瓶间', l: 1, e: 3, c: 40 } });
+    expect(body.data.risks.rows.SP01).toMatchObject({ value: { c: 40, note: '仓库紧邻车间' }, byName: '周工' });
+    expect(Object.keys(body.data.risks.rows).sort()).toEqual(['SP01', 'xr1']);
+    expect(body.data.production.fireRatings.b1.value).toBe('2');
+
+    await put({ rowId: 'SP01', value: null });
+    await put({ rowId: 'xr1', value: null });
+    expect(body.data.risks.rows).toEqual({});
+    // 再存企业事实，危险源的修改不会被覆盖
+    await put({ rowId: 'SP02', value: { factor: '触电', workplace: '配电房', l: 1, e: 6, c: 7, excluded: true } });
+    ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, key: 'hospital', value: '仲恺人民医院' }).expect(200));
+    expect(body.data.risks.rows.SP02.value.excluded).toBe(true);
+  });
+
+  it('取值不在取值表、不存在的候选、过期版本都拒绝；运营不能改', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`);
+    const put = (payload: object) => zhou.put(`/api/tasks/${feiyuTask}/workup/risks`).send({ version: body.version, ...payload });
+    expect((await put({ rowId: 'SP01', value: { ...fire, c: 20 } }).expect(400)).body.message).toBe('C 请从取值表里选');
+    expect((await put({ rowId: 'SP08', value: fire }).expect(400)).body.message).toBe('没有这一项危险源');
+    await zhou.put(`/api/tasks/${feiyuTask}/workup/risks`).send({ version: body.version - 1, rowId: 'SP01', value: fire }).expect(409);
+
+    const ops = await as('ops@test.cn');
+    await ops.put(`/api/tasks/${feiyuTask}/workup/risks`).send({ version: body.version, rowId: 'SP01', value: fire }).expect(403);
+  });
+});
 describe('原件对照里的自填照片', () => {
   it('客户拍给耕云看的压力管道照片出现在右栏', async () => {
     const { db } = handle;

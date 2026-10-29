@@ -6,6 +6,8 @@ import {
   isAddedRow,
   productionSaveError,
   productionSaveSchema,
+  riskSaveError,
+  riskSaveSchema,
   SPECIAL_CATEGORY_KEYS,
   type FactOverride,
   type WorkupData,
@@ -168,6 +170,35 @@ export class WorkupService {
     const [saved] = await this.db
       .update(taskWorkups)
       .set({ data: { ...row.data, production }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
+      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
+      .returning();
+    if (!saved) throw this.stale(save.version + 1);
+    return this.view(task.id, saved);
+  }
+
+  // 危险源辨识（14 页 E18-00C）：一次保存一行（改过的候选或新增行），带版本号，value 为 null 撤回到系统推荐 / 删掉新增行
+  async saveRisk(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    const parsed = riskSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+    const error = riskSaveError(row.snapshot, row.data, save);
+    if (error) throw new BadRequestException(error);
+    if (save.fileId && !(await this.originals(task.id, row.snapshot)).some((o) => o.fileId === save.fileId)) {
+      throw new BadRequestException('对照的原件不在这个任务里');
+    }
+
+    const rows = { ...row.data.risks?.rows };
+    if (save.value === null) delete rows[save.rowId];
+    else rows[save.rowId] = { by: user.id, byName: user.name, at: new Date().toISOString(), ...(save.fileId ? { fileId: save.fileId } : {}), value: save.value };
+
+    const [saved] = await this.db
+      .update(taskWorkups)
+      .set({ data: { ...row.data, risks: { rows } }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
       .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
       .returning();
     if (!saved) throw this.stale(save.version + 1);
@@ -340,5 +371,10 @@ export class WorkupController {
   @Put('production')
   saveProduction(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.saveProduction(user, id, body);
+  }
+
+  @Put('risks')
+  saveRisk(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveRisk(user, id, body);
   }
 }
