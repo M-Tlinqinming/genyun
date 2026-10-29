@@ -7,7 +7,7 @@ import type { BasicStepStored } from './basic-step.ts';
 import { INDUSTRY_NAMES } from './industries.ts';
 import { compilationTeamOf, dutyPhoneOfStep, type OrganizationStep } from './organization-step.ts';
 import { msdsHintOf, SPECIAL_CATEGORY_KEYS, type ProductionStep, type SpecialCategory } from './production-step.ts';
-import { buildingsReady, DRAWING_KEYS, DRAWINGS, msdsNeedOf, neighborsReady, type ResourcesStep } from './resources-step.ts';
+import { buildingsReady, DRAWING_KEYS, DRAWINGS, firstAidKitStatus, msdsNeedOf, neighborsReady, type ResourcesStep } from './resources-step.ts';
 
 export type ReviewStepNo = 1 | 2 | 3 | 4;
 
@@ -142,7 +142,7 @@ function resourcesSummary(step: ResourcesStep | undefined, materials: Production
   if (supplies.length > 0) facts.push(`${supplies.length} 项应急物资`);
   const kit = step.firstAidKit;
   if (kit.answer === 'no') facts.push('没有急救药箱');
-  else if (kit.answer === 'yes') facts.push(kit.mode === 'standard' ? '常规药箱' : kit.mode === 'photo' ? '药箱已拍照' : '药箱已填写');
+  else if (firstAidKitStatus(kit) === 'provided') facts.push(kit.mode === 'standard' ? '常规药箱' : '药箱已填写');
   const buildings = step.buildings.filter((b) => filled(b.name));
   if (buildings.length > 0) facts.push(`${buildings.length} 栋建筑`);
   const drawings = DRAWING_KEYS.filter((k) => step.drawings[k].length > 0).map((k) => DRAWINGS[k].short);
@@ -151,6 +151,7 @@ function resourcesSummary(step: ResourcesStep | undefined, materials: Production
   const later: string[] = [];
   if (supplies.length > 0 && step.custodianId === undefined) later.push('应急物资保管人');
   if (kit.answer === undefined) later.push('急救药箱');
+  else if (firstAidKitStatus(kit) === null) later.push('急救药箱药品清单');
   if (step.firePool.answer === undefined) later.push('消防水池');
   else if (step.firePool.answer === 'yes' && step.firePool.volumeM3 === undefined) later.push('消防水池容积');
   if (!buildingsReady(step)) later.push('厂区建筑名称与面积');
@@ -181,9 +182,6 @@ function expertItems(production: ProductionStep | undefined, resources: Resource
   }
   if (resources) {
     if (resources.buildings.some((b) => filled(b.name) && b.fireRating === 'expert')) out.push('各栋建筑耐火等级');
-    if (resources.firstAidKit.answer === 'yes' && resources.firstAidKit.mode === 'photo') {
-      out.push('急救药箱药品清单（按照片整理）');
-    }
   }
   return out;
 }

@@ -85,12 +85,13 @@ describe('第 4 步 应急资源与图纸', () => {
     expect(suppliesStartReady({ ...feiyu, supplies: [{ ...s, quantity: 50 }] })).toBe(true);
   });
 
-  it('急救药箱：没有 / 常规配置 / 拍照交给专家 / 逐项填', () => {
+  it('急救药箱：没有 / 常规配置 / 逐项填；只传照片不算已提供', () => {
     const kit = (k: Partial<ResourcesStep['firstAidKit']>) => ({ ...feiyu.firstAidKit, ...k });
     expect(firstAidKitStatus(kit({ answer: 'no' }))).toBe('none');
     expect(firstAidKitStatus(kit({ answer: undefined }))).toBeNull();
-    expect(firstAidKitStatus(kit({ mode: 'photo', photoFileIds: [] }))).toBeNull();
-    expect(firstAidKitStatus(kit({ mode: 'photo', photoFileIds: [FILE] }))).toBe('photo_for_expert');
+    expect(firstAidKitStatus(kit({ mode: 'manual', items: [], photoFileIds: [FILE] }))).toBeNull();
+    expect(firstAidKitStatus(kit({ photoFileIds: [FILE] }))).toBe('provided');
+    expect(resourcesStepSchema.safeParse({ firstAidKit: { answer: 'yes', mode: 'photo' } }).success).toBe(false);
     expect(firstAidKitStatus(kit({ mode: 'manual', items: [{ id: 'k', name: ' ' }] }))).toBeNull();
     expect(firstAidKitStatus(defaultResourcesStep([]).firstAidKit)).toBeNull();
     expect(firstAidKitStatus({ ...defaultResourcesStep([]).firstAidKit, answer: 'yes' })).toBe('provided');

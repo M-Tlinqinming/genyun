@@ -116,7 +116,7 @@ describe('企业自填第 5 步 · 核对', () => {
     expect(review.expert[0]).toBe('油漆、稀释剂、固化剂等 4 种是否属于危化品（按包装标签）');
   });
 
-  it('上传花名册的不追问组长；拍照的特种设备、药箱交给专家', () => {
+  it('上传花名册的不追问组长；拍照的特种设备交给专家，只传药箱照片的待补清单', () => {
     const review = reviewOf({
       ...feiyu,
       organization: { ...organization, mode: 'roster', groups: organization.groups.map((g) => ({ ...g, leader: undefined })) },
@@ -124,11 +124,12 @@ describe('企业自填第 5 步 · 核对', () => {
         ...production,
         specialEquipment: { ...production.specialEquipment, pressureVessels: { ...none, answer: 'no' }, boilers: { ...none, answer: 'photo' } },
       },
-      resources: { ...resources, firstAidKit: { ...resources.firstAidKit, mode: 'photo', photoFileIds: [FILE] } },
+      resources: { ...resources, firstAidKit: { ...resources.firstAidKit, mode: 'manual', items: [], photoFileIds: [FILE] } },
     });
     expect(review.steps[1]!.facts).toEqual(['已上传花名册，由耕云整理']);
     expect(review.steps[1]!.later).toEqual([]);
-    expect(review.expert).toEqual(['锅炉是否属于特种设备（按照片）', '急救药箱药品清单（按照片整理）']);
+    expect(review.expert).toEqual(['锅炉是否属于特种设备（按照片）']);
+    expect(review.steps[3]!.later).toContain('急救药箱药品清单');
   });
 
   it('还没填过的步骤只列必需资料，不报错', () => {

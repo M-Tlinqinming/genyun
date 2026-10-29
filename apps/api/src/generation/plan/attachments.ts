@@ -240,7 +240,6 @@ function suppliesList(ctx: PlanContext): string {
     '- **动态更新**：工艺变更、原辅材料调整、新增风险源时，由安全管理员组织重新评估物资配置充足性，缺口在 30 日内补齐，并同步更新本清单与现场标识。',
     ...(supplyRows.length ? ['**一、应急器材与防护装备**', ...header, ...supplyRows] : []),
     ...(aidRows.length ? ['**二、急救药品与急救器材**', ...header, ...aidRows] : []),
-    ...(kit?.answer === 'photo' ? ['急救药箱清单由注册安全工程师按企业提供的照片整理。'] : []),
   ].join('\n');
 }
 

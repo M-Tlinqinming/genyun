@@ -23,7 +23,7 @@ describe('自填文件进企业资料库', () => {
           fireAcceptanceFileIds: [id(7)],
           msds: { m1: { fileIds: [id(8)] } },
           drawings: { site_plan: [id(9)], evacuation_plan: [id(10)] },
-          firstAidKit: { answer: 'yes', mode: 'photo', photoFileIds: [id(91)] },
+          firstAidKit: { answer: 'yes', mode: 'manual', photoFileIds: [id(91)] },
         }),
       },
     });

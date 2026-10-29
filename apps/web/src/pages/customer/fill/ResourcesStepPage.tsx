@@ -494,7 +494,6 @@ const modeChip = (on: boolean): CSSProperties => ({
 
 const FIRST_AID_MODE_LABELS: Record<FirstAidMode, string> = {
   standard: '按常规配置',
-  photo: '拍药箱照片',
   manual: '自己逐项填',
 };
 
@@ -632,17 +631,18 @@ function FirstAidPoolCard({
                 </div>
               </div>
             )}
-            {kit.mode === 'photo' && (
-              <PhotoRow
-                label="拍药箱打开后的照片，耕云的注册安全工程师整理药品清单"
-                button="拍照上传"
-                fileIds={kit.photoFileIds}
-                fileNames={fileNames}
-                uploading={uploading}
-                onFile={onPhoto}
-                onRemove={(fileId) => setKit({ photoFileIds: kit.photoFileIds.filter((f) => f !== fileId) })}
-              />
+            {kit.photoFileIds.length > 0 && !kit.items.some((i) => i.name.trim() !== '') && (
+              <span style={{ ...hint, color: gy.warning }}>只传了药箱照片还不够，请对照照片填写药品名称和数量</span>
             )}
+            <PhotoRow
+              label="药箱照片（选填）：拍药箱打开后的样子，方便专家核对；药品清单仍需您填写"
+              button="拍照上传"
+              fileIds={kit.photoFileIds}
+              fileNames={fileNames}
+              uploading={uploading}
+              onFile={onPhoto}
+              onRemove={(fileId) => setKit({ photoFileIds: kit.photoFileIds.filter((f) => f !== fileId) })}
+            />
           </>
         )}
       </div>
