@@ -17,6 +17,7 @@ import {
   type PlanInput,
   type Svg,
 } from '@genyun/shared';
+import type { FilledSlots } from '../ai/slots.ts';
 import { svgToPng } from '../word/png.ts';
 import { DRAWINGS, attachments, type DrawingKey } from './attachments.ts';
 import { comprehensiveMarkdown } from './comprehensive.ts';
@@ -103,7 +104,8 @@ function compilationTeam(ctx: PlanContext): string[][] {
   return rows;
 }
 
-export function buildPlan(input: PlanInput, drawings: PlanDrawings = {}): DeliveryDocument {
+/** filled 是 AI 起草时已校验的知识块空位（见 ai/slots.ts），没有就全部用系统推出的内容 */
+export function buildPlan(input: PlanInput, drawings: PlanDrawings = {}, filled: FilledSlots = {}): DeliveryDocument {
   const ctx = planContext(input);
   const { company, selection } = ctx;
   const year = input.issuedOn.slice(0, 4);
@@ -145,7 +147,7 @@ export function buildPlan(input: PlanInput, drawings: PlanDrawings = {}): Delive
 
   // 二、… 专项应急预案：模板一级标题是预案名，二级是五要素（1. 适用范围…），再往下是加粗段落
   for (const t of selection.specialty) {
-    const parsed = parseMarkdown(humanize(fillPlaceholders(templateBody(t, ctx.signals), values)), figures);
+    const parsed = parseMarkdown(humanize(fillPlaceholders(templateBody(t, ctx.signals, filled[t.id]), values)), figures);
     const root = parsed.sections[0];
     sections.push({
       id: `plan.specialty.${t.id}`,
@@ -157,7 +159,7 @@ export function buildPlan(input: PlanInput, drawings: PlanDrawings = {}): Delive
 
   // 现场处置方案：一件，每个方案一章（1. 火灾事故现场处置方案），往下 1.1、1.1.1
   const sites = selection.site.map((t) => {
-    const parsed = parseMarkdown(humanize(fillPlaceholders(templateBody(t, ctx.signals), values)), figures);
+    const parsed = parseMarkdown(humanize(fillPlaceholders(templateBody(t, ctx.signals, filled[t.id]), values)), figures);
     const root = parsed.sections[0];
     return { title: t.title, blocks: [...parsed.blocks, ...(root?.blocks ?? [])], children: root?.children ?? [], id: t.id };
   });

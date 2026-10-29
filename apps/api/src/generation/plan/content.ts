@@ -11,6 +11,8 @@ interface ContentFile {
   body: string;
   /** 知识块的命门句 */
   anchors: string[];
+  /** 知识块空位的填写要求（给 AI 看） */
+  contracts: Record<string, string>;
 }
 
 const cache = new Map<string, ContentFile>();
@@ -28,6 +30,9 @@ function load(path: string): ContentFile | undefined {
   const file = {
     body: m ? raw.slice(m[0].length) : raw,
     anchors: [...front.matchAll(/^\s*anchor:\s*"(.*)"\s*$/gm)].map((a) => a[1]!),
+    contracts: Object.fromEntries(
+      [...front.matchAll(/^\s*-\s*name:\s*([a-z-]+)\s*\n\s*contract:\s*"(.*)"\s*$/gm)].map((c) => [c[1]!, c[2]!]),
+    ),
   };
   cache.set(path, file);
   return file;
@@ -35,32 +40,36 @@ function load(path: string): ContentFile | undefined {
 
 const SLOT = /\{\{slot:([a-z-]+)\}\}/g;
 
-function slotValue(name: string, s: PlanSignals): string {
+/** 空位可用的内容：全部由设备物料推出，AI 只能在这里面挑选、排序 */
+export function slotWhitelist(name: string, s: PlanSignals): string[] {
   switch (name) {
     case 'melt-types':
-      return s.meltTypes.join('、');
+      return s.meltTypes;
     case 'furnace-equip':
-      return s.furnaceEquip.join('、');
+      return s.furnaceEquip;
     case 'cordon-dist':
-      return s.cordonDist;
+      return [s.cordonDist].filter(Boolean);
     case 'flammable-liquids':
-      return s.flammableLiquids.join('、');
+      return s.flammableLiquids;
     case 'liquid-storage':
-      return s.liquidStorage;
+      return [s.liquidStorage].filter(Boolean);
     case 'hazard-positions':
-      return s.hazardPositions;
+      return [s.hazardPositions].filter(Boolean);
     case 'metal-dust-types':
-      return s.metalDustTypes.join('、');
+      return s.metalDustTypes;
     case 'dust-workstations':
-      return s.dustWorkstations.join('、');
+      return s.dustWorkstations;
     case 'danger-machines':
-      return s.dangerMachines.join('、');
+      return s.dangerMachines;
     case 'pressure-vessels':
-      return s.pressureVessels.join('、');
+      return s.pressureVessels;
     default:
       throw new Error(`知识块里有未知的空位：${name}`);
   }
 }
+
+/** 不用 AI 时空位填的内容 */
+export const slotValue = (name: string, s: PlanSignals) => slotWhitelist(name, s).join('、');
 
 /** 这一份用知识块还是通用模板 */
 function knowledgeBlock(t: PlanTemplate, s: PlanSignals): ContentFile | undefined {
@@ -72,11 +81,22 @@ function knowledgeBlock(t: PlanTemplate, s: PlanSignals): ContentFile | undefine
   return slots.every((name) => slotValue(name, s) !== '') ? block : undefined;
 }
 
-/** 模板正文（Markdown），空位已填、占位符未替换 */
-export function templateBody(t: PlanTemplate, signals: PlanSignals): string {
+/** 用知识块时要填的空位及其填写要求（AI 起草用） */
+export function templateSlots(t: PlanTemplate, signals: PlanSignals): { name: string; contract: string; anchors: string[] }[] {
+  const block = knowledgeBlock(t, signals);
+  if (!block) return [];
+  const names = [...new Set([...block.body.matchAll(SLOT)].map((m) => m[1]!))];
+  return names.map((name) => ({ name, contract: block.contracts[name] ?? '', anchors: block.anchors }));
+}
+
+/**
+ * 模板正文（Markdown），空位已填、占位符未替换。
+ * filled 是 AI 起草时已校验过的空位内容，没有的空位用设备物料推出的内容。
+ */
+export function templateBody(t: PlanTemplate, signals: PlanSignals, filled: Record<string, string> = {}): string {
   const block = knowledgeBlock(t, signals);
   if (block) {
-    const body = block.body.replace(SLOT, (_, name: string) => slotValue(name, signals));
+    const body = block.body.replace(SLOT, (_, name: string) => filled[name] ?? slotValue(name, signals));
     for (const anchor of block.anchors) {
       // 个别命门写成正则（同一句在模板里有两种语序），其余按原文比对
       const found = anchor.includes('(?:') ? new RegExp(anchor).test(body) : body.includes(anchor);
