@@ -1,4 +1,5 @@
-import type { Block, DeliveryDocument, DocSection } from '@genyun/shared';
+import { planHazardsOf, riskView, type Block, type DeliveryDocument, type DocSection } from '@genyun/shared';
+import { feiyuSnapshot } from '@genyun/shared/fixtures/feiyu-profile';
 import { feiyuPlanInput } from '@genyun/shared/fixtures/feiyu-plan';
 import JSZip from 'jszip';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -25,6 +26,7 @@ function allText(doc: DeliveryDocument): string {
   return out.join('\n');
 }
 
+const stamp = { by: 'u-zhou', byName: '周工', at: '2026-10-29T08:00:00.000Z' };
 const titles = (doc: DeliveryDocument) => doc.sections.map((s) => [s.title, ...s.sections.map((c) => c.title)]);
 
 describe('风险评估报告', () => {
@@ -49,6 +51,25 @@ describe('风险评估报告', () => {
     const table = doc.sections[1]!.sections[1]!.blocks.find((b) => b.type === 'table' && b.caption?.includes('2.2-5'));
     expect(table?.type === 'table' && table.rows).toHaveLength(22);
     expect(text).toMatch(/当前风险值较高的危险有害因素为：.+（D=\d+/);
+  });
+
+  it('专家在危险源辨识里的取值进评估表：改过的值、不适用的去掉、新增的加上', () => {
+    const view = riskView(feiyuSnapshot, {
+      risks: {
+        rows: {
+          SP01: { ...stamp, value: { factor: '火灾', workplace: '1 号生产厂房', l: 1, e: 6, c: 40 } },
+          SP02: { ...stamp, value: { factor: '触电', workplace: '配电房', l: 1, e: 6, c: 7, excluded: true } },
+          xr1: { ...stamp, value: { factor: '其他爆炸', workplace: '气瓶间', l: 1, e: 3, c: 40 } },
+        },
+      },
+    });
+    const report = buildRiskReport({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, hazards: planHazardsOf(view) } });
+    const table = report.sections[1]!.sections[1]!.blocks.find((b) => b.type === 'table' && b.caption?.includes('2.2-5'));
+    const rows = table?.type === 'table' ? table.rows.map((r) => r.join(' | ')) : [];
+    expect(rows).toHaveLength(view.rows.length - 1);
+    expect(rows).toContain('1 | 火灾 | 1 | 6 | 40 | 240 | 高度危险');
+    expect(rows.some((r) => r.includes('触电'))).toBe(false);
+    expect(rows.at(-1)).toMatch(/其他爆炸 \| 1 \| 3 \| 40 \| 120 \| 显著危险$/);
   });
 
   it('飞宇资料齐全，没有待补充、内部编号', () => {

@@ -1,4 +1,4 @@
-import type { FactSave, ProductionSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
+import type { FactSave, ProductionSave, RiskSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -47,6 +47,16 @@ export function useSaveProduction(taskId: string) {
   return useMutation({
     mutationFn: (input: ProductionSave) =>
       request<Workup>(`/tasks/${taskId}/workup/production`, { method: 'PUT', body: JSON.stringify(input) }),
+    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+  });
+}
+
+// 危险源辨识：一次保存一行（改过的候选或新增行）
+export function useSaveRisk(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RiskSave) =>
+      request<Workup>(`/tasks/${taskId}/workup/risks`, { method: 'PUT', body: JSON.stringify(input) }),
     onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
   });
 }
