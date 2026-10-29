@@ -2,7 +2,7 @@
 // 安全要点句、模板其余正文、表格数据都由系统确定性生成，AI 碰不到。
 // AI 写出的内容只能由系统从设备物料推出的候选组成（可挑选、排序），多出任何别的字就不用，回到系统推出的内容；
 // 服务出错、没配置时同样回到系统推出的内容，所以有没有 AI 都能出完整的稿子。
-// 正式服务用阿里云百炼（TECH-PLAN 4.1）：AI_DRAFTER=bailian + DASHSCOPE_API_KEY，模型由 AI_MODEL 选（默认 qwen-plus）。
+// 正式服务用阿里云百炼（TECH-PLAN 4.1）：AI_DRAFTER=bailian + DASHSCOPE_API_KEY，模型由 AI_MODEL 选（默认 qwen3.8-flash，Martin 10-29 定），非北京地域用 AI_BASE_URL。
 
 import { SLOT_SYSTEM, slotUserPrompt } from './prompts.ts';
 
@@ -35,7 +35,9 @@ export class FakeSlotDrafter implements SlotDrafter {
   }
 }
 
-const BAILIAN_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+// 华北2（北京）的接入地址；密钥按地域开，不能跨地域混用，其他地域用 AI_BASE_URL 指定
+export const BAILIAN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+export const DEFAULT_MODEL = 'qwen3.8-flash';
 
 /**
  * 阿里云百炼（OpenAI 兼容接口）。密钥只从服务器配置读取，不进代码与日志。
@@ -45,14 +47,15 @@ export class BailianDrafter implements SlotDrafter {
   readonly name: string;
   constructor(
     private readonly apiKey: string,
-    readonly model = 'qwen-plus',
+    readonly model = DEFAULT_MODEL,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly baseUrl = BAILIAN_BASE_URL,
   ) {
     this.name = `bailian:${model}`;
   }
 
   async fill(req: SlotRequest): Promise<string> {
-    const res = await this.fetchImpl(BAILIAN_URL, {
+    const res = await this.fetchImpl(`${this.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -65,7 +68,11 @@ export class BailianDrafter implements SlotDrafter {
       }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!res.ok) throw new Error(`百炼返回 ${res.status}`);
+    if (!res.ok) {
+      // 百炼的错误说明（如模型不存在、额度不足）带上便于排查；不含密钥
+      const detail = await res.text().catch(() => '');
+      throw new Error(`百炼返回 ${res.status} ${detail.slice(0, 200)}`.trim());
+    }
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const text = data.choices?.[0]?.message?.content?.trim();
     if (!text) throw new Error('百炼没有返回内容');
@@ -84,7 +91,7 @@ export function defaultDrafter(): SlotDrafter | null {
   if (kind === 'bailian') {
     const key = process.env.DASHSCOPE_API_KEY?.trim();
     if (!key) throw new Error('AI_DRAFTER=bailian 需要配置 DASHSCOPE_API_KEY');
-    return new BailianDrafter(key, process.env.AI_MODEL?.trim() || 'qwen-plus');
+    return new BailianDrafter(key, process.env.AI_MODEL?.trim() || DEFAULT_MODEL, fetch, process.env.AI_BASE_URL?.trim() || BAILIAN_BASE_URL);
   }
   throw new Error(`未知的 AI 起草服务 AI_DRAFTER=${kind}`);
 }
