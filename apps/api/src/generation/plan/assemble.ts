@@ -15,13 +15,14 @@ import {
   type DocSection,
   type FrontPage,
   type PlanInput,
+  type PlanTemplate,
   type Svg,
 } from '@genyun/shared';
 import type { FilledSlots } from '../ai/slots.ts';
 import { svgToPng } from '../word/png.ts';
 import { DRAWINGS, attachments, type DrawingKey } from './attachments.ts';
 import { comprehensiveMarkdown } from './comprehensive.ts';
-import { templateBody } from './content.ts';
+import { templateBody, usesKnowledgeBlock } from './content.ts';
 import { humanize } from './humanize.ts';
 import { MISSING, fill, planContext, type PlanContext } from './context.ts';
 import { parseMarkdown, toSections, type Figure } from './markdown.ts';
@@ -78,6 +79,32 @@ function placeholders(ctx: PlanContext): Record<string, string> {
   };
 }
 
+/** 模板里按企业情况取舍的段落：单独一行 [[if:elevator|craneHoist]] … [[endif]]，任一为真保留，!key 取反 */
+export function applyConditions(md: string, flags: Record<string, boolean>): string {
+  const out: string[] = [];
+  const stack: boolean[] = [];
+  for (const line of md.split('\n')) {
+    const open = /^\s*\[\[if:([!\w|]+)\]\]\s*$/.exec(line);
+    if (open) {
+      const keep = open[1]!.split('|').some((k) => {
+        const key = k.replace(/^!/, '');
+        if (!(key in flags)) throw new Error(`模板里有未知的条件：${k}`);
+        return k.startsWith('!') ? !flags[key] : flags[key];
+      });
+      stack.push(keep);
+      continue;
+    }
+    if (/^\s*\[\[endif\]\]\s*$/.test(line)) {
+      if (!stack.length) throw new Error('模板条件段多了 [[endif]]');
+      stack.pop();
+      continue;
+    }
+    if (stack.every(Boolean)) out.push(line);
+  }
+  if (stack.length) throw new Error('模板条件段缺少 [[endif]]');
+  return out.join('\n');
+}
+
 function fillPlaceholders(md: string, values: Record<string, string>): string {
   return md.replace(/\{\{([A-Z0-9_]+)\}\}/g, (all, key: string) => {
     const v = values[key];
@@ -104,8 +131,45 @@ function compilationTeam(ctx: PlanContext): string[][] {
   return rows;
 }
 
-/** filled 是 AI 起草时已校验的知识块空位（见 ai/slots.ts），没有就全部用系统推出的内容 */
-export function buildPlan(input: PlanInput, drawings: PlanDrawings = {}, filled: FilledSlots = {}): DeliveryDocument {
+/** 模板填好企业数据、按企业情况取舍、去掉内部编号后的正文 */
+function resolvedTemplate(ctx: PlanContext, t: PlanTemplate, filled: FilledSlots): string {
+  const flags: Record<string, boolean> = { ...ctx.scope, hazardousChemicals: ctx.hazardous.length > 0 };
+  return humanize(fillPlaceholders(applyConditions(templateBody(t, ctx.signals, filled[t.id]), flags), placeholders(ctx)));
+}
+
+/** AI 改写过的「事故风险描述」段：模板编号 → 系统原文 → 改写（已校验） */
+export type RiskRewrites = Record<string, Record<string, string>>;
+
+/**
+ * 现场处置方案「事故风险描述」里可由 AI 按企业改写的段落（系统原文）。
+ * 用了知识块的方案已按企业写好并经专家核过，不再改写；加粗小标题、表格不动。
+ */
+export function riskParagraphs(input: PlanInput): { id: string; title: string; paragraphs: string[] }[] {
+  const ctx = planContext(input);
+  return ctx.selection.site
+    .filter((t) => !usesKnowledgeBlock(t, ctx.signals))
+    .map((t) => {
+      const md = resolvedTemplate(ctx, t, {});
+      const section = /^## 事故风险描述\s*$([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(md)?.[1] ?? '';
+      const paragraphs = section
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l && !/^(#|\*\*|\||!\[|<)/.test(l));
+      return { id: t.id, title: t.title, paragraphs };
+    })
+    .filter((x) => x.paragraphs.length > 0);
+}
+
+/**
+ * filled 是 AI 起草时已校验的知识块空位（见 ai/slots.ts），rewrites 是已校验的风险描述改写（见 ai/risk.ts）；
+ * 没有就全部用系统推出的内容
+ */
+export function buildPlan(
+  input: PlanInput,
+  drawings: PlanDrawings = {},
+  filled: FilledSlots = {},
+  rewrites: RiskRewrites = {},
+): DeliveryDocument {
   const ctx = planContext(input);
   const { company, selection } = ctx;
   const year = input.issuedOn.slice(0, 4);
@@ -113,7 +177,11 @@ export function buildPlan(input: PlanInput, drawings: PlanDrawings = {}, filled:
   const code = shortName ? `${shortName}${year}` : MISSING;
   const version = `A ${year}`;
   const issued = cnDate(input.issuedOn);
-  const values = placeholders(ctx);
+  const templateMarkdown = (t: PlanTemplate) => {
+    const md = resolvedTemplate(ctx, t, filled);
+    const r = rewrites[t.id];
+    return r ? md.split('\n').map((l) => r[l.trim()] ?? l).join('\n') : md;
+  };
 
   const org = input.organization;
   const groups = [...org.groups].sort((a, b) => CHART_ORDER.indexOf(a.kind) - CHART_ORDER.indexOf(b.kind));
@@ -147,7 +215,7 @@ export function buildPlan(input: PlanInput, drawings: PlanDrawings = {}, filled:
 
   // 二、… 专项应急预案：模板一级标题是预案名，二级是五要素（1. 适用范围…），再往下是加粗段落
   for (const t of selection.specialty) {
-    const parsed = parseMarkdown(humanize(fillPlaceholders(templateBody(t, ctx.signals, filled[t.id]), values)), figures);
+    const parsed = parseMarkdown(templateMarkdown(t), figures);
     const root = parsed.sections[0];
     sections.push({
       id: `plan.specialty.${t.id}`,
@@ -159,7 +227,7 @@ export function buildPlan(input: PlanInput, drawings: PlanDrawings = {}, filled:
 
   // 现场处置方案：一件，每个方案一章（1. 火灾事故现场处置方案），往下 1.1、1.1.1
   const sites = selection.site.map((t) => {
-    const parsed = parseMarkdown(humanize(fillPlaceholders(templateBody(t, ctx.signals, filled[t.id]), values)), figures);
+    const parsed = parseMarkdown(templateMarkdown(t), figures);
     const root = parsed.sections[0];
     return { title: t.title, blocks: [...parsed.blocks, ...(root?.blocks ?? [])], children: root?.children ?? [], id: t.id };
   });

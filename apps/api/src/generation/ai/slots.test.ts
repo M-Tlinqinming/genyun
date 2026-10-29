@@ -5,12 +5,15 @@ import { BailianDrafter, FakeSlotDrafter, defaultDrafter, type SlotDrafter, type
 import { checkSlot, draftSlots } from './slots.ts';
 
 /** 把候选倒过来排：AI 只换顺序，应当通过 */
-const reorder: SlotDrafter = { name: 'reorder', fill: async (r) => [...r.candidates].reverse().join('，') };
+const reorder: SlotDrafter = { name: 'reorder', fill: async (r) => [...r.candidates].reverse().join('，'), rewrite: async (r) => r.paragraphs };
 /** 自作主张加了企业没有的机型 */
-const inventive: SlotDrafter = { name: 'inventive', fill: async (r) => [...r.candidates, '冲床'].join('、') };
+const inventive: SlotDrafter = { name: 'inventive', fill: async (r) => [...r.candidates, '冲床'].join('、'), rewrite: async (r) => r.paragraphs };
 const broken: SlotDrafter = {
   name: 'broken',
   fill: async () => {
+    throw new Error('超时');
+  },
+  rewrite: async () => {
     throw new Error('超时');
   },
 };
@@ -55,7 +58,7 @@ describe('AI 只填知识块空位', () => {
 
   it('没配置 AI：不发请求，三份照常生成', async () => {
     let calls = 0;
-    const spy: SlotDrafter = { name: 'spy', fill: async (r: SlotRequest) => (calls++, r.candidates.join('、')) };
+    const spy: SlotDrafter = { name: 'spy', fill: async (r: SlotRequest) => (calls++, r.candidates.join('、')), rewrite: async (r) => r.paragraphs };
     const { notes } = await draftSlots(feiyuPlanInput, null);
     expect(notes).toEqual([]);
     expect(calls).toBe(0);

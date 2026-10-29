@@ -67,10 +67,10 @@ describe('适用范围', () => {
   });
 
   it('事故类别从标题取', () => {
-    expect(accidentTypeOf('火灾事故专项应急预案')).toBe('火灾');
+    expect(accidentTypeOf('火灾爆炸事故专项应急预案')).toBe('火灾爆炸');
     expect(accidentTypeOf('有限空间专项应急预案')).toBe('有限空间');
     expect(accidentTypeOf('起重致害（电梯）事故现场处置方案')).toBe('起重致害（电梯）');
-    expect(new Set(PLAN_TEMPLATES.map((t) => t.id)).size).toBe(29);
+    expect(new Set(PLAN_TEMPLATES.map((t) => t.id)).size).toBe(28);
   });
 });
 

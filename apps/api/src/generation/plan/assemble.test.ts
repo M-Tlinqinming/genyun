@@ -1,9 +1,9 @@
-import { planSignals, selectPlans, resolveScope, type Block as DocBlock, type DocSection, type PlanInput } from '@genyun/shared';
+import { SCOPE_KEYS, planSignals, selectPlans, resolveScope, type Block as DocBlock, type DocSection, type PlanInput, type Scope } from '@genyun/shared';
 import { feiyuPlanInput } from '@genyun/shared/fixtures/feiyu-plan';
 import JSZip from 'jszip';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { renderWord } from '../word/render.ts';
-import { buildPlan } from './assemble.ts';
+import { applyConditions, buildPlan } from './assemble.ts';
 import { usesKnowledgeBlock } from './content.ts';
 import { humanize } from './humanize.ts';
 import { parseMarkdown, toSections } from './markdown.ts';
@@ -70,7 +70,7 @@ describe('飞宇整份应急预案', () => {
   it('件的顺序与旧仓库一致：综合、两个专项、现场处置方案、附件', () => {
     expect(plan.sections.map((s) => s.title)).toEqual([
       '一、综合应急预案',
-      '二、火灾事故专项应急预案',
+      '二、火灾爆炸事故专项应急预案',
       '三、粉尘爆炸事故专项应急预案',
       '四、现场处置方案',
       '五、附件',
@@ -180,8 +180,47 @@ describe('没有压铸、粉尘的企业', () => {
   });
 
   it('只有火灾专项时件号顺延：一、综合；二、火灾专项；三、现场处置方案；四、附件', () => {
-    expect(plan.sections.map((s) => s.title)).toEqual(['一、综合应急预案', '二、火灾事故专项应急预案', '三、现场处置方案', '四、附件']);
+    expect(plan.sections.map((s) => s.title)).toEqual(['一、综合应急预案', '二、火灾爆炸事故专项应急预案', '三、现场处置方案', '四、附件']);
   });
+});
+
+describe('所有开关都打开', () => {
+  it('28 份模板都能生成，不带知识库成稿里别家企业的电话、地名、物料', () => {
+    const all = Object.fromEntries(SCOPE_KEYS.map((k) => [k, true])) as Scope;
+    const plan = buildPlan({ ...assembler, expert: { ...assembler.expert, scope: all } });
+    const text = allText(plan);
+    expect(text).toContain('起重致害事故现场处置方案');
+    expect(text).not.toMatch(/15986988133|0752-(?:2230498|2312399|3223119|3328738|6761118|7872806|7783260)|13113411616|15875227223|13719613523/);
+    expect(text).not.toMatch(/水口街道|龙门县|专职消防队|油墨|稀释剂|环氧乙烷/);
+    expect(text).not.toMatch(/\bS?P\d{1,2}[ab]?\b|§|\{\{|\[\[/);
+  }, 60_000);
+});
+
+describe('按企业情况取舍的段落', () => {
+  it('任一条件为真就保留，!key 取反，可嵌套；未知条件、没配对的 endif 报错', () => {
+    const md = ['甲', '[[if:a|b]]', '乙', '[[if:!a]]', '丙', '[[endif]]', '[[endif]]', '丁'].join('\n');
+    expect(applyConditions(md, { a: true, b: false })).toBe('甲\n乙\n丁');
+    expect(applyConditions(md, { a: false, b: true })).toBe('甲\n乙\n丙\n丁');
+    expect(applyConditions(md, { a: false, b: false })).toBe('甲\n丁');
+    expect(() => applyConditions('[[if:c]]\n[[endif]]', { a: true })).toThrow('未知的条件');
+    expect(() => applyConditions('[[endif]]', {})).toThrow('多了');
+    expect(() => applyConditions('[[if:a]]', { a: true })).toThrow('缺少');
+  });
+
+  it('起重致害合成一份：只有电梯写电梯，只有行车写行车', () => {
+    const withScope = (scope: Partial<Scope>) => ({ ...assembler, expert: { ...assembler.expert, scope: { ...assembler.expert.scope, ...scope } } });
+    const lifting = (plan: ReturnType<typeof buildPlan>) => {
+      const site = plan.sections.find((s) => s.title.endsWith('现场处置方案'))!;
+      const sp08 = site.sections!.find((s) => s.title.includes('起重致害'))!;
+      return allText({ ...plan, cover: { ...plan.cover, lines: [], dates: [] }, frontPages: [], sections: [sp08] });
+    };
+    const elevator = lifting(buildPlan(withScope({ elevator: true, craneHoist: false })));
+    expect(elevator).toContain('电梯伤害处置措施');
+    expect(elevator).not.toContain('行车');
+    const crane = lifting(buildPlan(withScope({ elevator: false, craneHoist: true })));
+    expect(crane).toContain('行车伤害处置措施');
+    expect(crane).not.toContain('电梯');
+  }, 60_000);
 });
 
 describe('可读化', () => {
