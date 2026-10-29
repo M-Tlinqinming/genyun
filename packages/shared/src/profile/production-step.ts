@@ -204,13 +204,16 @@ const GENERAL_MATERIALS = [
   '木材', '板材', '纸箱', '纸板', '包装材料', '塑料粒子', '胶粒', '电线', '螺丝', '五金配件',
 ];
 
+// 钢材等一般原料（专家页据此直接判定不是危化品）
+export const isGeneralMaterial = (name: string) => GENERAL_MATERIALS.some((g) => name.includes(g));
+
 export type MsdsHint = 'knowledge_base' | 'not_needed' | 'label_done' | 'label_needed';
 
 export function msdsHintOf(m: DraftMaterial): MsdsHint | null {
   const name = m.name.trim();
   if (!name) return null;
   if (PURE_GASES.some((g) => name.includes(g))) return 'knowledge_base';
-  if (GENERAL_MATERIALS.some((g) => name.includes(g))) return 'not_needed';
+  if (isGeneralMaterial(name)) return 'not_needed';
   return m.labelPhotoFileIds.length > 0 ? 'label_done' : 'label_needed';
 }
 

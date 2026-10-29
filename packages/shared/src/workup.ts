@@ -14,6 +14,7 @@ import {
 } from './profile/organization-step.ts';
 import { totalBuildingArea } from './profile/resources-step.ts';
 import { localAgenciesOf } from './plan/agencies.ts';
+import type { ProductionWorkup } from './workup-production.ts';
 
 // 快照：企业身份四项（企业档案的列）+ 企业自填资料
 export interface WorkupSnapshot {
@@ -89,6 +90,8 @@ export interface FactOverride {
 
 export interface WorkupData {
   overrides: Record<string, FactOverride>;
+  // 生产设备与物料的整理与判断（workup-production.ts），专家第一次保存时才有
+  production?: ProductionWorkup;
 }
 
 export interface FactDef {

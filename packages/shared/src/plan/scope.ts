@@ -38,7 +38,7 @@ function findCue(names: string[], cues: string[]): string | undefined {
 }
 
 /** 是否危化品由专家判断；没判断前按名称建议（可燃液体、可燃气体、有毒、惰性气体） */
-export function hazardousMaterialsOf(input: PlanInput): string[] {
+export function hazardousMaterialsOf(input: Pick<PlanInput, 'production' | 'expert'>): string[] {
   if (input.expert.hazardousMaterials) return input.expert.hazardousMaterials;
   const cues = [...CUES.flammableLiquid!, ...CUES.combustibleGas!, ...CUES.inertGas!, ...TOXIC_CUES];
   return input.production.materials.filter((m) => cues.some((c) => m.name.includes(c))).map((m) => m.name);
@@ -46,7 +46,7 @@ export function hazardousMaterialsOf(input: PlanInput): string[] {
 
 const answered = (a: { answer: string } | undefined) => a?.answer === 'yes' || a?.answer === 'photo';
 
-export function suggestScope(input: PlanInput): Record<ScopeKey, ScopeSuggestion> {
+export function suggestScope(input: Pick<PlanInput, 'production' | 'business' | 'expert'>): Record<ScopeKey, ScopeSuggestion> {
   const { production: p, business } = input;
   const equipment = p.equipment.map((e) => e.name);
   const materials = p.materials.map((m) => m.name);
@@ -98,8 +98,9 @@ export function suggestScope(input: PlanInput): Record<ScopeKey, ScopeSuggestion
         ? { value: true, reason: `危险化学品年用量合计 ${total} 吨，超过 1 吨` }
         : off(hazardous.length ? `危险化学品年用量合计 ${total} 吨，不到 1 吨` : '没有危险化学品');
     },
-    combustibleGas: () => byCue('combustibleGas', materials) ?? off('物料里没有可燃气体'),
-    flammableLiquid: () => byCue('flammableLiquid', materials) ?? off('物料里没有可燃液体'),
+    // 专家判定不是危化品的物料不算可燃气体、可燃液体、惰性气体
+    combustibleGas: () => byCue('combustibleGas', hazardous) ?? off('物料里没有可燃气体'),
+    flammableLiquid: () => byCue('flammableLiquid', hazardous) ?? off('物料里没有可燃液体'),
     toxicChemicals: () => {
       const hit = findCue(hazardous, TOXIC_CUES);
       return hit ? { value: true, reason: `危险化学品「${hit}」有毒性，请专家复核` } : off('危险化学品里没有典型有毒物质');
@@ -113,7 +114,7 @@ export function suggestScope(input: PlanInput): Record<ScopeKey, ScopeSuggestion
       return tall ? { value: true, reason: `「${tall.name}」有 ${tall.floors} 层` } : off('没有 7 层以上的建筑');
     },
     collapseRisk: () => byCue('collapseRisk') ?? off('资料里没有坍塌风险'),
-    inertGas: () => byCue('inertGas', materials) ?? off('物料里没有惰性气体'),
+    inertGas: () => byCue('inertGas', hazardous) ?? off('物料里没有惰性气体'),
     landlord: () => (business.leasesPremises ? { value: true, reason: '客户回答有出租厂房' } : off('客户回答没有出租厂房')),
     roadTransport: () => (business.ownVehicles ? { value: true, reason: '客户回答有自备运输车辆' } : off('客户回答没有自备运输车辆')),
   };
