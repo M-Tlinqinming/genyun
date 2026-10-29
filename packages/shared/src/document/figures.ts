@@ -5,7 +5,8 @@ import type { OrgChart } from '../profile/organization-step.ts';
 import { snakeRows } from '../profile/process-flow.ts';
 
 const INK = '#1F2329';
-const FONT = 'SimSun, 宋体, serif';
+// Windows 用宋体；服务器（Linux）上没有宋体，用思源宋体（Dockerfile 里装）
+const FONT = "SimSun, 宋体, 'Noto Serif CJK SC', serif";
 const FONT_SIZE = 13;
 const LINE = 18;
 
@@ -125,7 +126,8 @@ export function processFlowSvg(steps: string[]): Svg {
     row.items.forEach((name, i) => {
       const x = PAD + offset + i * (W + GAP);
       parts.push(box(x, y, W, H, wrap(name, W - 12)));
-      if (i > 0) parts.push(row.reversed ? arrow(x + W + GAP - 3, y + H / 2, x + W + 3, y + H / 2) : arrow(x - GAP + 3, y + H / 2, x - 3, y + H / 2));
+      // 反向行从右往左走：箭头从右边那格指向左边这格
+      if (i > 0) parts.push(row.reversed ? arrow(x - 3, y + H / 2, x - GAP + 3, y + H / 2) : arrow(x - GAP + 3, y + H / 2, x - 3, y + H / 2));
     });
     if (r > 0) {
       // 上一行末尾在右（正向）或左（反向），向下接到这一行同一侧
@@ -140,7 +142,7 @@ export function processFlowSvg(steps: string[]): Svg {
 
 // ── 应急预案体系与衔接图：上级预案 → 本企业预案 → 综合 / 专项 / 现场处置 ──
 export function planSystemSvg(p: { upper: string[]; company: string; specialty: string[]; site: string[] }): Svg {
-  const COL = 220;
+  const COL = 250;
   const GAP = 24;
   const PAD = 20;
   const width = COL * 3 + GAP * 2 + PAD * 2;
