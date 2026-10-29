@@ -16,6 +16,7 @@ import { totalBuildingArea } from './profile/resources-step.ts';
 import { localAgenciesOf } from './plan/agencies.ts';
 import type { ProductionWorkup } from './workup-production.ts';
 import type { RiskWorkup } from './workup-risk.ts';
+import type { ScopeWorkup } from './workup-scope.ts';
 
 // 快照：企业身份四项（企业档案的列）+ 企业自填资料
 export interface WorkupSnapshot {
@@ -95,6 +96,8 @@ export interface WorkupData {
   production?: ProductionWorkup;
   // 危险源辨识的修改与新增（workup-risk.ts），专家第一次保存时才有
   risks?: RiskWorkup;
+  // 适用范围开关的专家确认（workup-scope.ts），专家第一次确认时才有
+  scope?: ScopeWorkup;
 }
 
 export interface FactDef {

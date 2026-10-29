@@ -4,11 +4,11 @@
 // 默认取值照该报告。和生产设备与物料一样只记在任务的专业整理里（WorkupData.risks），不写回企业资料。
 import { z } from 'zod';
 import { SITE_TYPES, type SiteType } from './profile/production-step.ts';
-import { accidentTypeOf, selectPlans, SCOPE_KEYS, type Scope, type ScopeKey } from './plan/catalog.ts';
+import { accidentTypeOf, SCOPE_SWITCHES, selectPlans, type ScopeKey } from './plan/catalog.ts';
 import { riskLevel, riskScore, type Hazard, type RiskLevel } from './plan/input.ts';
-import { suggestScope } from './plan/scope.ts';
 import { isAddedRow, planProductionOf, productionView, type Judged, type ProductionList, type ProductionWorkup } from './workup-production.ts';
 import type { WorkupSnapshot } from './workup.ts';
+import { scopeView, type ScopeWorkup } from './workup-scope.ts';
 
 // ---------- LEC 取值表（与风险评估报告表 2.2-1 ~ 2.2-3 一致） ----------
 export type LecKey = 'l' | 'e' | 'c';
@@ -149,12 +149,14 @@ export interface RiskView {
 
 const quoted = (reason: string) => reason.match(/「(.+?)」/)?.[1];
 
-export function riskView(snapshot: WorkupSnapshot, data: { production?: ProductionWorkup; risks?: RiskWorkup }): RiskView {
+type RiskData = { production?: ProductionWorkup; scope?: ScopeWorkup; risks?: RiskWorkup };
+
+export function riskView(snapshot: WorkupSnapshot, data: RiskData): RiskView {
   const production = productionView(snapshot, data);
   const plan = planProductionOf(snapshot, production);
-  const suggested = suggestScope({ ...plan, expert: { hazardousMaterials: plan.hazardousMaterials } });
-  // 第 8 项专家确认适用范围后，这里改为用确认后的开关
-  const scope = Object.fromEntries(SCOPE_KEYS.map((k) => [k, suggested[k].value])) as Scope;
+  // 候选按专家确认后的适用范围（待确认的按系统建议）；开关关掉后改过的候选不显示，修改记录保留
+  const { scope, switches } = scopeView(snapshot, data);
+  const suggested = Object.fromEntries(switches.map((s) => [s.key, s.suggestion]));
   const mainPlace = production.buildings[0]?.name || '生产车间';
   const sites = plan.business.sites;
 
@@ -175,9 +177,10 @@ export function riskView(snapshot: WorkupSnapshot, data: { production?: Producti
   const candidates = selectPlans(scope).site.map((t) => {
     const keys = [t.trigger ?? []].flat() as ScopeKey[];
     const on = keys.find((k) => scope[k]);
-    let basis = on ? suggested[on].reason : (ALWAYS_BASIS[t.id] ?? '系统默认列入');
+    const judged = on ? switches.find((s) => s.key === on)?.judged : undefined;
+    let basis = on ? (judged ? `专家确认「${SCOPE_SWITCHES[on]}」` : suggested[on]!.reason) : (ALWAYS_BASIS[t.id] ?? '系统默认列入');
     const rule = LOCATE[t.id] ?? {};
-    const hitName = on ? quoted(basis) : undefined;
+    const hitName = on ? quoted(suggested[on]!.reason) : undefined;
     let place = hitName ? located(hitName) : undefined;
     if (!place?.workplace && rule.equipment) {
       const eq = equipmentHit(rule.equipment);
@@ -236,7 +239,7 @@ function finish(r: Draft): RiskRow {
 }
 
 // 保存前校验：改的是现有候选或新增行
-export function riskSaveError(snapshot: WorkupSnapshot, data: { production?: ProductionWorkup; risks?: RiskWorkup }, save: RiskSave): string | null {
+export function riskSaveError(snapshot: WorkupSnapshot, data: RiskData, save: RiskSave): string | null {
   if (isAddedRow(save.rowId)) return null;
   return riskView(snapshot, data).rows.some((r) => r.id === save.rowId) ? null : '没有这一项危险源';
 }
