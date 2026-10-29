@@ -2,6 +2,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import {
   awaitingAdoption,
   FACT_SECTIONS,
+  figuresView,
   listCounts,
   PRODUCTION_LIST_KEYS,
   PRODUCTION_LISTS,
@@ -29,13 +30,14 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useContacts } from '../../api/contacts';
 import { ApiError } from '../../api/request';
 import { useTask, useTaskCheck } from '../../api/tasks';
-import { useSaveFact, useSaveProduction, useSaveRisk, useSaveScope, useWorkup, workupKey } from '../../api/workup';
+import { useSaveFact, useSaveFigures, useSaveProduction, useSaveRisk, useSaveScope, useWorkup, workupKey } from '../../api/workup';
 import { linkButton, Loading } from '../../components/ui';
 import { FadeSwap } from '../../theme/motion';
 import { gy, stage } from '../../theme/tokens';
 import { ContactDialog, type AskItem } from './workup/ContactDialog';
 import { ContactRecords } from './workup/ContactRecords';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
+import { FiguresPanel, type FiguresSaveInput } from './workup/FiguresPanel';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
 import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
@@ -52,8 +54,8 @@ function clock(iso: string): string {
   );
 }
 
-// I05 处理工作台 · 专业整理（14 页 E18-00A–D）：左栏整理模块、中栏企业事实 / 生产设备与物料 / 危险源辨识 / 适用范围、
-// 右栏原件对照、评价依据或生成结构预览
+// I05 处理工作台 · 专业整理（14 页 E18-00A–D、E18-00F）：左栏整理模块、中栏企业事实 / 生产设备与物料 / 危险源辨识 / 适用范围、
+// 右栏原件对照、评价依据或生成结构预览；图件的两张图占中栏和右栏
 export function ExpertTaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
@@ -62,6 +64,7 @@ export function ExpertTaskPage() {
   const saveProduction = useSaveProduction(taskId);
   const saveRisk = useSaveRisk(taskId);
   const saveScope = useSaveScope(taskId);
+  const saveFigures = useSaveFigures(taskId);
   const contacts = useContacts(taskId);
   const check = useTaskCheck(taskId);
   const client = useQueryClient();
@@ -77,8 +80,8 @@ export function ExpertTaskPage() {
   const [showRecords, setShowRecords] = useState(false);
   const [fileId, setFileId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<FactSection>('basic');
-  // 中栏显示哪个模块：企业事实、生产设备与物料的某一类清单、危险源辨识或适用范围
-  const [module, setModule] = useState<'facts' | 'risks' | 'scope' | ProductionList>('facts');
+  // 中栏显示哪个模块：企业事实、生产设备与物料的某一类清单、危险源辨识、适用范围或图件
+  const [module, setModule] = useState<'facts' | 'risks' | 'scope' | 'figures' | ProductionList>('facts');
   const [riskId, setRiskId] = useState<string | null>(null);
   const [dimension, setDimension] = useState<LecKey>('c');
   const [scopeGroup, setScopeGroup] = useState<ScopeGroup | null>(null);
@@ -95,18 +98,20 @@ export function ExpertTaskPage() {
   const counts = useMemo(() => (production ? listCounts(production) : null), [production]);
   const risks = useMemo(() => (workup.data ? riskView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
   const scope = useMemo(() => (workup.data ? scopeView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
+  const figures = useMemo(() => (workup.data ? figuresView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
   const selectedRisk = risks?.rows.find((r) => r.id === riskId) ?? risks?.rows[0];
-  const inProduction = module !== 'facts' && module !== 'risks' && module !== 'scope';
-  // 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关在后（底栏与「下一个缺失项」共用）
+  const inProduction = module !== 'facts' && module !== 'risks' && module !== 'scope' && module !== 'figures';
+  // 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关、待采用的图在后（底栏与「下一个缺失项」共用）
   const gaps = useMemo(
     () => [
       ...progress.missing.map((f) => ({ key: f.key, label: f.label, module: 'facts' as const, section: f.section })),
       ...(production?.pending ?? []).map((p) => ({ key: p.key, label: p.label, module: p.list, section: undefined })),
       ...(scope?.pending ?? []).map((s) => ({ key: `scope:${s.key}`, label: s.label, module: 'scope' as const, section: undefined })),
+      ...(figures?.pending ?? []).map((f) => ({ key: `figure:${f.key}`, label: `${f.label}待采用`, module: 'figures' as const, section: undefined })),
     ],
-    [progress, production, scope],
+    [progress, production, scope, figures],
   );
-  const required = progress.required + (production?.required ?? 0) + (scope?.required ?? 0);
+  const required = progress.required + (production?.required ?? 0) + (scope?.required ?? 0) + (figures?.required ?? 0);
   const done = required - gaps.length;
   const originals = useMemo(() => workup.data?.originals ?? [], [workup.data]);
   const currentFile = originals.find((o) => o.fileId === fileId) ?? originals[0];
@@ -192,6 +197,22 @@ export function ExpertTaskPage() {
     }
   };
 
+  const saveFigureLayout = async (input: FiguresSaveInput) => {
+    if (!workup.data) return false;
+    try {
+      await saveFigures.mutateAsync({ ...input, version: workup.data.version });
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        message.warning(err.message);
+        await client.invalidateQueries({ queryKey: workupKey(taskId) });
+        return false;
+      }
+      message.error(err instanceof ApiError ? err.message : '保存失败，请检查网络后重试');
+      return false;
+    }
+  };
+
   // 右栏点了某个开关或某份待定的预案：中栏显示全部并定位到这个开关
   const goToSwitch = (key: ScopeKey) => {
     setScopeGroup(null);
@@ -253,13 +274,15 @@ export function ExpertTaskPage() {
 
   const w = workup.data;
   const saved = w.updatedByName ? `已自动保存 ${clock(w.updatedAt)}` : '还没有修改';
-  // 适用范围的待确认开关在底栏合成一条
+  // 适用范围的待确认开关、待采用的图在底栏各合成一条
   const scopeGaps = gaps.filter((g) => g.module === 'scope').length;
+  const figureGaps = gaps.filter((g) => g.module === 'figures').length;
   const missingLabels = [
-    ...gaps.filter((g) => g.module !== 'scope').map((g) => g.label),
+    ...gaps.filter((g) => g.module !== 'scope' && g.module !== 'figures').map((g) => g.label),
     ...(scopeGaps ? [`适用范围（${scopeGaps} 个开关待确认）`] : []),
+    ...(figureGaps ? [`图件（${figureGaps} 张待采用）`] : []),
   ];
-  const busy = save.isPending || saveProduction.isPending || saveRisk.isPending || saveScope.isPending;
+  const busy = save.isPending || saveProduction.isPending || saveRisk.isPending || saveScope.isPending || saveFigures.isPending;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, margin: '-16px 0 -24px' }}>
@@ -433,6 +456,14 @@ export function ExpertTaskPage() {
               })}
             </div>
           )}
+          <ModuleButton
+            title="图件"
+            sub="体系图 · 工艺流程图"
+            active={module === 'figures'}
+            count={figures?.pending.length ? `待采用 ${figures.pending.length}` : '✓'}
+            warn={Boolean(figures?.pending.length)}
+            onClick={() => setModule('figures')}
+          />
           <span style={{ flex: 1 }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderTop: `1px solid ${gy.split}` }}>
             <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>来源图例</span>
@@ -445,7 +476,20 @@ export function ExpertTaskPage() {
           </div>
         </nav>
 
-        {module === 'scope' && scope ? (
+        {module === 'figures' && figures ? (
+          <FiguresPanel
+            view={figures}
+            settings={w.data.figures ?? {}}
+            saving={saveFigures.isPending}
+            onSave={saveFigureLayout}
+            onGoOrganization={() => goToSection('organization')}
+            onGoProcess={() => setModule('process')}
+            registerRow={(key, el) => {
+              if (el) rows.current.set(key, el);
+              else rows.current.delete(key);
+            }}
+          />
+        ) : module === 'scope' && scope ? (
           <ScopePanel
             view={scope}
             group={scopeGroup}
@@ -521,7 +565,7 @@ export function ExpertTaskPage() {
         />
         )}
 
-        {module === 'scope' && scope ? (
+        {module === 'figures' ? null : module === 'scope' && scope ? (
           <ScopePreviewPanel view={scope} onSelect={goToSwitch} />
         ) : module === 'risks' ? (
           <RiskBasisPanel
