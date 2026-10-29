@@ -1,4 +1,4 @@
-import { BellOutlined, LogoutOutlined, QuestionCircleOutlined, UserOutlined } from '@ant-design/icons';
+import { LogoutOutlined, QuestionCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { ROLES, type Workspace } from '@genyun/shared';
 import { Avatar, Button, Divider, Dropdown, Layout, Menu, Select, Spin, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
@@ -9,6 +9,7 @@ import { Logo } from '../components/Logo';
 import { membershipsIn, useLogout, useSession } from '../auth/session';
 import { gy, layout } from '../theme/tokens';
 import { NAVIGATION } from './navigation';
+import { NotificationBell } from './NotificationBell';
 import type { WorkspaceContext } from './workspace';
 
 // 三端共用的框架：顶栏 64 + 侧栏 224。只有该工作区的成员才能进入。
@@ -146,7 +147,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
                 )}
               />
             )}
-            <Button type="text" icon={<BellOutlined />} aria-label="通知" style={{ color: gy.text }} />
+            <NotificationBell />
             <Avatar size={28} style={{ background: '#F2F4F7', color: gy.text }}>
               {initial}
             </Avatar>

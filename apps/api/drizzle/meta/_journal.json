@@ -71,6 +71,13 @@
       "when": 1793271061595,
       "tag": "0009_task_workups",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793274256984,
+      "tag": "0010_task_contacts",
+      "breakpoints": true
     }
   ]
 }

@@ -15,7 +15,9 @@ import { FilesController } from './files/files.controller.ts';
 import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.ts';
 import { LicenseReader, LicenseRecognitionController } from './license/license-reader.ts';
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
+import { NotificationsController, NotificationsService } from './notifications/notifications.service.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
+import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
@@ -50,6 +52,8 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       TasksController,
       ExpertTasksController,
       WorkupController,
+      ContactsController,
+      NotificationsController,
       TaskDocumentsController,
       EnterpriseDocumentsController,
       FilesController,
@@ -66,6 +70,8 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       TasksService,
       ExpertTasksService,
       WorkupService,
+      ContactsService,
+      NotificationsService,
       LicenseReader,
       SubmissionService,
       DocumentsService,
