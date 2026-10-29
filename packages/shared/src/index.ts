@@ -30,3 +30,4 @@ export * from './plan/input.ts';
 export * from './plan/agencies.ts';
 export * from './plan/scope.ts';
 export * from './plan/signals.ts';
+export * from './workup.ts';
