@@ -1,4 +1,4 @@
-import type { FactSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
+import type { FactSave, ProductionSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -37,6 +37,16 @@ export function useSaveFact(taskId: string) {
   return useMutation({
     mutationFn: (input: FactSave) =>
       request<Workup>(`/tasks/${taskId}/workup/facts`, { method: 'PUT', body: JSON.stringify(input) }),
+    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+  });
+}
+
+// 生产设备与物料：一次保存一条判断或一行修改
+export function useSaveProduction(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ProductionSave) =>
+      request<Workup>(`/tasks/${taskId}/workup/production`, { method: 'PUT', body: JSON.stringify(input) }),
     onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
   });
 }

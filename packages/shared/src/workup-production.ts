@@ -231,6 +231,9 @@ export interface ProductionView {
   firstAid: FirstAidView;
   process: { description?: string; steps: string[]; sketchFileIds: string[] };
   pending: PendingJudgement[];
+  // 要专家判断（或请客户补）的项数，顶部「必需项」计数用：名单外或建议为危化品的物料、
+  // 客户没答有 / 没有的特种设备、客户没选耐火等级的建筑，加上急救药箱清单
+  required: number;
 }
 
 // 消防器材归到「消防设施」，其余在「应急物资」
@@ -348,6 +351,11 @@ export function productionView(snapshot: WorkupSnapshot, data: { production?: Pr
       sketchFileIds: step?.process.sketchFileIds ?? [],
     },
     pending,
+    required:
+      materials.filter((m) => m.hazard.suggestion?.value !== false).length +
+      special.filter((s) => s.customer !== 'yes' && s.customer !== 'no').length +
+      buildings.filter((b) => b.ratingBy !== 'customer').length +
+      1,
   };
 }
 

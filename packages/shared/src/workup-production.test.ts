@@ -54,6 +54,7 @@ describe('飞宇的整理结果', () => {
       '压力管道判定',
       '1 号生产厂房耐火等级',
     ]);
+    expect(view.required).toBe(5);
     expect(listCounts(view).materials).toEqual({ count: 5, pending: 2 });
     expect(listCounts(view).special).toEqual({ count: 1, pending: 1 });
   });

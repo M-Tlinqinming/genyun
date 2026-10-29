@@ -37,6 +37,11 @@ interface Draft {
   value: FactValue | null;
 }
 
+export interface AskItem {
+  itemKey: ChecklistItemKey;
+  question: string;
+}
+
 let seq = 0;
 const nextId = () => `d${++seq}`;
 
@@ -68,6 +73,7 @@ export function ContactDialog({
   facts,
   initialKeys,
   callItems,
+  askItems = [],
 }: {
   taskId: string;
   open: boolean;
@@ -77,10 +83,12 @@ export function ContactDialog({
   initialKeys: string[];
   // 客户请专家电话联系、还没问清的资料项
   callItems: ChecklistItemKey[];
+  // 生产设备与物料里要问客户的资料项（特种设备、急救药箱），带专家写好的问法
+  askItems?: AskItem[];
 }) {
   return (
     <Modal open={open} onCancel={onClose} footer={null} closable={false} width={560} destroyOnHidden styles={{ container: { padding: 0, borderRadius: 8 } }}>
-      <DialogBody taskId={taskId} onClose={onClose} facts={facts} initialKeys={initialKeys} callItems={callItems} />
+      <DialogBody taskId={taskId} onClose={onClose} facts={facts} initialKeys={initialKeys} callItems={callItems} askItems={askItems} />
     </Modal>
   );
 }
@@ -91,12 +99,14 @@ function DialogBody({
   facts,
   initialKeys,
   callItems,
+  askItems,
 }: {
   taskId: string;
   onClose: () => void;
   facts: Fact[];
   initialKeys: string[];
   callItems: ChecklistItemKey[];
+  askItems: AskItem[];
 }) {
   const { message } = App.useApp();
   const create = useCreateContact(taskId);
@@ -105,6 +115,7 @@ function DialogBody({
   const [drafts, setDrafts] = useState<Draft[]>(() => [
     ...initialKeys.map((k) => facts.find((f) => f.key === k)).filter((f): f is Fact => !!f).map(fromFact),
     ...callItems.map((key) => ({ id: nextId(), ...itemQuestion(key), answer: '', value: null })),
+    ...askItems.map((a) => ({ id: nextId(), ...itemQuestion(a.itemKey), question: a.question, answer: '', value: null })),
   ]);
   const [target, setTarget] = useState<ContactTarget | null>(targets[0] ?? null);
   const [result, setResult] = useState<ContactResult>('clarified');

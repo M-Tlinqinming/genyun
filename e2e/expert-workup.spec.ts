@@ -44,8 +44,8 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
   await expect(row(page, 'contactPerson')).toContainText('系统推导 · 当前账号');
   await expect(row(page, 'agency.emergencyBureau')).toContainText('仲恺高新区应急管理局');
 
-  // 只缺技术人员数
-  await expect(page.getByText('整理中 · 必需项 10 / 11')).toBeVisible();
+  // 只缺技术人员数：生产设备与物料的 6 项判断（含新增的乙炔）由 expert-workup-production 判定完
+  await expect(page.getByText('整理中 · 必需项 16 / 17')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 1 项：技术人员数');
 
   // 原件对照：客户补传的台账
@@ -64,8 +64,8 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
 
   await expect(missing).toContainText('8 人');
   await expect(missing).toContainText('专家整理');
-  await expect(page.getByText('整理中 · 必需项 11 / 11')).toBeVisible();
-  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('企业事实的必需项已齐');
+  await expect(page.getByText('整理中 · 必需项 17 / 17')).toBeVisible();
+  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('企业事实与生产设备的必需项已齐');
   await expect(page.getByRole('status')).toContainText(/已自动保存 \d\d:\d\d/);
 
   // 改已有的值：值班电话
@@ -95,5 +95,6 @@ test('只看缺失项、跳到小节、编制小组不能改', async ({ page }) 
 
   await page.getByRole('switch', { name: '只看缺失项' }).click();
   await expect(row(page, 'companyName')).toHaveCount(0);
-  await expect(row(page, 'shortName')).toBeVisible();
+  // 企业简称已在 expert-workup-contact 里采用，用一直空着的成立日期
+  await expect(row(page, 'establishedDate')).toBeVisible();
 });
