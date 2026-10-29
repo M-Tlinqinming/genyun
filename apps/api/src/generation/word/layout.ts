@@ -56,6 +56,8 @@ export interface Layout {
     /** 日期组第一行用段前大留白把日期整体压到页面下部 */
     firstDate: TextStyle;
     date: TextStyle;
+    /** 日期放同一行，中间用这串空格隔开；不填则每个日期一行 */
+    dateSeparator?: string;
   };
   frontPage: { title: TextStyle; body: TextStyle; signature: TextStyle };
   toc: {
@@ -86,8 +88,13 @@ export interface Layout {
     /** 横版页上图片的最大宽度（英寸） */
     landscapeWidthInches: number;
   };
-  /** 页眉：文档题名，居中，下框线；前置页（封面到目录）不显示页眉页码 */
+  /** 页眉：文档全称，居中，下框线 */
   header: TextStyle;
+  /**
+   * 从第几个前置页起显示页眉（0 = 批准发布令）：按飞宇样板，封面和批准发布令没有页眉，
+   * 编制小组和目录有页眉但没有页码，正文页码从 1 起（Martin 2026-10-29 确认）
+   */
+  frontHeaderFrom: number;
   /** 页脚：正文页码，居中，从 1 起 */
   footer: TextStyle;
 }
@@ -101,7 +108,8 @@ const base: Layout = {
   },
   body: { size: SIZE.四号, align: 'both', line: LINE_1_5, before: 0, after: 0, firstLineChars: 2 },
   headings: [
-    { size: SIZE.三号, bold: true, align: 'left', before: 240, after: 240, line: LINE_1_5 },
+    // 件标题居中（按飞宇样板，Martin 2026-10-29 确认）
+    { size: SIZE.三号, bold: true, align: 'center', before: 240, after: 240, line: LINE_1_5 },
     { size: SIZE.四号, bold: true, line: LINE_1_5 },
     { size: SIZE.四号, bold: true, line: LINE_1_5 },
     { size: SIZE.四号, bold: true, line: LINE_1_5 },
@@ -116,6 +124,8 @@ const base: Layout = {
     line: { size: SIZE.三号, bold: true, align: 'center', line: LINE_1_5, before: 0, after: 0 },
     firstDate: { size: SIZE.三号, align: 'center', before: 1800, after: 0, line: LINE_1_5 },
     date: { size: SIZE.三号, align: 'center', line: LINE_1_5, before: 0, after: 0 },
+    // 「发布日期：…   实施日期：…」同一行（按飞宇样板，Martin 2026-10-29 确认）
+    dateSeparator: '   ',
   },
   frontPage: {
     title: { size: SIZE.三号, bold: true, align: 'center', before: 240, after: 240, line: LINE_1_5 },
@@ -144,6 +154,7 @@ const base: Layout = {
     landscapeWidthInches: 9.2,
   },
   header: { size: SIZE.小五, align: 'center' },
+  frontHeaderFrom: 1,
   footer: { size: SIZE.四号, align: 'center' },
 };
 

@@ -1,5 +1,5 @@
 // 把交付文档的结构按排版规范写成 Word。
-// 页面顺序：封面 → 各前置页（批准发布令、编制小组）→ 目录，这几页没有页眉页码；
+// 页面顺序：封面 → 各前置页（批准发布令、编制小组）→ 目录，这几页没有页码，从排版规范指定的前置页起有页眉；
 // 之后正文从第 1 页起，页眉是文档题名；横版图纸单独成横版节，页码接着往下数。
 import {
   AlignmentType,
@@ -75,7 +75,8 @@ export function buildWord(doc: DeliveryDocument): Document {
   const blankFooter = { default: new Footer({ children: [new Paragraph({})] }) };
 
   const sections: ISectionOptions[] = [
-    { properties: { page: { size: pageSize, margin } }, headers: blank, footers: blankFooter, children: front },
+    { properties: { page: { size: pageSize, margin } }, headers: blank, footers: blankFooter, children: front.plain },
+    { properties: { page: { size: pageSize, margin } }, headers: { default: header }, footers: blankFooter, children: front.headed },
     ...body.map((part, i): ISectionOptions => ({
       properties: {
         page: {
@@ -125,30 +126,35 @@ class Writer {
   private lists = 0;
   constructor(private readonly layout: Layout) {}
 
-  frontMatter(doc: DeliveryDocument): Child[] {
-    const { cover, frontPage, toc } = this.layout;
-    const out: Child[] = [];
+  /** 前置页分两段：没有页眉的（封面等）和有页眉的（编制小组、目录等），各成一节 */
+  frontMatter(doc: DeliveryDocument): { plain: Child[]; headed: Child[] } {
+    const { cover, frontPage, toc, frontHeaderFrom } = this.layout;
+    const plain: Child[] = [];
+    const headed: Child[] = [];
     const { code, version } = doc.cover;
     for (const line of [code && `预案编号：${code}`, version && `版 本 号：${version}`]) {
-      if (line) out.push(this.para(line, cover.meta));
+      if (line) plain.push(this.para(line, cover.meta));
     }
-    out.push(this.para(doc.cover.company, cover.company));
-    out.push(this.para(doc.cover.name, cover.title));
-    for (const line of doc.cover.lines) out.push(this.para(line, cover.line));
-    doc.cover.dates.forEach((line, i) => out.push(this.para(line, i === 0 ? cover.firstDate : cover.date)));
+    plain.push(this.para(doc.cover.company, cover.company));
+    plain.push(this.para(doc.cover.name, cover.title));
+    for (const line of doc.cover.lines) plain.push(this.para(line, cover.line));
+    const dates = cover.dateSeparator === undefined ? doc.cover.dates : [doc.cover.dates.join(cover.dateSeparator)];
+    dates.forEach((line, i) => plain.push(this.para(line, i === 0 ? cover.firstDate : cover.date)));
 
-    for (const page of doc.frontPages) {
-      this.pendingBreak = true;
+    doc.frontPages.forEach((page, i) => {
+      const out = i < frontHeaderFrom ? plain : headed;
+      // 换节本身就换页，节内的前置页才要分页
+      this.pendingBreak = !(i === frontHeaderFrom && out === headed);
       out.push(this.para(page.title, frontPage.title));
       out.push(...this.blocks(page.blocks, frontPage.body));
       for (const line of page.signature ?? []) out.push(this.para(line, frontPage.signature));
-    }
+    });
 
-    this.pendingBreak = true;
-    out.push(this.para('目  录', toc.heading));
-    out.push(new TableOfContents('目录', { hyperlink: true, headingStyleRange: `1-${toc.levels}` }));
+    this.pendingBreak = headed.length > 0;
+    headed.push(this.para('目  录', toc.heading));
+    headed.push(new TableOfContents('目录', { hyperlink: true, headingStyleRange: `1-${toc.levels}` }));
     this.pendingBreak = false;
-    return out;
+    return { plain, headed };
   }
 
   /** 正文按横竖版切成若干节 */

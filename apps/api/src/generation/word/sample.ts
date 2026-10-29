@@ -50,8 +50,8 @@ export function samplePlan(): DeliveryDocument {
       name: '生产安全事故应急预案',
       code: 'FY2026',
       version: 'A 2026',
-      lines: [`单位名称：${company}`, '主要负责人：陈某'],
-      dates: ['颁布日期：2026年4月11日', '实施日期：2026年4月12日'],
+      lines: [company],
+      dates: ['发布日期：2026年4月11日', '实施日期：2026年4月12日'],
     },
     frontPages: [
       {

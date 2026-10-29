@@ -26,18 +26,22 @@ describe('按排版规范生成 Word', () => {
 
   it('页面顺序：封面、批准发布令、编制小组、目录，然后才是正文', () => {
     const all = text(document);
-    const order = ['惠阳飞宇电器有限公司', '生产安全事故应急预案', '预案批准发布令', '应急预案编制小组', '目  录', '一、综合应急预案'];
+    const order = ['预案编号：FY2026', '生产安全事故应急预案', '发布日期：2026年4月11日   实施日期：2026年4月12日', '预案批准发布令', '应急预案编制小组', '目  录', '一、综合应急预案'];
     const positions = order.map((t) => all.indexOf(t));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
 
-  it('前置页没有页眉页码，正文页码从 1 起，页眉是文档全称', () => {
+  it('封面和批准发布令没有页眉，编制小组和目录有页眉没页码，正文页码从 1 起，页眉是文档全称', () => {
     const sections = [...document.matchAll(/<w:sectPr[\s\S]*?<\/w:sectPr>/g)].map((m) => m[0]);
-    expect(sections.length).toBeGreaterThanOrEqual(3);
-    expect(sections[0]).not.toMatch(/pgNumType w:start/);
-    expect(sections[1]).toMatch(/<w:pgNumType w:start="1"/);
-    expect(sections.slice(2).some((s) => /pgNumType w:start/.test(s))).toBe(false);
+    const starts = document.split(/<w:sectPr[\s\S]*?<\/w:sectPr>/);
+    expect(text(starts[0]!)).toContain('预案批准发布令');
+    expect(text(starts[0]!)).not.toContain('成员构成及分工如下');
+    // 节的分隔记在上一节最后一段里，这一段的文字会落到下一截开头，所以只看包含关系
+    expect(text(starts[1]!)).toContain('成员构成及分工如下');
+    expect(text(starts[1]!)).toContain('目  录');
+    expect(sections[2]).toMatch(/<w:pgNumType w:start="1"/);
+    expect(sections.filter((s) => /pgNumType w:start/.test(s)).length).toBe(1);
     expect(headers.some((h) => text(h) === '惠阳飞宇电器有限公司生产安全事故应急预案')).toBe(true);
   });
 
