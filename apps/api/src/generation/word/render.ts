@@ -10,6 +10,7 @@ import {
   HeadingLevel,
   ImageRun,
   LevelFormat,
+  LineRuleType,
   PageBreak,
   PageNumber,
   PageOrientation,
@@ -26,7 +27,7 @@ import {
   type ISectionOptions,
 } from 'docx';
 import type { Block, DeliveryDocument, DocSection, TextRun as Run } from '@genyun/shared';
-import { LAYOUTS, type Layout, type TextStyle } from './layout.ts';
+import { exactLine, LAYOUTS, type Layout, type TextStyle } from './layout.ts';
 
 const ALIGN = {
   left: AlignmentType.LEFT,
@@ -59,6 +60,8 @@ export function buildWord(doc: DeliveryDocument): Document {
     children: [
       new Paragraph({
         alignment: ALIGN[layout.header.align ?? 'center'],
+        // 页眉页脚和正文一样按 1.5 倍算行高（以前是从默认样式继承的）
+        spacing: lineSpacing({ ...layout.header, line: layout.body.line }),
         border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: 'auto' } },
         children: [new TextRun({ text: doc.title, size: layout.header.size })],
       }),
@@ -68,6 +71,7 @@ export function buildWord(doc: DeliveryDocument): Document {
     children: [
       new Paragraph({
         alignment: ALIGN[layout.footer.align ?? 'center'],
+        spacing: lineSpacing({ ...layout.footer, line: layout.body.line }),
         children: [new TextRun({ children: [PageNumber.CURRENT], size: layout.footer.size })],
       }),
     ],
@@ -299,6 +303,8 @@ class Writer {
     const scale = Math.min(1, maxW / block.width, maxH / block.height);
     return new Paragraph({
       alignment: AlignmentType.CENTER,
+      // 默认样式是固定行距，图所在的段落要改回自动，否则图被裁成一行高
+      spacing: { line: 240, lineRule: LineRuleType.AUTO },
       pageBreakBefore: this.takeBreak(),
       keepNext: true,
       children: [
@@ -315,7 +321,7 @@ class Writer {
     const runs = typeof text === 'string' ? [text] : text;
     return new Paragraph({
       alignment: style.align ? ALIGN[style.align] : undefined,
-      spacing: { before: style.before, after: style.after, line: style.line },
+      spacing: { before: style.before, after: style.after, ...lineSpacing(style) },
       indent: style.firstLineChars ? { firstLineChars: style.firstLineChars * 100 } : undefined,
       numbering: opts.list ? { reference: opts.list.reference, level: 0, instance: opts.list.instance } : undefined,
       pageBreakBefore: this.takeBreak(),
@@ -384,11 +390,16 @@ export function columnWidths(
   return widths;
 }
 
+// 行距一律写成固定值，见 layout.ts 的 exactLine
+function lineSpacing(s: TextStyle) {
+  return s.line ? { line: exactLine(s.line, s.size), lineRule: LineRuleType.EXACT } : {};
+}
+
 function styles(layout: Layout) {
   const font = { ascii: layout.font, eastAsia: layout.font, hAnsi: layout.font, cs: layout.font };
   const paragraph = (s: TextStyle) => ({
     alignment: s.align ? ALIGN[s.align] : undefined,
-    spacing: { before: s.before ?? 0, after: s.after ?? 0, line: s.line },
+    spacing: { before: s.before ?? 0, after: s.after ?? 0, ...lineSpacing(s) },
     indent: s.firstLineChars ? { firstLineChars: s.firstLineChars * 100 } : { firstLine: 0 },
   });
   const run = (s: TextStyle) => ({ font, size: s.size, bold: s.bold, italics: false, color: '000000' });
@@ -417,7 +428,7 @@ function styles(layout: Layout) {
   return {
     default: {
       // 正文的首行缩进、两端对齐只加在正文段落上，不放进默认样式，免得渗进表格、列表和图
-      document: { run: { font, size: layout.body.size, color: '000000' }, paragraph: { spacing: { before: 0, after: 0, line: layout.body.line } } },
+      document: { run: { font, size: layout.body.size, color: '000000' }, paragraph: { spacing: { before: 0, after: 0, ...lineSpacing(layout.body) } } },
     },
     paragraphStyles: [...headings, ...tocEntries],
   };

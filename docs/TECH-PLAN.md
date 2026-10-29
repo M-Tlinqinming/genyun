@@ -101,7 +101,7 @@
 
 ### 3.4 待开发时验证的技术点
 
-- 专家端「Word 校对」页的浏览器预览方式：后台转 PDF，或前端直接渲染 .docx。开发到这一页时先做小样给 Martin 看效果，再定。
+- 专家端「Word 校对」页的浏览器预览方式（2026-10-29 Martin 看小样后确认）：**后台用 LibreOffice 转 PDF**，页面逐页显示。前端直接渲染 .docx（docx-preview）不按 A4 分页、目录没有页码，做不到校对页要看的分页、目录页码、表格跨页。为让 LibreOffice 分页与 Word 一致，排版规范的行距写成固定值（Word 里外观不变）；转换时排版后再更新目录页码（`apps/api/src/generation/word/pdf.ts`、`soffice-pdf.py`）。
 - 营业执照文字识别服务（2026-10-27 Martin：自填第 1 步要有识别；10-28：确定接 OCR 接口，正在评估模型、价格和效果）。新建企业页（P01）也能先识别再建档，接口 `POST /api/orgs/:orgId/license-recognition` 只识别不保存；识别结果按文件缓存（`LicenseReader`），同一份执照不会重复调用收费的识别服务。原说明：后台已留接口 `LicenseRecognizer`（`apps/api/src/license/recognizer.ts`），接入时新写一个实现并用环境变量 `LICENSE_OCR` 选用。没配置时页面提示手动填写；`LICENSE_OCR=fake` 是开发与测试用的模拟识别，正式环境拒绝启用。
 
 ### 3.4.1 企业自填的存储（2026-10-27，第 6a 项）

@@ -66,6 +66,19 @@ describe('按排版规范生成 Word', () => {
     expect(styles.match(/<w:docDefaults>[\s\S]*?<\/w:docDefaults>/)![0]).toMatch(/<w:sz w:val="28"\/>/);
   });
 
+  it('行距写成固定值（转 PDF 时分页才和 Word 一致），图所在段落是自动行距', () => {
+    expect(styles.match(/<w:docDefaults>[\s\S]*?<\/w:docDefaults>/)![0]).toMatch(
+      /<w:spacing [^>]*w:line="545"[^>]*w:lineRule="exact"/,
+    );
+    expect(document).not.toMatch(/<w:spacing [^>]*w:line="360"/);
+    const lines = [...document.matchAll(/<w:spacing [^>]*w:line="\d+"[^>]*\/>/g)].map((m) => m[0]);
+    expect(lines.filter((s) => !/lineRule="exact"/.test(s)).every((s) => /w:line="240" w:lineRule="auto"/.test(s))).toBe(
+      true,
+    );
+    const imageParagraph = document.match(/<w:p>(?:(?!<\/w:p>)[\s\S])*?<w:drawing>/)![0];
+    expect(imageParagraph).toMatch(/w:lineRule="auto"/);
+  });
+
   it('每个列表从 1 重新编号', () => {
     const numIds = new Set([...document.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1]));
     expect(numIds.size).toBe(2);
