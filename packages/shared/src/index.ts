@@ -22,3 +22,4 @@ export * from './profile/library.ts';
 export * from './documents.ts';
 export * from './checklist/overview.ts';
 export * from './submission.ts';
+export * from './document/model.ts';
