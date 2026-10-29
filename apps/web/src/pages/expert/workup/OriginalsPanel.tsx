@@ -127,7 +127,8 @@ export function OriginalsPanel({
   );
 }
 
-function Preview({ original }: { original: WorkupOriginal }) {
+// 一份原件的预览（右栏，危险源辨识的「原件」标签也用）
+export function Preview({ original }: { original: WorkupOriginal }) {
   const inline = shows(original.contentType);
   const url = useQuery({
     queryKey: ['files', original.fileId, 'inline'],

@@ -6,13 +6,16 @@ import {
   PRODUCTION_LIST_KEYS,
   PRODUCTION_LISTS,
   productionView,
+  riskView,
   workupFacts,
   workupProgress,
   type ChecklistItemKey,
   type Fact,
   type FactSection,
   type FactValue,
+  type LecKey,
   type ProductionList,
+  type RiskRowValue,
 } from '@genyun/shared';
 import { App, Button, Result, Tooltip } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,7 +24,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useContacts } from '../../api/contacts';
 import { ApiError } from '../../api/request';
 import { useTask, useTaskCheck } from '../../api/tasks';
-import { useSaveFact, useSaveProduction, useWorkup, workupKey } from '../../api/workup';
+import { useSaveFact, useSaveProduction, useSaveRisk, useWorkup, workupKey } from '../../api/workup';
 import { linkButton, Loading } from '../../components/ui';
 import { FadeSwap } from '../../theme/motion';
 import { gy, stage } from '../../theme/tokens';
@@ -30,13 +33,11 @@ import { ContactRecords } from './workup/ContactRecords';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
+import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
 
 const STAGES = ['资料核实', '专业编制', '审核与修订', '成果发布'];
-// 后续整理模块，在 M2 第 7–8 项开放
-const LATER_MODULES = [
-  { label: '危险源辨识', item: 7 },
-  { label: '适用范围', item: 8 },
-];
+// 后续整理模块，在 M2 第 8 项开放
+const LATER_MODULES = [{ label: '适用范围', item: 8 }];
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const text13: CSSProperties = { fontSize: 13, lineHeight: '22px' };
@@ -47,13 +48,14 @@ function clock(iso: string): string {
   );
 }
 
-// I05 处理工作台 · 专业整理（14 页 E18-00A、E18-00A2）：左栏整理模块、中栏企业事实、右栏原件对照
+// I05 处理工作台 · 专业整理（14 页 E18-00A–C）：左栏整理模块、中栏企业事实 / 生产设备与物料 / 危险源辨识、右栏原件对照或评价依据
 export function ExpertTaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
   const workup = useWorkup(taskId);
   const save = useSaveFact(taskId);
   const saveProduction = useSaveProduction(taskId);
+  const saveRisk = useSaveRisk(taskId);
   const contacts = useContacts(taskId);
   const check = useTaskCheck(taskId);
   const client = useQueryClient();
@@ -69,8 +71,10 @@ export function ExpertTaskPage() {
   const [showRecords, setShowRecords] = useState(false);
   const [fileId, setFileId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<FactSection>('basic');
-  // 中栏显示哪个模块：企业事实，或生产设备与物料的某一类清单
-  const [module, setModule] = useState<'facts' | ProductionList>('facts');
+  // 中栏显示哪个模块：企业事实、生产设备与物料的某一类清单，或危险源辨识
+  const [module, setModule] = useState<'facts' | 'risks' | ProductionList>('facts');
+  const [riskId, setRiskId] = useState<string | null>(null);
+  const [dimension, setDimension] = useState<LecKey>('c');
   const sections = useRef(new Map<FactSection, HTMLElement>());
   const rows = useRef(new Map<string, HTMLElement>());
 
@@ -81,6 +85,9 @@ export function ExpertTaskPage() {
   const progress = useMemo(() => workupProgress(facts), [facts]);
   const production = useMemo(() => (workup.data ? productionView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
   const counts = useMemo(() => (production ? listCounts(production) : null), [production]);
+  const risks = useMemo(() => (workup.data ? riskView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
+  const selectedRisk = risks?.rows.find((r) => r.id === riskId) ?? risks?.rows[0];
+  const inProduction = module !== 'facts' && module !== 'risks';
   // 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断在后（底栏与「下一个缺失项」共用）
   const gaps = useMemo(
     () => [
@@ -130,6 +137,22 @@ export function ExpertTaskPage() {
     if (!workup.data) return false;
     try {
       await saveProduction.mutateAsync({ ...input, version: workup.data.version, fileId: currentFile?.fileId } as Parameters<typeof saveProduction.mutateAsync>[0]);
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        message.warning(err.message);
+        await client.invalidateQueries({ queryKey: workupKey(taskId) });
+        return false;
+      }
+      message.error(err instanceof ApiError ? err.message : '保存失败，请检查网络后重试');
+      return false;
+    }
+  };
+
+  const saveRiskRow = async (rowId: string, value: RiskRowValue | null) => {
+    if (!workup.data) return false;
+    try {
+      await saveRisk.mutateAsync({ rowId, value, version: workup.data.version, fileId: currentFile?.fileId });
       return true;
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -197,6 +220,7 @@ export function ExpertTaskPage() {
   const w = workup.data;
   const saved = w.updatedByName ? `已自动保存 ${clock(w.updatedAt)}` : '还没有修改';
   const missingLabels = gaps.map((g) => g.label);
+  const busy = save.isPending || saveProduction.isPending || saveRisk.isPending;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, margin: '-16px 0 -24px' }}>
@@ -279,12 +303,12 @@ export function ExpertTaskPage() {
           <ModuleButton
             title="生产设备与物料"
             sub="8 类清单"
-            active={module !== 'facts'}
+            active={inProduction}
             count={production?.pending.length ? `${production.pending.length} 待确认` : '✓'}
             warn={Boolean(production?.pending.length)}
             onClick={() => setModule('equipment')}
           />
-          {module !== 'facts' && counts && (
+          {inProduction && counts && (
             <div role="list" aria-label="生产设备与物料清单" style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 12px 4px 24px' }}>
               {PRODUCTION_LIST_KEYS.map((key) => {
                 const c = counts[key];
@@ -302,6 +326,37 @@ export function ExpertTaskPage() {
                   </button>
                 );
               })}
+            </div>
+          )}
+          <ModuleButton
+            title="危险源辨识"
+            sub="LEC 法风险评价"
+            active={module === 'risks'}
+            count={`${risks?.places.reduce((n, p) => n + p.count, 0) ?? 0} 项`}
+            warn={false}
+            onClick={() => setModule('risks')}
+          />
+          {module === 'risks' && risks && (
+            <div role="list" aria-label="按作业场所" style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 12px 4px 24px' }}>
+              {risks.places.map((p) => (
+                <button
+                  key={p.name}
+                  type="button"
+                  role="listitem"
+                  onClick={() => {
+                    const first = risks.rows.find((r) => r.workplace === p.name && !r.excluded);
+                    if (!first) return;
+                    setRiskId(first.id);
+                    setTimeout(() => scrollTo(rows.current.get(first.id)), 0);
+                  }}
+                  style={{ ...linkButton, display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', ...text13 }}
+                >
+                  <span style={{ color: selectedRisk?.workplace === p.name ? gy.primary : gy.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.name}
+                  </span>
+                  <span style={{ color: gy.secondary }}>{p.count}</span>
+                </button>
+              ))}
             </div>
           )}
           {LATER_MODULES.map((m) => (
@@ -324,11 +379,25 @@ export function ExpertTaskPage() {
           </div>
         </nav>
 
-        {module !== 'facts' ? (
+        {module === 'risks' && risks ? (
+          <RiskPanel
+            view={risks}
+            selectedId={selectedRisk?.id ?? null}
+            onSelect={setRiskId}
+            dimension={dimension}
+            onDimension={setDimension}
+            saving={saveRisk.isPending}
+            onSave={saveRiskRow}
+            registerRow={(key, el) => {
+              if (el) rows.current.set(key, el);
+              else rows.current.delete(key);
+            }}
+          />
+        ) : inProduction ? (
           <ProductionPanel
             snapshot={w.snapshot}
             data={w.data}
-            list={module}
+            list={module as ProductionList}
             focusKey={focusKey}
             saving={saveProduction.isPending}
             onSave={saveJudgement}
@@ -372,7 +441,22 @@ export function ExpertTaskPage() {
         />
         )}
 
-        <OriginalsPanel originals={originals} selectedId={currentFile?.fileId ?? null} onSelect={setFileId} />
+        {module === 'risks' ? (
+          <RiskBasisPanel
+            row={selectedRisk}
+            dimension={dimension}
+            saving={saveRisk.isPending}
+            onPick={(key, value) => {
+              if (!selectedRisk) return;
+              const { factor, workplace, l, e, c, note, excluded } = selectedRisk;
+              void saveRiskRow(selectedRisk.id, { factor, workplace, l, e, c, note, excluded: excluded || undefined, [key]: value });
+            }}
+            onJump={setModule}
+            originals={originals}
+          />
+        ) : (
+          <OriginalsPanel originals={originals} selectedId={currentFile?.fileId ?? null} onSelect={setFileId} />
+        )}
       </div>
 
       <section
@@ -388,7 +472,7 @@ export function ExpertTaskPage() {
         }}
       >
         <span role="status" style={{ fontSize: 13, lineHeight: '20px', color: w.updatedByName ? stage.done.color : gy.secondary }}>
-          <FadeSwap id={save.isPending ? 'saving' : saved}>{save.isPending ? '保存中…' : w.updatedByName ? `✓ ${saved}` : saved}</FadeSwap>
+          <FadeSwap id={busy ? 'saving' : saved}>{busy ? '保存中…' : w.updatedByName ? `✓ ${saved}` : saved}</FadeSwap>
         </span>
         <span style={{ width: 1, height: 16, background: gy.split }} />
         <span style={{ flex: 1, minWidth: 0, ...text14, color: gy.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -446,7 +530,7 @@ function ModuleButton({
         gap: 2,
         padding: '8px 12px',
         borderRadius: 6,
-        background: active ? gy.selected : undefined,
+        background: active ? gy.selected : 'none',
         textAlign: 'left',
       }}
     >
