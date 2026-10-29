@@ -167,7 +167,7 @@
 - 规则都在 `packages/shared/src/profile/process-flow.ts`：6 个行业模板（工序 + 每道工序用到的设备）、按经营范围推荐、一句话拆工序、和设备表核对、蛇形折行、「生产工艺流程」何时算已提供（有工序、写了一句话、或传了流程图照片，三者有一即可）。调整模板内容只改这个文件的 `PROCESS_TEMPLATES`。
 - 存储：工艺流程放在第 3 步同一块 `productionStep.step.process` 里，走同一个 `PUT /api/enterprises/:id/production-step`；流程图照片同时挂到任务的「生产工艺流程」上。
 - 与设计稿不同：没做行业搜索框和「更多行业 32」（只有 6 个模板，M3 知识库再开）；「预约耕云上门整理」链接留到第 9 项和预约弹窗一起做；选模板只带出工序和设备名称，原辅材料不预填（避免把客户没有的物料写进台账），设备不自动加进设备表，由系统提示里的「加到设备表」让客户确认后再加。
-- 给 M2 的提醒：Word 附图按同一规则（每行 5 道、蛇形折行）用 mermaid 生成，`snakeRows()` 可直接复用；专家补投入物料、去向（返工 / 回用）时写 `productionSchema.processFlow`。
+- 给 M2 的提醒：Word 附图按同一规则（每行 5 道、蛇形折行）生成（1b 已做：`packages/shared/src/document/figures.ts` 自己画 SVG 转图片，不用 Mermaid），`snakeRows()` 已复用；专家补投入物料、去向（返工 / 回用）时写 `productionSchema.processFlow`。
 - 浏览器测试：后台登录限制改为可用环境变量 `LOGIN_LIMIT_PER_MINUTE` 放宽，只在 `playwright.config.ts` 里设成 100；正式环境不设，仍是每分钟 10 次。之前「每个文件只登录一次」的约定照旧。
 
 ### 第 8 项留给后续的说明
