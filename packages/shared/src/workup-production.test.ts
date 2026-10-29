@@ -17,7 +17,7 @@ import {
 const stamp = { by: 'u-zhou', byName: '周工', at: '2026-10-29T08:00:00.000Z' };
 const judged = <T>(value: T, at = stamp.at): Judged<T> => ({ ...stamp, at, value });
 const withWork = (patch: Partial<ProductionWorkup>) => ({ production: { ...emptyProductionWorkup(), ...patch } });
-const none = { overrides: {} };
+const none = {};
 
 describe('危化品的系统建议', () => {
   it('按知识库名单给出建议和理由', () => {

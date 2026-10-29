@@ -204,10 +204,10 @@ function EquipmentTable(props: ProductionPanelProps & { rows: EquipmentRow[]; ad
     <div ref={listRef}>
       <div style={{ ...rowLine, minHeight: 40 }}>
         <span style={{ ...head, ...grow }}>名称</span>
-        <span style={{ ...head, ...col(88) }}>规格</span>
-        <span style={{ ...head, ...col(64, { textAlign: 'right' }) }}>数量</span>
-        <span style={{ ...head, ...col(88, { paddingLeft: 8 }) }}>使用部门</span>
-        <span style={{ ...head, ...col(48) }}>状况</span>
+        <span style={{ ...head, ...col(72) }}>规格</span>
+        <span style={{ ...head, ...col(56, { textAlign: 'right' }) }}>数量</span>
+        <span style={{ ...head, ...col(80, { paddingLeft: 8 }) }}>使用部门</span>
+        <span style={{ ...head, ...col(40) }}>状况</span>
         <span style={{ ...head, ...col(88, { textAlign: 'right' }) }}>来源</span>
         <span style={{ width: 32, flexShrink: 0 }} />
       </div>
@@ -246,14 +246,14 @@ function EquipmentLine({ row, ledger, onEdit, onUndo }: { row: EquipmentRow; led
       <span style={{ ...cell, ...grow }} title={row.name}>
         {row.name}
       </span>
-      <span style={{ ...small, ...col(88) }} title={row.spec}>
+      <span style={{ ...small, ...col(72) }} title={row.spec}>
         {dash(row.spec)}
       </span>
-      <span style={{ ...cell, ...col(64, { textAlign: 'right' }) }}>{dash(row.quantity)}</span>
-      <span style={{ ...small, ...col(88, { paddingLeft: 8 }) }} title={row.location}>
+      <span style={{ ...cell, ...col(56, { textAlign: 'right' }) }}>{dash(row.quantity)}</span>
+      <span style={{ ...small, ...col(80, { paddingLeft: 8 }) }} title={row.location}>
         {dash(row.location)}
       </span>
-      <span style={{ ...small, ...col(48), color: gy.secondary }}>{dash(row.condition)}</span>
+      <span style={{ ...small, ...col(40), color: gy.secondary }}>{dash(row.condition)}</span>
       <RowSource edited={row.source === 'expert'} onOpen={ledger} />
       <RowActions>
         {row.edited && hover ? <UndoButton added={row.added} onClick={onUndo} /> : <EditButton label={`修改${row.name}`} shown={hover} onClick={onEdit} />}
@@ -814,8 +814,8 @@ function BuildingTable(props: ProductionPanelProps & { rows: ReturnType<typeof p
       <div style={{ ...rowLine, minHeight: 40 }}>
         <span style={{ ...head, ...grow }}>名称</span>
         <span style={{ ...head, ...col(56, { textAlign: 'right' }) }}>层数</span>
-        <span style={{ ...head, ...col(88, { textAlign: 'right' }) }}>面积</span>
-        <span style={{ ...head, ...col(128, { paddingLeft: 16 }) }}>耐火等级</span>
+        <span style={{ ...head, ...col(80, { textAlign: 'right' }) }}>面积</span>
+        <span style={{ ...head, ...col(112, { paddingLeft: 16 }) }}>耐火等级</span>
         <span style={{ ...head, ...col(88, { textAlign: 'right' }) }}>来源</span>
         <span style={{ width: 32, flexShrink: 0 }} />
       </div>
@@ -837,8 +837,8 @@ function BuildingTable(props: ProductionPanelProps & { rows: ReturnType<typeof p
           >
             <span style={{ ...cell, ...grow }}>{b.name}</span>
             <span style={{ ...cell, ...col(56, { textAlign: 'right' }) }}>{b.floors ? `${b.floors} 层` : '—'}</span>
-            <span style={{ ...cell, ...col(88, { textAlign: 'right' }) }}>{b.areaM2 ? `${b.areaM2} m²` : '—'}</span>
-            <span style={{ ...col(128, { paddingLeft: 16, overflow: 'visible' }) }}>
+            <span style={{ ...cell, ...col(80, { textAlign: 'right' }) }}>{b.areaM2 ? `${b.areaM2} m²` : '—'}</span>
+            <span style={{ ...col(112, { paddingLeft: 16, overflow: 'visible' }) }}>
               <Select
                 size="small"
                 placeholder="请判断"
