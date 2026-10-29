@@ -1,14 +1,20 @@
-// 用飞宇样例生成一整份应急预案：npm run sample:plan -w @genyun/api，输出到仓库根目录 out/
+// 用飞宇样例生成三份交付文档：npm run sample:plan -w @genyun/api，输出到仓库根目录 out/
+// AI 起草用模拟实现（只填知识块空位）；同名 .json 是文档结构，核对用。
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { feiyuPlanInput } from '@genyun/shared/fixtures/feiyu-plan';
-import { buildPlan } from '../generation/plan/assemble.ts';
+import { FakeSlotDrafter } from '../generation/ai/drafter.ts';
+import { generateDocuments } from '../generation/documents.ts';
 import { renderWord } from '../generation/word/render.ts';
 
 const dir = resolve(import.meta.dirname, '../../../../out');
 mkdirSync(dir, { recursive: true });
-const plan = buildPlan(feiyuPlanInput);
-const file = resolve(dir, '样例-飞宇应急预案.docx');
-writeFileSync(file, await renderWord(plan));
-writeFileSync(resolve(dir, '样例-飞宇应急预案.json'), JSON.stringify(plan, (k, v) => (k === 'png' ? `<${v.length} bytes>` : v), 2));
-console.log(file);
+const docs = await generateDocuments(feiyuPlanInput, { drafter: new FakeSlotDrafter() });
+const names = { plan: '应急预案', risk: '风险评估报告', resource: '应急资源调查报告' } as const;
+for (const key of ['plan', 'risk', 'resource'] as const) {
+  const base = resolve(dir, `样例-飞宇${names[key]}`);
+  writeFileSync(`${base}.docx`, await renderWord(docs[key]));
+  writeFileSync(`${base}.json`, JSON.stringify(docs[key], (k, v) => (k === 'png' ? `<${v.length} bytes>` : v), 2));
+  console.log(`${base}.docx`);
+}
+for (const n of docs.notes) console.log(`${n.plan} · ${n.label}：${n.source === 'ai' ? 'AI' : '系统'}（${n.note}）`);

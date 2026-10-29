@@ -1,0 +1,83 @@
+import { feiyuPlanInput } from '@genyun/shared/fixtures/feiyu-plan';
+import { afterEach, describe, expect, it } from 'vitest';
+import { generateDocuments } from '../documents.ts';
+import { FakeSlotDrafter, defaultDrafter, type SlotDrafter, type SlotRequest } from './drafter.ts';
+import { checkSlot, draftSlots } from './slots.ts';
+
+/** 把候选倒过来排：AI 只换顺序，应当通过 */
+const reorder: SlotDrafter = { name: 'reorder', fill: async (r) => [...r.candidates].reverse().join('，') };
+/** 自作主张加了企业没有的机型 */
+const inventive: SlotDrafter = { name: 'inventive', fill: async (r) => [...r.candidates, '冲床'].join('、') };
+const broken: SlotDrafter = {
+  name: 'broken',
+  fill: async () => {
+    throw new Error('超时');
+  },
+};
+
+describe('AI 只填知识块空位', () => {
+  it('校验：只能用候选里的内容，可换顺序和分隔符', () => {
+    expect(checkSlot('CNC 加工中心高速刀具、压铸机合模抽芯', ['压铸机合模抽芯', 'CNC 加工中心高速刀具'])).toBeNull();
+    expect(checkSlot('压铸机合模抽芯、冲床', ['压铸机合模抽芯'])).toMatch(/冲床/);
+    expect(checkSlot('  ', ['压铸机合模抽芯'])).toMatch(/为空/);
+  });
+
+  it('模拟起草：飞宇 17 个空位全部由 AI 填写并通过校验', async () => {
+    const { filled, notes } = await draftSlots(feiyuPlanInput, new FakeSlotDrafter());
+    expect(notes).toHaveLength(17);
+    expect(notes.every((n) => n.source === 'ai')).toBe(true);
+    expect(filled['SP03']?.['danger-machines']).toBeTruthy();
+    expect(notes.find((n) => n.slot === 'danger-machines')?.label).toBe('危险机械');
+  });
+
+  it('只换顺序的写法被采用，进到成稿里', async () => {
+    const { filled } = await draftSlots(feiyuPlanInput, reorder);
+    const docs = await generateDocuments(feiyuPlanInput, { drafter: reorder });
+    expect(JSON.stringify(docs.plan)).toContain(filled['SP03']!['danger-machines']!);
+  }, 60_000);
+
+  it('写了企业没有的东西：不用，回到系统推出的内容，并写明原因', async () => {
+    const docs = await generateDocuments(feiyuPlanInput, { drafter: inventive });
+    expect(docs.notes.every((n) => n.source === 'system')).toBe(true);
+    expect(docs.notes[0]!.note).toMatch(/候选以外的内容「冲床」/);
+    expect(JSON.stringify(docs.plan)).not.toContain('冲床');
+    // 安全要点句照样在
+    expect(JSON.stringify(docs.plan)).toContain('不可用倒转设备的方法取出肢体');
+  }, 60_000);
+
+  it('AI 服务出错：照样出完整稿子', async () => {
+    const docs = await generateDocuments(feiyuPlanInput, { drafter: broken });
+    expect(docs.notes.every((n) => n.source === 'system' && n.note.includes('超时'))).toBe(true);
+    expect(docs.plan.sections).toHaveLength(5);
+    expect(docs.risk.sections).toHaveLength(4);
+    expect(docs.resource.sections).toHaveLength(3);
+  }, 60_000);
+
+  it('没配置 AI：不发请求，三份照常生成', async () => {
+    let calls = 0;
+    const spy: SlotDrafter = { name: 'spy', fill: async (r: SlotRequest) => (calls++, r.candidates.join('、')) };
+    const { notes } = await draftSlots(feiyuPlanInput, null);
+    expect(notes).toEqual([]);
+    expect(calls).toBe(0);
+    await draftSlots(feiyuPlanInput, spy);
+    expect(calls).toBe(17);
+  });
+});
+
+describe('按环境变量选 AI 起草服务', () => {
+  const env = { ...process.env };
+  afterEach(() => {
+    process.env = { ...env };
+  });
+
+  it('不设为不用 AI；fake 只在非正式环境可用；不认识的报错', () => {
+    delete process.env.AI_DRAFTER;
+    expect(defaultDrafter()).toBeNull();
+    process.env.AI_DRAFTER = 'fake';
+    expect(defaultDrafter()?.name).toBe('fake');
+    process.env.NODE_ENV = 'production';
+    expect(() => defaultDrafter()).toThrow(/正式环境/);
+    process.env.AI_DRAFTER = 'gpt';
+    expect(() => defaultDrafter()).toThrow(/未知/);
+  });
+});
