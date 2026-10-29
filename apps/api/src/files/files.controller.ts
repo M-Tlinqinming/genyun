@@ -48,10 +48,13 @@ function receiveOne(req: Request, res: Response, maxBytes: number): Promise<Expr
 }
 
 // 中文文件名按 RFC 5987 写入下载头，旧浏览器退回到 ASCII 名称
-function contentDisposition(filename: string): string {
+function contentDisposition(filename: string, inline = false): string {
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, '_');
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  return `${inline ? 'inline' : 'attachment'}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
+
+// 只有 PDF 和图片在页面里直接显示；Word、Excel 等仍按下载处理
+const showsInline = (contentType: string) => contentType === 'application/pdf' || contentType.startsWith('image/');
 
 @Controller()
 export class FilesController {
@@ -123,7 +126,7 @@ export class FilesController {
     const data = await (this.storage as LocalDiskStorage).read(signed.key);
     res.set({
       'Content-Type': signed.contentType,
-      'Content-Disposition': contentDisposition(signed.filename),
+      'Content-Disposition': contentDisposition(signed.filename, signed.inline && showsInline(signed.contentType)),
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, no-store',
     });
@@ -137,12 +140,17 @@ export class FilesController {
   }
 
   @Get('files/:id/download-url')
-  async downloadUrl(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+  async downloadUrl(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('inline') inline: string | undefined,
+  ) {
     const file = await this.load(user, id);
     const url = await this.storage.downloadUrl(file.storageKey, {
       filename: file.originalName,
       contentType: file.contentType,
       ttlSeconds: DOWNLOAD_TTL_SECONDS,
+      inline: inline === '1',
     });
     return { url, expiresAt: new Date(Date.now() + DOWNLOAD_TTL_SECONDS * 1000).toISOString() };
   }

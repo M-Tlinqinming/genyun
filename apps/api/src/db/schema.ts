@@ -8,6 +8,8 @@ import {
   type EnterpriseProfile,
   type SubmittedAnswer,
   type SubmittedDocument,
+  type WorkupData,
+  type WorkupSnapshot,
 } from '@genyun/shared';
 import { sql } from 'drizzle-orm';
 import {
@@ -159,6 +161,21 @@ export const taskSubmissions = pgTable('task_submissions', {
   answers: jsonb('answers').$type<SubmittedAnswer[]>().notNull(),
   // 提交时还没给的项：提交后仍可以补，其余已处理的项锁定
   pendingKeys: jsonb('pending_keys').$type<ChecklistItemKey[]>().notNull(),
+});
+
+// 专业整理（14 页 E18-00A）：每个任务一份。负责专家第一次打开任务时复制企业资料作快照，
+// 之后客户再改企业资料不影响这里（变化走事实补件）；专家的修改只记在 data 里，标为专家整理
+export const taskWorkups = pgTable('task_workups', {
+  taskId: uuid('task_id')
+    .primaryKey()
+    .references(() => tasks.id, { onDelete: 'cascade' }),
+  snapshot: jsonb('snapshot').$type<WorkupSnapshot>().notNull(),
+  snapshotAt: timestamp('snapshot_at', { withTimezone: true }).notNull().defaultNow(),
+  data: jsonb('data').$type<WorkupData>().notNull().default({ overrides: {} }),
+  // 每次保存加 1；保存时带上读到的版本，别人已改过就拒绝，避免互相覆盖
+  version: integer('version').notNull().default(1),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // 任务编号按年流水，全平台共用一个计数

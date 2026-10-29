@@ -20,6 +20,7 @@ import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.
 import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
 import { TasksService } from './tasks/tasks.service.ts';
+import { WorkupController, WorkupService } from './tasks/workup.service.ts';
 
 @Controller('health')
 class HealthController {
@@ -48,6 +49,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EnterpriseProfileController,
       TasksController,
       ExpertTasksController,
+      WorkupController,
       TaskDocumentsController,
       EnterpriseDocumentsController,
       FilesController,
@@ -63,6 +65,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       AuthService,
       TasksService,
       ExpertTasksService,
+      WorkupService,
       LicenseReader,
       SubmissionService,
       DocumentsService,

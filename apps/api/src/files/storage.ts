@@ -8,8 +8,15 @@ export interface FileStorage {
   put(key: string, data: Buffer, contentType: string): Promise<void>;
   // 后台自己读取内容（如识别营业执照），不经过下载链接
   read(key: string): Promise<Buffer>;
-  // 生成短时效下载链接；filename 是客户看到的原文件名
-  downloadUrl(key: string, opts: { filename: string; contentType: string; ttlSeconds: number }): Promise<string>;
+  // 生成短时效下载链接；filename 是客户看到的原文件名。inline = 在页面里直接显示（专家对照原件），不另存
+  downloadUrl(key: string, opts: DownloadOptions): Promise<string>;
+}
+
+export interface DownloadOptions {
+  filename: string;
+  contentType: string;
+  ttlSeconds: number;
+  inline?: boolean;
 }
 
 export const FILE_STORAGE = Symbol('FILE_STORAGE');
@@ -25,6 +32,7 @@ export interface SignedDownload {
   filename: string;
   contentType: string;
   expires: number;
+  inline: boolean;
 }
 
 /**
@@ -52,24 +60,26 @@ export class LocalDiskStorage implements FileStorage {
     await writeFile(path, data, { flag: 'wx' });
   }
 
-  async downloadUrl(key: string, opts: { filename: string; contentType: string; ttlSeconds: number }): Promise<string> {
+  async downloadUrl(key: string, opts: DownloadOptions): Promise<string> {
     const expires = Math.floor(Date.now() / 1000) + opts.ttlSeconds;
     const params = new URLSearchParams({ k: key, n: opts.filename, t: opts.contentType, e: String(expires) });
+    if (opts.inline) params.set('d', 'inline');
     params.set('s', this.sign(params));
     return `/api/files/blob?${params}`;
   }
 
   // 校验下载链接；不通过返回 null
   verify(query: Record<string, unknown>): SignedDownload | null {
-    const { k, n, t, e, s } = query;
+    const { k, n, t, e, d, s } = query;
     if (![k, n, t, e, s].every((v) => typeof v === 'string')) return null;
     const params = new URLSearchParams({ k: k as string, n: n as string, t: t as string, e: e as string });
+    if (d === 'inline') params.set('d', 'inline');
     const expected = Buffer.from(this.sign(params));
     const given = Buffer.from(s as string);
     if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
     const expires = Number(e);
     if (!(expires > Date.now() / 1000) || !KEY_PATTERN.test(k as string)) return null;
-    return { key: k as string, filename: n as string, contentType: t as string, expires };
+    return { key: k as string, filename: n as string, contentType: t as string, expires, inline: d === 'inline' };
   }
 
   read(key: string): Promise<Buffer> {
