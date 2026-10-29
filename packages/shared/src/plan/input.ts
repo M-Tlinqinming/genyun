@@ -1,6 +1,7 @@
 // 生成应急预案的输入：客户资料（新资料格式）+ 注册安全工程师的判断与补充 + 属地机构。
 // 专家的部分由 M2 第 4–8 项逐步接上页面；还没有时用系统建议或通用写法，不编造企业事实。
 import type { BasicInfo } from '../profile/basic.ts';
+import type { PlanFigures } from '../workup-figures.ts';
 import type { Location } from '../profile/location.ts';
 import type { Organization } from '../profile/organization.ts';
 import type { Production } from '../profile/production.ts';
@@ -60,6 +61,8 @@ export interface ExpertInput {
   /** 专家改过的适用范围开关；没改的用系统建议 */
   scope?: Partial<Record<ScopeKey, boolean>>;
   facts?: ExpertFacts;
+  /** 专家微调后的图件画法；没有时按自动排版 */
+  figures?: PlanFigures;
 }
 
 export interface PlanInput {

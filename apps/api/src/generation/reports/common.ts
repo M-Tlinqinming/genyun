@@ -1,7 +1,7 @@
 // 风险评估报告与应急资源调查报告共用的部分（迁自旧仓库 lib/md-generator/reports.ts）：
 // 企业概况、企业基本情况表、地理位置、危险有害因素表，以及把 Markdown 正文拼成交付文档。
 // 章用「1. 」、节用「1.1 」，再往下（1）企业概况）是加粗段落，与旧仓库一致。
-import { processFlowSvg, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
+import { flowOptionsOf, processFlowSvg, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
 import { svgToPng } from '../word/png.ts';
 import { MISSING, dash, fill, type PlanContext } from '../plan/context.ts';
 import { parseMarkdown, toSections, type Figure } from '../plan/markdown.ts';
@@ -80,7 +80,13 @@ export function hazardFactorsTable(ctx: PlanContext, no: string): string[] {
 export function buildReport(ctx: PlanContext, kind: DocumentKind, name: string, markdown: string): DeliveryDocument {
   const steps = ctx.input.production.processFlow.steps.map((s) => s.name);
   const figures: Record<string, Figure> = steps.length
-    ? { 'process-flow': { type: 'figure', ...svgToPng(processFlowSvg(steps).svg), placement: 'inline' } }
+    ? {
+        'process-flow': {
+          type: 'figure',
+          ...svgToPng(processFlowSvg(steps, flowOptionsOf(steps, ctx.input.expert.figures?.process)).svg),
+          placement: 'inline',
+        },
+      }
     : {};
   const parsed = parseMarkdown(markdown, figures);
   return {

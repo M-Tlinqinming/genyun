@@ -1,3 +1,4 @@
+import { figuresView } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
@@ -293,6 +294,47 @@ describe('适用范围', () => {
     await zhou.put(url).send({ version: body.version - 1, key: 'dustProcess', value: true }).expect(409);
     const ops = await as('ops@test.cn');
     await ops.put(url).send({ version: body.version, key: 'dustProcess', value: true }).expect(403);
+  });
+});
+
+describe('图件', () => {
+  it('调整画法后采用；再改画法回到待采用；恢复自动排版；其他整理内容不受影响', async () => {
+    const zhou = await as('zhou@test.cn');
+    let { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    const put = async (payload: object) => {
+      ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/figures`).send({ version: body.version, ...payload }).expect(200));
+    };
+    const view = () => figuresView(body.snapshot, body.data);
+
+    await put({ org: { office: true }, process: { perRow: 4, branches: [{ id: 'b1', from: '品质检测', to: '抛光', kind: 'rework' }] } });
+    expect(view().org.office).toBe(true);
+    expect(view().process.flowBranches).toEqual([{ from: 8, to: 5, label: '返工' }]);
+
+    await put({ adopt: ['org', 'process'] });
+    expect(body.data.figures.adopted.org).toMatchObject({ byName: '周工' });
+    expect(view().pending).toEqual([]);
+
+    await put({ process: { perRow: 3 } });
+    expect(view().process.status).toBe('changed');
+    expect(view().org.status).toBe('adopted');
+
+    ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, key: 'hospital', value: '仲恺人民医院' }).expect(200));
+    expect(body.data.figures.org).toEqual({ office: true });
+
+    await put({ org: null, process: null });
+    expect(body.data.figures.org).toBeUndefined();
+    expect(view().org.status).toBe('changed');
+  });
+
+  it('支路起点终点相同、过期版本都拒绝；运营不能改', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`);
+    const url = `/api/tasks/${feiyuTask}/workup/figures`;
+    const same = { process: { branches: [{ id: 'b1', from: '压铸', to: '压铸', kind: 'rework' }] } };
+    expect((await zhou.put(url).send({ version: body.version, ...same }).expect(400)).body.message).toBe('支路的起点和终点不能是同一道工序');
+    await zhou.put(url).send({ version: body.version - 1, adopt: ['org'] }).expect(409);
+    const ops = await as('ops@test.cn');
+    await ops.put(url).send({ version: body.version, adopt: ['org'] }).expect(403);
   });
 });
 

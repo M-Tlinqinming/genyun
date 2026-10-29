@@ -147,6 +147,25 @@ describe('飞宇整份应急预案', () => {
     expect(figures).toHaveLength(5);
   });
 
+  it('专家在图件里微调过的画法进 Word：显示应急办公室、工序排成一行', () => {
+    const figureOf = (doc: ReturnType<typeof buildPlan>, caption: string) => {
+      const found: DocBlock[] = [];
+      const walk = (s: DocSection) => {
+        found.push(...s.blocks.filter((b) => b.type === 'figure' && b.caption?.includes(caption)));
+        s.sections?.forEach(walk);
+      };
+      doc.sections.forEach(walk);
+      return found[0] as Extract<DocBlock, { type: 'figure' }>;
+    };
+    const tuned = buildPlan({
+      ...feiyuPlanInput,
+      expert: { ...feiyuPlanInput.expert, figures: { org: { deputy: true, office: true, order: [] }, process: { perRow: 0, branches: [] } } },
+    });
+    expect(figureOf(tuned, '组织').width).toBeGreaterThan(figureOf(plan, '组织').width);
+    expect(figureOf(tuned, '工艺流程').width).toBeGreaterThan(figureOf(plan, '工艺流程').width);
+    expect(figureOf(tuned, '工艺流程').height).toBeLessThan(figureOf(plan, '工艺流程').height);
+  }, 60_000);
+
   describe('生成 Word', () => {
     let document = '';
     let media = 0;

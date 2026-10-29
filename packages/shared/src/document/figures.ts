@@ -72,15 +72,17 @@ export interface Svg {
   height: number;
 }
 
-// ── 应急救援组织体系图：总指挥 →（有副总指挥时）副总指挥 → 各组，组名竖排，只写职务 ──
-export function orgChartSvg(chart: OrgChart): Svg {
+// ── 应急救援组织体系图：总指挥 →（有副总指挥时）副总指挥 →（专家选择显示时）应急办公室 → 各组，组名竖排，只写职务 ──
+export function orgChartSvg(chart: OrgChart & { office?: boolean }): Svg {
   const BOX = 36;
   const SPACING = 66;
   const MAX_WIDTH = 272;
   const PAD = 20;
+  // 应急办公室挂在主干右侧
+  const OFFICE_GAP = 36;
   const n = chart.groups.length;
   const rowWidth = n <= 1 ? BOX : Math.min(MAX_WIDTH, BOX * n + SPACING * (n - 1));
-  const width = Math.max(rowWidth, 104) + PAD * 2;
+  const width = Math.max(rowWidth, chart.office ? (OFFICE_GAP + 104) * 2 : 104) + PAD * 2;
   const mid = width / 2;
   const left = mid - rowWidth / 2;
   const groupHeight = Math.max(108, ...chart.groups.map((g) => [...g].length * LINE + 16));
@@ -91,6 +93,14 @@ export function orgChartSvg(chart: OrgChart): Svg {
   if (chart.deputy) {
     parts.push(arrow(mid, y, mid, y + 22), box(mid - 52, y + 22, 104, 34, ['副总指挥']));
     y += 56;
+  }
+  if (chart.office) {
+    parts.push(
+      `<path d="M${mid} ${y}V${y + 50}" ${STROKE}/>`,
+      arrow(mid, y + 25, mid + OFFICE_GAP - 3, y + 25),
+      box(mid + OFFICE_GAP, y + 10, 104, 30, ['应急办公室']),
+    );
+    y += 50;
   }
   if (n > 0) {
     const centers = chart.groups.map((_, i) => left + (n <= 1 ? rowWidth / 2 : BOX / 2 + (i * (rowWidth - BOX)) / (n - 1)));
@@ -105,38 +115,91 @@ export function orgChartSvg(chart: OrgChart): Svg {
   return { svg: svg(width, height, parts.join('')), width, height };
 }
 
-// ── 工艺流程图：方框加箭头，每行 5 道，蛇形折行 ──
-export function processFlowSvg(steps: string[]): Svg {
-  const PER_ROW = 5;
+// 工艺流程图的支路（返工 / 回用）：从第 from 道虚线指回第 to 道（下标从 0 起）
+export interface FlowBranch {
+  from: number;
+  to: number;
+  label: string;
+}
+
+// ── 工艺流程图：方框加箭头，默认每行 5 道，蛇形折行；perRow 为 0 时排成一行。支路画在框下方的虚线 ──
+export function processFlowSvg(steps: string[], opts: { perRow?: number; branches?: FlowBranch[] } = {}): Svg {
+  const PER_ROW = opts.perRow === 0 ? Math.max(steps.length, 1) : (opts.perRow ?? 5);
   const W = 112;
   const H = 44;
   const GAP = 28;
-  const DOWN = 36;
   const PAD = 20;
+  const branches = (opts.branches ?? []).filter((b) => b.from !== b.to && steps[b.from] !== undefined && steps[b.to] !== undefined);
+  const rows = snakeRows(
+    steps.map((name, i) => ({ name, i })),
+    PER_ROW,
+  );
+  const rowOf = (i: number) => Math.floor(i / PER_ROW);
+  // 每条支路走它起点那一行下方的一条虚线；跨行的从左边绕到终点那一行下方再上去
+  const lanes = rows.map(() => 0);
+  const routes = branches.map((b) => {
+    const lane = lanes[rowOf(b.from)]!++;
+    const cross = rowOf(b.from) !== rowOf(b.to);
+    return { ...b, lane, cross, targetLane: cross ? lanes[rowOf(b.to)]!++ : lane };
+  });
+  const LANE = 8;
+  const below = (r: number) => (lanes[r] ? 14 + (lanes[r]! - 1) * LANE + 10 : 0);
+  const DOWN = 36;
+  const crossCount = routes.filter((r) => r.cross).length;
+  const padLeft = PAD + (crossCount ? 12 + crossCount * LANE : 0);
+
   const rowWidth = W * Math.min(PER_ROW, Math.max(steps.length, 1)) + GAP * (Math.min(PER_ROW, Math.max(steps.length, 1)) - 1);
   const fullWidth = W * PER_ROW + GAP * (PER_ROW - 1);
-  const rows = snakeRows(steps, PER_ROW);
   const innerWidth = rows.length > 1 ? fullWidth : rowWidth;
-  const width = innerWidth + PAD * 2;
+  const width = innerWidth + padLeft + PAD;
+  const tops: number[] = [];
+  let y = PAD;
+  rows.forEach((_, r) => {
+    tops.push(y);
+    y += H + below(r) + (r < rows.length - 1 ? DOWN : 0);
+  });
+  const centers = new Map<number, number>();
   const parts: string[] = [];
   rows.forEach((row, r) => {
-    const y = PAD + r * (H + DOWN);
+    const top = tops[r]!;
     // 反向行靠右排，与网页一致
     const offset = row.reversed ? innerWidth - (W * row.items.length + GAP * (row.items.length - 1)) : 0;
-    row.items.forEach((name, i) => {
-      const x = PAD + offset + i * (W + GAP);
-      parts.push(box(x, y, W, H, wrap(name, W - 12)));
+    row.items.forEach((item, i) => {
+      const x = padLeft + offset + i * (W + GAP);
+      centers.set(item.i, x + W / 2);
+      parts.push(box(x, top, W, H, wrap(item.name, W - 12)));
       // 反向行从右往左走：箭头从右边那格指向左边这格
-      if (i > 0) parts.push(row.reversed ? arrow(x - 3, y + H / 2, x - GAP + 3, y + H / 2) : arrow(x - GAP + 3, y + H / 2, x - 3, y + H / 2));
+      if (i > 0) parts.push(row.reversed ? arrow(x - 3, top + H / 2, x - GAP + 3, top + H / 2) : arrow(x - GAP + 3, top + H / 2, x - 3, top + H / 2));
     });
     if (r > 0) {
       // 上一行末尾在右（正向）或左（反向），向下接到这一行同一侧
       const prev = rows[r - 1]!;
-      const x = prev.reversed ? PAD + W / 2 : PAD + innerWidth - W / 2;
-      parts.push(arrow(x, y - DOWN + 4, x, y - 4));
+      const x = prev.reversed ? padLeft + W / 2 : padLeft + innerWidth - W / 2;
+      parts.push(arrow(x, top - DOWN + 4, x, top - 4));
     }
   });
-  const height = PAD * 2 + rows.length * H + Math.max(rows.length - 1, 0) * DOWN;
+  const DASH = `fill="none" stroke="${INK}" stroke-width="1.1" stroke-dasharray="4 3" stroke-linejoin="round"`;
+  let crossIndex = 0;
+  for (const b of routes) {
+    // 起点、终点稍微错开，避免同一个框上的两条线重合
+    const fx = centers.get(b.from)! + (b.lane % 2 ? -10 : 10);
+    const right = b.targetLane % 2 === 1;
+    const tx = centers.get(b.to)! + (right ? 10 : -10);
+    const fromLaneY = tops[rowOf(b.from)]! + H + 14 + b.lane * LANE;
+    const toBottom = tops[rowOf(b.to)]! + H;
+    const toLaneY = toBottom + 14 + b.targetLane * LANE;
+    const start = `M${fx} ${fromLaneY - 14 - b.lane * LANE}V${fromLaneY}`;
+    const d = b.cross
+      ? `${start}H${PAD + 6 + crossIndex++ * LANE}V${toLaneY}H${tx}V${toBottom + 4}`
+      : `${start}H${tx}V${toBottom + 4}`;
+    parts.push(
+      `<path d="${d}" ${DASH}/>`,
+      `<path d="M${tx - 3} ${toBottom + 8}l3-4 3 4" ${STROKE}/>`,
+      // 「返工」「回用」写在终点箭头旁
+      `<text x="${right ? tx + 5 : tx - 5}" y="${toBottom + 13}" text-anchor="${right ? 'start' : 'end'}" font-size="11">${esc(b.label)}</text>`,
+    );
+  }
+  const height = y + PAD;
   return { svg: svg(width, height, parts.join('')), width, height };
 }
 
