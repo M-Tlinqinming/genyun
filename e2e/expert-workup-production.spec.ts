@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // 演示数据：飞宇第 3 步有 8 台设备、5 种物料；压力管道答「拍照给耕云看」，厂房耐火等级留给专家。
-// 本文件排在 expert-workup-contact 之后、expert-workup 之前：判定完 4 项并新增乙炔，后者的必需项计数按 17 项算
+// 本文件排在 expert-workup-contact 之后、expert-workup 之前：判定完 4 项并新增乙炔；适用范围的开关在 expert-workup-scope 确认
 async function openFeiyu(page: Page) {
   await page.goto('/login');
   await page.getByPlaceholder('请输入邮箱').fill('expert@demo.genyun.net.cn');
@@ -18,7 +18,7 @@ const impact = (page: Page) => page.getByLabel('本表影响的适用范围开�
 
 test('周工判定危化品、特种设备与耐火等级，补设备和物料', async ({ page }) => {
   await openFeiyu(page);
-  await expect(page.getByText('整理中 · 必需项 11 / 16')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 11 / 20')).toBeVisible();
   // 「下一个缺失项」：企业事实的技术人员数之后，跳到原辅材料里第一项待确认的判断
   await page.getByRole('button', { name: '下一个缺失项' }).click();
   await expect(page.locator('[data-fact="technicalManagementCount"]')).toBeVisible();
@@ -81,10 +81,10 @@ test('周工判定危化品、特种设备与耐火等级，补设备和物料',
   await page.getByTitle('二级').click();
   await expect(row(page, 'building:b1').getByText('专家整理')).toBeVisible();
 
-  // 都判定完：模块打勾，只剩企业事实的技术人员数
+  // 都判定完：模块打勾，剩企业事实的技术人员数和适用范围里靠名称推断的粉尘、熔融两个开关
   await expect(page.getByRole('button', { name: /生产设备与物料\s*✓/ })).toBeVisible();
-  await expect(page.getByText('整理中 · 必需项 16 / 17')).toBeVisible();
-  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 1 项：技术人员数');
+  await expect(page.getByText('整理中 · 必需项 16 / 19')).toBeVisible();
+  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 3 项：技术人员数 · 适用范围（2 个开关待确认）');
 
   // 退出再进，判断都还在
   await page.reload();

@@ -7,6 +7,9 @@ import {
   PRODUCTION_LISTS,
   productionView,
   riskView,
+  SCOPE_GROUP_KEYS,
+  SCOPE_GROUPS,
+  scopeView,
   workupFacts,
   workupProgress,
   type ChecklistItemKey,
@@ -16,6 +19,8 @@ import {
   type LecKey,
   type ProductionList,
   type RiskRowValue,
+  type ScopeGroup,
+  type ScopeKey,
 } from '@genyun/shared';
 import { App, Button, Result, Tooltip } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,7 +29,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useContacts } from '../../api/contacts';
 import { ApiError } from '../../api/request';
 import { useTask, useTaskCheck } from '../../api/tasks';
-import { useSaveFact, useSaveProduction, useSaveRisk, useWorkup, workupKey } from '../../api/workup';
+import { useSaveFact, useSaveProduction, useSaveRisk, useSaveScope, useWorkup, workupKey } from '../../api/workup';
 import { linkButton, Loading } from '../../components/ui';
 import { FadeSwap } from '../../theme/motion';
 import { gy, stage } from '../../theme/tokens';
@@ -34,10 +39,9 @@ import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
 import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
+import { ScopePanel, ScopePreviewPanel } from './workup/ScopePanel';
 
 const STAGES = ['资料核实', '专业编制', '审核与修订', '成果发布'];
-// 后续整理模块，在 M2 第 8 项开放
-const LATER_MODULES = [{ label: '适用范围', item: 8 }];
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const text13: CSSProperties = { fontSize: 13, lineHeight: '22px' };
@@ -48,7 +52,8 @@ function clock(iso: string): string {
   );
 }
 
-// I05 处理工作台 · 专业整理（14 页 E18-00A–C）：左栏整理模块、中栏企业事实 / 生产设备与物料 / 危险源辨识、右栏原件对照或评价依据
+// I05 处理工作台 · 专业整理（14 页 E18-00A–D）：左栏整理模块、中栏企业事实 / 生产设备与物料 / 危险源辨识 / 适用范围、
+// 右栏原件对照、评价依据或生成结构预览
 export function ExpertTaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
@@ -56,6 +61,7 @@ export function ExpertTaskPage() {
   const save = useSaveFact(taskId);
   const saveProduction = useSaveProduction(taskId);
   const saveRisk = useSaveRisk(taskId);
+  const saveScope = useSaveScope(taskId);
   const contacts = useContacts(taskId);
   const check = useTaskCheck(taskId);
   const client = useQueryClient();
@@ -71,10 +77,12 @@ export function ExpertTaskPage() {
   const [showRecords, setShowRecords] = useState(false);
   const [fileId, setFileId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<FactSection>('basic');
-  // 中栏显示哪个模块：企业事实、生产设备与物料的某一类清单，或危险源辨识
-  const [module, setModule] = useState<'facts' | 'risks' | ProductionList>('facts');
+  // 中栏显示哪个模块：企业事实、生产设备与物料的某一类清单、危险源辨识或适用范围
+  const [module, setModule] = useState<'facts' | 'risks' | 'scope' | ProductionList>('facts');
   const [riskId, setRiskId] = useState<string | null>(null);
   const [dimension, setDimension] = useState<LecKey>('c');
+  const [scopeGroup, setScopeGroup] = useState<ScopeGroup | null>(null);
+  const [scopeKey, setScopeKey] = useState<ScopeKey | null>(null);
   const sections = useRef(new Map<FactSection, HTMLElement>());
   const rows = useRef(new Map<string, HTMLElement>());
 
@@ -86,17 +94,19 @@ export function ExpertTaskPage() {
   const production = useMemo(() => (workup.data ? productionView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
   const counts = useMemo(() => (production ? listCounts(production) : null), [production]);
   const risks = useMemo(() => (workup.data ? riskView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
+  const scope = useMemo(() => (workup.data ? scopeView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
   const selectedRisk = risks?.rows.find((r) => r.id === riskId) ?? risks?.rows[0];
-  const inProduction = module !== 'facts' && module !== 'risks';
-  // 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断在后（底栏与「下一个缺失项」共用）
+  const inProduction = module !== 'facts' && module !== 'risks' && module !== 'scope';
+  // 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关在后（底栏与「下一个缺失项」共用）
   const gaps = useMemo(
     () => [
       ...progress.missing.map((f) => ({ key: f.key, label: f.label, module: 'facts' as const, section: f.section })),
       ...(production?.pending ?? []).map((p) => ({ key: p.key, label: p.label, module: p.list, section: undefined })),
+      ...(scope?.pending ?? []).map((s) => ({ key: `scope:${s.key}`, label: s.label, module: 'scope' as const, section: undefined })),
     ],
-    [progress, production],
+    [progress, production, scope],
   );
-  const required = progress.required + (production?.required ?? 0);
+  const required = progress.required + (production?.required ?? 0) + (scope?.required ?? 0);
   const done = required - gaps.length;
   const originals = useMemo(() => workup.data?.originals ?? [], [workup.data]);
   const currentFile = originals.find((o) => o.fileId === fileId) ?? originals[0];
@@ -130,6 +140,7 @@ export function ExpertTaskPage() {
     setFocusKey(next.key);
     setModule(next.module);
     if (next.section) setActiveSection(next.section);
+    if (next.module === 'scope') setScopeGroup(null);
     setTimeout(() => scrollTo(rows.current.get(next.key)), 0);
   };
 
@@ -163,6 +174,29 @@ export function ExpertTaskPage() {
       message.error(err instanceof ApiError ? err.message : '保存失败，请检查网络后重试');
       return false;
     }
+  };
+
+  const saveSwitch = async (key: ScopeKey, value: boolean | null) => {
+    if (!workup.data) return false;
+    try {
+      await saveScope.mutateAsync({ key, value, version: workup.data.version });
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        message.warning(err.message);
+        await client.invalidateQueries({ queryKey: workupKey(taskId) });
+        return false;
+      }
+      message.error(err instanceof ApiError ? err.message : '保存失败，请检查网络后重试');
+      return false;
+    }
+  };
+
+  // 右栏点了某个开关或某份待定的预案：中栏显示全部并定位到这个开关
+  const goToSwitch = (key: ScopeKey) => {
+    setScopeGroup(null);
+    setScopeKey(key);
+    setTimeout(() => scrollTo(rows.current.get(`scope:${key}`)), 0);
   };
 
   // 点来源标签：右栏打开这一项对应的原件（记下的那份，或这类资料的第一份）
@@ -219,8 +253,13 @@ export function ExpertTaskPage() {
 
   const w = workup.data;
   const saved = w.updatedByName ? `已自动保存 ${clock(w.updatedAt)}` : '还没有修改';
-  const missingLabels = gaps.map((g) => g.label);
-  const busy = save.isPending || saveProduction.isPending || saveRisk.isPending;
+  // 适用范围的待确认开关在底栏合成一条
+  const scopeGaps = gaps.filter((g) => g.module === 'scope').length;
+  const missingLabels = [
+    ...gaps.filter((g) => g.module !== 'scope').map((g) => g.label),
+    ...(scopeGaps ? [`适用范围（${scopeGaps} 个开关待确认）`] : []),
+  ];
+  const busy = save.isPending || saveProduction.isPending || saveRisk.isPending || saveScope.isPending;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, margin: '-16px 0 -24px' }}>
@@ -359,14 +398,41 @@ export function ExpertTaskPage() {
               ))}
             </div>
           )}
-          {LATER_MODULES.map((m) => (
-            <Tooltip key={m.label} title={`在 M2 第 ${m.item} 项开放`} placement="right">
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', ...text14, color: gy.tertiary }}>
-                <span>{m.label}</span>
-                <span style={text13}>待开放</span>
-              </div>
-            </Tooltip>
-          ))}
+          <ModuleButton
+            title="适用范围"
+            sub="决定预案章节"
+            active={module === 'scope'}
+            count={scope?.pending.length ? `待确认 ${scope.pending.length}` : '✓'}
+            warn={Boolean(scope?.pending.length)}
+            onClick={() => {
+              setModule('scope');
+              setScopeGroup(null);
+            }}
+          />
+          {module === 'scope' && scope && (
+            <div role="list" aria-label="适用范围分组" style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 12px 4px 24px' }}>
+              {SCOPE_GROUP_KEYS.map((g) => {
+                const items = scope.switches.filter((s) => s.group === g);
+                const waiting = items.filter((s) => s.status === 'pending').length;
+                const answered = items.every((s) => s.suggestion.basis === 'answer' && !s.judged);
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    role="listitem"
+                    aria-current={scopeGroup === g ? 'true' : undefined}
+                    onClick={() => setScopeGroup(scopeGroup === g ? null : g)}
+                    style={{ ...linkButton, display: 'flex', justifyContent: 'space-between', width: '100%', ...text13 }}
+                  >
+                    <span style={{ color: scopeGroup === g ? gy.primary : gy.text }}>{SCOPE_GROUPS[g]}</span>
+                    <span style={{ color: waiting ? stage.action.color : stage.done.color }}>
+                      {waiting ? `${waiting} 待确认` : answered ? '客户已答' : '✓'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <span style={{ flex: 1 }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderTop: `1px solid ${gy.split}` }}>
             <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>来源图例</span>
@@ -379,7 +445,21 @@ export function ExpertTaskPage() {
           </div>
         </nav>
 
-        {module === 'risks' && risks ? (
+        {module === 'scope' && scope ? (
+          <ScopePanel
+            view={scope}
+            group={scopeGroup}
+            onShowAll={() => setScopeGroup(null)}
+            selectedKey={scopeKey}
+            onSelect={setScopeKey}
+            saving={saveScope.isPending}
+            onSave={saveSwitch}
+            registerRow={(key, el) => {
+              if (el) rows.current.set(key, el);
+              else rows.current.delete(key);
+            }}
+          />
+        ) : module === 'risks' && risks ? (
           <RiskPanel
             view={risks}
             selectedId={selectedRisk?.id ?? null}
@@ -441,7 +521,9 @@ export function ExpertTaskPage() {
         />
         )}
 
-        {module === 'risks' ? (
+        {module === 'scope' && scope ? (
+          <ScopePreviewPanel view={scope} onSelect={goToSwitch} />
+        ) : module === 'risks' ? (
           <RiskBasisPanel
             row={selectedRisk}
             dimension={dimension}
@@ -476,7 +558,7 @@ export function ExpertTaskPage() {
         </span>
         <span style={{ width: 1, height: 16, background: gy.split }} />
         <span style={{ flex: 1, minWidth: 0, ...text14, color: gy.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {missingLabels.length ? `还差 ${missingLabels.length} 项：${missingLabels.join(' · ')}` : '企业事实与生产设备的必需项已齐'}
+          {gaps.length ? `还差 ${gaps.length} 项：${missingLabels.join(' · ')}` : '专业整理的必需项已齐'}
         </span>
         <Button onClick={goToNextMissing} disabled={gaps.length === 0}>
           下一个缺失项

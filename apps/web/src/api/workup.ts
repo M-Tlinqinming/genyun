@@ -1,4 +1,4 @@
-import type { FactSave, ProductionSave, RiskSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
+import type { FactSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -57,6 +57,16 @@ export function useSaveRisk(taskId: string) {
   return useMutation({
     mutationFn: (input: RiskSave) =>
       request<Workup>(`/tasks/${taskId}/workup/risks`, { method: 'PUT', body: JSON.stringify(input) }),
+    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+  });
+}
+
+// 适用范围：一次确认或改一个开关，value 为 null 撤回到系统建议
+export function useSaveScope(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ScopeSave) =>
+      request<Workup>(`/tasks/${taskId}/workup/scope`, { method: 'PUT', body: JSON.stringify(input) }),
     onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
   });
 }
