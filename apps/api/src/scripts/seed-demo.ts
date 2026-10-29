@@ -1,6 +1,7 @@
 // 预览环境的演示账号（只用虚构数据）。正式环境不要运行。
 import { type ChecklistItemKey, type ChecklistState, chinaToday, formatTaskNumber } from '@genyun/shared';
 import { feiyuBasicInfo, feiyuChecklist } from '@genyun/shared/fixtures/feiyu';
+import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase } from '../db/client.ts';
 import {
@@ -47,6 +48,8 @@ console.log(`已创建 ${people.length} 个演示账号：${people.map((p) => p.
 
 // 分派页面在 M3；先用演示数据把飞宇任务分派给周工，另一家分派给吴工（验证专家互相看不到）
 const customer = uid['feiyu@demo.genyun.net.cn']!;
+// 飞宇自填的企业资料（专业整理用）；技术人员数故意不填，演示专家整理时补齐缺失项
+const { technicalManagementCount: _, ...feiyuBasic } = feiyuProfile.basicStep!.basic;
 const [feiyu, other] = await db
   .insert(enterprises)
   .values([
@@ -56,6 +59,7 @@ const [feiyu, other] = await db
       socialCreditCode: feiyuBasicInfo.socialCreditCode,
       registeredAddress: feiyuBasicInfo.registeredAddress?.detail ?? null,
       legalRepresentative: feiyuBasicInfo.legalRepresentative,
+      profile: { ...feiyuProfile, basicStep: { ...feiyuProfile.basicStep!, basic: feiyuBasic } },
       createdBy: customer,
     },
     { orgId: feiyuOrg!.id, name: '示例五金制品有限公司', createdBy: customer },

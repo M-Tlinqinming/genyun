@@ -1,0 +1,177 @@
+import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
+import type { INestApplication } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import request from 'supertest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createApp } from '../app.ts';
+import { hashPassword } from '../auth/auth.service.ts';
+import { openDatabase, type DatabaseHandle } from '../db/client.ts';
+import { checklistItemFiles, enterprises, files, memberships, organizations, tasks, users } from '../db/schema.ts';
+
+const PASSWORD = 'correct horse battery staple';
+
+let handle: DatabaseHandle;
+let app: INestApplication;
+const uid: Record<string, string> = {};
+let feiyuTask = '';
+let feiyuEnterprise = '';
+let otherTask = '';
+let preparingTask = '';
+let rosterFile = '';
+
+beforeAll(async () => {
+  handle = await openDatabase('memory://');
+  const { db } = handle;
+  const passwordHash = await hashPassword(PASSWORD);
+  const [customer, internal] = await db
+    .insert(organizations)
+    .values([
+      { name: '飞宇演示客户', kind: 'customer', contractStartsAt: '2026-01-01', contractEndsAt: '2099-12-31' },
+      { name: '耕云', kind: 'internal' },
+    ])
+    .returning();
+  for (const p of [
+    { email: 'feiyu@test.cn', name: '陈志刚', orgId: customer!.id, role: 'customer_admin' as const },
+    { email: 'zhou@test.cn', name: '周工', orgId: internal!.id, role: 'expert' as const },
+    { email: 'wu@test.cn', name: '吴工', orgId: internal!.id, role: 'expert' as const },
+    { email: 'ops@test.cn', name: '赵运营', orgId: internal!.id, role: 'operator' as const },
+  ]) {
+    const [u] = await db.insert(users).values({ email: p.email, name: p.name, passwordHash }).returning();
+    await db.insert(memberships).values({ userId: u!.id, orgId: p.orgId, role: p.role });
+    uid[p.email] = u!.id;
+  }
+  const customerId = uid['feiyu@test.cn']!;
+  const ents = await db
+    .insert(enterprises)
+    .values([
+      { orgId: customer!.id, name: '惠阳飞宇电器有限公司', socialCreditCode: '91441300726483224B', legalRepresentative: '李文聪', registeredAddress: '惠州市仲恺高新区陈江街道正大路 17 号', profile: feiyuProfile, createdBy: customerId },
+      { orgId: customer!.id, name: '示例五金制品有限公司', createdBy: customerId },
+      { orgId: customer!.id, name: '示例精工有限公司', createdBy: customerId },
+    ])
+    .returning();
+  feiyuEnterprise = ents[0]!.id;
+  const base = { orgId: customer!.id, businessType: 'emergency_plan' as const, name: '2026 年应急预案', createdBy: customerId };
+  const created = await db
+    .insert(tasks)
+    .values([
+      { ...base, enterpriseId: ents[0]!.id, number: 'GY-2026-001', status: 'submitted' as const, assignedExpertId: uid['zhou@test.cn']! },
+      { ...base, enterpriseId: ents[1]!.id, number: 'GY-2026-002', status: 'submitted' as const, assignedExpertId: uid['wu@test.cn']! },
+      { ...base, enterpriseId: ents[2]!.id, number: 'GY-2026-003', assignedExpertId: uid['zhou@test.cn']! },
+    ])
+    .returning();
+  [feiyuTask, otherTask, preparingTask] = created.map((t) => t.id) as [string, string, string];
+
+  const [roster] = await db
+    .insert(files)
+    .values({
+      orgId: customer!.id,
+      kind: 'customer_material',
+      originalName: '应急人员名册.pdf',
+      contentType: 'application/pdf',
+      sizeBytes: 100,
+      sha256: 'x',
+      storageKey: `${customer!.id}/${crypto.randomUUID()}`,
+      uploadedBy: customerId,
+    })
+    .returning();
+  rosterFile = roster!.id;
+  await db.insert(checklistItemFiles).values({ taskId: feiyuTask, itemKey: 'emergency_groups', fileId: rosterFile, linkedBy: customerId });
+
+  app = await createApp(db, { loginLimitPerMinute: 1000 });
+  await app.init();
+});
+
+afterAll(async () => {
+  await app?.close();
+  await handle?.close();
+});
+
+async function as(email: string) {
+  const agent = request.agent(app.getHttpServer());
+  expect((await agent.post('/api/auth/login').send({ email, password: PASSWORD })).status).toBe(200);
+  return agent;
+}
+
+describe('专业整理', () => {
+  it('第一次打开时复制企业资料；原件列出任务里的文件', async () => {
+    const res = await (await as('zhou@test.cn')).get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    expect(res.body.version).toBe(1);
+    expect(res.body.snapshot.identity.name).toBe('惠阳飞宇电器有限公司');
+    expect(res.body.snapshot.profile.basicStep.basic.employeeCount).toBe(86);
+    expect(res.body.originals).toEqual([
+      expect.objectContaining({ fileId: rosterFile, name: '应急人员名册.pdf', itemKeys: ['emergency_groups'], version: null }),
+    ]);
+  });
+
+  it('专家改的内容退出再进还在；客户之后改企业资料不影响这份整理', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    const saved = await zhou
+      .put(`/api/tasks/${feiyuTask}/workup/facts`)
+      .send({ version: body.version, key: 'technicalManagementCount', value: 6, fileId: rosterFile })
+      .expect(200);
+    expect(saved.body.version).toBe(body.version + 1);
+    expect(saved.body.data.overrides.technicalManagementCount).toMatchObject({ value: 6, source: 'expert', byName: '周工', fileId: rosterFile });
+
+    await handle.db.update(enterprises).set({ name: '客户后来改的名字' }).where(eq(enterprises.id, feiyuEnterprise));
+    const again = await (await as('zhou@test.cn')).get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    expect(again.body.data.overrides.technicalManagementCount.value).toBe(6);
+    expect(again.body.snapshot.identity.name).toBe('惠阳飞宇电器有限公司');
+    expect(again.body.updatedByName).toBe('周工');
+  });
+
+  it('标为客户确认；传 null 撤回专家的修改', async () => {
+    const zhou = await as('zhou@test.cn');
+    let { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`);
+    ({ body } = await zhou
+      .put(`/api/tasks/${feiyuTask}/workup/facts`)
+      .send({ version: body.version, key: 'dutyPhone', value: '0752-1234567', source: 'customer' })
+      .expect(200));
+    expect(body.data.overrides.dutyPhone.source).toBe('customer');
+    ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, key: 'dutyPhone', value: null }).expect(200));
+    expect(body.data.overrides.dutyPhone).toBeUndefined();
+  });
+
+  it('版本过期时拒绝，不覆盖别人的修改', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`);
+    await zhou.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, key: 'shortName', value: 'FY' }).expect(200);
+    const stale = await zhou
+      .put(`/api/tasks/${feiyuTask}/workup/facts`)
+      .send({ version: body.version, key: 'shortName', value: 'FEIYU' })
+      .expect(409);
+    expect(stale.body).toMatchObject({ reason: 'stale', version: body.version + 1 });
+  });
+
+  it('不存在的项、系统生成的项、类型不对、不在任务里的原件都拒绝', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`);
+    const put = (payload: object) => zhou.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, ...payload });
+    expect((await put({ key: 'nope', value: 'x' }).expect(400)).body.message).toBe('没有这一项');
+    expect((await put({ key: 'compilation.leader', value: 'x' }).expect(400)).body.message).toContain('由系统按规则生成');
+    expect((await put({ key: 'commander', value: '李文聪' }).expect(400)).body.message).toBe('请填写姓名、职位和电话');
+    expect((await put({ key: 'superior', value: 'x', fileId: crypto.randomUUID() }).expect(400)).body.message).toBe('对照的原件不在这个任务里');
+  });
+
+  it('其他专家、客户看不到；运营能看不能改', async () => {
+    await (await as('wu@test.cn')).get(`/api/tasks/${feiyuTask}/workup`).expect(404);
+    await (await as('feiyu@test.cn')).get(`/api/tasks/${feiyuTask}/workup`).expect(404);
+    await (await as('zhou@test.cn')).get(`/api/tasks/${otherTask}/workup`).expect(404);
+    const ops = await as('ops@test.cn');
+    const { body } = await ops.get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    await ops.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, key: 'shortName', value: 'X' }).expect(403);
+  });
+
+  it('客户还没提交的任务不能开始整理', async () => {
+    const res = await (await as('zhou@test.cn')).get(`/api/tasks/${preparingTask}/workup`).expect(400);
+    expect(res.body.message).toContain('还没有提交');
+  });
+
+  it('对照原件的链接在页面里显示 PDF', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/files/${rosterFile}/download-url?inline=1`).expect(200);
+    expect(body.url).toContain('d=inline');
+    const plain = await zhou.get(`/api/files/${rosterFile}/download-url`).expect(200);
+    expect(plain.body.url).not.toContain('d=inline');
+  });
+});
