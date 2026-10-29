@@ -1,7 +1,11 @@
 import {
+  emptyProductionWorkup,
   factDefOf,
   factSaveError,
   factSaveSchema,
+  isAddedRow,
+  productionSaveError,
+  productionSaveSchema,
   type FactOverride,
   type WorkupData,
   type WorkupSnapshot,
@@ -97,11 +101,62 @@ export class WorkupService {
     }
     const [saved] = await this.db
       .update(taskWorkups)
-      .set({ data: { overrides }, version: version + 1, updatedBy: user.id, updatedAt: new Date() })
+      .set({ data: { ...row.data, overrides }, version: version + 1, updatedBy: user.id, updatedAt: new Date() })
       .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, version)))
       .returning();
     // 读与写之间别人刚好保存了
     if (!saved) throw this.stale(version + 1);
+    return this.view(task.id, saved);
+  }
+
+  // 生产设备与物料（14 页 E18-00B）：一次保存一条判断或一行修改，带版本号，value 为 null 撤回
+  async saveProduction(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    const parsed = productionSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+    const error = productionSaveError(row.snapshot, row.data, save);
+    if (error) throw new BadRequestException(error);
+    if (save.fileId && !(await this.originals(task.id)).some((o) => o.fileId === save.fileId)) {
+      throw new BadRequestException('对照的原件不在这个任务里');
+    }
+
+    const production = structuredClone(row.data.production ?? emptyProductionWorkup());
+    const stamp = { by: user.id, byName: user.name, at: new Date().toISOString(), ...(save.fileId ? { fileId: save.fileId } : {}) };
+    const put = <T>(map: Record<string, unknown>, key: string, value: T | null) => {
+      if (value === null) delete map[key];
+      else map[key] = { ...stamp, value };
+    };
+    switch (save.kind) {
+      case 'equipment':
+        put(production.equipment, save.rowId, save.value);
+        break;
+      case 'material':
+        put(production.materials, save.rowId, save.value);
+        // 删掉专家新增的物料，连同对它的危化品判断
+        if (save.value === null && isAddedRow(save.rowId)) delete production.hazardous[save.rowId];
+        break;
+      case 'hazardous':
+        put(production.hazardous, save.rowId, save.value);
+        break;
+      case 'special':
+        put(production.special, save.category, save.value);
+        break;
+      case 'fireRating':
+        put(production.fireRatings, save.rowId, save.value);
+        break;
+    }
+
+    const [saved] = await this.db
+      .update(taskWorkups)
+      .set({ data: { ...row.data, production }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
+      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
+      .returning();
+    if (!saved) throw this.stale(save.version + 1);
     return this.view(task.id, saved);
   }
 
@@ -122,7 +177,7 @@ export class WorkupService {
       }
       const [saved] = await this.db
         .update(taskWorkups)
-        .set({ data: { overrides }, version: row.version + 1, updatedBy: user.id, updatedAt: new Date() })
+        .set({ data: { ...row.data, overrides }, version: row.version + 1, updatedBy: user.id, updatedAt: new Date() })
         .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
         .returning({ version: taskWorkups.version });
       if (saved) return;
@@ -252,5 +307,10 @@ export class WorkupController {
   @Put('facts')
   saveFact(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.saveFact(user, id, body);
+  }
+
+  @Put('production')
+  saveProduction(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveProduction(user, id, body);
   }
 }

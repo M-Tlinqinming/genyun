@@ -175,3 +175,57 @@ describe('专业整理', () => {
     expect(plain.body.url).not.toContain('d=inline');
   });
 });
+
+describe('生产设备与物料', () => {
+  it('危化品、特种设备、耐火等级逐条判定；企业事实与判断互不覆盖', async () => {
+    const zhou = await as('zhou@test.cn');
+    let { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    const put = async (payload: object) => {
+      ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/production`).send({ version: body.version, ...payload }).expect(200));
+    };
+    await put({ kind: 'hazardous', rowId: 'm5', value: true, fileId: rosterFile });
+    await put({ kind: 'special', category: 'pressurePipelines', value: { answer: 'no' } });
+    await put({ kind: 'fireRating', rowId: 'b1', value: '2' });
+    expect(body.data.production.hazardous.m5).toMatchObject({ value: true, byName: '周工', fileId: rosterFile });
+    expect(body.data.production.special.pressurePipelines.value).toEqual({ answer: 'no', items: [] });
+    expect(body.data.production.fireRatings.b1.value).toBe('2');
+
+    // 之前存的企业事实还在；再改企业事实，判断也还在
+    expect(body.data.overrides.technicalManagementCount.value).toBe(6);
+    ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, key: 'hospital', value: '仲恺人民医院' }).expect(200));
+    expect(body.data.production.fireRatings.b1.value).toBe('2');
+  });
+
+  it('改客户的行、新增行；撤回回到客户的值，删掉新增物料连同判断', async () => {
+    const zhou = await as('zhou@test.cn');
+    let { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`).expect(200);
+    const put = async (payload: object) => {
+      ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/production`).send({ version: body.version, ...payload }).expect(200));
+    };
+    await put({ kind: 'equipment', rowId: 'e8', value: { name: '空压机', quantity: '1 台', location: '空压机房' } });
+    await put({ kind: 'equipment', rowId: 'x1', value: { name: '电动叉车', quantity: '1 台' } });
+    await put({ kind: 'material', rowId: 'x2', value: { kind: 'cylinder', name: '乙炔', cylinderSpec: '40L', maxStorage: '4 瓶' } });
+    await put({ kind: 'hazardous', rowId: 'x2', value: true });
+    expect(Object.keys(body.data.production.equipment).sort()).toEqual(['e8', 'x1']);
+
+    await put({ kind: 'equipment', rowId: 'e8', value: null });
+    await put({ kind: 'material', rowId: 'x2', value: null });
+    expect(body.data.production.equipment.e8).toBeUndefined();
+    expect(body.data.production.materials.x2).toBeUndefined();
+    expect(body.data.production.hazardous.x2).toBeUndefined();
+  });
+
+  it('不存在的行、格式不对的参数、过期版本都拒绝；运营不能改', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`);
+    const put = (payload: object) => zhou.put(`/api/tasks/${feiyuTask}/workup/production`).send({ version: body.version, ...payload });
+    expect((await put({ kind: 'hazardous', rowId: 'm99', value: true }).expect(400)).body.message).toBe('没有这一行物料');
+    expect((await put({ kind: 'equipment', rowId: 'e99', value: { name: '冲床' } }).expect(400)).body.message).toBe('没有这一行设备');
+    await put({ kind: 'special', category: 'pressureVessels', value: { answer: 'yes', items: [{ volumeM3: '很大' }] } }).expect(400);
+    await put({ kind: 'fireRating', rowId: 'b1', value: '五' }).expect(400);
+    await zhou.put(`/api/tasks/${feiyuTask}/workup/production`).send({ version: body.version - 1, kind: 'fireRating', rowId: 'b1', value: '3' }).expect(409);
+
+    const ops = await as('ops@test.cn');
+    await ops.put(`/api/tasks/${feiyuTask}/workup/production`).send({ version: body.version, kind: 'fireRating', rowId: 'b1', value: '3' }).expect(403);
+  });
+});
