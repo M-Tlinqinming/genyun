@@ -68,7 +68,7 @@ export function FiguresPanel(props: FiguresPanelProps) {
           cancelText="取消"
           onConfirm={() => void onSave({ org: null, process: null })}
         >
-          <Button disabled={saving || (!view.org.customized && !view.process.customized)}>全部重新生成</Button>
+          <Button disabled={saving || (!view.org.customized && !view.process.customized)}>全部恢复自动排版</Button>
         </Popconfirm>
         <Button type="primary" disabled={saving || pending.length === 0} onClick={() => void onSave({ adopt: pending })}>
           {pending.length === 2 ? '两张图都采用' : pending.length === 1 ? `采用${FIGURES[pending[0]!]}` : '两张图都已采用'}
