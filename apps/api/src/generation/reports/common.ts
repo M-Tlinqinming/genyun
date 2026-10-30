@@ -13,7 +13,7 @@ export function companyOverview(ctx: PlanContext): string[] {
   const tech = b.technicalManagementCount === undefined ? '' : `，技术管理人员 ${b.technicalManagementCount} 人`;
   const safety = b.safetyManagementCount === undefined ? '' : `，安全管理人员 ${b.safetyManagementCount} 人`;
   return [
-    `${company}${established}注册地址为${fill(b.registeredAddress?.detail)}；经国家企业信用信息公示系统查询，统一社会信用代码为 ${fill(b.socialCreditCode)}，法定代表人为${fill(b.legalRepresentative)}，注册资本为 ${dash(b.registeredCapital)}。企业经营范围为：${fill(b.businessScope)}。主要产品 / 服务为：${fill(b.mainProducts)}。`,
+    `${company}${established}注册地址为${fill(b.registeredAddress?.detail)}；据营业执照，统一社会信用代码为 ${fill(b.socialCreditCode)}，法定代表人为${fill(b.legalRepresentative)}，注册资本为 ${dash(b.registeredCapital)}。企业经营范围为：${fill(b.businessScope)}。主要产品 / 服务为：${fill(b.mainProducts)}。`,
     `${company}现有职工 ${fill(b.employeeCount)} 人${tech}${safety}。企业规模、行业分类及安全管理要求以企业提供的资料、营业执照和属地监管要求为准。`,
   ];
 }

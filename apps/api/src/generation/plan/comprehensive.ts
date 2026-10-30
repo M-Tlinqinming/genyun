@@ -54,7 +54,7 @@ function scopeAndGrading(ctx: PlanContext): string {
     '| 响应级别 | 判定条件（本企业可控性 / 是否需外部增援） | 指挥权 | 上报对象 |',
     '| --- | --- | --- | --- |',
     `| IV 级（一般） | ${level.level4} | 现场负责人（由事发车间 / 部门负责人担任），公司副总指挥督导 | 事后 24 小时内向${street}备案 |`,
-    `| III 级（较大） | ${level.level3} | 公司总指挥${ctx.commanderLabel}启动综合应急预案统一指挥 | 同时向${street}与${bureau}报告（通报，必要时请求外部增援） |`,
+    `| III 级（较大） | ${level.level3} | 公司总指挥${ctx.commanderName}启动综合应急预案统一指挥 | 同时向${street}与${bureau}报告（通报，必要时请求外部增援） |`,
     `| II 级（重大） | ${level.level2} | 公司配合${bureau}及区级政府现场指挥部，接受政府统一指挥 | 立即向${bureau}报告并请求增援 / 接管 |`,
     `| I 级（特别重大） | ${level.level1} | 由市级以上政府现场指挥部接管指挥，本企业全力配合 | 上报市级人民政府及省应急管理厅，由政府启动相应级别政府预案 |`,
     '### 分级响应基本原则',
@@ -133,7 +133,7 @@ function organization(ctx: PlanContext): string {
 
 // ── 3 应急响应 ──
 function response(ctx: PlanContext): string {
-  const { company, bureau, street, commanderLabel: commander, chemNote, scope, signals } = ctx;
+  const { company, bureau, street, commanderName: commander, chemNote, scope, signals } = ctx;
   const dust = scope.dustProcess;
   const vapour = signals.flammableLiquids.length ? `、${signals.flammableLiquids.join('、')}蒸气` : '';
   const blue = dust
@@ -268,7 +268,7 @@ function response(ctx: PlanContext): string {
 
 // ── 4 后期处置 ──
 function postDisposal(ctx: PlanContext): string {
-  const legalRep = fill(ctx.input.basic.legalRepresentative);
+  const commander = ctx.commanderName;
   const hazardousList = ctx.hazardous.length ? `本公司涉及的危险化学品（${ctx.hazardous.join('、')}）` : '事故现场遗留的危险化学品';
   return [
     '# 后期处置',
@@ -293,7 +293,7 @@ function postDisposal(ctx: PlanContext): string {
     '- **薪酬保障**：事故停工期间员工工资按公司薪酬制度和劳动法规定足额发放，确保员工基本生活不受影响。',
     '- **复工再培训**：伤员康复返岗前必须重新接受岗位安全培训和应急演练，经考核合格后方可上岗。',
     '## 应急救援评估',
-    `事故应急响应终止后 30 日内，由公司总指挥（${legalRep}）组织开展应急救援工作评估，形成《应急救援评估报告》并报${ctx.bureau}与${ctx.street}备案：`,
+    `事故应急响应终止后 30 日内，由公司总指挥（${commander}）组织开展应急救援工作评估，形成《应急救援评估报告》并报${ctx.bureau}与${ctx.street}备案：`,
     '- **响应过程评估**：全面回顾本次应急响应的接报、决策、调度、处置全过程，评估预警是否及时、响应级别判定是否准确、各应急小组协同是否顺畅、外部联动是否有效。',
     '- **处置效果评估**：量化分析事故损失、人员伤亡、财产损失、环境影响，评估应急处置措施是否有效遏制事态扩大、是否最大限度减少损失。',
     '- **经验教训总结**：剖析事故根本原因、直接原因、间接原因，识别应急预案、应急组织、应急资源、应急能力存在的薄弱环节。',

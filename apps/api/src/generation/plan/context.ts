@@ -5,6 +5,7 @@ import {
   planSignals,
   resolveScope,
   selectPlans,
+  PRESET_GROUPS,
   type Person,
   type PlanInput,
   type PlanSelection,
@@ -37,8 +38,8 @@ export interface PlanContext {
   firePhone: string;
   hospital: string;
   commander?: Person;
-  /** 「李文聪（总指挥）」 */
-  commanderLabel: string;
+  /** 总指挥姓名，正文写成「总指挥（李文聪）」 */
+  commanderName: string;
   dutyPhone: string;
   /** 按 id 找人（物资保管人） */
   person: (id: string | undefined) => Person | undefined;
@@ -77,10 +78,24 @@ export function planContext(input: PlanInput): PlanContext {
     firePhone: '119',
     hospital: input.expert.facts?.hospital?.name || '属地医疗急救机构',
     commander: org.commander,
-    commanderLabel: org.commander ? `${fill(org.commander.name)}（总指挥）` : MISSING,
+    commanderName: org.commander ? fill(org.commander.name) : MISSING,
     dutyPhone: fill(org.dutyPhone),
     person: (id) => (id ? people.find((p) => p.id === id) : undefined),
   };
+}
+
+/**
+ * 模板与正文按预置组名写（综合保障组…）；企业把某类组改了名（如「后勤保障组」）时换成企业的组名。
+ * 同类组有多个（分厂址各设一套）时不换，留预置名。
+ */
+export function ownGroupNames(md: string, input: PlanInput): string {
+  const renames = new Map<string, string>();
+  for (const [kind, preset] of Object.entries(PRESET_GROUPS)) {
+    const same = input.organization.groups.filter((g) => g.kind === kind);
+    if (same.length === 1 && same[0]!.name !== preset) renames.set(preset, same[0]!.name);
+  }
+  if (!renames.size) return md;
+  return md.replace(new RegExp([...renames.keys()].join('|'), 'g'), (m) => renames.get(m)!);
 }
 
 /** 名称列表：多于 4 项写「前 4 项等」 */

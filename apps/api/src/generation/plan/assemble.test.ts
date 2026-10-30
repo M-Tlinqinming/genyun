@@ -216,6 +216,28 @@ describe('粉尘量较大的企业（专家打开粉尘专项）', () => {
   });
 });
 
+describe('总指挥不是法定代表人', () => {
+  it('凡写「总指挥（…）」只填总指挥姓名，不带法定代表人，也不套两层括号', () => {
+    const org = feiyuPlanInput.organization;
+    const text = allText(buildPlan({ ...feiyuPlanInput, organization: { ...org, commander: { ...org.commander!, name: '张示例' } } }));
+    expect(text).toContain('总指挥（张示例）');
+    expect(text).not.toContain('总指挥（李文聪）');
+    expect(text).not.toMatch(/（总指挥））/);
+  }, 60_000);
+});
+
+describe('企业改了小组名', () => {
+  it('预置组名换成企业的组名；同类组有多个时不换', () => {
+    const org = feiyuPlanInput.organization;
+    const renamed = org.groups.map((g) => (g.kind === 'logistics' ? { ...g, name: '后勤保障组' } : g));
+    const text = allText(buildPlan({ ...feiyuPlanInput, organization: { ...org, groups: renamed } }));
+    expect(text).toContain('后勤保障组');
+    expect(text).not.toContain('综合保障组');
+    const twice = [...org.groups, { ...org.groups.find((g) => g.kind === 'logistics')!, name: '综合保障二组' }];
+    expect(allText(buildPlan({ ...feiyuPlanInput, organization: { ...org, groups: twice } }))).toContain('综合保障组');
+  }, 120_000);
+});
+
 describe('上级主管单位', () => {
   it('专家没填就整句不写', () => {
     const text = allText(buildPlan({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, facts: { ...feiyuPlanInput.expert.facts, superior: undefined } } }));

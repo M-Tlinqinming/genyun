@@ -26,7 +26,7 @@ import { DRAWINGS, attachments, type DrawingKey } from './attachments.ts';
 import { comprehensiveMarkdown } from './comprehensive.ts';
 import { templateBody, usesKnowledgeBlock } from './content.ts';
 import { humanize } from './humanize.ts';
-import { MISSING, cnDate, fill, planContext, type PlanContext } from './context.ts';
+import { MISSING, cnDate, fill, ownGroupNames, planContext, type PlanContext } from './context.ts';
 import { parseMarkdown, toSections, type Figure } from './markdown.ts';
 
 /** 客户上传的图纸（已转成图片）；PDF 图纸转图片在第 10 项接上 */
@@ -177,7 +177,7 @@ export function buildPlan(
   const templateMarkdown = (t: PlanTemplate) => {
     const md = resolvedTemplate(ctx, t, filled);
     const r = rewrites[t.id];
-    return r ? md.split('\n').map((l) => r[l.trim()] ?? l).join('\n') : md;
+    return ownGroupNames(r ? md.split('\n').map((l) => r[l.trim()] ?? l).join('\n') : md, input);
   };
 
   const org = input.organization;
@@ -211,7 +211,7 @@ export function buildPlan(
   let part = 0;
 
   // 一、综合应急预案：# 章 1.、## 节 1.1、### 小节 1.1.1
-  const comprehensive = parseMarkdown(comprehensiveMarkdown(ctx), figures);
+  const comprehensive = parseMarkdown(ownGroupNames(comprehensiveMarkdown(ctx), input), figures);
   sections.push({
     id: 'plan.comprehensive',
     title: `${cnOrdinal(++part)}、综合应急预案`,
@@ -259,7 +259,7 @@ export function buildPlan(
     blocks: [],
     childrenOnNewPage: true,
     sections: attachments(ctx, providedDrawings).map((a, i) => {
-      const parsed = parseMarkdown(a.markdown, figures);
+      const parsed = parseMarkdown(ownGroupNames(a.markdown, input), figures);
       const root = parsed.sections[0]!;
       const n = i + 1;
       return {
