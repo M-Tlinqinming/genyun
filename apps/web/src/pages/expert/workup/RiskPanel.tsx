@@ -44,9 +44,16 @@ const valueOf = (r: RiskRow): RiskRowValue => ({
   ...(r.excluded ? { excluded: true } : {}),
 });
 
-// 手动新增时可选的事故类型：预案里的各类事故 +《企业职工伤亡事故分类》常见的几类
+// 手动新增时可选的事故类型：预案里的各类事故 + GB 6441-2025 表 1 里没有对应方案的几类
 const FACTOR_OPTIONS = [
-  ...new Set([...PLAN_TEMPLATES.filter((t) => t.kind === 'site').map((t) => accidentTypeOf(t.title)), '其他爆炸', '锅炉爆炸', '中毒和窒息']),
+  ...new Set([
+    ...PLAN_TEMPLATES.filter((t) => t.kind === 'site').map((t) => accidentTypeOf(t.title)),
+    '水害',
+    '民用爆炸物品爆炸',
+    '烟花爆竹爆炸',
+    '其他可燃固体爆炸',
+    '滑坡',
+  ]),
 ].map((value) => ({ value }));
 
 const LEVEL_COLORS: Record<RiskLevel, { color: string; bg: string }> = {
@@ -341,7 +348,7 @@ function AddRow({ id, places, saving, onSave, onSelect, onDone }: RiskPanelProps
         <AutoComplete
           size="small"
           aria-label="危险有害因素"
-          placeholder="危险有害因素，如 其他爆炸"
+          placeholder="危险有害因素，如 水害"
           options={FACTOR_OPTIONS}
           value={value.factor}
           onChange={(factor) => setValue((v) => ({ ...v, factor }))}

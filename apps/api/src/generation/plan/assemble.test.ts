@@ -253,6 +253,10 @@ describe('所有开关都打开', () => {
     expect(text).toContain('起重致害事故现场处置方案');
     expect(text).not.toMatch(/15986988133|0752-(?:2230498|2312399|3223119|3328738|6761118|7872806|7783260)|13113411616|15875227223|13719613523/);
     expect(text).not.toMatch(/水口街道|龙门县|专职消防队|油墨|稀释剂|环氧乙烷/);
+    // 写给模板作者的说明不进交付物；电话一行括号要配对
+    const notes = [...text.matchAll(/同源|认知贯通|命门|逐字一致|硬约束|模板原文|签名灼烫|本项略|本节略|本方案聚焦|本方案不覆盖/g)];
+    expect(notes.map((m) => text.slice(m.index - 30, m.index + 30))).toEqual([]);
+    expect(text).not.toContain('电话（公司');
     expect(text).not.toMatch(/\bS?P\d{1,2}[ab]?\b|§|\{\{|\[\[/);
   }, 60_000);
 });
@@ -334,6 +338,7 @@ describe('Markdown 转文档结构', () => {
     const { blocks } = parseMarkdown('公司 李文聪 （总指挥）；配备 2 台 **灭火器** 。\nGB 6441 标准', {});
     expect(blocks[0]).toMatchObject({ text: ['公司李文聪（总指挥）；配备 2 台', { text: '灭火器', bold: true }, '。'] });
     expect(blocks[1]).toMatchObject({ text: ['GB 6441 标准'] });
+    expect(parseMarkdown('需使用到 `酒精` 等化学品', {}).blocks[0]).toMatchObject({ text: ['需使用到酒精等化学品'] });
   });
 
   it('引用了没画的图就报错', () => {
