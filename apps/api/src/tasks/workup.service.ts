@@ -3,6 +3,10 @@ import {
   factDefOf,
   factSaveError,
   factSaveSchema,
+  figureSignature,
+  figuresSaveError,
+  figuresSaveSchema,
+  figuresView,
   isAddedRow,
   productionSaveError,
   productionSaveSchema,
@@ -11,6 +15,7 @@ import {
   scopeSaveSchema,
   SPECIAL_CATEGORY_KEYS,
   type FactOverride,
+  type FiguresWorkup,
   type WorkupData,
   type WorkupSnapshot,
 } from '@genyun/shared';
@@ -229,6 +234,37 @@ export class WorkupService {
     return this.view(task.id, saved);
   }
 
+  // 图件（14 页 E18-00F）：改一张或两张图的画法（null 恢复自动排版）、采用图；采用时记下当时的图，之后图有变化回到待采用
+  async saveFigures(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    const parsed = figuresSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+    const figures: FiguresWorkup = { ...row.data.figures, adopted: { ...row.data.figures?.adopted } };
+    if (save.org === null) delete figures.org;
+    else if (save.org) figures.org = save.org;
+    if (save.process === null) delete figures.process;
+    else if (save.process) figures.process = save.process;
+    const view = figuresView(row.snapshot, { ...row.data, figures });
+    const error = figuresSaveError(view, save);
+    if (error) throw new BadRequestException(error);
+    for (const key of save.adopt ?? []) {
+      figures.adopted![key] = { by: user.id, byName: user.name, at: new Date().toISOString(), signature: figureSignature(view, key) };
+    }
+
+    const [saved] = await this.db
+      .update(taskWorkups)
+      .set({ data: { ...row.data, figures }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
+      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
+      .returning();
+    if (!saved) throw this.stale(save.version + 1);
+    return this.view(task.id, saved);
+  }
+
   // 电话问清后把回答回填到企业事实，来源记为「客户确认 · 电话确认」。和专家正在编辑的页面同时保存时重读再写
   async applyPhoneAnswers(
     user: SessionUser,
@@ -405,5 +441,10 @@ export class WorkupController {
   @Put('scope')
   saveScope(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.saveScope(user, id, body);
+  }
+
+  @Put('figures')
+  saveFigures(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveFigures(user, id, body);
   }
 }

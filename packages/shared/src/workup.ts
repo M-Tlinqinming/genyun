@@ -16,6 +16,7 @@ import { totalBuildingArea } from './profile/resources-step.ts';
 import { localAgenciesOf } from './plan/agencies.ts';
 import type { ProductionWorkup } from './workup-production.ts';
 import type { RiskWorkup } from './workup-risk.ts';
+import type { FiguresWorkup } from './workup-figures.ts';
 import type { ScopeWorkup } from './workup-scope.ts';
 
 // 快照：企业身份四项（企业档案的列）+ 企业自填资料
@@ -98,6 +99,8 @@ export interface WorkupData {
   risks?: RiskWorkup;
   // 适用范围开关的专家确认（workup-scope.ts），专家第一次确认时才有
   scope?: ScopeWorkup;
+  // 图件的画法与采用（workup-figures.ts），专家第一次调整或采用时才有
+  figures?: FiguresWorkup;
 }
 
 export interface FactDef {
@@ -147,7 +150,7 @@ const asPerson = (p: DraftPerson | undefined): FactPerson | undefined =>
 
 const groupKey = (g: DraftGroup) => `group.${g.kind === 'custom' ? g.id : g.kind}`;
 
-function organizationOf(snapshot: WorkupSnapshot): OrganizationStep {
+export function organizationOf(snapshot: WorkupSnapshot): OrganizationStep {
   return snapshot.profile.organizationStep?.step ?? defaultOrganizationStep(snapshot.profile.basicStep?.basic.employeeCount);
 }
 

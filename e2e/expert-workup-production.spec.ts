@@ -18,7 +18,7 @@ const impact = (page: Page) => page.getByLabel('本表影响的适用范围开�
 
 test('周工判定危化品、特种设备与耐火等级，补设备和物料', async ({ page }) => {
   await openFeiyu(page);
-  await expect(page.getByText('整理中 · 必需项 11 / 20')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 11 / 22')).toBeVisible();
   // 「下一个缺失项」：企业事实的技术人员数之后，跳到原辅材料里第一项待确认的判断
   await page.getByRole('button', { name: '下一个缺失项' }).click();
   await expect(page.locator('[data-fact="technicalManagementCount"]')).toBeVisible();
@@ -81,10 +81,12 @@ test('周工判定危化品、特种设备与耐火等级，补设备和物料',
   await page.getByTitle('二级').click();
   await expect(row(page, 'building:b1').getByText('专家整理')).toBeVisible();
 
-  // 都判定完：模块打勾，剩企业事实的技术人员数和适用范围里靠名称推断的粉尘、熔融两个开关
+  // 都判定完：模块打勾，剩企业事实的技术人员数、适用范围里靠名称推断的粉尘、熔融两个开关和两张待采用的图
   await expect(page.getByRole('button', { name: /生产设备与物料\s*✓/ })).toBeVisible();
-  await expect(page.getByText('整理中 · 必需项 16 / 19')).toBeVisible();
-  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 3 项：技术人员数 · 适用范围（2 个开关待确认）');
+  await expect(page.getByText('整理中 · 必需项 16 / 21')).toBeVisible();
+  await expect(page.getByRole('region', { name: '整理进度' })).toContainText(
+    '还差 5 项：技术人员数 · 适用范围（2 个开关待确认） · 图件（2 张待采用）',
+  );
 
   // 退出再进，判断都还在
   await page.reload();

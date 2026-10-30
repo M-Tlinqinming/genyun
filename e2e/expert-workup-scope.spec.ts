@@ -23,7 +23,7 @@ test('周工确认待确认的开关，右栏预览即时更新；已确定的�
   await openScope(page);
   const panel = page.getByRole('region', { name: '适用范围' });
   const groups = page.getByRole('list', { name: '适用范围分组' });
-  await expect(page.getByText('整理中 · 必需项 16 / 19')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 16 / 21')).toBeVisible();
   await expect(panel).toContainText('待确认 2 项 · 系统已给出建议');
   await expect(groups.getByRole('listitem').filter({ hasText: '设备资产' })).toContainText('2 待确认');
   await expect(groups.getByRole('listitem').filter({ hasText: '业务关系' })).toContainText('客户已答');
@@ -47,8 +47,8 @@ test('周工确认待确认的开关，右栏预览即时更新；已确定的�
   await expect(plan(page, '高温熔融物爆炸事故现场处置方案')).toHaveAttribute('data-state', 'included');
   await expect(panel).not.toContainText('待确认');
   await expect(page.getByRole('button', { name: /^适用范围\s*✓/ })).toBeVisible();
-  await expect(page.getByText('整理中 · 必需项 18 / 19')).toBeVisible();
-  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 1 项：技术人员数');
+  await expect(page.getByText('整理中 · 必需项 18 / 21')).toBeVisible();
+  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 3 项：技术人员数 · 图件（2 张待采用）');
 
   // 点已确定的名称看谁确认的
   await panel.getByRole('list', { name: '已关闭' }).getByRole('button', { name: '粉尘' }).click();

@@ -7,6 +7,8 @@ import {
   DEPUTY_DUTY,
   GROUP_LEADER_DUTIES,
   alarmFlowSvg,
+  flowOptionsOf,
+  orderGroups,
   orgChartSvg,
   planSystemSvg,
   processFlowSvg,
@@ -186,11 +188,23 @@ export function buildPlan(
   const org = input.organization;
   const groups = [...org.groups].sort((a, b) => CHART_ORDER.indexOf(a.kind) - CHART_ORDER.indexOf(b.kind));
   const upper = [input.agencies.districtPlan, input.agencies.streetPlan].filter((x): x is string => Boolean(x));
+  // 专家在图件里微调过的画法（第 9 项）
+  const figs = input.expert.figures;
+  const steps = input.production.processFlow.steps.map((s) => s.name);
   const providedDrawings = (Object.keys(DRAWINGS) as DrawingKey[]).filter((k) => drawings[k]);
   const figures: Record<string, Figure> = {
-    'org-chart': figure(orgChartSvg({ deputy: org.deputies.length > 0, groups: groups.map((g) => g.name) })),
+    'org-chart': figure(
+      orgChartSvg({
+        deputy: figs?.org?.deputy ?? org.deputies.length > 0,
+        office: figs?.org?.office,
+        groups: orderGroups(
+          groups.map((g) => g.name),
+          figs?.org?.order,
+        ),
+      }),
+    ),
     'response-flow': figure(responseFlowSvg(), 'page'),
-    'process-flow': figure(processFlowSvg(input.production.processFlow.steps.map((s) => s.name))),
+    'process-flow': figure(processFlowSvg(steps, flowOptionsOf(steps, figs?.process))),
     'plan-system': figure(
       planSystemSvg({ upper, company, specialty: selection.specialty.map((t) => t.title), site: selection.site.map((t) => t.title) }),
     ),

@@ -1,4 +1,4 @@
-import type { FactSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
+import type { FactSave, FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -67,6 +67,16 @@ export function useSaveScope(taskId: string) {
   return useMutation({
     mutationFn: (input: ScopeSave) =>
       request<Workup>(`/tasks/${taskId}/workup/scope`, { method: 'PUT', body: JSON.stringify(input) }),
+    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+  });
+}
+
+// 图件：改画法（null 恢复自动排版）或采用图
+export function useSaveFigures(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: FiguresSave) =>
+      request<Workup>(`/tasks/${taskId}/workup/figures`, { method: 'PUT', body: JSON.stringify(input) }),
     onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
   });
 }
