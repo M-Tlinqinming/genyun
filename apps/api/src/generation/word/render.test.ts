@@ -113,4 +113,11 @@ describe('表格列宽', () => {
     const widths = columnWidths(header, rows, 6, 9070, rule);
     header[0]!.forEach((h, c) => expect(widths[c]!).toBeGreaterThanOrEqual([...h].length * rule.header.size * 10 + rule.cellPadding));
   });
+
+  it('列多、表头长放不下时整体缩进版心，不出负宽（聚豪两处厂址 6 个小组）', () => {
+    const header = [Array.from({ length: 12 }, (_, i) => `惠风四路三十号厂房抢险救灾组${i}`)];
+    const widths = columnWidths(header, [header[0]!.map(() => '组长')], 12, 9070, rule);
+    expect(widths.reduce((a, b) => a + b, 0)).toBe(9070);
+    expect(Math.min(...widths)).toBeGreaterThan(0);
+  });
 });

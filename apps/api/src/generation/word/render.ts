@@ -372,6 +372,13 @@ export function columnWidths(
     const body = Math.min(longest[c]!, rule.minCellChars) * rule.cell.size * 10;
     return Math.max(head, body) + rule.cellPadding;
   });
+  // 列多、表头长时最小宽度加起来会超过版心：按最小宽度的比例整体缩进版心
+  const floor = minimum.reduce((a, b) => a + b, 0);
+  if (floor >= total) {
+    const scaled = minimum.map((m) => Math.floor((m / floor) * total));
+    scaled[columns - 1]! += total - scaled.reduce((a, b) => a + b, 0);
+    return scaled;
+  }
   const weights = longest.map((n) => n ** rule.widthExponent);
   // 先按比例分；分到的比最小宽度还窄的列定在最小宽度，余下的宽度在其他列里重新按比例分
   const pinned = new Set<number>();
