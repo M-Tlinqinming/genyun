@@ -25,7 +25,8 @@ export function comprehensiveMarkdown(ctx: PlanContext): string {
 function scopeAndGrading(ctx: PlanContext): string {
   const { input, company, bureau, street } = ctx;
   const b = input.basic;
-  const types = [...new Set([...ctx.selection.specialty, ...ctx.selection.site].map((t) => accidentTypeOf(t.title)))];
+  // 事故类别取现场处置方案（每份一类事故）；专项预案名称（火灾爆炸、人员疏散、承租企业等）不是事故类别
+  const types = [...new Set(ctx.selection.site.map((t) => accidentTypeOf(t.title)))];
   const g = input.expert.facts?.responseGrading ?? {};
   const level = {
     level1:

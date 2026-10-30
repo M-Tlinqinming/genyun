@@ -124,7 +124,28 @@ describe('飞宇整份应急预案', () => {
   it('值班电话、属地机构、消防大队按企业数据填', () => {
     expect(text).toContain('0752-3324567');
     expect(text).toContain('仲恺高新区消防救援大队');
-    expect(text).toContain('0752-3271388');
+    expect(text).toContain('0752-3271385');
+    expect(text).toContain('陈江街道应急管理办公室');
+    expect(text).toContain('上级预案《仲恺高新区生产工贸行业事故应急预案》、《陈江街道生产安全事故应急预案》');
+  });
+
+  it('报警写 119，大队值班电话只进联系方式表；资源调查不写没有依据的到场时间', () => {
+    expect(text).toContain('火警：仲恺高新区消防救援大队"119"');
+    expect(text).toContain('119；值班 0752-3165029');
+    expect(text).not.toMatch(/\d+(?:-\d+)? ?min 到场|500 m 范围邻企|30-60 min/);
+  });
+
+  it('1.1 事故类别只列事故，不混入专项预案名称', () => {
+    const scope = plan.sections[0]!.sections![0]!.sections![0]!;
+    const table = scope.blocks.find((b) => b.type === 'table') as Extract<DocBlock, { type: 'table' }>;
+    const kinds = table.rows.map((r) => String(r[1]));
+    expect(kinds).toContain('火灾事故');
+    expect(kinds.every((k) => !/专项|疏散|承租|火灾爆炸/.test(k))).toBe(true);
+  });
+
+  it('产尘场所只写一遍', () => {
+    const places = /适用于公司(.+?)等产尘作业场所/.exec(text)![1]!.split('、');
+    expect(new Set(places).size).toBe(places.length);
   });
 
   it('压铸、金属粉尘、酒精的知识块都用上了，安全要点句一字不差', () => {
@@ -286,6 +307,12 @@ describe('Markdown 转文档结构', () => {
     expect(deep.title).toBe('1.1 深');
     expect(deep.sections ?? []).toHaveLength(0);
     expect(JSON.stringify(deep.blocks)).toContain('更深');
+  });
+
+  it('中文之间模板留下的空格去掉，中英文、数字之间的不动', () => {
+    const { blocks } = parseMarkdown('公司 李文聪 （总指挥）；配备 2 台 **灭火器** 。\nGB 6441 标准', {});
+    expect(blocks[0]).toMatchObject({ text: ['公司李文聪（总指挥）；配备 2 台', { text: '灭火器', bold: true }, '。'] });
+    expect(blocks[1]).toMatchObject({ text: ['GB 6441 标准'] });
   });
 
   it('引用了没画的图就报错', () => {

@@ -110,7 +110,7 @@ function resourceMarkdown(ctx: PlanContext): string {
     '| 急救 | 120 | 24 小时 |',
     `| ${bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 事故报告 / 应急资源调度 |`,
     `| ${street} | ${a.streetOffice?.phone || '街道办值班电话'} | 属地协调 / 周边疏散协助 |`,
-    `| ${a.fireDept?.name || '属地消防救援机构'} | ${ctx.firePhone} | 火灾扑救 / 抢险救援 |`,
+    `| ${a.fireDept?.name || '属地消防救援机构'} | ${a.fireDept?.phone || '119'} | 火灾扑救 / 抢险救援 |`,
     `| ${ctx.hospital} | 120 / 医院急诊 | ${hospitalDistance} |`,
     '# 应急资源差距分析',
     '**1）差距分析**',

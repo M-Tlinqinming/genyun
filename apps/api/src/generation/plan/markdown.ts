@@ -19,6 +19,8 @@ const ORDERED = /^\d+\.\s+(.*)$/;
 /** 图的占位：[[figure:key]]，图由调用方给 */
 const FIGURE = /^\[\[figure:([\w-]+)\]\]$/;
 const BOLD_LINE = /^\*\*([^*]+)\*\*[:：]?$/;
+/** 中文字或中文标点之间多出的空格（模板里变量两边留的），加粗标记两边也算；中英文、数字之间的空格不动 */
+const CJK_GAP = /(?<=[一-龥，。；：、（）「」《》？！](?:\*\*)?) (?=(?:\*\*)?[一-龥，。；：、（）「」《》？！])/g;
 
 /** 行内只保留加粗；去掉代码标记 */
 export function inline(text: string): TextRun[] {
@@ -45,6 +47,7 @@ export function parseMarkdown(md: string, figures: Record<string, Figure> = {}):
   const lines = md
     .replace(/\r\n?/g, '\n')
     .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(CJK_GAP, '')
     .split('\n');
   const root: MdNode = { title: '', blocks: [], children: [] };
   const stack: { level: number; node: MdNode }[] = [{ level: 0, node: root }];

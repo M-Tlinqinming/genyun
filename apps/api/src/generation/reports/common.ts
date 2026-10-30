@@ -3,19 +3,13 @@
 // 章用「1. 」、节用「1.1 」，再往下（1）企业概况）是加粗段落，与旧仓库一致。
 import { flowOptionsOf, processFlowSvg, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
 import { svgToPng } from '../word/png.ts';
-import { MISSING, dash, fill, type PlanContext } from '../plan/context.ts';
+import { MISSING, cnDate, dash, fill, type PlanContext } from '../plan/context.ts';
 import { parseMarkdown, toSections, type Figure } from '../plan/markdown.ts';
-
-/** 「2026-04-11」→「2026年4月11日」 */
-export function cnDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${y}年${m}月${d}日`;
-}
 
 export function companyOverview(ctx: PlanContext): string[] {
   const { company, input } = ctx;
   const b = input.basic;
-  const established = input.expert.facts?.establishedDate ? `成立于 ${input.expert.facts.establishedDate}，` : '';
+  const established = input.expert.facts?.establishedDate ? `成立于${cnDate(input.expert.facts.establishedDate)}，` : '';
   const tech = b.technicalManagementCount === undefined ? '' : `，技术管理人员 ${b.technicalManagementCount} 人`;
   const safety = b.safetyManagementCount === undefined ? '' : `，安全管理人员 ${b.safetyManagementCount} 人`;
   return [

@@ -26,7 +26,7 @@ import { DRAWINGS, attachments, type DrawingKey } from './attachments.ts';
 import { comprehensiveMarkdown } from './comprehensive.ts';
 import { templateBody, usesKnowledgeBlock } from './content.ts';
 import { humanize } from './humanize.ts';
-import { MISSING, fill, planContext, type PlanContext } from './context.ts';
+import { MISSING, cnDate, fill, planContext, type PlanContext } from './context.ts';
 import { parseMarkdown, toSections, type Figure } from './markdown.ts';
 
 /** 客户上传的图纸（已转成图片）；PDF 图纸转图片在第 10 项接上 */
@@ -38,11 +38,6 @@ const cnOrdinal = (n: number) => (n <= 10 ? CN[n - 1]! : n < 20 ? `十${CN[n - 1
 const INTRO =
   '本章是公司应对各类生产安全事故的综合性、纲领性工作方案，统辖「专项应急预案」与「现场处置方案」，规定本企业应急工作的适用范围与响应分级、应急组织机构及职责、信息报告、预警机制、响应启动、应急处置、应急支援、响应终止、后期处置以及通信与信息、应急队伍、物资装备等应急保障的共性条款。具体分事故的处置程序见对应的专项应急预案与现场处置方案，本章与其相互衔接、共同构成本企业完整的生产安全事故应急预案体系。';
 
-/** 「2026-04-11」→「2026年4月11日」 */
-function cnDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${y}年${m}月${d}日`;
-}
 
 function nextDay(iso: string): string {
   const d = new Date(`${iso}T00:00:00Z`);

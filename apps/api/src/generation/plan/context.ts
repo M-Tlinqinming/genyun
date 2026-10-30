@@ -14,6 +14,12 @@ import {
 
 export const MISSING = '（待补充）';
 
+/** 「2026-04-11」→「2026年4月11日」 */
+export function cnDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return `${y}年${m}月${d}日`;
+}
+
 export interface PlanContext {
   input: PlanInput;
   company: string;
@@ -67,7 +73,8 @@ export function planContext(input: PlanInput): PlanContext {
     street: fill(agencies.streetOffice?.name),
     streetPhone: agencies.streetOffice?.phone,
     fireDept: fill(agencies.fireDept?.name),
-    firePhone: agencies.fireDept?.phone || '119',
+    // 正文里的报警电话一律 119；大队值班电话只进联系方式表
+    firePhone: '119',
     hospital: input.expert.facts?.hospital?.name || '属地医疗急救机构',
     commander: org.commander,
     commanderLabel: org.commander ? `${fill(org.commander.name)}（总指挥）` : MISSING,

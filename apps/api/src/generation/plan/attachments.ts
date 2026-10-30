@@ -4,6 +4,7 @@
 import { RISK_LEVELS, accidentTypeOf, riskLevel, riskScore, type RiskLevel } from '@genyun/shared';
 import {
   MISSING,
+  cnDate,
   dash,
   fill,
   firstAidNames,
@@ -70,8 +71,8 @@ function companyProfile(ctx: PlanContext): string {
   return [
     '# 生产经营单位概况',
     '## 企业概况',
-    `${company}${facts.establishedDate ? `成立于 ${facts.establishedDate}，` : ''}注册地址为${address}；统一社会信用代码 ${fill(b.socialCreditCode)}，法定代表人 ${fill(b.legalRepresentative)}，注册资本 ${dash(b.registeredCapital)}。公司经营范围依据营业执照：${fill(b.businessScope)}。主要产品 / 服务：${fill(b.mainProducts)}`,
-    `从业人数：全公司在册职工 ${fill(b.employeeCount)} 人${people}。隶属关系 / 上级主管单位：${fill(facts.superior)} 安全生产业务接受 ${ctx.bureau} 行业监管。重点岗位：本企业涉及的特种作业岗位及消防安全管理、应急救援等关键应急响应岗位，均持证上岗并纳入年度应急培训与演练。周边环境与重大危险源辨识：${fill(facts.surroundings)}`,
+    `${company}${facts.establishedDate ? `成立于${cnDate(facts.establishedDate)}，` : ''}注册地址为${address}；统一社会信用代码 ${fill(b.socialCreditCode)}，法定代表人 ${fill(b.legalRepresentative)}，注册资本 ${dash(b.registeredCapital)}。公司经营范围依据营业执照：${fill(b.businessScope)}。主要产品 / 服务：${fill(b.mainProducts)}`,
+    `从业人数：全公司在册职工 ${fill(b.employeeCount)} 人${people}。隶属关系 / 上级主管单位：${fill(facts.superior)}安全生产业务接受${ctx.bureau}行业监管。重点岗位：本企业涉及的特种作业岗位及消防安全管理、应急救援等关键应急响应岗位，均持证上岗并纳入年度应急培训与演练。周边环境与重大危险源辨识：${fill(facts.surroundings)}`,
     '**表1-1 企业基本情况表**',
     '| 项目 | 内容 |',
     '| --- | --- |',
@@ -197,7 +198,7 @@ function planSystem(ctx: PlanContext): string {
   return [
     '# 预案体系与衔接',
     '## 应急预案体系',
-    `本预案体系由综合应急预案、专项应急预案以及现场处置方案构成，并与${upper.length ? `上级预案${upper.join('、')}` : '属地政府生产安全事故应急预案'}相衔接。详见图3-1。`,
+    `本预案体系由综合应急预案、专项应急预案以及现场处置方案构成，并与${upper.length ? `上级预案${upper.map((n) => `《${n}》`).join('、')}` : '属地政府生产安全事故应急预案'}相衔接。详见图3-1。`,
     '[[figure:plan-system]]',
     `**图3-1 ${ctx.company}应急预案体系与衔接图**`,
   ].join('\n');
@@ -269,7 +270,7 @@ function contacts(ctx: PlanContext): string {
     '| --- | --- | --- | --- |',
     `| 1 | ${ctx.street} | ${a.streetOffice?.phone || '街道办值班电话'} | 属地协调 / 周边疏散协助 |`,
     `| 2 | ${ctx.bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 事故报告 / 应急资源调度 |`,
-    `| 3 | ${a.fireDept?.name || '属地消防救援机构'} | ${ctx.firePhone} | 火灾扑救 / 抢险救援 |`,
+    `| 3 | ${a.fireDept?.name || '属地消防救援机构'} | 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}` : ''} | 火灾扑救 / 抢险救援 |`,
     `| 4 | ${ctx.hospital} | 120 / 医院急诊 | 现场急救 / 伤员转运 |`,
     '| 5 | 公安机关 | 110 | 治安维护 / 交通疏导 |',
     `| 6 | ${ctx.company}24小时值班电话 | ${ctx.dutyPhone} | 企业内部报警 / 值班联络 |`,
@@ -366,7 +367,7 @@ function resourceSurvey(ctx: PlanContext): string {
   const totalArea = p.buildings.reduce((s, b) => s + (b.floorAreaM2 ?? 0), 0);
   const pool = p.firePool?.answer === 'yes' ? p.firePool : undefined;
   const facts = input.expert.facts ?? {};
-  const hospitalKm = facts.hospital?.distanceKm !== undefined ? `约 ${facts.hospital.distanceKm} km` : '就近';
+  const hospitalKm = facts.hospital?.distanceKm !== undefined ? `约 ${facts.hospital.distanceKm} km` : '';
   const hazardCount = input.expert.hazards?.length;
   const specialRisks = [
     ctx.hazardous.length ? `危险化学品${ctx.chemNote}泄漏处置` : '',
@@ -396,17 +397,17 @@ function resourceSurvey(ctx: PlanContext): string {
     `- 公司年度安全生产专项费用按规定足额提取并列支，其中应急培训与演练经费 ${fill(facts.training?.budget)}；物资装备购置与更新经费按年度计划列支，事故应急处置费用单独列入年度预算。`,
     '- 应急资金审批：事故响应期间，总指挥可直接批准 5 万元以内紧急采购；5 万元以上由总指挥与财务负责人会签，事后补正手续。',
     '**二、单位外部可依托应急资源**',
-    '本单位规模与专业救援能力有限，事故扩散或处置超出本单位能力时，需第一时间寻求**外部**社会救援力量增援。本节按可依托方向逐类列明，**外单位**应急力量响应时效与调用条件如下：',
-    '| 序号 | 外部资源类别 | 单位 / 机构名称 | 联系方式 | 响应时效 | 依托方式 |',
-    '| --- | --- | --- | --- | --- | --- |',
-    `| 1 | 属地应急管理部门 | ${bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 30 min 到场指导 | 报告事故 / 请求资源调度 |`,
-    `| 2 | 街道应急办 | ${street} | ${a.streetOffice?.phone || '街道办值班电话'} | 15-20 min 到场 | 协调辖区资源 / 协助疏散周边 |`,
-    `| 3 | 消防救援队 | ${a.fireDept?.name || '属地消防大队'} | ${ctx.firePhone} | 8-10 min 到场 | 火灾扑救 / 危化品泄漏 / 抢险救援 |`,
-    `| 4 | 医疗急救机构 | ${ctx.hospital}（${hospitalKm}） | 120 / 医院急诊 | 10-15 min 到场 | 现场急救 / 伤员转运 / 院内救治 |`,
-    '| 5 | 公安治安力量 | 属地派出所 | 110 | 10-15 min 到场 | 治安维护 / 现场封控 / 交通疏导 |',
-    '| 6 | 邻企互助力量 | 周边 500 m 范围邻企（同园区） | 应急通讯录 | 5-10 min 内人员物资支援 | 邻企互助协议 / 物资借调 / 人员驰援 |',
-    '| 7 | 专业救援队伍 | 属地危化品 / 工业事故专业救援队 | 应急管理局协调调度 | 30-60 min 到场 | 重大事故专业处置（超本单位能力时） |',
-    '| 8 | 社会救援力量 | 红十字应急救护志愿者 / 同行业互助网 | 红十字会 / 行业协会 | 视距离 1-2 h | 大规模事故时辅助救援 / 物资支援 |',
+    '本单位规模与专业救援能力有限，事故扩散或处置超出本单位能力时，需第一时间寻求**外部**社会救援力量增援。本节按可依托方向逐类列明**外单位**应急力量与调用条件；各单位到场时间以每年调查核实的结果为准，本报告不预设。',
+    '| 序号 | 外部资源类别 | 单位 / 机构名称 | 联系方式 | 依托方式 |',
+    '| --- | --- | --- | --- | --- |',
+    `| 1 | 属地应急管理部门 | ${bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 报告事故 / 请求资源调度 |`,
+    `| 2 | 街道应急办 | ${street} | ${a.streetOffice?.phone || '街道办值班电话'} | 协调辖区资源 / 协助疏散周边 |`,
+    `| 3 | 消防救援队 | ${a.fireDept?.name || '属地消防大队'} | 报警 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}` : ''} | 火灾扑救 / 危化品泄漏 / 抢险救援 |`,
+    `| 4 | 医疗急救机构 | ${ctx.hospital}${hospitalKm ? `（${hospitalKm}）` : ''} | 120 / 医院急诊 | 现场急救 / 伤员转运 / 院内救治 |`,
+    '| 5 | 公安治安力量 | 属地派出所 | 110 | 治安维护 / 现场封控 / 交通疏导 |',
+    '| 6 | 邻企互助力量 | 周边邻企 | 应急通讯录 | 邻企互助协议 / 物资借调 / 人员驰援 |',
+    '| 7 | 专业救援队伍 | 属地危化品 / 工业事故专业救援队 | 应急管理局协调调度 | 重大事故专业处置（超本单位能力时） |',
+    '| 8 | 社会救援力量 | 红十字应急救护志愿者 / 同行业互助网 | 红十字会 / 行业协会 | 大规模事故时辅助救援 / 物资支援 |',
     '**外部资源调用程序**：',
     `- **事故发生 → 立即报告**：由总指挥（或值班负责人）在事故发生后 1 小时内向 ${bureau} 报告；符合《生产安全事故报告和调查处理条例》（国务院第 493 号令）情形的，同步上报市级及以上应急管理部门。`,
     '- **拨打外部专业电话**：火警 119、医疗 120、治安 110 — 由通讯联络组在现场负责人确认事故级别后立即拨打，详见 3.1 信息报告与附件10 报警流程。',
@@ -416,12 +417,12 @@ function resourceSurvey(ctx: PlanContext): string {
     '**三、应急资源差距分析与补强对策**',
     '本节对照附件2 风险评估的结果，**对应急资源现状开展差距分析**，识别**本单位内部**应急资源与外部可依托资源的不足之处，并提出补强对策。',
     '**已识别的资源差距（本单位内部）**：',
-    `1. **专业救援能力差距**：本单位无专职消防救援队，${specialRisks.length ? `${specialRisks.join('、')}等` : ''}专业事故依赖外部专业救援力量；外部专业救援队响应时效 30-60 min，与事故黄金处置时间（5-15 min）存在差距。`,
+    `1. **专业救援能力差距**：本单位无专职消防救援队，${specialRisks.length ? `${specialRisks.join('、')}等` : ''}专业事故依赖外部专业救援力量，外部力量到场前的初期处置只能依靠本单位应急小组。`,
     '2. **重型抢险装备差距**：本单位未配备消防车、举高车、专业危化品堵漏器材、大功率排烟机等重型装备，大型火灾、危化品泄漏的初期处置受限，需依赖 119 消防力量。',
     `3. **专业医疗救治差距**：本单位现场医疗资源以${firstAidText(ctx)}为主，无医务室与驻厂医生；严重创伤、烧烫伤、化学品中毒等需立即转运至属地医院专业救治。`,
     '4. **夜班 / 节假日值守差距**：夜班与节假日厂区仅留少量值班人员，夜间事故初期响应力量薄弱。',
     '**已识别的资源差距（外部 / 社会层面）**：',
-    '- 周边 1 km 范围内无固定专业救援队驻点，属地消防大队最近距离决定到场时间；',
+    '- 外部专业救援力量的到场时间取决于驻点距离与道路状况，须在年度调查中实地核实；',
     '- 邻企互助协议执行力依赖对方应急体系成熟度，实际事故时增援能力存在不确定性；',
     '- 社会公众应急救援志愿力量（如红十字救护员）主要服务于公共突发事件，工业事故响应优先级较低。',
     '**补强对策与实施计划**：',

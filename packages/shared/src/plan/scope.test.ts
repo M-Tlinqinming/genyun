@@ -107,8 +107,29 @@ describe('现场处置方案的具体内容', () => {
 
 describe('属地机构与风险等级', () => {
   it('飞宇地址带出仲恺应急管理局与陈江街道；未收录的地区为空', () => {
-    expect(feiyuPlanInput.agencies.streetOffice?.name).toBe('陈江街道应急办');
+    expect(feiyuPlanInput.agencies).toEqual({
+      emergencyBureau: { name: '惠州市仲恺高新区应急管理局', phone: '0752-3271385' },
+      fireDept: { name: '仲恺高新区消防救援大队', phone: '0752-3165029' },
+      streetOffice: { name: '陈江街道应急管理办公室', phone: '0752-3896139' },
+      districtPlan: '仲恺高新区生产工贸行业事故应急预案',
+      streetPlan: '陈江街道生产安全事故应急预案',
+    });
     expect(localAgenciesOf({ province: '广东省', city: '深圳市', district: '南山区', detail: '' })).toEqual({});
+  });
+
+  it('惠州各区县：先认区县再认镇街，简称也认；重名镇街没写区县时不猜', () => {
+    const at = (detail: string) => localAgenciesOf({ province: '', city: '', district: '', detail });
+    expect(at('惠州市博罗县龙华镇工业区').streetOffice).toEqual({ name: '龙华镇应急管理办公室', phone: '0752-6862928' });
+    expect(at('惠州市龙门县龙华镇').streetOffice?.phone).toBe('0752-7361000');
+    expect(at('惠州市龙华镇')).toEqual({});
+    expect(at('惠州市惠阳区秋长白石村').streetOffice?.name).toBe('秋长街道应急管理办公室');
+    expect(at('惠州市淡水街道某路').emergencyBureau?.name).toBe('惠州市惠阳区应急管理局');
+    // 惠东镇街应急办电话知识库里没有，只给名称
+    expect(at('惠东县白花镇').streetOffice).toEqual({ name: '白花镇应急管理办公室' });
+    // 园区不是街道 / 镇，没有对应的街道级预案
+    expect(at('仲恺高新区东江科技园').streetPlan).toBeUndefined();
+    expect(at('大亚湾西区').districtPlan).toBeUndefined();
+    expect(at('大亚湾西区').fireDept?.phone).toBe('0752-5108905');
   });
 
   it('D = L × E × C 定等级', () => {
