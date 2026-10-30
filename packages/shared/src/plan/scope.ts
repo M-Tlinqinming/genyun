@@ -39,6 +39,9 @@ const CUES: Partial<Record<ScopeKey, string[]>> = {
   inertGas: ['氮气', '氩气', '二氧化碳', '氦气', '焊接保护气', '激光保护气', '食品充氮'],
 };
 
+// 设备里有这些说明粉尘量较大（粉尘专项的建议依据）
+const DUST_REMOVAL_CUES = ['除尘'];
+
 // 典型有毒化学品（第一版简化，化学品知识库上线后改为查库）
 const TOXIC_CUES = ['氰', '硫化氢', '苯', '氯气', '氨气', '甲醛', '光气', '一氧化碳', '二氧化硫', '氮氧化物', '丙烯腈', '甲醇蒸气'];
 
@@ -105,6 +108,14 @@ export function suggestScope(input: Pick<PlanInput, 'production' | 'business' | 
     elevator: () => byCue('elevator', [...equipment, ...buildings]) ?? off('资料里没有电梯'),
     craneHoist: () => byCue('craneHoist', equipment) ?? off('资料里没有起重机械'),
     dustProcess: () => byCue('dustProcess', [...equipment, ...steps]) ?? off('设备和工序里没有产尘工序'),
+    // 有产尘工序时粉尘量大小都要专家确认（basis 记为 cue），没有产尘工序就不用
+    dustSpecialty: () => {
+      if (!rules.dustProcess().value) return off('没有产尘工序');
+      const hit = findCue(equipment, DUST_REMOVAL_CUES);
+      return hit
+        ? { value: true, reason: `有产尘工序，设备里有「${hit}」，按粉尘量较大处理`, basis: 'cue', hit }
+        : { value: false, reason: '有产尘工序，但设备里没有除尘系统，按粉尘量小处理，只出现场处置方案', basis: 'cue' };
+    },
     meltingProcess: () => byCue('meltingProcess', [...equipment, ...steps]) ?? off('设备和工序里没有熔融工序'),
     waterHazard: () => {
       if (p.firePool?.answer === 'yes') return yes('客户回答有消防水池');
@@ -149,5 +160,7 @@ export function resolveScope(input: PlanInput): Scope {
   const suggested = suggestScope(input);
   const scope = {} as Scope;
   for (const key of SCOPE_KEYS) scope[key] = input.expert.scope?.[key] ?? suggested[key].value;
+  // 没有产尘工序就谈不上粉尘专项
+  scope.dustSpecialty &&= scope.dustProcess;
   return scope;
 }

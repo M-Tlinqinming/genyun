@@ -25,9 +25,10 @@ describe('AI 只填知识块空位', () => {
     expect(checkSlot('  ', ['压铸机合模抽芯'])).toMatch(/为空/);
   });
 
-  it('模拟起草：飞宇 17 个空位全部由 AI 填写并通过校验', async () => {
+  // 飞宇没有除尘系统，不出粉尘专项，少了它的 2 个空位
+  it('模拟起草：飞宇 15 个空位全部由 AI 填写并通过校验', async () => {
     const { filled, notes } = await draftSlots(feiyuPlanInput, new FakeSlotDrafter());
-    expect(notes).toHaveLength(17);
+    expect(notes).toHaveLength(15);
     expect(notes.every((n) => n.source === 'ai')).toBe(true);
     expect(filled['SP03']?.['danger-machines']).toBeTruthy();
     expect(notes.find((n) => n.slot === 'danger-machines')?.label).toBe('危险机械');
@@ -51,7 +52,7 @@ describe('AI 只填知识块空位', () => {
   it('AI 服务出错：照样出完整稿子', async () => {
     const docs = await generateDocuments(feiyuPlanInput, { drafter: broken });
     expect(docs.notes.every((n) => n.source === 'system' && n.note.includes('超时'))).toBe(true);
-    expect(docs.plan.sections).toHaveLength(5);
+    expect(docs.plan.sections).toHaveLength(4);
     expect(docs.risk.sections).toHaveLength(4);
     expect(docs.resource.sections).toHaveLength(3);
   }, 60_000);
@@ -63,7 +64,7 @@ describe('AI 只填知识块空位', () => {
     expect(notes).toEqual([]);
     expect(calls).toBe(0);
     await draftSlots(feiyuPlanInput, spy);
-    expect(calls).toBe(17);
+    expect(calls).toBe(15);
   });
 });
 

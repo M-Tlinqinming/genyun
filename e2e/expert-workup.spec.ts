@@ -46,7 +46,7 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
 
   // 只缺技术人员数：生产设备与物料的 6 项判断（含新增的乙炔）由 expert-workup-production 判定完，适用范围的 2 个开关由 expert-workup-scope 确认完，
   // 两张图由 expert-workup-visuals 采用
-  await expect(page.getByText('整理中 · 必需项 20 / 21')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 21 / 22')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 1 项：技术人员数');
 
   // 原件对照：客户补传的台账
@@ -65,7 +65,7 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
 
   await expect(missing).toContainText('8 人');
   await expect(missing).toContainText('专家整理');
-  await expect(page.getByText('整理中 · 必需项 21 / 21')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 22 / 22')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('专业整理的必需项已齐');
   await expect(page.getByRole('status')).toContainText(/已自动保存 \d\d:\d\d/);
 

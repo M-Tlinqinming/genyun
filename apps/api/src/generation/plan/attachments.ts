@@ -72,7 +72,7 @@ function companyProfile(ctx: PlanContext): string {
     '# 生产经营单位概况',
     '## 企业概况',
     `${company}${facts.establishedDate ? `成立于${cnDate(facts.establishedDate)}，` : ''}注册地址为${address}；统一社会信用代码 ${fill(b.socialCreditCode)}，法定代表人 ${fill(b.legalRepresentative)}，注册资本 ${dash(b.registeredCapital)}。公司经营范围依据营业执照：${fill(b.businessScope)}。主要产品 / 服务：${fill(b.mainProducts)}`,
-    `从业人数：全公司在册职工 ${fill(b.employeeCount)} 人${people}。隶属关系 / 上级主管单位：${fill(facts.superior)}安全生产业务接受${ctx.bureau}行业监管。重点岗位：本企业涉及的特种作业岗位及消防安全管理、应急救援等关键应急响应岗位，均持证上岗并纳入年度应急培训与演练。周边环境与重大危险源辨识：${fill(facts.surroundings)}`,
+    `从业人数：全公司在册职工 ${fill(b.employeeCount)} 人${people}。${facts.superior?.trim() ? `隶属关系 / 上级主管单位：${facts.superior.trim().replace(/[。；，]$/, '')}。` : ''}安全生产业务接受${ctx.bureau}行业监管。重点岗位：本企业涉及的特种作业岗位及消防安全管理、应急救援等关键应急响应岗位，均持证上岗并纳入年度应急培训与演练。周边环境与重大危险源辨识：${fill(facts.surroundings)}`,
     '**表1-1 企业基本情况表**',
     '| 项目 | 内容 |',
     '| --- | --- |',
@@ -336,21 +336,30 @@ function formTexts(ctx: PlanContext): string {
   ].join('\n');
 }
 
-// ── 附件7 关键图纸：客户上传的三张图纸，横版单独占页 ──
+// ── 附件7 关键图纸：横版单独占页。前三张客户上传；后三张按 Martin 批注由编制单位绘制（周边环境、至医院路线、外部交通），
+// 专家上传的入口还没做，现在列为待补充 ──
 export const DRAWINGS = {
   sitePlan: '总平面布置图',
   evacuation: '应急疏散路线图',
   fireFacility: '消防设施布置图',
+  surroundings: '周边环境图',
+  hospitalRoute: '至医院路线图',
+  traffic: '外部交通图',
 } as const;
 export type DrawingKey = keyof typeof DRAWINGS;
+const BY_CUSTOMER: DrawingKey[] = ['sitePlan', 'evacuation', 'fireFacility'];
 
 function keyDrawings(provided: DrawingKey[]): string {
-  const missing = (Object.keys(DRAWINGS) as DrawingKey[]).filter((k) => !provided.includes(k));
+  const keys = Object.keys(DRAWINGS) as DrawingKey[];
+  const missing = keys.filter((k) => !provided.includes(k));
+  const fromCustomer = missing.filter((k) => BY_CUSTOMER.includes(k));
+  const fromUs = missing.filter((k) => !BY_CUSTOMER.includes(k));
   return [
     '# 关键图纸',
-    '图纸包括疏散路线、集结点、警戒范围、重要地点的标识；相关平面布置、应急资源分布的图纸等，具体如后续所示。',
-    ...provided.flatMap((k) => [`[[figure:drawing-${k}]]`]),
-    ...(missing.length ? [`${missing.map((k) => DRAWINGS[k]).join('、')}由企业提供后纳入正式文本。`] : []),
+    `本预案关键图纸包括${keys.map((k) => DRAWINGS[k]).join('、')}，标明疏散路线、集结点、警戒范围、应急资源分布及外部救援路线，具体如后续所示。`,
+    ...keys.filter((k) => provided.includes(k)).map((k) => `[[figure:drawing-${k}]]`),
+    ...(fromCustomer.length ? [`${fromCustomer.map((k) => DRAWINGS[k]).join('、')}（待补充）：由企业提供后纳入正式文本。`] : []),
+    ...(fromUs.length ? [`${fromUs.map((k) => DRAWINGS[k]).join('、')}（待补充）：由编制单位现场踏勘后绘制，纳入正式文本。`] : []),
   ].join('\n');
 }
 

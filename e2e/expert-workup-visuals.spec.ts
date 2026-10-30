@@ -24,7 +24,7 @@ const drawn = async (card: ReturnType<typeof orgCard>) =>
 
 test('周工微调两张图后采用；采用后再改画法回到待采用；退出再进还在', async ({ page }) => {
   await openFigures(page);
-  await expect(page.getByText('整理中 · 必需项 18 / 21')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 19 / 22')).toBeVisible();
   await expect(page.getByRole('button', { name: /^图件\s*待采用 2/ })).toBeVisible();
   await expect(orgCard(page)).toContainText('待采用');
   await expect(flowCard(page)).toContainText('10 道 · 由客户的一句话描述拆出');
@@ -57,7 +57,7 @@ test('周工微调两张图后采用；采用后再改画法回到待采用；�
   await page.getByRole('button', { name: '采用生产工艺流程图' }).click();
   await expect(flowCard(page)).toContainText(/已采用 · 周工/);
   await expect(page.getByRole('button', { name: /^图件\s*✓/ })).toBeVisible();
-  await expect(page.getByText('整理中 · 必需项 20 / 21')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 21 / 22')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 1 项：技术人员数');
   // 与 Paper E18-00F 并排对比用
   await page.screenshot({ path: 'test-results/acceptance/m2-9-图件.png' });
@@ -65,9 +65,9 @@ test('周工微调两张图后采用；采用后再改画法回到待采用；�
   // 采用后改画法：回到待采用，必需项少一项；重新采用
   await option(flowCard(page), '每行工序数', '3').click();
   await expect(flowCard(page)).toContainText('图有变化，待重新采用');
-  await expect(page.getByText('整理中 · 必需项 19 / 21')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 20 / 22')).toBeVisible();
   await flowCard(page).getByRole('button', { name: '采用此图' }).click();
-  await expect(page.getByText('整理中 · 必需项 20 / 21')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 21 / 22')).toBeVisible();
 
   // 退出再进，画法和采用都还在
   await page.reload();

@@ -20,11 +20,24 @@ const withProduction = (patch: Partial<PlanInput['production']>, rest: Partial<P
 
 describe('适用范围', () => {
   it('飞宇按新资料格式推出的预案组成与旧系统一致', () => {
-    // 旧仓库 fixtures/feiyu-canonical.golden.md：专项 2 份、现场处置方案 14 份
+    // 旧仓库 fixtures/feiyu-canonical.golden.md：专项 2 份、现场处置方案 14 份；
+    // 10-30 起粉尘量小不出粉尘专项（批注 [17]），飞宇没有除尘系统，专项只剩火灾爆炸
     expect(ids(feiyuPlanInput)).toEqual({
-      specialty: ['P1', 'P2'],
+      specialty: ['P1'],
       site: ['SP01', 'SP02', 'SP03', 'SP04', 'SP05', 'SP06', 'SP07', 'SP10', 'SP11', 'SP12', 'SP17', 'SP20', 'SP21', 'SP22'],
     });
+  });
+
+  it('粉尘专项：有产尘工序且有除尘系统才建议出；专家打开也要先有产尘工序', () => {
+    const withDustRemoval: PlanInput = {
+      ...feiyuPlanInput,
+      production: { ...feiyuPlanInput.production, equipment: [...feiyuPlanInput.production.equipment, { ...feiyuPlanInput.production.equipment[0]!, name: '布袋除尘器', quantity: 1 }] },
+    };
+    expect(suggestScope(withDustRemoval).dustSpecialty).toMatchObject({ value: true, hit: '布袋除尘器' });
+    // 除尘器本身也是有限空间，一并带出有限空间专项
+    expect(ids(withDustRemoval).specialty).toEqual(['P1', 'P2', 'P4']);
+    const noDust = { ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, scope: { dustProcess: false, dustSpecialty: true } } };
+    expect(ids(noDust).specialty).toEqual(['P1']);
   });
 
   it('每个开关都给出业务语言的依据', () => {

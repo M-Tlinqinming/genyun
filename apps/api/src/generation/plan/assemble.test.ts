@@ -67,18 +67,13 @@ describe('飞宇整份应急预案', () => {
     text = allText(plan);
   }, 60_000);
 
-  it('件的顺序与旧仓库一致：综合、两个专项、现场处置方案、附件', () => {
-    expect(plan.sections.map((s) => s.title)).toEqual([
-      '一、综合应急预案',
-      '二、火灾爆炸事故专项应急预案',
-      '三、粉尘爆炸事故专项应急预案',
-      '四、现场处置方案',
-      '五、附件',
-    ]);
+  // 旧仓库有粉尘专项；10-30 起粉尘量小只出现场处置方案（批注 [17]），飞宇没有除尘系统
+  it('件的顺序：综合、火灾爆炸专项、现场处置方案、附件', () => {
+    expect(plan.sections.map((s) => s.title)).toEqual(['一、综合应急预案', '二、火灾爆炸事故专项应急预案', '三、现场处置方案', '四、附件']);
   });
 
   it('综合预案五章，专项五要素，现场处置 14 个方案，附件 10 个', () => {
-    const [comprehensive, fire, , site, attachments] = plan.sections;
+    const [comprehensive, fire, site, attachments] = plan.sections;
     expect(comprehensive!.sections!.map((s) => s.title)).toEqual(['1. 总则', '2. 应急组织机构及职责', '3. 应急响应', '4. 后期处置', '5. 应急保障']);
     expect(comprehensive!.sections![2]!.sections![0]!.title).toBe('3.1 信息报告');
     expect(fire!.sections!.map((s) => s.title)).toEqual(['1. 适用范围', '2. 应急组织机构及职责', '3. 响应启动', '4. 处置措施', '5. 应急保障']);
@@ -117,8 +112,9 @@ describe('飞宇整份应急预案', () => {
     expect(text).not.toMatch(/undefined|null|NaN/);
   });
 
-  it('飞宇资料齐全，没有「待补充」', () => {
-    expect(text).not.toContain('（待补充）');
+  it('飞宇资料齐全，除了还没有的关键图纸，没有「待补充」', () => {
+    expect(text).toContain('周边环境图、至医院路线图、外部交通图（待补充）：由编制单位现场踏勘后绘制');
+    expect(text.split('\n').filter((l) => l.includes('（待补充）') && !/（待补充）：由(企业提供|编制单位)/.test(l))).toEqual([]);
   });
 
   it('值班电话、属地机构、消防大队按企业数据填', () => {
@@ -143,16 +139,12 @@ describe('飞宇整份应急预案', () => {
     expect(kinds.every((k) => !/专项|疏散|承租|火灾爆炸/.test(k))).toBe(true);
   });
 
-  it('产尘场所只写一遍', () => {
-    const places = /适用于公司(.+?)等产尘作业场所/.exec(text)![1]!.split('、');
-    expect(new Set(places).size).toBe(places.length);
-  });
 
   it('压铸、金属粉尘、酒精的知识块都用上了，安全要点句一字不差', () => {
     const signals = planSignals(feiyuPlanInput);
     const selection = selectPlans(resolveScope(feiyuPlanInput));
     const used = [...selection.specialty, ...selection.site].filter((t) => usesKnowledgeBlock(t, signals)).map((t) => t.id);
-    expect(used.sort()).toEqual(['P1', 'P2', 'SP01', 'SP03', 'SP05', 'SP06', 'SP10', 'SP20', 'SP21']);
+    expect(used.sort()).toEqual(['P1', 'SP01', 'SP03', 'SP05', 'SP06', 'SP10', 'SP20', 'SP21']);
     expect(text).toContain('严禁用水扑救与熔融物直接接触或邻近的可燃物');
     expect(text).toContain('严禁用高压水枪或压缩空气直吹积尘部位');
     expect(text).toContain('不可用倒转设备的方法取出肢体');
@@ -201,6 +193,35 @@ describe('飞宇整份应急预案', () => {
       expect(media).toBe(5);
     });
   });
+});
+
+describe('粉尘量较大的企业（专家打开粉尘专项）', () => {
+  let plan: ReturnType<typeof buildPlan>;
+  let text = '';
+  beforeAll(() => {
+    plan = buildPlan({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, scope: { dustSpecialty: true } } });
+    text = allText(plan);
+  }, 60_000);
+
+  it('多出粉尘爆炸专项，用金属粉尘知识块，产尘场所只写一遍', () => {
+    expect(plan.sections.map((s) => s.title)).toContain('三、粉尘爆炸事故专项应急预案');
+    expect(usesKnowledgeBlock(selectPlans(resolveScope({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, scope: { dustSpecialty: true } } })).specialty[1]!, planSignals(feiyuPlanInput))).toBe(true);
+    const places = /适用于公司(.+?)等产尘作业场所/.exec(text)![1]!.split('、');
+    expect(new Set(places).size).toBe(places.length);
+  });
+
+  it('知识块里不写死厂型（铝锌压铸件加工厂、压铸加工厂）', () => {
+    expect(text).not.toMatch(/压铸件机械加工厂|本企业为压铸加工厂/);
+    expect(text).toContain('等工序产生铝粉、锌粉等可燃金属粉尘');
+  });
+});
+
+describe('上级主管单位', () => {
+  it('专家没填就整句不写', () => {
+    const text = allText(buildPlan({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, facts: { ...feiyuPlanInput.expert.facts, superior: undefined } } }));
+    expect(text).not.toContain('上级主管单位');
+    expect(allText(buildPlan(feiyuPlanInput))).toContain('隶属关系 / 上级主管单位：独立法人');
+  }, 60_000);
 });
 
 describe('没有压铸、粉尘的企业', () => {

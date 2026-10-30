@@ -1,4 +1,4 @@
-// 应急预案由哪些专项预案、现场处置方案组成：28 份模板（起重致害电梯与起重机 10-29 合成一份）与 20 个「适用范围」开关。
+// 应急预案由哪些专项预案、现场处置方案组成：28 份模板（起重致害电梯与起重机 10-29 合成一份）与 21 个「适用范围」开关。
 // 迁自旧仓库 lib/decision-engine/templates.ts 与 constants/e6-switches.ts，逻辑照搬，开关名改为业务含义。
 // 编号（P1、SP01…）只在代码和模板文件名里用，不进界面和交付文档。
 
@@ -12,6 +12,8 @@ export const SCOPE_SWITCHES = {
   elevator: '有电梯或升降设备',
   craneHoist: '有行车、电动葫芦等起重机械',
   dustProcess: '有喷砂、打磨、抛光等产尘工序',
+  // 粉尘量小只出现场处置方案、不出专项（Martin 批注 [17]，10-30 定由专家判断，系统按有无除尘系统建议）
+  dustSpecialty: '粉尘量较大，需要单独的粉尘爆炸专项预案',
   meltingProcess: '有熔炼、压铸、浇铸等熔融工序',
   waterHazard: '有消防水池、污水池等可能淹溺的水体',
   chemicalsOver1t: '危险化学品年用量超过 1 吨',
@@ -43,7 +45,7 @@ export interface PlanTemplate {
 export const PLAN_TEMPLATES: PlanTemplate[] = [
   // 名称按 Martin 10-29 给的新知识库（与实际交付成稿一致）
   { id: 'P1', kind: 'specialty', title: '火灾爆炸事故专项应急预案' },
-  { id: 'P2', kind: 'specialty', title: '粉尘爆炸事故专项应急预案', trigger: 'dustProcess' },
+  { id: 'P2', kind: 'specialty', title: '粉尘爆炸事故专项应急预案', trigger: 'dustSpecialty' },
   { id: 'P3', kind: 'specialty', title: '化学品泄漏事故专项应急预案', trigger: 'chemicalsOver1t' },
   { id: 'P4', kind: 'specialty', title: '有限空间专项应急预案', trigger: 'confinedSpace' },
   { id: 'P5', kind: 'specialty', title: '人员疏散专项应急预案', trigger: 'highRise' },
