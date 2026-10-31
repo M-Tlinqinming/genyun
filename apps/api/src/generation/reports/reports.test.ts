@@ -37,12 +37,12 @@ describe('风险评估报告', () => {
     text = allText(doc);
   }, 60_000);
 
-  it('章节与旧仓库目录一致', () => {
+  it('章节与旧仓库目录一致，编号后不空格（按专家稿）', () => {
     expect(titles(doc)).toEqual([
-      ['1. 危险有害因素辨识', '1.1 依据', '1.2 公司基本概况', '1.3 危险有害因素辨识'],
-      ['2. 事故风险分析', '2.1 现有安全生产管理情况', '2.2 事故风险分析'],
-      ['3. 事故风险评价', '3.1 事故风险程度', '3.2 划定事故风险等级'],
-      ['4. 结论建议', '4.1 评估结论', '4.2 建议'],
+      ['1.危险有害因素辨识', '1.1依据', '1.2公司基本概况', '1.3危险有害因素辨识'],
+      ['2.事故风险分析', '2.1现有安全生产管理情况', '2.2事故风险分析'],
+      ['3.事故风险评价', '3.1事故风险程度', '3.2划定事故风险等级'],
+      ['4.结论建议', '4.1评估结论', '4.2建议'],
     ]);
     expect(doc.cover).toMatchObject({ name: '生产安全事故风险评估报告', dates: ['编制日期：2026年4月11日'] });
   });
@@ -104,11 +104,11 @@ describe('应急资源调查报告', () => {
     text = allText(doc);
   }, 60_000);
 
-  it('章节与旧仓库目录一致', () => {
+  it('章节与旧仓库目录一致，编号后不空格（按专家稿）', () => {
     expect(titles(doc)).toEqual([
-      ['1. 单位内部应急资源', '1.1 依据', '1.2 调查工作', '1.3 公司基本情况', '1.4 公司内部人力和物资应急资源'],
-      ['2. 单位外部应急资源'],
-      ['3. 应急资源差距分析'],
+      ['1.单位内部应急资源', '1.1依据', '1.2调查工作', '1.3公司基本情况', '1.4公司内部人力和物资应急资源'],
+      ['2.单位外部应急资源'],
+      ['3.应急资源差距分析'],
     ]);
   });
 
@@ -138,5 +138,32 @@ describe('两份报告生成 Word', () => {
       expect(await zip.file('word/document.xml')!.async('string')).toContain(doc.sections[0]!.title);
       expect(Object.keys(zip.files).filter((n) => /^word\/media\/.+\.png$/.test(n))).toHaveLength(images);
     }
+  }, 60_000);
+
+  it('按专家稿排版：没有页眉有页码，章标题四号加粗靠左，封面小二，表题四号不加粗，短列居中', async () => {
+    const zip = await JSZip.loadAsync(await renderWord(buildRiskReport(feiyuPlanInput)));
+    const read = (n: string) => zip.file(n)!.async('string');
+    const document = await read('word/document.xml');
+    const styles = await read('word/styles.xml');
+    const parts = Object.keys(zip.files);
+    const headers = await Promise.all(parts.filter((n) => /^word\/header\d+\.xml$/.test(n)).map(read));
+    const footers = await Promise.all(parts.filter((n) => /^word\/footer\d+\.xml$/.test(n)).map(read));
+    expect(headers.every((h) => !/<w:t[ >]/.test(h))).toBe(true);
+    expect(footers.some((f) => /PAGE/.test(f))).toBe(true);
+
+    const heading1 = styles.match(/<w:style [^>]*w:styleId="Heading1"[\s\S]*?<\/w:style>/)![0];
+    expect(heading1).toMatch(/<w:sz w:val="28"\/>/);
+    expect(heading1).toMatch(/<w:b\/>/);
+    expect(heading1).toMatch(/<w:jc w:val="left"\/>/);
+    expect(document).toMatch(/<w:instrText[^>]*>TOC [^<]*\\o &quot;1-2&quot;/);
+
+    const paragraphs = document.split('</w:p>');
+    const para = (t: string) => paragraphs.find((p) => p.includes(`>${t}<`))!;
+    expect(para('生产安全事故风险评估报告')).toMatch(/<w:sz w:val="36"\/>/);
+    const caption = para('表1.2-1企业基本情况表');
+    expect(caption).toMatch(/<w:sz w:val="28"\/>/);
+    expect(caption).not.toMatch(/<w:b\/>/);
+    // 序号列整列一行放得下，居中；作业场所列有长地址，靠左
+    expect(paragraphs.find((p) => /<w:tc>/.test(p) && />1</.test(p) && !/<w:b\/>/.test(p))).toMatch(/<w:jc w:val="center"\/>/);
   }, 60_000);
 });

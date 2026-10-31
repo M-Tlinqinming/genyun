@@ -1,7 +1,7 @@
 // 排版规范：交付 Word 的全部排版规则都在这里，生成器只照着执行。
 // 应急预案的规则来自旧仓库与 Martin 多轮调出的版式（Word 样式模板 + 过滤脚本 + 后处理），
-// 已和飞宇批注版样板的纸张、页边距、字号核对过。风险评估报告、应急资源调查报告暂用同一套，
-// 等 Martin 按实际案例定了规则，只在 LAYOUTS 里给它们补差异。
+// 已和飞宇批注版样板的纸张、页边距、字号核对过。风险评估报告、应急资源调查报告在这套基础上改了
+// 封面、标题、表格和页眉（按专家写的 5 份风险评估报告、1 份资源调查报告实测，Martin 2026-10-31 确认）。
 //
 // 单位：字号是半磅（Word 的 w:sz，三号 = 32）；间距、缩进、页边距是缇（1 厘米 ≈ 567）。
 import type { DocumentKind } from '@genyun/shared';
@@ -10,6 +10,7 @@ import type { DocumentKind } from '@genyun/shared';
 export const SIZE = {
   一号: 52,
   小一: 48,
+  小二: 36,
   三号: 32,
   四号: 28,
   小四: 24,
@@ -87,8 +88,12 @@ export interface Layout {
     widthExponent: number;
     /** 每列至少放得下表头的字和这么多个字的单元格内容，不出现一个字一行 */
     minCellChars: number;
+    /** 表头最多按这么多个字算最小宽度，再长的表头折行，免得一个长表头把别的列挤窄 */
+    maxHeaderChars: number;
     /** 单元格左右内边距合计（缇） */
     cellPadding: number;
+    /** 单元格对齐：left 一律靠左；fit 整列内容都能一行放下的居中，否则靠左 */
+    cellAlign: 'left' | 'fit';
     /** 表格后空一行（后面紧跟标题或分页时不空） */
     spacerAfter: boolean;
   };
@@ -99,8 +104,8 @@ export interface Layout {
     /** 横版页上图片的最大宽度（英寸） */
     landscapeWidthInches: number;
   };
-  /** 页眉：文档全称，居中，下框线 */
-  header: TextStyle;
+  /** 页眉：文档全称，居中，下框线；null 为不设页眉 */
+  header: TextStyle | null;
   /**
    * 从第几个前置页起显示页眉（0 = 批准发布令）：按飞宇样板，封面和批准发布令没有页眉，
    * 编制小组和目录有页眉但没有页码，正文页码从 1 起（Martin 2026-10-29 确认）
@@ -156,7 +161,9 @@ const base: Layout = {
     cell: { size: SIZE.小四, align: 'left', line: LINE_SINGLE, before: 0, after: 0 },
     widthExponent: 0.6,
     minCellChars: 3,
+    maxHeaderChars: 8,
     cellPadding: 230,
+    cellAlign: 'left',
     spacerAfter: true,
   },
   figure: {
@@ -169,9 +176,37 @@ const base: Layout = {
   footer: { size: SIZE.四号, align: 'center' },
 };
 
+/**
+ * 风险评估报告、应急资源调查报告：照专家稿的封面（各行离页顶的位置也按专家稿）、章标题、表题和表格；
+ * 专家稿没有页眉也没有页码，这里去掉页眉、保留页码，目录和 PDF 预览靠页码对得上。
+ * 页边距、正文、每章另起一页与应急预案相同。
+ */
+const report: Layout = {
+  ...base,
+  headings: [
+    { size: SIZE.四号, bold: true, align: 'left', before: 0, after: 0, line: LINE_1_5 },
+    ...base.headings.slice(1),
+  ],
+  cover: {
+    ...base.cover,
+    // 公司名离页顶 6 厘米，报告名 7.7 厘米，编制单位 19 厘米，编制日期 20.6 厘米
+    company: { size: SIZE.小二, bold: true, align: 'center', before: 1985, after: 0, line: LINE_1_5 },
+    title: { size: SIZE.小二, bold: true, align: 'center', before: 260, after: 5700, line: LINE_1_5 },
+    firstDate: { size: SIZE.三号, bold: true, align: 'center', before: 280, after: 0, line: LINE_1_5 },
+    date: { size: SIZE.三号, bold: true, align: 'center', line: LINE_1_5, before: 0, after: 0 },
+  },
+  toc: { ...base.toc, levels: 2 },
+  table: {
+    ...base.table,
+    caption: { size: SIZE.四号, align: 'center', line: LINE_SINGLE, before: 0, after: 0 },
+    header: { size: SIZE.小四, bold: true, align: 'center', line: LINE_SINGLE, before: 0, after: 0 },
+    cellAlign: 'fit',
+  },
+  header: null,
+};
+
 export const LAYOUTS: Record<DocumentKind, Layout> = {
   plan: base,
-  // 待 Martin 按实际案例确定（PROGRESS 第 9c 项），先与应急预案相同
-  risk: base,
-  resource: base,
+  risk: report,
+  resource: report,
 };
