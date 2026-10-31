@@ -1,3 +1,4 @@
+import type { PlanInput } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
@@ -7,11 +8,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { draftRevisions, enterprises, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
+import { draftRevisions, draftEdits, enterprises, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { ParagraphPolisher, PolishRequest } from '../generation/ai/drafter.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
+import { peopleOf } from './editing.service.ts';
 import { complete, testDocument } from './test-workup.ts';
 
 // 正文编辑（M2 第 11 项）：按节保存修订、两人同时改不覆盖、同一次保存重试不重复记、帮我改写这段、越权
@@ -43,6 +45,7 @@ const drafter: ParagraphPolisher = {
 
 let taskId = '';
 let otherTaskId = '';
+let batchId = '';
 const uid: Record<string, string> = {};
 
 beforeAll(async () => {
@@ -120,6 +123,7 @@ beforeAll(async () => {
   await db.update(taskWorkups).set({ data: complete(row!.snapshot), version: row!.version + 1 }).where(eq(taskWorkups.taskId, taskId));
   await zhou.post(`/api/tasks/${taskId}/generation`).send({ version: row!.version + 1 }).expect(201);
   await queue.idle();
+  batchId = (await zhou.get(`/api/tasks/${taskId}/drafts/plan/edit`).expect(200)).body.batchId;
 });
 
 afterAll(async () => {
@@ -134,7 +138,7 @@ async function as(email: string) {
 }
 
 const url = (kind = 'plan', rest = '') => `/api/tasks/${taskId}/drafts/${kind}${rest}`;
-const save = (blocks: unknown[], baseRev: number, note = '按名册更正联系人', saveId: string = randomUUID()) => ({ saveId, baseRev, blocks, note });
+const save = (blocks: unknown[], baseRev: number, note = '按名册更正联系人', saveId: string = randomUUID()) => ({ saveId, batchId, baseRev, blocks, note });
 const lockedTable = { type: 'locked', index: 1, label: '随便写的' };
 
 describe('正文编辑', () => {
@@ -195,6 +199,33 @@ describe('正文编辑', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('查询和重试返回那一次保存的内容，不是这一节现在的样子；saveId 不能拿到另一节用', async () => {
+    const zhou = await as('zhou@test.cn');
+    const first = randomUUID();
+    const body = save([{ type: 'paragraph', text: ['第一次的写法。'] }], 0, '第一次', first);
+    await zhou.put(url('risk', '/sections/ch1.1')).send(body).expect(200);
+    await zhou.put(url('risk', '/sections/ch1.1')).send(save([{ type: 'paragraph', text: ['第二次的写法。'] }], 1, '第二次')).expect(200);
+
+    const query = (await zhou.get(url('risk', `/saves/${first}?batch=${batchId}`)).expect(200)).body;
+    expect(query.section).toMatchObject({ rev: 1, version: 1, blocks: [{ type: 'paragraph', text: ['第一次的写法。'] }], saved: { note: '第一次', byName: '周工' } });
+    const retry = (await zhou.put(url('risk', '/sections/ch1.1')).send(body).expect(200)).body;
+    expect(retry).toMatchObject({ rev: 1, blocks: [{ text: ['第一次的写法。'] }] });
+
+    const other = await zhou.put(url('risk', '/sections/ch1.2')).send(save([{ type: 'paragraph', text: ['别处'] }, lockedTable], 0, '别处', first)).expect(409);
+    expect(other.body.reason).toBe('other_section');
+  });
+
+  it('打开页面以后重新生成过：保存和查询都拒绝，提示刷新', async () => {
+    const zhou = await as('zhou@test.cn');
+    const old = { ...save([{ type: 'paragraph', text: ['旧稿上的修改。'] }], 0), batchId: randomUUID() };
+    const res = await zhou.put(url('resource', '/sections/ch1.1')).send(old).expect(409);
+    expect(res.body).toMatchObject({ reason: 'regenerated', message: '草稿已重新生成，请刷新后再改' });
+    const query = await zhou.get(url('resource', `/saves/${old.saveId}?batch=${old.batchId}`)).expect(409);
+    expect(query.body.reason).toBe('regenerated');
+    const [row] = await handle.db.select().from(draftEdits).where(eq(draftEdits.kind, 'resource'));
+    expect(row).toBeUndefined();
+  });
+
   it('两人同时改同一节：后保存的被拒绝，带回最新保存稿，不覆盖', async () => {
     const zhou = await as('zhou@test.cn');
     // 基于 rev 0 的旧页面再保存
@@ -220,9 +251,21 @@ describe('正文编辑', () => {
   it('帮我改写这段：不发企业名称和人名，过检查后返回 AI 的写法', async () => {
     const zhou = await as('zhou@test.cn');
     const res = await zhou.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '原来的编制目的由陈志刚负责。' }).expect(201);
-    expect(res.body).toMatchObject({ source: 'ai', text: '编制目的由陈志刚负责。' });
+    expect(res.body).toMatchObject({ source: 'ai', text: '编制目的由陈志刚负责。', promptVersion: 'polish-v1' });
     expect(polished.at(-1)!.text).not.toContain('陈志刚');
     expect(polished.at(-1)!.section).toBe('1.1 编制目的');
+  });
+
+  it('采用了 AI 改写的修订记下提示词版本，没用的不记', async () => {
+    const zhou = await as('zhou@test.cn');
+    const withAi = { ...save([{ type: 'paragraph', text: ['编制目的由陈志刚负责。'] }], 1, '采用 AI 改写'), aiPromptVersion: 'polish-v1' };
+    await zhou.put(url('plan', '/sections/ch1.1')).send(withAi).expect(200);
+    const [ai] = await handle.db.select().from(draftRevisions).where(eq(draftRevisions.saveId, withAi.saveId));
+    expect(ai!.aiPromptVersion).toBe('polish-v1');
+    const plain = save([{ type: 'paragraph', text: ['编制目的由陈某负责。'] }], 2, '手改');
+    await zhou.put(url('plan', '/sections/ch1.1')).send(plain).expect(200);
+    const [manual] = await handle.db.select().from(draftRevisions).where(eq(draftRevisions.saveId, plain.saveId));
+    expect(manual!.aiPromptVersion).toBeNull();
   });
 
   it('还没生成草稿：提示先生成', async () => {
@@ -258,5 +301,21 @@ describe('正文编辑的权限', () => {
   it('不认识的文档类型', async () => {
     const zhou = await as('zhou@test.cn');
     await zhou.get(url('contract', '/edit')).expect(404);
+  });
+});
+
+describe('发给 AI 前遮掉的人名', () => {
+  it('包括法定代表人、联系人和应急组织里的人，不包括小组名称', () => {
+    const input = {
+      basic: { companyName: '甲公司', legalRepresentative: '李文聪', contactPerson: '陈志刚', responsiblePerson: '李文聪' },
+      organization: {
+        commander: { id: 'c', name: '王总' },
+        deputies: [{ id: 'd', name: '赵副' }],
+        hasEmergencyOffice: true,
+        groups: [{ kind: 'communication', name: '通讯联络组', leader: { id: 'l', name: '孙组长' }, members: [{ id: 'm', name: '钱成员' }] }],
+        compilationTeam: { leader: { name: '周编' }, members: [{ name: '吴编' }] },
+      },
+    } as unknown as PlanInput;
+    expect(peopleOf(input).sort()).toEqual(['吴编', '周编', '孙组长', '李文聪', '王总', '赵副', '钱成员', '陈志刚'].sort());
   });
 });

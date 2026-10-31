@@ -130,6 +130,7 @@ describe('正文编辑：整份文档', () => {
 describe('保存请求格式', () => {
   const ok = {
     saveId: '3f1c2b9e-1d2a-4c5b-8e7f-0a1b2c3d4e5f',
+    batchId: '6a1c2b9e-1d2a-4c5b-8e7f-0a1b2c3d4e5f',
     baseRev: 0,
     blocks: [{ type: 'paragraph', text: ['甲'] }],
     note: '按名册更正联系人',

@@ -18,6 +18,7 @@ CREATE TABLE "draft_revisions" (
 	"note" text NOT NULL,
 	"before" jsonb NOT NULL,
 	"after" jsonb NOT NULL,
+	"ai_prompt_version" text,
 	"rev" integer NOT NULL,
 	"version" integer NOT NULL,
 	"created_by" uuid NOT NULL,

@@ -16,6 +16,7 @@ import {
   type DraftKind,
   type EditBlock,
   type EditDocumentView,
+  type PlanInput,
   type RewriteResult,
   type SectionEdit,
   type SectionView,
@@ -34,6 +35,7 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   Res,
 } from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -43,7 +45,7 @@ import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
-import { draftEdits, draftRevisions, files, generatedDrafts, generationBatches, tasks } from '../db/schema.ts';
+import { draftEdits, draftRevisions, files, generatedDrafts, generationBatches, tasks, users } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import type { ParagraphPolisher } from '../generation/ai/drafter.ts';
 import { polishParagraph } from '../generation/ai/polish.ts';
@@ -55,6 +57,7 @@ export const EDIT_DRAFTER = Symbol('EDIT_DRAFTER');
 
 const NOT_FOUND = '找不到该任务';
 const STALE = '本节已被更新：其他人刚保存了新的版本，直接保存会覆盖。请对照最新保存稿后再保存';
+const REGENERATED = '草稿已重新生成，请刷新后再改';
 
 type Draft = {
   task: { id: string; assignedExpertId: string | null };
@@ -100,13 +103,18 @@ export class EditingService {
     if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责专家可以修改正文');
     const parsed = sectionSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
-    const { saveId, baseRev, blocks, note } = parsed.data;
+    const { saveId, batchId, baseRev, blocks, note, aiPromptVersion } = parsed.data;
+    // 打开页面以后重新生成过：不能把旧稿上的修改写进新生成的稿
+    this.sameBatch(d, batchId);
     const found = findSection(d.doc, sectionId);
     if (!found) throw new NotFoundException('找不到这一节');
 
-    // 同一次保存的重试：已经记过就直接返回结果
+    // 同一次保存的重试：已经记过就直接返回那一次的结果；saveId 不能拿到另一节去用
     const replay = await this.replayed(d, saveId);
-    if (replay) return replay;
+    if (replay) {
+      if (replay.id !== sectionId) throw new ConflictException({ statusCode: 409, message: '这次保存属于另一节，请刷新后重试', reason: 'other_section' });
+      return replay;
+    }
 
     const error = editBlocksError(found.section.blocks, blocks);
     if (error) throw new BadRequestException(error);
@@ -142,6 +150,7 @@ export class EditingService {
           sectionId,
           sectionTitle: found.section.title,
           note,
+          aiPromptVersion: aiPromptVersion ?? null,
           before: current?.blocks ?? original,
           after: clean,
           rev: entry.rev,
@@ -156,15 +165,22 @@ export class EditingService {
       // 同一次保存的两个请求同时到：后到的那个按已保存返回
       if (isUniqueViolation(err, 'draft_revisions_save_id_unique')) {
         const again = await this.replayed(d, saveId);
-        if (again) return again;
+        if (again && again.id === sectionId) return again;
       }
       throw err;
     }
   }
 
   // 保存结果不确定（断网、超时）时页面先查这一次保存有没有记上，再决定要不要重试
-  async saveStatus(user: SessionUser, taskId: string, kind: string, saveId: string): Promise<{ saved: false } | { saved: true; section: SectionView }> {
+  async saveStatus(
+    user: SessionUser,
+    taskId: string,
+    kind: string,
+    saveId: string,
+    batchId: string | undefined,
+  ): Promise<{ saved: false } | { saved: true; section: SectionView & { version: number } }> {
     const d = await this.draft(user, taskId, kind);
+    this.sameBatch(d, batchId);
     const replay = await this.replayed(d, saveId);
     return replay ? { saved: true, section: replay } : { saved: false };
   }
@@ -183,7 +199,8 @@ export class EditingService {
         plan: `${DRAFT_KINDS[d.kind]} · ${found.path[0]}`,
         section: found.section.title,
         companyName: input.basic.companyName,
-        people: namesIn(input.organization),
+        shortName: input.expert.facts?.shortName,
+        people: peopleOf(input),
         facts: riskFacts(input),
       },
       parsed.data.text,
@@ -199,15 +216,40 @@ export class EditingService {
     return { name: `${d.batch.input.basic.companyName}${DRAFT_KINDS[d.kind]}（修订稿）.docx`, data };
   }
 
+  // 那一次保存记下的内容和修订次数（不是这一节现在的样子：之后可能又有人保存过）
   private async replayed(d: Draft, saveId: string): Promise<(SectionView & { version: number }) | null> {
     const [rev] = await this.db
-      .select({ sectionId: draftRevisions.sectionId })
+      .select({
+        sectionId: draftRevisions.sectionId,
+        after: draftRevisions.after,
+        rev: draftRevisions.rev,
+        version: draftRevisions.version,
+        note: draftRevisions.note,
+        at: draftRevisions.createdAt,
+        byName: users.name,
+      })
       .from(draftRevisions)
+      .innerJoin(users, eq(users.id, draftRevisions.createdBy))
       .where(and(eq(draftRevisions.saveId, saveId), eq(draftRevisions.batchId, d.batch.id), eq(draftRevisions.kind, d.kind)))
       .limit(1);
     if (!rev) return null;
-    const edits = await this.edits(d.batch.id, d.kind);
-    return { ...this.sectionView(d.doc, rev.sectionId, edits?.sections[rev.sectionId]), version: edits?.version ?? 0 };
+    const found = findSection(d.doc, rev.sectionId);
+    if (!found) return null;
+    return {
+      id: rev.sectionId,
+      title: found.section.title,
+      path: found.path,
+      blocks: rev.after,
+      rev: rev.rev,
+      saved: { note: rev.note, byName: rev.byName, at: rev.at.toISOString() },
+      version: rev.version,
+    };
+  }
+
+  private sameBatch(d: Draft, batchId: string | undefined) {
+    if (batchId !== undefined && batchId !== d.batch.id) {
+      throw new ConflictException({ statusCode: 409, message: REGENERATED, reason: 'regenerated' });
+    }
   }
 
   private sectionView(doc: DeliveryDocument, sectionId: string, edit: SectionEdit | undefined): SectionView {
@@ -270,16 +312,22 @@ export class EditingService {
   }
 }
 
-// 组织机构里的人名（总指挥、副总指挥、各小组成员……），发给 AI 前遮掉
-function namesIn(value: unknown, out: string[] = []): string[] {
-  if (Array.isArray(value)) value.forEach((v) => namesIn(v, out));
-  else if (value && typeof value === 'object') {
-    for (const [k, v] of Object.entries(value)) {
-      if (k === 'name' && typeof v === 'string' && v.trim()) out.push(v.trim());
-      else namesIn(v, out);
-    }
-  }
-  return out;
+// 资料里的人名，发给 AI 前遮掉：法定代表人、资料联系人、主要负责人，应急组织里的总指挥、副总指挥、
+// 各组组长和成员，编制小组成员。小组名称（「通讯联络组」等）不是人名，不遮
+export function peopleOf(input: PlanInput): string[] {
+  const b = input.basic;
+  const o = input.organization;
+  const names = [
+    b.legalRepresentative,
+    b.contactPerson,
+    b.responsiblePerson,
+    o.commander?.name,
+    ...o.deputies.map((p) => p.name),
+    ...o.groups.flatMap((g) => [g.leader?.name, ...g.members.map((m) => m.name)]),
+    o.compilationTeam?.leader?.name,
+    ...(o.compilationTeam?.members ?? []).map((m) => m.name),
+  ];
+  return [...new Set(names.map((n) => n?.trim()).filter((n): n is string => Boolean(n)))];
 }
 
 @Controller('tasks/:id/drafts/:kind')
@@ -319,8 +367,14 @@ export class EditingController {
   }
 
   @Get('saves/:saveId')
-  saveStatus(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Param('kind') kind: string, @Param('saveId', ParseUUIDPipe) saveId: string) {
-    return this.service.saveStatus(user, id, kind, saveId);
+  saveStatus(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('kind') kind: string,
+    @Param('saveId', ParseUUIDPipe) saveId: string,
+    @Query('batch') batch?: string,
+  ) {
+    return this.service.saveStatus(user, id, kind, saveId, batch || undefined);
   }
 
   @Get('word')
