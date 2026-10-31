@@ -246,9 +246,8 @@ export function ScopePreviewPanel({ view, onSelect }: { view: ScopeView; onSelec
   return (
     <aside
       aria-label="生成结构预览"
+      className="gy-side-panel"
       style={{
-        width: 360,
-        flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         background: gy.surface,

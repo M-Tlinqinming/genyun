@@ -60,9 +60,8 @@ export function OriginalsPanel({
   return (
     <aside
       aria-label="原件对照"
+      className="gy-side-panel"
       style={{
-        width: 360,
-        flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         background: gy.surface,

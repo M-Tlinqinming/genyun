@@ -154,7 +154,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
           </div>
         </Layout.Header>
         <Layout.Content>
-          <div style={{ maxWidth: layout.content + 64, boxSizing: 'border-box', margin: '0 auto', padding: '36px 32px 48px' }}>
+          <div className="gy-content" style={{ maxWidth: layout.content + 64 }}>
             <Outlet context={{ orgId: current.orgId, role: current.role } satisfies WorkspaceContext} />
           </div>
         </Layout.Content>
