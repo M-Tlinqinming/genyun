@@ -168,6 +168,32 @@ describe('接受邀请', () => {
     expect(u).toBeUndefined();
   });
 
+  it('过期后请邀请人重新发送：只给邀请人发站内提醒，不生成新链接；重复点不重复提醒', async () => {
+    const { orgId, token } = await openOrg('请求重发机构', 'resend-me@test.cn');
+    const anon = () => request(app.getHttpServer());
+    // 还有效时不能请求重发
+    expect((await anon().post(`/api/invitations/${token}/request-resend`)).status).toBe(409);
+    await handle.db
+      .update(organizationInvitations)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(organizationInvitations.orgId, orgId));
+    const mails = mailer.sent.length;
+    const res = await anon().post(`/api/invitations/${token}/request-resend`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ inviterName: '赵运营' });
+    expect((await anon().post(`/api/invitations/${token}/request-resend`)).status).toBe(200);
+    // 不发邮件、不生成新邀请
+    expect(mailer.sent.length).toBe(mails);
+    expect(await handle.db.select().from(organizationInvitations).where(eq(organizationInvitations.orgId, orgId))).toHaveLength(1);
+    // 邀请人（运营）收到一条站内提醒，点开进组织详情
+    const list = await (await as('ops@test.cn')).get('/api/notifications');
+    const mine = (list.body.items as { title: string; body: string; link: string }[]).filter((n) =>
+      n.body.includes('resend-me@test.cn'),
+    );
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ title: '邀请过期，请重新发送', link: `/operator/organizations/${orgId}` });
+  });
+
   it('邮箱已经有耕云账号时，请对方先登录', async () => {
     const { token } = await openOrg('已有账号机构', 'expert@test.cn');
     const res = await request(app.getHttpServer()).post(`/api/invitations/${token}/accept`).send(accept);

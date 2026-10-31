@@ -18,7 +18,8 @@ import { setSessionCookie } from '../auth/auth.controller.ts';
 import { AuthService, hashPassword, type SessionUser } from '../auth/auth.service.ts';
 import { Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { memberships, organizationInvitations, organizations, users } from '../db/schema.ts';
+import { memberships, notifications, organizationInvitations, organizations, users } from '../db/schema.ts';
+import { NotificationsService } from '../notifications/notifications.service.ts';
 import { hashInvitationToken } from './invitations.ts';
 
 const NOT_FOUND = '邀请链接不完整或已失效。请从邀请邮件里重新打开，或联系邀请人重新发送';
@@ -36,6 +37,7 @@ export class InvitationsController {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
 
   @Public()
@@ -104,6 +106,41 @@ export class InvitationsController {
     return session.user;
   }
 
+  // 链接过期后「请邀请人重新发送」：只给邀请人发一条站内提醒，不自动生成新链接（Paper 10 页注释）
+  @Public()
+  @Post(':token/request-resend')
+  @HttpCode(200)
+  async requestResend(@Param('token') token: string) {
+    const inv = await this.find(token);
+    const state = invitationState(inv);
+    if (state !== 'expired') {
+      const message =
+        state === 'valid' ? '这封邀请还在有效期内，可以直接接受' : UNUSABLE[state];
+      throw new ConflictException({ statusCode: 409, message, state });
+    }
+    const title = '邀请过期，请重新发送';
+    const body = `${inv.orgName}：发给 ${inv.email} 的邀请已过期，对方请您重新发送。`;
+    const link = await this.inviterLink(inv.invitedBy, inv.orgId);
+    // 同一封邀请只提醒一次
+    const [already] = await this.db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(eq(notifications.userId, inv.invitedBy), eq(notifications.title, title), eq(notifications.body, body)))
+      .limit(1);
+    if (!already) await this.notifications.notify([inv.invitedBy], { title, body, link });
+    return { inviterName: inv.inviterName };
+  }
+
+  // 运营发的邀请进组织详情；机构管理员发的（第 7 项）进组织管理
+  private async inviterLink(userId: string, orgId: string): Promise<string> {
+    const [m] = await this.db
+      .select({ role: memberships.role })
+      .from(memberships)
+      .where(and(eq(memberships.userId, userId), eq(memberships.role, 'operator')))
+      .limit(1);
+    return m ? `/operator/organizations/${orgId}` : '/customer/organization';
+  }
+
   private async find(token: string) {
     if (token.length < 20 || token.length > 100) throw new NotFoundException(NOT_FOUND);
     const [inv] = await this.db
@@ -117,6 +154,7 @@ export class InvitationsController {
         expiresAt: organizationInvitations.expiresAt,
         acceptedAt: organizationInvitations.acceptedAt,
         revokedAt: organizationInvitations.revokedAt,
+        invitedBy: organizationInvitations.invitedBy,
         inviterName: users.name,
       })
       .from(organizationInvitations)
