@@ -101,7 +101,7 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
       {editing && detail.isPending ? (
         <Loading rows={6} card={false} />
       ) : (
-        <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={requiredAfter} style={{ marginTop: 24 }}>
+        <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={requiredAfter} className="gy-form-explain-gap" style={{ marginTop: 24 }}>
           <Form.Item name="name" label="组织名称" required rules={[fieldRule('name')]} style={item}>
             <Input placeholder="与营业执照一致，如：华东安评服务有限公司" maxLength={100} />
           </Form.Item>
