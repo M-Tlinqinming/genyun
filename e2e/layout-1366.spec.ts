@@ -24,6 +24,8 @@ test('专业整理在 1366 下企业名称和统一社会信用代码完整显�
 
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
   await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
+  // 前面的测试文件可能已经生成过草稿，页面默认看生成进度；切回专业整理
+  await page.goto(`${new URL(page.url()).pathname}?view=workup`);
   const name = page.locator('[data-fact="companyName"]').getByTitle('惠阳飞宇电器有限公司');
   const code = page.locator('[data-fact="socialCreditCode"]').getByTitle('91441300726483224B');
   await expect(name).toBeVisible();
