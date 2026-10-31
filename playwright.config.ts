@@ -10,6 +10,9 @@ const env = {
   PORT: '3100',
   LICENSE_OCR: 'fake',
   LOGIN_LIMIT_PER_MINUTE: '100',
+  // 生成草稿时风险评估报告第一次失败，测试只重试这一份（generation.spec）
+  DRAFT_FAIL_ONCE: 'risk',
+  SOFFICE_PATH: '',
 };
 
 export default defineConfig({
