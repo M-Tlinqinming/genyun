@@ -5,8 +5,12 @@ import type { DeliveryDocument } from '@genyun/shared';
 const TAG = '__base64__';
 
 export function serializeDocument(doc: DeliveryDocument): Buffer {
+  // 用 this[key] 取原值：Node 的 Buffer 自带 toJSON，传进来的 value 已经变成 { type: 'Buffer', data }
   return Buffer.from(
-    JSON.stringify(doc, (_key, value: unknown) => (value instanceof Uint8Array ? { [TAG]: Buffer.from(value).toString('base64') } : value)),
+    JSON.stringify(doc, function (this: Record<string, unknown>, key, value: unknown) {
+      const raw = this[key];
+      return raw instanceof Uint8Array ? { [TAG]: Buffer.from(raw).toString('base64') } : value;
+    }),
   );
 }
 
