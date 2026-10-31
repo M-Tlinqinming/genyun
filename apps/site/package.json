@@ -1,0 +1,26 @@
+{
+  "name": "@genyun/site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fonts": "node scripts/subset-fonts.mjs",
+    "dev": "npm run fonts && astro dev --port 4321",
+    "build": "npm run fonts && astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "subset-font": "2.9.0",
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/noto-sans-sc": "5.3.1",
+    "@fontsource/noto-serif-sc": "5.3.1",
+    "astro": "7.4.2",
+    "cookie": "2.0.1",
+    "motion": "14.2.0"
+  }
+}
