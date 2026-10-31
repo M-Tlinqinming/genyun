@@ -16,6 +16,7 @@ import {
   type DraftKind,
   type EditBlock,
   type EditDocumentView,
+  type LockedPreview,
   type PlanInput,
   type RewriteResult,
   type SectionEdit,
@@ -242,6 +243,7 @@ export class EditingService {
       blocks: rev.after,
       rev: rev.rev,
       saved: { note: rev.note, byName: rev.byName, at: rev.at.toISOString() },
+      locked: lockedPreviews(found.section.blocks),
       version: rev.version,
     };
   }
@@ -262,6 +264,7 @@ export class EditingService {
       blocks: edit?.blocks ?? editableOf(found.section.blocks),
       rev: edit?.rev ?? 0,
       saved: edit ? { note: edit.note, byName: edit.byName, at: edit.at } : null,
+      locked: lockedPreviews(found.section.blocks),
     };
   }
 
@@ -310,6 +313,18 @@ export class EditingService {
     const notes = (row.notes ?? []).map((n) => ({ plan: n.plan, label: n.label, source: n.source, note: n.note }));
     return { task, batch, kind: k, notes, doc };
   }
+}
+
+// 锁定的表格和图的只读内容；图直接给 data URL（一节里的图不多，生成时已压缩过）
+function lockedPreviews(blocks: DeliveryDocument['sections'][number]['blocks']): LockedPreview[] {
+  return blocks.flatMap((b, index): LockedPreview[] => {
+    if (b.type === 'table') return [{ index, kind: 'table', header: b.header, rows: b.rows }];
+    if (b.type === 'figure') {
+      const mime = b.imageType === 'jpg' ? 'image/jpeg' : 'image/png';
+      return [{ index, kind: 'figure', src: `data:${mime};base64,${Buffer.from(b.png).toString('base64')}` }];
+    }
+    return [];
+  });
 }
 
 // 资料里的人名，发给 AI 前遮掉：法定代表人、资料联系人、主要负责人，应急组织里的总指挥、副总指挥、

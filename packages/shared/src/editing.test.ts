@@ -143,3 +143,15 @@ describe('保存请求格式', () => {
     expect(sectionSaveSchema.safeParse({ ...ok, blocks: [{ type: 'table', header: [], rows: [] }] }).success).toBe(false);
   });
 });
+
+describe('锁定块的名称', () => {
+  it('没有表题、图题时写「本节第 N 个表格 / 张图」', () => {
+    const bare: Block = { type: 'table', header: [['甲']], rows: [] };
+    const pic: Block = { type: 'figure', png: new Uint8Array([1]), width: 1, height: 1 };
+    expect(editableOf([table, bare, pic]).map((b) => (b.type === 'locked' ? b.label : ''))).toEqual([
+      '表格：表 1 应急通讯录',
+      '表格：本节第 2 个表格',
+      '图：本节第 1 张图',
+    ]);
+  });
+});
