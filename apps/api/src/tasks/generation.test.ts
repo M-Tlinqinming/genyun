@@ -20,7 +20,19 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { enterprises, files, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
+import {
+  checklistItemFiles,
+  enterpriseDocuments,
+  enterpriseDocumentVersions,
+  enterprises,
+  files,
+  memberships,
+  organizations,
+  taskDocuments,
+  tasks,
+  taskWorkups,
+  users,
+} from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
@@ -55,6 +67,8 @@ const renderer: DraftRenderer = async (kind, input) => {
 };
 
 let feiyuTask = '';
+let feiyuOrg = '';
+let feiyuEnterprise = '';
 const uid: Record<string, string> = {};
 
 const stamp = { by: 'u', byName: '周工', at: '2026-10-31T08:00:00.000Z' };
@@ -130,6 +144,8 @@ beforeAll(async () => {
     })
     .returning();
   feiyuTask = task!.id;
+  feiyuOrg = customer!.id;
+  feiyuEnterprise = ent!.id;
 
   app = await createApp(db, { loginLimitPerMinute: 1000, storage, queue, renderer });
   await app.init();
@@ -167,9 +183,52 @@ describe('确认采用资料并生成三份草稿', () => {
     expect(res.body).toMatchObject({ reason: 'stale', version: row!.version + 1 });
   });
 
+  it('本次采用的资料：资料库出了新版本、整理开始后客户又传了文件都标出来；确认时资料又变了不生成', async () => {
+    const { db } = handle;
+    const by = uid['feiyu@test.cn']!;
+    const addFile = async (name: string, createdAt: Date) => {
+      const [f] = await db
+        .insert(files)
+        .values({ orgId: feiyuOrg, kind: 'customer_material', originalName: name, contentType: 'application/pdf', sizeBytes: 1, sha256: name, storageKey: name, uploadedBy: by, createdAt })
+        .returning();
+      return f!.id;
+    };
+    const old = new Date('2026-09-01T00:00:00Z');
+    const [doc] = await db.insert(enterpriseDocuments).values({ orgId: feiyuOrg, enterpriseId: feiyuEnterprise, name: '应急人员名册.pdf', createdBy: by }).returning();
+    const [v1] = await db
+      .insert(enterpriseDocumentVersions)
+      .values({ documentId: doc!.id, version: 1, fileId: await addFile('名册V1.pdf', old), createdBy: by, createdAt: old })
+      .returning();
+    await db.insert(taskDocuments).values({ taskId: feiyuTask, documentId: doc!.id, versionId: v1!.id, linkedBy: by });
+
+    const zhou = await as('zhou@test.cn');
+    const first = (await zhou.get(`/api/tasks/${feiyuTask}/generation/materials`).expect(200)).body;
+    const roster = first.rows.find((r: { name: string }) => r.name === '应急人员名册.pdf');
+    expect(roster).toMatchObject({ version: 1, change: null });
+    // 企业自填的各步也列出来
+    expect(first.rows.filter((r: { step: number | null }) => r.step).map((r: { name: string }) => r.name)).toEqual([
+      '企业基本信息',
+      '人员与应急组织',
+      '生产情况',
+      '应急资源与图纸',
+    ]);
+
+    // 客户在资料库传了 V2（任务仍用 V1），又在任务里补了一份文件
+    await db.insert(enterpriseDocumentVersions).values({ documentId: doc!.id, version: 2, fileId: await addFile('名册V2.pdf', new Date()), createdBy: by });
+    await db.insert(checklistItemFiles).values({ taskId: feiyuTask, itemKey: 'site_plan', fileId: await addFile('总平面图.pdf', new Date()), linkedBy: by });
+    const res = await zhou.post(`/api/tasks/${feiyuTask}/generation`).send({ version: 2, materials: first.fingerprint }).expect(409);
+    expect(res.body.reason).toBe('materials');
+    const rows = res.body.materials.rows as { name: string; change: unknown }[];
+    expect(rows.find((r) => r.name === '应急人员名册.pdf')!.change).toMatchObject({ kind: 'newer', version: 2 });
+    expect(rows.find((r) => r.name === '总平面图.pdf')!.change).toEqual({ kind: 'added' });
+    // 这一批没有生成
+    expect((await zhou.get(`/api/tasks/${feiyuTask}/generation`).expect(200)).body).toEqual({ current: null });
+  });
+
   it('客户和其他专家不能生成，也看不到进度', async () => {
     await (await as('feiyu@test.cn')).get(`/api/tasks/${feiyuTask}/generation`).expect(404);
     await (await as('wu@test.cn')).post(`/api/tasks/${feiyuTask}/generation`).send({ version: 2 }).expect(404);
+    await (await as('wu@test.cn')).get(`/api/tasks/${feiyuTask}/generation/materials`).expect(404);
   });
 
   it('模拟一份失败：另外两份照常生成；只重试失败的这一份', async () => {
