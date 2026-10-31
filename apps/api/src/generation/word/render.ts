@@ -1,6 +1,6 @@
 // 把交付文档的结构按排版规范写成 Word。
 // 页面顺序：封面 → 各前置页（批准发布令、编制小组）→ 目录，这几页没有页码，从排版规范指定的前置页起有页眉；
-// 之后正文从第 1 页起，页眉是文档题名；横版图纸单独成横版节，页码接着往下数。
+// 之后正文从第 1 页起，页眉是文档题名（排版规范不设页眉的没有）；横版图纸单独成横版节，页码接着往下数。
 import {
   AlignmentType,
   BorderStyle,
@@ -56,17 +56,20 @@ export function buildWord(doc: DeliveryDocument): Document {
 
   const pageSize = { width: layout.page.width, height: layout.page.height };
   const margin = layout.page.margin;
-  const header = new Header({
-    children: [
-      new Paragraph({
-        alignment: ALIGN[layout.header.align ?? 'center'],
-        // 页眉页脚和正文一样按 1.5 倍算行高（以前是从默认样式继承的）
-        spacing: lineSpacing({ ...layout.header, line: layout.body.line }),
-        border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: 'auto' } },
-        children: [new TextRun({ text: doc.title, size: layout.header.size })],
-      }),
-    ],
-  });
+  const blankHeader = new Header({ children: [new Paragraph({})] });
+  const header = layout.header
+    ? new Header({
+        children: [
+          new Paragraph({
+            alignment: ALIGN[layout.header.align ?? 'center'],
+            // 页眉页脚和正文一样按 1.5 倍算行高（以前是从默认样式继承的）
+            spacing: lineSpacing({ ...layout.header, line: layout.body.line }),
+            border: { bottom: { style: BorderStyle.SINGLE, size: 6, space: 1, color: 'auto' } },
+            children: [new TextRun({ text: doc.title, size: layout.header.size })],
+          }),
+        ],
+      })
+    : blankHeader;
   const footer = new Footer({
     children: [
       new Paragraph({
@@ -76,7 +79,7 @@ export function buildWord(doc: DeliveryDocument): Document {
       }),
     ],
   });
-  const blank = { default: new Header({ children: [new Paragraph({})] }) };
+  const blank = { default: blankHeader };
   const blankFooter = { default: new Footer({ children: [new Paragraph({})] }) };
 
   const sections: ISectionOptions[] = [
@@ -253,6 +256,11 @@ class Writer {
     const all = [...block.header, ...block.rows];
     const columns = Math.max(...all.map((r) => r.length));
     const widths = columnWidths(block.header, block.rows, columns, contentWidth(this.layout), table);
+    const cellStyles = Array.from({ length: columns }, (_, c): TextStyle => {
+      if (table.cellAlign === 'left') return table.cell;
+      const fits = block.rows.every((r) => chars(r[c]) * table.cell.size * 10 + table.cellPadding <= widths[c]!);
+      return { ...table.cell, align: fits ? 'center' : 'left' };
+    });
     const row = (cells: string[], header: boolean) =>
       new TableRow({
         tableHeader: header,
@@ -261,7 +269,7 @@ class Writer {
           new TableCell({
             width: { size: widths[c]!, type: WidthType.DXA },
             verticalAlign: VerticalAlignTable.CENTER,
-            children: [this.para(cells[c] ?? '', header ? table.header : table.cell)],
+            children: [this.para(cells[c] ?? '', header ? table.header : cellStyles[c]!)],
           }),
         ),
       });
@@ -348,13 +356,15 @@ class Writer {
   }
 }
 
+const chars = (s: string | undefined) => [...(s ?? '')].length;
+
 function contentWidth(layout: Layout): number {
   return layout.page.width - layout.page.margin.left - layout.page.margin.right;
 }
 
 /**
  * 各列宽度按该列最长内容的长度取次方后分配，合计等于版心宽；
- * 但每列至少放得下表头的字和几个字的内容。
+ * 但每列至少放得下表头的字（长表头按上限算，折行）和几个字的内容。
  */
 export function columnWidths(
   header: string[][],
@@ -363,12 +373,11 @@ export function columnWidths(
   total: number,
   rule: Layout['table'],
 ): number[] {
-  const chars = (s: string | undefined) => [...(s ?? '')].length;
   const all = [...header, ...rows];
   const longest = Array.from({ length: columns }, (_, c) => Math.max(1, ...all.map((r) => chars(r[c]))));
   // 字宽按字号算：半磅 × 10 = 缇
   const minimum = Array.from({ length: columns }, (_, c) => {
-    const head = Math.max(0, ...header.map((r) => chars(r[c]))) * rule.header.size * 10;
+    const head = Math.min(rule.maxHeaderChars, Math.max(0, ...header.map((r) => chars(r[c])))) * rule.header.size * 10;
     const body = Math.min(longest[c]!, rule.minCellChars) * rule.cell.size * 10;
     return Math.max(head, body) + rule.cellPadding;
   });

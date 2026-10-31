@@ -114,6 +114,14 @@ describe('表格列宽', () => {
     header[0]!.forEach((h, c) => expect(widths[c]!).toBeGreaterThanOrEqual([...h].length * rule.header.size * 10 + rule.cellPadding));
   });
 
+  it('长表头折行，不把别的长文字列挤窄（综合预案响应分级表）', () => {
+    const header = [['响应级别', '判定条件（本企业可控性 / 是否需外部增援）', '指挥权', '上报对象']];
+    const rows = [['III 级（较大）', '事故超出车间处置能力，需公司统一调度全厂应急力量，但不需要外部增援即可控制', '公司总指挥启动综合应急预案统一指挥', '同时向街道办与区应急管理局报告（通报，必要时请求外部增援）']];
+    const widths = columnWidths(header, rows, 4, 9070, rule);
+    expect(widths[2]!).toBeGreaterThanOrEqual(8 * rule.cell.size * 10);
+    expect(widths[3]!).toBeGreaterThanOrEqual(8 * rule.cell.size * 10);
+  });
+
   it('列多、表头长放不下时整体缩进版心，不出负宽（聚豪两处厂址 6 个小组）', () => {
     const header = [Array.from({ length: 12 }, (_, i) => `惠风四路三十号厂房抢险救灾组${i}`)];
     const widths = columnWidths(header, [header[0]!.map(() => '组长')], 12, 9070, rule);
