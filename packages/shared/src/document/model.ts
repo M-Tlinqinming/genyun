@@ -27,8 +27,9 @@ export type Block =
     }
   | {
       type: 'figure';
-      /** PNG 图片 */
+      /** 图片内容：默认 PNG；客户拍的图纸照片是 JPEG（imageType = 'jpg'） */
       png: Uint8Array;
+      imageType?: 'png' | 'jpg';
       /** 原图宽高（像素），用来按比例缩放 */
       width: number;
       height: number;

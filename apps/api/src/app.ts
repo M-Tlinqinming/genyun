@@ -20,6 +20,8 @@ import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from '.
 import { NotificationsController, NotificationsService } from './notifications/notifications.service.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
+import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/drawings.service.ts';
+import { DrawingRenderer } from './generation/drawings/renderer.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
 import { GenerationController, GenerationService } from './tasks/generation.service.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
@@ -46,6 +48,8 @@ export interface AppOptions {
   queue?: DraftQueue;
   // 生成一份草稿的 Word、PDF；测试换成假的模拟失败
   renderer?: DraftRenderer;
+  // 客户图纸转图片（工作线程）；测试可以传超时更短的
+  drawingRenderer?: DrawingRenderer;
 }
 
 export async function createApp(db: Database, options: AppOptions = {}): Promise<INestApplication> {
@@ -60,6 +64,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       ExpertTasksController,
       WorkupController,
       GenerationController,
+      DrawingsController,
       ContactsController,
       NotificationsController,
       TaskDocumentsController,
@@ -76,8 +81,10 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       },
       { provide: DRAFT_QUEUE, useFactory: () => options.queue ?? defaultQueue() },
       { provide: DRAFT_RENDERER, useFactory: () => options.renderer ?? defaultRenderer() },
+      { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
       AuthService,
       GenerationService,
+      DrawingsService,
       TasksService,
       ExpertTasksService,
       WorkupService,

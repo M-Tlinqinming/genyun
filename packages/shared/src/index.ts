@@ -36,6 +36,7 @@ export * from './workup.ts';
 export * from './contact.ts';
 export * from './workup-production.ts';
 export * from './workup-figures.ts';
+export * from './workup-drawings.ts';
 export * from './workup-risk.ts';
 export * from './workup-scope.ts';
 export * from './workup-plan.ts';

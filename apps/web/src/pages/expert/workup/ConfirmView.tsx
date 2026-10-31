@@ -1,4 +1,5 @@
 import {
+  selectedPages,
   figuresView,
   riskView,
   scopeView,
@@ -12,7 +13,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { openFile } from '../../../api/documents';
 import { materialsKey, useConfirmGeneration, useMaterials } from '../../../api/generation';
 import { ApiError } from '../../../api/request';
-import { workupKey, type Workup } from '../../../api/workup';
+import { useDrawings, workupKey, type Workup } from '../../../api/workup';
 import { linkButton } from '../../../components/ui';
 import { gy, stage } from '../../../theme/tokens';
 
@@ -61,6 +62,13 @@ export function ConfirmView({
   const { message } = App.useApp();
   // 确认时发现变了的行（与专家看到的那一版比）
   const [changed, setChanged] = useState<Set<string>>(new Set());
+
+  // 附件 7 放几页客户图纸（第 10c 项）
+  const drawings = useDrawings(taskId, true);
+  const drawingPages = (drawings.data?.drawings ?? []).reduce(
+    (n, d) => n + (d.pageCount ? selectedPages(workup.data.figures?.drawings, d.fileId, d.pageCount).length : 0),
+    0,
+  );
 
   const summary = useMemo(() => {
     const risks = riskView(workup.snapshot, workup.data).rows.filter((r) => !r.excluded);
@@ -154,6 +162,10 @@ export function ConfirmView({
             <dd style={{ margin: 0, color: gy.text }}>{summary.site} 份</dd>
             <dt style={{ color: gy.secondary }}>图件</dt>
             <dd style={{ margin: 0, color: gy.text }}>已采用 {summary.figures} 张</dd>
+            <dt style={{ color: gy.secondary }}>客户图纸</dt>
+            <dd style={{ margin: 0, color: gy.text }}>
+              {drawings.isLoading ? '读取中…' : drawingPages ? `附件 7 放 ${drawingPages} 页` : '没有，附件 7 写待补充'}
+            </dd>
             {workup.updatedByName && (
               <>
                 <dt style={{ color: gy.secondary }}>保存时间</dt>

@@ -4,6 +4,7 @@ import type { DraftKind, PlanInput } from '@genyun/shared';
 import { defaultDrafter } from './ai/drafter.ts';
 import type { SlotNote } from './ai/slots.ts';
 import { generateDocument } from './documents.ts';
+import type { PlanDrawings } from './plan/assemble.ts';
 import { convertToPdf } from './word/pdf.ts';
 import { renderWord } from './word/render.ts';
 
@@ -14,7 +15,8 @@ export interface RenderedDraft {
   notes: SlotNote[];
 }
 
-export type DraftRenderer = (kind: DraftKind, input: PlanInput) => Promise<RenderedDraft>;
+// drawings：应急预案附件 7 的客户图纸图片（按 input.drawings 锁定的页取好），另两份用不到
+export type DraftRenderer = (kind: DraftKind, input: PlanInput, drawings?: PlanDrawings) => Promise<RenderedDraft>;
 
 export const DRAFT_RENDERER = Symbol('DRAFT_RENDERER');
 
@@ -24,10 +26,9 @@ export function defaultRenderer(): DraftRenderer {
   const pdf = Boolean(process.env.SOFFICE_PATH) || process.env.NODE_ENV === 'production';
   // 浏览器测试模拟失败：DRAFT_FAIL_ONCE=risk 让这一份第一次生成失败；正式环境不认
   const failOnce = new Set(process.env.NODE_ENV === 'production' ? [] : (process.env.DRAFT_FAIL_ONCE ?? '').split(',').filter(Boolean));
-  return async (kind, input) => {
+  return async (kind, input, drawings) => {
     if (failOnce.delete(kind)) throw new Error('模拟连接中断');
-    // 附件 7 的客户图纸转图片在第 10c 项接上
-    const { document, notes } = await generateDocument(kind, input, { drafter });
+    const { document, notes } = await generateDocument(kind, input, { drafter, drawings });
     const word = await renderWord(document);
     return { word, pdf: pdf ? await convertToPdf(word) : null, notes };
   };

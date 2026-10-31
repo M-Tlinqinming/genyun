@@ -1,6 +1,7 @@
 import { SCOPE_KEYS, planSignals, selectPlans, resolveScope, type Block as DocBlock, type DocSection, type PlanInput, type Scope } from '@genyun/shared';
 import { feiyuPlanInput } from '@genyun/shared/fixtures/feiyu-plan';
 import JSZip from 'jszip';
+import { createCanvas } from '@napi-rs/canvas';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { renderWord } from '../word/render.ts';
 import { applyConditions, buildPlan } from './assemble.ts';
@@ -530,4 +531,39 @@ describe('一照多址', () => {
     expect(allText(buildPlan(blank))).toBe(single);
     expect(single).not.toContain('厂址');
   }, 120_000);
+});
+
+describe('附件 7 放客户图纸（M2 第 10c 项）', () => {
+  const image = async (w: number, h: number, type: 'png' | 'jpeg' = 'png') => {
+    const canvas = createCanvas(w, h);
+    canvas.getContext('2d').fillRect(10, 10, w / 2, h / 2);
+    return { png: await canvas.encode(type as 'png'), width: w, height: h };
+  };
+  let plan: ReturnType<typeof buildPlan>;
+  beforeAll(async () => {
+    // 总平面图选了两页（一横一竖），疏散图是一张照片，消防设施布置图没有
+    plan = buildPlan(feiyuPlanInput, {
+      sitePlan: [await image(400, 300), await image(300, 400)],
+      evacuation: [{ ...(await image(400, 300, 'jpeg')), imageType: 'jpg' }],
+    });
+  });
+
+  it('一种图纸几页时图题带序号；横的放横版页，竖的单独占竖版页', () => {
+    const appendix = plan.sections.flatMap((s) => s.sections ?? []).find((s) => s.title.includes('关键图纸'))!;
+    const figures = appendix.blocks.filter((b) => b.type === 'figure');
+    expect(figures.map((f) => [f.caption, f.placement])).toEqual([
+      ['总平面布置图（1）', 'landscape'],
+      ['总平面布置图（2）', 'page'],
+      ['应急疏散路线图', 'landscape'],
+    ]);
+    const text = allText(plan);
+    expect(text).toContain('消防设施布置图、');
+    expect(text).toMatch(/^消防设施布置图（待补充）：由企业提供后纳入正式文本。$/m);
+  });
+
+  it('Word 打得开，照片按 JPEG 嵌入', async () => {
+    const zip = await JSZip.loadAsync(await renderWord(plan));
+    const media = Object.keys(zip.files).filter((n) => n.startsWith('word/media/'));
+    expect(media.filter((n) => /\.jpe?g$/.test(n))).toHaveLength(1);
+  }, 60_000);
 });

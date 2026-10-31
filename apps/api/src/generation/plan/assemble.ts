@@ -22,7 +22,7 @@ import {
 } from '@genyun/shared';
 import type { FilledSlots } from '../ai/slots.ts';
 import { svgToPng } from '../word/png.ts';
-import { DRAWINGS, attachments, type DrawingKey } from './attachments.ts';
+import { DRAWINGS, attachments, drawingFigureId, type DrawingKey } from './attachments.ts';
 import { comprehensiveMarkdown } from './comprehensive.ts';
 import { templateBody, usesKnowledgeBlock } from './content.ts';
 import { dropMissingRefs, humanize } from './humanize.ts';
@@ -30,7 +30,14 @@ import { MISSING, cnDate, commsMeans, fill, hazardArea, ownGroupNames, planConte
 import { parseMarkdown, toSections, type Figure } from './markdown.ts';
 
 /** 客户上传的图纸（已转成图片）；PDF 图纸转图片在第 10 项接上 */
-export type PlanDrawings = Partial<Record<DrawingKey, { png: Uint8Array; width: number; height: number }>>;
+// 附件 7 的图纸图片：客户图纸按专家选的页，一页一张（M2 第 10c 项）
+export interface DrawingImage {
+  png: Uint8Array;
+  imageType?: 'png' | 'jpg';
+  width: number;
+  height: number;
+}
+export type PlanDrawings = Partial<Record<DrawingKey, DrawingImage[]>>;
 
 const CN = '一二三四五六七八九十';
 const cnOrdinal = (n: number) => (n <= 10 ? CN[n - 1]! : n < 20 ? `十${CN[n - 11] ?? ''}` : String(n));
@@ -262,7 +269,7 @@ export function buildPlan(
   // 专家在图件里微调过的画法（第 9 项）
   const figs = input.expert.figures;
   const steps = input.production.processFlow.steps.map((s) => s.name);
-  const providedDrawings = (Object.keys(DRAWINGS) as DrawingKey[]).filter((k) => drawings[k]);
+  const providedDrawings = (Object.keys(DRAWINGS) as DrawingKey[]).filter((k) => (drawings[k]?.length ?? 0) > 0);
   const figures: Record<string, Figure> = {
     'org-chart': figure(
       orgChartSvg({
@@ -281,7 +288,18 @@ export function buildPlan(
     ),
     'alarm-flow': figure(alarmFlowSvg({ commander: ctx.commander ? fill(ctx.commander.name) : MISSING, bureau: ctx.bureau })),
   };
-  for (const k of providedDrawings) figures[`drawing-${k}`] = { type: 'figure', ...drawings[k]!, caption: DRAWINGS[k], placement: 'landscape' };
+  // 同一种图纸有几页时图题带序号；横的单独占横版页，竖的单独占竖版页
+  for (const k of providedDrawings) {
+    const images = drawings[k]!;
+    images.forEach((img, i) => {
+      figures[drawingFigureId(k, i)] = {
+        type: 'figure',
+        ...img,
+        caption: images.length > 1 ? `${DRAWINGS[k]}（${i + 1}）` : DRAWINGS[k],
+        placement: img.width >= img.height ? 'landscape' : 'page',
+      };
+    });
+  }
 
   const sections: DocSection[] = [];
   let part = 0;
@@ -334,7 +352,7 @@ export function buildPlan(
     title: `${cnOrdinal(++part)}、附件`,
     blocks: [],
     childrenOnNewPage: true,
-    sections: attachments(ctx, providedDrawings).map((a, i) => {
+    sections: attachments(ctx, Object.fromEntries(providedDrawings.map((k) => [k, drawings[k]!.length]))).map((a, i) => {
       const parsed = parseMarkdown(ownGroupNames(a.markdown, input), figures);
       const root = parsed.sections[0]!;
       const n = i + 1;

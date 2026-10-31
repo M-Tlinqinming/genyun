@@ -16,6 +16,7 @@ import {
 import { Button, Modal, Popconfirm, Radio, Select } from 'antd';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { linkButton } from '../../../components/ui';
+import { DrawingsCard } from './DrawingsCard';
 import { gy, source, stage } from '../../../theme/tokens';
 
 const label: CSSProperties = { width: 96, flexShrink: 0, fontSize: 13, lineHeight: '20px', color: gy.secondary };
@@ -25,6 +26,7 @@ const link13: CSSProperties = { ...linkButton, fontSize: 13, lineHeight: '20px' 
 export type FiguresSaveInput = Omit<FiguresSave, 'version'>;
 
 export interface FiguresPanelProps {
+  taskId: string;
   view: FiguresView;
   // 已保存的画法（只改其中一项时带上其余几项）
   settings: FiguresWorkup;
@@ -78,6 +80,7 @@ export function FiguresPanel(props: FiguresPanelProps) {
         <OrgCard {...props} />
         <ProcessCard {...props} />
       </div>
+      <DrawingsCard taskId={props.taskId} selection={props.settings.drawings} saving={saving} onSave={onSave} />
     </section>
   );
 }

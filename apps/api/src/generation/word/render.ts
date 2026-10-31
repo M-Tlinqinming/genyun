@@ -290,7 +290,10 @@ class Writer {
     const ownPage = block.placement === 'page';
     if (ownPage) this.pendingBreak = true;
     const maxPx = contentWidth(this.layout) / TWIPS_PER_PX;
-    const out: Child[] = [this.image(block, maxPx, Infinity)];
+    // 单独占页的图不超出版心高度（竖版的客户图纸），给图题留两行
+    const { page } = this.layout;
+    const maxH = ownPage ? (page.height - page.margin.top - page.margin.bottom) / TWIPS_PER_PX - 64 : Infinity;
+    const out: Child[] = [this.image(block, maxPx, maxH)];
     if (block.caption) out.push(this.para(block.caption, figure.caption));
     if (ownPage) this.pendingBreak = true;
     return out;
@@ -317,7 +320,7 @@ class Writer {
       keepNext: true,
       children: [
         new ImageRun({
-          type: 'png',
+          type: block.imageType ?? 'png',
           data: block.png,
           transformation: { width: Math.round(block.width * scale), height: Math.round(block.height * scale) },
         }),
