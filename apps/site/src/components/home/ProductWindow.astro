@@ -1,0 +1,453 @@
+---
+// Hero 右侧「产品轮播」里的四屏产品界面示意。第 2 屏照 Paper「产品界面 · AI 风险辨识」逐值还原，
+// 其余三屏按同一套界面写法补齐（Paper 只画了一屏，见 DESIGN-DIFF）。
+// 侧栏是产品里真实的填报 5 步（apps/web FILL_STEPS）。只有「填报」一屏高亮第 ① 步；
+// AI 风险辨识、审核、下载三屏都在填完之后，侧栏不高亮任何一步。
+// 这是示意图，不是可操作的界面：整块对读屏软件隐藏，由轮播标签说明当前讲的是哪一步。
+const steps = ['① 企业基本信息', '② 人员与应急组织', '③ 生产情况', '④ 应急资源与图纸', '⑤ 核对并提交'];
+
+const slides = [
+  { id: 'fill', url: 'genyun.cn / 企业信息', step: 0 },
+  { id: 'risk', url: 'genyun.cn / 风险辨识', step: -1 },
+  { id: 'review', url: 'genyun.cn / 审核进度', step: -1 },
+  { id: 'download', url: 'genyun.cn / 成果下载', step: -1 },
+];
+---
+
+<div class="win" aria-hidden="true">
+  <div class="win__bar">
+    <span class="win__dots"><i></i><i></i><i></i></span>
+    <span class="win__url" data-win-url>{slides[1]!.url}</span>
+  </div>
+  <div class="win__stage">
+    {
+      slides.map((slide, index) => (
+        <div class:list={['win__screen', { 'is-active': index === 1 }]} data-slide={index} data-url={slide.url}>
+          <div class="side">
+            <div class="side__brand">耕云</div>
+            {steps.map((label, i) => (
+              <div class:list={['side__item', { 'is-active': i === slide.step }]}>{label}</div>
+            ))}
+          </div>
+          <div class="main">
+            {slide.id === 'fill' && (
+              <Fragment>
+                <div class="main__head">
+                  <div>
+                    <div class="main__title">企业基本信息</div>
+                    <div class="main__sub">拍照上传营业执照，自动识别名称、信用代码、地址</div>
+                  </div>
+                  <span class="tag tag--blue">已识别 3 项</span>
+                </div>
+                <div class="table">
+                  <div class="row row--form"><span class="cell-label">企业名称</span><span class="cell-value">惠州 ●● 制造有限公司</span><span class="tag tag--blue tag--sm">营业执照</span></div>
+                  <div class="row row--form"><span class="cell-label">统一社会信用代码</span><span class="cell-value">9144 13●● ●●●● ●●●● 2X</span><span class="tag tag--blue tag--sm">营业执照</span></div>
+                  <div class="row row--form"><span class="cell-label">注册地址</span><span class="cell-value">惠州市惠城区 ●● 路 18 号</span><span class="tag tag--blue tag--sm">营业执照</span></div>
+                  <div class="row row--form"><span class="cell-label">员工人数</span><span class="cell-value">86 人</span><span class="tag tag--grey tag--sm">您填写</span></div>
+                  <div class="row row--form"><span class="cell-label">厂房是否出租</span><span class="cell-value cell-value--muted">查不到，先选「稍后补」</span><span class="tag tag--warn tag--sm">稍后补</span></div>
+                </div>
+                <div class="note"><b>已保存</b><span>可分次保存，随时继续 · 下一步：人员与应急组织</span></div>
+              </Fragment>
+            )}
+            {slide.id === 'risk' && (
+              <Fragment>
+                <div class="main__head">
+                  <div>
+                    <div class="main__title">AI 已辨识 5 项主要风险</div>
+                    <div class="main__sub">依据您填写的设备、物料与作业场所 · 风险评分（LEC 法）</div>
+                  </div>
+                  <span class="tag tag--teal">AI 辨识 · 待注安师审核</span>
+                </div>
+                <div class="table">
+                  <div class="row row--head"><span class="c-grow">风险类型</span><span class="c-90">涉及场所</span><span class="c-44">D 值</span><span class="c-58">等级</span></div>
+                  {[
+                    ['火灾', '喷涂车间', '180', '较大', 'red'],
+                    ['容器爆炸', '空压机房', '126', '一般', 'warn'],
+                    ['机械伤害', '冲压车间', '90', '一般', 'warn'],
+                    ['触电', '配电房', '54', '低', 'grey'],
+                    ['起重伤害', '仓库', '45', '低', 'grey'],
+                  ].map(([type, place, d, level, tone]) => (
+                    <div class="row"><span class="c-grow">{type}</span><span class="c-90 muted">{place}</span><span class="c-44">{d}</span><span class="c-58"><span class={`level level--${tone}`}>{level}</span></span></div>
+                  ))}
+                </div>
+                <div class="note"><b>已匹配</b><span>火灾、容器爆炸 2 个专项预案 · 8 个现场处置方案 · 相关法规条款</span></div>
+              </Fragment>
+            )}
+            {slide.id === 'review' && (
+              <Fragment>
+                <div class="main__head">
+                  <div>
+                    <div class="main__title">注安师审核中 · 已核对 4 / 6 项</div>
+                    <div class="main__sub">持证注册安全工程师逐项核对，需要补充时在线告诉您</div>
+                  </div>
+                  <span class="tag tag--purple">注安师审核</span>
+                </div>
+                <div class="table">
+                  <div class="row row--head"><span class="c-grow">审核项</span><span class="c-110">说明</span><span class="c-58">状态</span></div>
+                  {[
+                    ['企业事实一致', '与资料逐项对上', '已通过', 'green'],
+                    ['危险源辨识完整', '按场所核对', '已通过', 'green'],
+                    ['预案与风险匹配', '专项一一对应', '已通过', 'green'],
+                    ['组织与联络有效', '通讯录缺 2 个电话', '需补充', 'warn'],
+                    ['属地信息准确', '以知识库为准', '已通过', 'green'],
+                    ['三份文档同版', '引用同一份信息', '核对中', 'grey'],
+                  ].map(([item, note, state, tone]) => (
+                    <div class="row"><span class="c-grow">{item}</span><span class="c-110 muted">{note}</span><span class="c-58"><span class={`level level--${tone}`}>{state}</span></span></div>
+                  ))}
+                </div>
+                <div class="note note--warn"><b>需补充</b><span>注安师已留言：请补 2 位应急联络人的电话</span></div>
+              </Fragment>
+            )}
+            {slide.id === 'download' && (
+              <Fragment>
+                <div class="main__head">
+                  <div>
+                    <div class="main__title">三份文档已发布 · 同一版本</div>
+                    <div class="main__sub">注安师审核通过，直接下载即可使用</div>
+                  </div>
+                  <span class="tag tag--green">V1 · 已发布</span>
+                </div>
+                <div class="files">
+                  {[
+                    ['生产安全事故应急预案', '综合预案 · 专项预案 · 现场处置方案', '#0068BD'],
+                    ['风险评估报告', '危险源辨识、风险等级与控制措施', '#23A6AD'],
+                    ['应急资源调查报告', '内外部资源与属地机构联络', '#D9AE3A'],
+                  ].map(([name, desc, color]) => (
+                    <div class="file">
+                      <span class="file__bar" style={`background:${color}`} />
+                      <span class="file__text"><span class="file__name">{name}.docx</span><span class="file__desc">{desc}</span></span>
+                      <span class="file__btn">下载</span>
+                    </div>
+                  ))}
+                </div>
+                <div class="note"><b>发票</b><span>可开增值税普通发票或专用发票</span></div>
+              </Fragment>
+            )}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+</div>
+
+<style>
+  .win {
+    position: relative;
+    width: 100%;
+    height: 400px;
+    display: flex;
+    flex-direction: column;
+    background: #0f2442;
+    border: 1px solid #ffffff1f;
+    border-radius: 12px;
+    box-shadow: 0 40px 80px -24px #0000008c;
+    overflow: hidden;
+  }
+  .win__bar {
+    flex-shrink: 0;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding-inline: 14px;
+    background: #132b4e;
+  }
+  .win__dots {
+    display: flex;
+    gap: 8px;
+  }
+  .win__dots i {
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background: #ffffff2e;
+  }
+  .win__url {
+    flex: 1;
+    height: 20px;
+    padding-inline: 10px;
+    border-radius: 6px;
+    background: #ffffff0f;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 20px;
+    color: #ffffff99;
+  }
+  .win__stage {
+    position: relative;
+    flex: 1;
+    background: #f8f9fb;
+  }
+  .win__screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.4s ease,
+      visibility 0s linear 0.4s;
+  }
+  .win__screen.is-active {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.4s ease;
+  }
+  .side {
+    flex-shrink: 0;
+    width: 132px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 10px;
+    background: #fff;
+    border-right: 1px solid #e5e7eb;
+  }
+  .side__brand {
+    padding: 0 6px 10px;
+    color: #002351;
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.15em;
+  }
+  .side__item {
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 18px;
+    color: #596170;
+    white-space: nowrap;
+  }
+  .side__item.is-active {
+    background: #eff4ff;
+    color: #245bdb;
+  }
+  .main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+  }
+  .main__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .main__title {
+    color: #18243b;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 22px;
+  }
+  .main__sub {
+    color: #697386;
+    font-size: 10px;
+    line-height: 16px;
+  }
+  .tag {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    line-height: 16px;
+    white-space: nowrap;
+  }
+  .tag--sm {
+    padding: 0 6px;
+    border-radius: 4px;
+    line-height: 18px;
+  }
+  .tag--teal {
+    background: #ecf8fa;
+    color: #0e7490;
+  }
+  .tag--blue {
+    background: #eff4ff;
+    color: #245bdb;
+  }
+  .tag--purple {
+    background: #f3f1fc;
+    color: #5b4bb7;
+  }
+  .tag--green {
+    background: #edf7f0;
+    color: #237b4b;
+  }
+  .tag--grey {
+    background: #f0f2f5;
+    color: #596170;
+  }
+  .tag--warn {
+    background: #fff7e6;
+    color: #925f00;
+  }
+  .table {
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    padding: 7px 12px;
+    border-bottom: 1px solid #f0f2f5;
+    font-size: 11px;
+    line-height: 18px;
+    color: #18243b;
+  }
+  .row:last-child {
+    border-bottom: 0;
+  }
+  .row--head {
+    background: #fafafb;
+    border-bottom-color: #e5e7eb;
+    border-radius: 6px 6px 0 0;
+    color: #596170;
+    font-weight: 500;
+  }
+  .row--form {
+    gap: 12px;
+    padding-block: 9px;
+  }
+  .cell-label {
+    flex-shrink: 0;
+    width: 96px;
+    color: #596170;
+  }
+  .cell-value {
+    flex: 1;
+    min-width: 0;
+  }
+  .cell-value--muted {
+    color: #697386;
+  }
+  .c-grow {
+    flex: 1;
+    min-width: 0;
+  }
+  .c-90 {
+    flex-shrink: 0;
+    width: 90px;
+  }
+  .c-110 {
+    flex-shrink: 0;
+    width: 120px;
+  }
+  .c-44 {
+    flex-shrink: 0;
+    width: 44px;
+  }
+  .c-58 {
+    flex-shrink: 0;
+    width: 58px;
+  }
+  .muted {
+    color: #596170;
+  }
+  .level {
+    display: inline-flex;
+    padding-inline: 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 18px;
+  }
+  .level--red {
+    background: #fef3f2;
+    color: #b42318;
+  }
+  .level--warn {
+    background: #fff7e6;
+    color: #925f00;
+  }
+  .level--grey {
+    background: #f0f2f5;
+    color: #596170;
+  }
+  .level--green {
+    background: #edf7f0;
+    color: #237b4b;
+  }
+  .note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #eff4ff;
+    font-size: 10px;
+    line-height: 16px;
+    color: #596170;
+  }
+  .note b {
+    flex-shrink: 0;
+    font-weight: 500;
+    color: #245bdb;
+  }
+  .note--warn {
+    background: #fff7e6;
+  }
+  .note--warn b {
+    color: #925f00;
+  }
+  .files {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .file {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 14px 14px 12px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+  }
+  .file__bar {
+    flex-shrink: 0;
+    width: 4px;
+    height: 32px;
+    border-radius: 2px;
+  }
+  .file__text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .file__name {
+    font-size: 12px;
+    line-height: 20px;
+    font-weight: 500;
+    color: #18243b;
+  }
+  .file__desc {
+    font-size: 10px;
+    line-height: 16px;
+    color: #697386;
+  }
+  .file__btn {
+    flex-shrink: 0;
+    padding: 3px 12px;
+    border-radius: 6px;
+    background: #245bdb;
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+  }
+  @media (max-width: 560px) {
+    .side {
+      display: none;
+    }
+    .win {
+      height: 400px;
+    }
+  }
+</style>

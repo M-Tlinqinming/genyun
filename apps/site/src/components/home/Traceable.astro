@@ -1,0 +1,186 @@
+---
+// 04 有据可查（Paper W01「可追溯」）
+const bullets = [
+  ['#245BDB', '新上传的资料不会覆盖已交付的成果'],
+  ['#23A6AD', '属地应急机构由耕云知识库统一维护'],
+  ['#D9AE3A', '每一次补件与修订都留有记录'],
+];
+const rows = [
+  { label: '员工人数', value: '86 人', source: '客户提供 · 花名册', bg: '#EFF4FF', fg: '#245BDB' },
+  { label: '主要危险源', value: '喷涂车间 · 可燃液体储存', source: 'AI 辨识 · 注安师确认', bg: '#F3F1FC', fg: '#5B4BB7' },
+  { label: '属地应急管理局', value: '惠州市惠城区应急管理局', source: '系统引用 · 知识库', bg: '#ECF8FA', fg: '#0E7490' },
+  { label: '是否出租厂房', value: '否', source: '客户确认 · 09.28', bg: '#F0F2F5', fg: '#596170' },
+];
+---
+
+<section class="trace" aria-labelledby="trace-title">
+  <div class="wrap trace__inner">
+    <div class="trace__copy">
+      <p class="eyebrow">04 — 有据可查</p>
+      <h2 id="trace-title" class="h2">每一个数字，<br />都知道从哪来。</h2>
+      <p class="lead">
+        预案里的每一项企业信息都标明来源：您提供的、AI 辨识的、注安师确认的、知识库引用的。检查时被问到，答得上来。
+      </p>
+      <ul class="trace__bullets">
+        {bullets.map(([color, text]) => <li><i style={`background:${color}`} />{text}</li>)}
+      </ul>
+    </div>
+    <figure class="sheet">
+      <figcaption class="sheet__head">
+        <span class="sheet__titles">
+          <span class="sheet__title">企业信息 · 惠州 ●● 制造有限公司</span>
+          <span class="sheet__sub">三份文档共同引用</span>
+        </span>
+        <span class="sheet__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      </figcaption>
+      <dl class="sheet__rows">
+        {
+          rows.map((r) => (
+            <div class="sheet__row">
+              <dt>{r.label}</dt>
+              <dd>{r.value}</dd>
+              <dd class="sheet__source" style={`background:${r.bg};color:${r.fg}`}>{r.source}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </figure>
+  </div>
+</section>
+
+<style>
+  .trace__inner {
+    display: flex;
+    align-items: center;
+    gap: 96px;
+    padding-block: 128px;
+  }
+  .trace__copy {
+    flex-shrink: 0;
+    width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  .trace__bullets {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 8px;
+  }
+  .trace__bullets li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 15px;
+    line-height: 24px;
+    color: var(--site-heading);
+  }
+  .trace__bullets i {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+  }
+  .sheet {
+    flex: 1;
+    min-width: 0;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+    overflow: clip;
+  }
+  .sheet__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--site-line);
+  }
+  .sheet__titles {
+    display: flex;
+    flex-direction: column;
+  }
+  .sheet__title {
+    font-weight: 500;
+    font-size: 15px;
+    line-height: 24px;
+  }
+  .sheet__sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.08em;
+    color: var(--site-muted);
+  }
+  .sheet__dots {
+    display: flex;
+    gap: 6px;
+  }
+  .sheet__dots i {
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background: var(--site-line);
+  }
+  .sheet__rows {
+    padding: 8px 28px 12px;
+  }
+  .sheet__row {
+    display: flex;
+    align-items: center;
+    padding-block: 16px;
+    border-bottom: 1px solid var(--site-line-soft);
+  }
+  .sheet__row:last-child {
+    border-bottom: 0;
+  }
+  .sheet__row dt {
+    flex-shrink: 0;
+    width: 150px;
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--site-muted);
+  }
+  .sheet__row dd {
+    flex: 1;
+    min-width: 0;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 22px;
+  }
+  .sheet__row .sheet__source {
+    flex: none;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-weight: 400;
+    font-size: 12px;
+    line-height: 20px;
+    white-space: nowrap;
+  }
+  @media (max-width: 1100px) {
+    .trace__inner {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 48px;
+      padding-block: 80px;
+    }
+    .trace__copy {
+      width: auto;
+      max-width: 560px;
+    }
+  }
+  @media (max-width: 560px) {
+    .sheet__row {
+      flex-wrap: wrap;
+      gap: 6px 12px;
+    }
+    .sheet__row dt {
+      width: 100%;
+    }
+    .sheet__head,
+    .sheet__rows {
+      padding-inline: 20px;
+    }
+  }
+</style>

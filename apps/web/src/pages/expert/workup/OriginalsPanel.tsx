@@ -5,9 +5,9 @@ import { openFile } from '../../../api/documents';
 import { inlineUrl, type WorkupOriginal } from '../../../api/workup';
 import { FileTypeIcon } from '../../../components/FileTypeIcon';
 import { linkButton } from '../../../components/ui';
+import { useNarrowScreen } from '../../../components/useNarrowScreen';
 import { gy } from '../../../theme/tokens';
 
-const VISIBLE_TABS = 3;
 const shows = (contentType: string) => contentType === 'application/pdf' || contentType.startsWith('image/');
 
 // 去掉扩展名，版本号写在后面：「应急人员名册 V1」
@@ -31,7 +31,8 @@ function uploadedAt(iso: string): string {
 
 const tab = (active: boolean): CSSProperties => ({
   ...linkButton,
-  flexShrink: 0,
+  flexShrink: 1,
+  minWidth: 0,
   maxWidth: 120,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
@@ -51,18 +52,19 @@ export function OriginalsPanel({
   selectedId: string | null;
   onSelect: (fileId: string) => void;
 }) {
+  // 右栏窄（272）时只放 2 个页签，其余收进「+N」
+  const visibleTabs = useNarrowScreen() ? 2 : 3;
   const selected = originals.find((o) => o.fileId === selectedId) ?? originals[0];
   // 选中的那份不在前几个里时，放到最后一个位置上，保证当前看的文件总有标签
-  const head = originals.slice(0, VISIBLE_TABS);
-  if (selected && !head.includes(selected)) head[VISIBLE_TABS - 1] = selected;
+  const head = originals.slice(0, visibleTabs);
+  if (selected && !head.includes(selected)) head[visibleTabs - 1] = selected;
   const rest = originals.filter((o) => !head.includes(o));
 
   return (
     <aside
       aria-label="原件对照"
+      className="gy-side-panel"
       style={{
-        width: 360,
-        flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         background: gy.surface,
@@ -98,7 +100,7 @@ export function OriginalsPanel({
             <Dropdown
               menu={{ items: rest.map((o) => ({ key: o.fileId, label: originalTitle(o) })), onClick: ({ key }) => onSelect(key) }}
             >
-              <button type="button" style={tab(false)}>
+              <button type="button" title={`另外 ${rest.length} 份原件`} style={{ ...tab(false), flexShrink: 0 }}>
                 +{rest.length}
               </button>
             </Dropdown>
