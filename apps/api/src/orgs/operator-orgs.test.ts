@@ -222,6 +222,8 @@ describe('开通', () => {
     const res = await (await as('ops@test.cn')).post(`/api/operator/organizations/${created.id}/open`).send(opening(up.body.id));
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ state: 'active', contractStartsAt: '2026-11-01', contractEndsAt: '2027-10-31' });
+    // 测试用的发信记录是真实发出，不提示「未真实发送」
+    expect(res.body.invitation).toMatchObject({ mailSent: true, mailSimulated: false });
 
     const { db } = handle;
     const [o] = await db.select().from(organizations).where(eq(organizations.id, created.id));

@@ -251,7 +251,8 @@ export class OperatorOrgsController {
       mailSent = false;
       console.error('邀请邮件发送失败', err);
     }
-    return { ...withState(await this.load(id)), invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent } };
+    return { ...withState(await this.load(id)), invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, mailSimulated: this.mailer.simulated === true },
+    };
   }
 
   private guard(user: SessionUser) {

@@ -12,6 +12,8 @@ export interface MailMessage {
 
 export interface Mailer {
   send(message: MailMessage): Promise<void>;
+  // 模拟发信：邮件没有真的发出，开通成功的提示里说明
+  readonly simulated?: boolean;
 }
 
 export const MAILER = Symbol('MAILER');
@@ -19,6 +21,7 @@ export const MAILER = Symbol('MAILER');
 // 模拟发信：不真的发出，把邮件写成文件放进 MAIL_OUTBOX_DIR（默认 .data/mail-outbox），并在服务日志里打一行。
 // 本机、浏览器测试和预览环境用；预览环境要拿邀请链接时看服务日志。
 export class SimulatedMailer implements Mailer {
+  readonly simulated = true;
   constructor(private readonly dir = process.env.MAIL_OUTBOX_DIR || '.data/mail-outbox') {}
 
   async send(message: MailMessage): Promise<void> {

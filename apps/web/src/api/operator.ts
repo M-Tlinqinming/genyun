@@ -75,7 +75,7 @@ export function useOpenOrg(id: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (draft: OrgOpenDraft) =>
-      request<OperatorOrg & { invitation: { email: string; expiresAt: string; mailSent: boolean } }>(
+      request<OperatorOrg & { invitation: { email: string; expiresAt: string; mailSent: boolean; mailSimulated: boolean } }>(
         `/operator/organizations/${id}/open`,
         { method: 'POST', body: JSON.stringify(draft) },
       ),
