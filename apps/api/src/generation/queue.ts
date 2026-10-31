@@ -2,6 +2,7 @@
 // 本机开发和测试没有 Redis，用进程内队列，接口相同。三份草稿各是一个任务，一次只跑一个（转 PDF 很占资源）。
 import type { DraftKind } from '@genyun/shared';
 import { Queue, Worker } from 'bullmq';
+import { Redis } from 'ioredis';
 
 export interface DraftJob {
   batchId: string;
@@ -65,11 +66,19 @@ export class BullQueue implements DraftQueue {
   readonly durable = true;
   private readonly queue: Queue<DraftJob>;
   private worker: Worker<DraftJob> | null = null;
-  private readonly connection: { url: string };
+  private readonly url: string;
+  private readonly connections: Redis[] = [];
 
+  // BullMQ 不自带 ioredis，且在 ESM 里要传建好的连接；队列和处理各用一条（处理那条要阻塞等待任务）
   constructor(url: string) {
-    this.connection = { url };
-    this.queue = new Queue<DraftJob>(QUEUE_NAME, { connection: this.connection });
+    this.url = url;
+    this.queue = new Queue<DraftJob>(QUEUE_NAME, { connection: this.connect() });
+  }
+
+  private connect() {
+    const redis = new Redis(this.url, { maxRetriesPerRequest: null });
+    this.connections.push(redis);
+    return redis;
   }
 
   async add(job: DraftJob): Promise<void> {
@@ -78,7 +87,7 @@ export class BullQueue implements DraftQueue {
   }
 
   start(handler: DraftHandler): void {
-    this.worker = new Worker<DraftJob>(QUEUE_NAME, (job) => handler(job.data), { connection: this.connection, concurrency: 1 });
+    this.worker = new Worker<DraftJob>(QUEUE_NAME, (job) => handler(job.data), { connection: this.connect(), concurrency: 1 });
     this.worker.on('failed', (job, err) => console.error('草稿生成出错', job?.data, err));
   }
 
@@ -92,6 +101,8 @@ export class BullQueue implements DraftQueue {
   async close(): Promise<void> {
     await this.worker?.close();
     await this.queue.close();
+    // 自己建的连接 BullMQ 不负责关
+    await Promise.all(this.connections.map((c) => c.quit().catch(() => c.disconnect())));
   }
 }
 
