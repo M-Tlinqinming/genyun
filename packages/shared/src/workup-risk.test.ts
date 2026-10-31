@@ -35,7 +35,7 @@ describe('危险源候选的系统推荐', () => {
     // 同类设备分在几个车间就都列上
     expect(row(view, '机械致害').workplace).toBe('压铸车间、加工车间');
     expect(row(view, '灼烫').workplace).toBe('压铸车间');
-    expect(row(view, '厂内车辆致害').workplace).toBe('厂区道路');
+    expect(row(view, '厂（场）内车辆致害').workplace).toBe('厂区道路');
     expect(view.rows.some((r) => r.workplace === '1 号生产厂房')).toBe(false);
   });
 

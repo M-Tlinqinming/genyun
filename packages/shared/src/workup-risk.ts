@@ -176,8 +176,8 @@ export interface RiskView {
 }
 
 const quoted = (reason: string) => reason.match(/「(.+?)」/)?.[1];
-// 「厂（场）内车辆致害」与「厂内车辆致害」算同一类
-const typeKey = (factor: string) => factor.replace(/（场）|\(场\)|事故|\s/g, '');
+// 「厂（场）内车辆致害」与「厂内车辆致害」、「其他」与「其他伤害」（GB 6441-2025 前后的写法）算同一类
+const typeKey = (factor: string) => factor.replace(/（场）|\(场\)|事故|\s/g, '').replace(/^其他伤害$/, '其他');
 
 type RiskData = { production?: ProductionWorkup; scope?: ScopeWorkup; risks?: RiskWorkup };
 

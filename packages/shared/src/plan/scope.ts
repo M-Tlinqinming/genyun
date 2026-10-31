@@ -74,7 +74,7 @@ const weight = (tons: number) => (tons < 1 ? `${Math.round(tons * 1000 * 100) / 
 const quote = (names: string[]) => names.map((n) => `「${n}」`).join('');
 
 // 危险源辨识里的事故类型 → 对应方案的开关（GB 6441-2025 的「厂（场）内车辆致害」「其他」两种写法都认）
-const typeKey = (factor: string) => factor.replace(/（场）|\(场\)|事故|\s/g, '').replace(/^其他$/, '其他伤害');
+const typeKey = (factor: string) => factor.replace(/（场）|\(场\)|事故|\s/g, '').replace(/^其他伤害$/, '其他');
 // 泄漏的开关是「危化品年用量超过 1 吨」，含专项预案，不按危险源带出；粉尘专项看粉尘量
 const NOT_FROM_HAZARDS = new Set<ScopeKey>(['chemicalsOver1t', 'dustSpecialty']);
 

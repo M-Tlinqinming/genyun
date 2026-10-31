@@ -57,7 +57,7 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
   { id: 'SP04', kind: 'site', title: '物体打击事故现场处置方案' },
   { id: 'SP05', kind: 'site', title: '容器爆炸事故现场处置方案', trigger: 'pressureVessel' },
   { id: 'SP06', kind: 'site', title: '灼烫事故现场处置方案' },
-  { id: 'SP07', kind: 'site', title: '厂内车辆致害事故现场处置方案', trigger: 'internalVehicle' },
+  { id: 'SP07', kind: 'site', title: '厂（场）内车辆致害事故现场处置方案', trigger: 'internalVehicle' },
   // 电梯与起重机合成一份（Martin 10-29 定），正文按企业有哪种写对应内容
   { id: 'SP08', kind: 'site', title: '起重致害事故现场处置方案', trigger: ['elevator', 'craneHoist'] },
   { id: 'SP09', kind: 'site', title: '泄漏事故现场处置方案', trigger: 'chemicalsOver1t' },
@@ -73,7 +73,7 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
   { id: 'SP19', kind: 'site', title: '可燃气体爆炸事故现场处置方案', trigger: 'combustibleGas' },
   { id: 'SP20', kind: 'site', title: '可燃液体蒸气爆炸事故现场处置方案', trigger: 'flammableLiquid' },
   { id: 'SP21', kind: 'site', title: '高温熔融物爆炸事故现场处置方案', trigger: 'meltingProcess' },
-  { id: 'SP22', kind: 'site', title: '其他伤害事故现场处置方案' },
+  { id: 'SP22', kind: 'site', title: '其他事故现场处置方案' },
 ];
 
 export interface PlanSelection {

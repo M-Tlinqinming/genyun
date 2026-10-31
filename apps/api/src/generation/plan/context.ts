@@ -43,6 +43,8 @@ export interface PlanContext {
   streetPhone?: string;
   fireDept: string;
   firePhone: string;
+  /** 辖区消防大队值班座机，查不到为 undefined */
+  fireDutyPhone?: string;
   hospital: string;
   commander?: Person;
   /** 总指挥姓名，正文写成「总指挥（李文聪）」 */
@@ -137,10 +139,10 @@ export function commsMeans(ctx: PlanContext): string[] {
 
 /**
  * 某类事故专家确认的危险源场所（「、」分隔的多场所拆开去重）；没有的返回空，用模板的通用写法。
- * 「厂内车辆致害」与「厂（场）内车辆致害」、「淹溺（二）」与「淹溺」算同一类。
+ * 「厂内车辆致害」与「厂（场）内车辆致害」、「其他伤害」与「其他」、「淹溺（二）」与「淹溺」算同一类。
  */
 export function hazardArea(input: PlanInput, title: string): string {
-  const norm = (s: string) => s.replace(/（[^）]*）/g, '').trim();
+  const norm = (s: string) => s.replace(/（[^）]*）/g, '').trim().replace(/^其他伤害$/, '其他');
   const type = norm(accidentTypeOf(title));
   const addresses = addressesOf(input);
   const places = (input.expert.hazards ?? [])
@@ -228,6 +230,7 @@ export function planContext(input: PlanInput): PlanContext {
     fireDept: fill(agencies.fireDept?.name),
     // 正文里的报警电话一律 119；大队值班电话只进联系方式表
     firePhone: '119',
+    fireDutyPhone: agencies.fireDept?.phone,
     hospital: input.expert.facts?.hospital?.name || '属地医疗急救机构',
     commander: org.commander,
     commanderName: org.commander ? fill(org.commander.name) : MISSING,

@@ -56,7 +56,7 @@ function factorParagraphs(ctx: PlanContext): string[] {
     [/窒息/, () => '惰性气体泄漏积聚或人员进入通风不良的场所，氧含量下降，可能导致人员窒息。'],
     [/坍塌/, () => '建（构）筑物、货架堆垛、临时搭建结构因设计施工缺陷、超载或老化，可能发生坍塌伤人。'],
     [/淹溺/, () => '消防水池、污水池等水体的防护栏、盖板、警示标志不足，人员检查、清理时违规操作，可能跌落水中发生淹溺。'],
-    [/其他伤害/, () => '搬运重物、手工操作可能导致扭伤、挫伤、割伤；地面沟坑无防护、通道堆放杂物可能导致摔伤、碰撞。另外，台风、雷击、暴雨、地震等自然灾害可能造成停电、设备损坏，并引发次生事故。'],
+    [/^其他(伤害)?$/, () => '搬运重物、手工操作可能导致扭伤、挫伤、割伤；地面沟坑无防护、通道堆放杂物可能导致摔伤、碰撞。另外，台风、雷击、暴雨、地震等自然灾害可能造成停电、设备损坏，并引发次生事故。'],
   ];
   const places = new Map<string, string[]>();
   for (const h of ctx.input.expert.hazards ?? []) {
@@ -125,7 +125,7 @@ const SPREADING = /火灾|爆炸|泄漏|中毒/;
 function analysisResult(ctx: PlanContext): string[] {
   const factors = uniqueFactors(ctx);
   const spreading = factors.filter((f) => SPREADING.test(f) && !/^火灾$/.test(f));
-  const internal = factors.filter((f) => !SPREADING.test(f) && f !== '其他伤害');
+  const internal = factors.filter((f) => !SPREADING.test(f) && !/^其他(伤害)?$/.test(f));
   return [
     '（1）火灾事故对周边企业及环境的影响分析',
     `如果公司发生火灾事故且扑救不及时导致火势蔓延，可能对相邻企业、周边道路及人员产生危险有害影响。${spreading.length ? `${spreading.join('、')}等事故处置不及时的，同样可能波及厂界外，应按 1.2 响应分级及时疏散周边人员并向${ctx.bureau}报告。` : ''}`,

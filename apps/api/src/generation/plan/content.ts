@@ -96,7 +96,16 @@ export function templateSlots(t: PlanTemplate, signals: PlanSignals): { name: st
 export function templateBody(t: PlanTemplate, signals: PlanSignals, filled: Record<string, string> = {}): string {
   const block = knowledgeBlock(t, signals);
   if (block) {
-    const body = block.body.replace(SLOT, (_, name: string) => filled[name] ?? slotValue(name, signals));
+    // 同一空位出现多次时，括号说明只在第一次写（「冲床（冲压模具挤压伤害）」后面只写「冲床」）
+    const seen = new Set<string>();
+    const body = block.body.replace(SLOT, (_, name: string) => {
+      const value = filled[name] ?? slotValue(name, signals);
+      if (!seen.has(name)) {
+        seen.add(name);
+        return value;
+      }
+      return value.replace(/（[^（）]*）/g, '');
+    });
     for (const anchor of block.anchors) {
       // 个别命门写成正则（同一句在模板里有两种语序），其余按原文比对
       const found = anchor.includes('(?:') ? new RegExp(anchor).test(body) : body.includes(anchor);

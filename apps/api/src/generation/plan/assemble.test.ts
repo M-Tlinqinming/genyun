@@ -125,8 +125,10 @@ describe('飞宇整份应急预案', () => {
     expect(text).toContain('上级预案《仲恺高新区生产工贸行业事故应急预案》、《陈江街道生产安全事故应急预案》');
   });
 
-  it('报警写 119，大队值班电话只进联系方式表；资源调查不写没有依据的到场时间', () => {
-    expect(text).toContain('火警：仲恺高新区消防救援大队"119"');
+  it('报警写「火灾报警 119」，辖区消防大队写名称和值班座机；资源调查不写没有依据的到场时间', () => {
+    expect(text).toContain('火灾报警 119；');
+    expect(text).not.toMatch(/消防救援大队["“]119["”]/);
+    expect(text).toContain('仲恺高新区消防救援大队（值班电话 0752-3165029）');
     expect(text).toContain('119；值班 0752-3165029');
     expect(text).not.toMatch(/\d+(?:-\d+)? ?min 到场|500 m 范围邻企|30-60 min/);
   });

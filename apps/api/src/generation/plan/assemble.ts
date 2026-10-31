@@ -25,7 +25,7 @@ import { svgToPng } from '../word/png.ts';
 import { DRAWINGS, attachments, type DrawingKey } from './attachments.ts';
 import { comprehensiveMarkdown } from './comprehensive.ts';
 import { templateBody, usesKnowledgeBlock } from './content.ts';
-import { humanize } from './humanize.ts';
+import { dropMissingRefs, humanize } from './humanize.ts';
 import { MISSING, cnDate, commsMeans, fill, hazardArea, ownGroupNames, planContext, type PlanContext } from './context.ts';
 import { parseMarkdown, toSections, type Figure } from './markdown.ts';
 
@@ -71,6 +71,8 @@ function placeholders(ctx: PlanContext, t?: PlanTemplate): Record<string, string
     STREET_OFFICE_PHONE: fill(ctx.streetPhone),
     FIRE_DEPT_NAME: ctx.fireDept,
     FIRE_DEPT_PHONE: ctx.firePhone,
+    // 联系方式里的辖区消防大队：名称后带值班座机；报警一律写「火灾报警 119」
+    FIRE_DEPT_DUTY: ctx.fireDutyPhone ? `（值班电话 ${ctx.fireDutyPhone}）` : '',
     EMERGENCY_BUREAU_NAME: ctx.bureau,
     EMERGENCY_BUREAU_PHONE: fill(ctx.bureauPhone),
     REPRESENTATIVE_CHEMICALS: fill(join(hazardousMaterials.slice(0, 3).map((m) => m.name))),
@@ -203,7 +205,9 @@ export function templateFlags(ctx: PlanContext, t?: PlanTemplate): Record<string
 
 /** 模板填好企业数据、按企业情况取舍、去掉内部编号后的正文 */
 function resolvedTemplate(ctx: PlanContext, t: PlanTemplate, filled: FilledSlots): string {
-  return humanize(fillPlaceholders(applyConditions(templateBody(t, ctx.signals, filled[t.id]), templateFlags(ctx, t)), placeholders(ctx, t)));
+  const included = new Set([...ctx.selection.specialty, ...ctx.selection.site].map((x) => x.id));
+  const body = fillPlaceholders(applyConditions(templateBody(t, ctx.signals, filled[t.id]), templateFlags(ctx, t)), placeholders(ctx, t));
+  return humanize(dropMissingRefs(body, included));
 }
 
 /** AI 改写过的「事故风险描述」段：模板编号 → 系统原文 → 改写（已校验） */

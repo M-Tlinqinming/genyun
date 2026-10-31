@@ -69,7 +69,7 @@ export const feiyuPlanInput: PlanInput = {
       hazard('厂房一', '可燃气体爆炸', 0.5, 3, 7),
       hazard('消防水池', '淹溺（二）', 1, 3, 3),
       hazard('停车场/厂道', '道路（轨道）车辆致害', 0.5, 6, 7),
-      hazard('厂房一', '其他伤害', 1, 6, 3),
+      hazard('厂房一', '其他', 1, 6, 3),
     ],
   },
 };
