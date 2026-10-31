@@ -1,7 +1,7 @@
 // 应急预案的附件 1–10（GB/T 29639-2020 第 9 章，附件 7–10 为耕云补充）。正文迁自旧仓库 lib/md-generator/preamble.ts，
 // 改动同综合预案：中文全角标点、引用改为本文档的章节号与附件号、写死飞宇的说法按企业资料写。
 // 每个附件一段 Markdown：# 附件名、## 附 N.x、### 附 N.x.x；图用 [[figure:key]] 占位。
-import { RISK_LEVELS, accidentTypeOf, riskLevel, riskScore, workplacesOf, type RiskLevel } from '@genyun/shared';
+import { RISK_LEVELS, accidentTypeOf, riskLevel, riskScore, workplacesOf, type CustomerDrawingKey, type RiskLevel } from '@genyun/shared';
 import {
   MISSING,
   cnDate,
@@ -27,7 +27,8 @@ export interface Attachment {
   markdown: string;
 }
 
-export function attachments(ctx: PlanContext, drawings: DrawingKey[]): Attachment[] {
+// drawings：每种图纸放了几张（没有的不列）
+export function attachments(ctx: PlanContext, drawings: Partial<Record<DrawingKey, number>>): Attachment[] {
   return [
     { key: 'profile', markdown: companyProfile(ctx) },
     { key: 'risk', markdown: riskResults(ctx) },
@@ -360,8 +361,8 @@ function formTexts(ctx: PlanContext): string {
   ].join('\n');
 }
 
-// ── 附件7 关键图纸：横版单独占页。前三张客户上传；后三张按 Martin 批注由编制单位绘制（周边环境、至医院路线、外部交通），
-// 专家上传的入口还没做，现在列为待补充 ──
+// ── 附件7 关键图纸：单独占页（横的用横版页）。前三种客户上传，专家在图件页选页，一种可以有几页（M2 第 10c 项）；
+// 后三张按 Martin 批注由编制单位绘制（周边环境、至医院路线、外部交通），专家上传的入口还没做，现在列为待补充 ──
 export const DRAWINGS = {
   sitePlan: '总平面布置图',
   evacuation: '应急疏散路线图',
@@ -372,16 +373,25 @@ export const DRAWINGS = {
 } as const;
 export type DrawingKey = keyof typeof DRAWINGS;
 const BY_CUSTOMER: DrawingKey[] = ['sitePlan', 'evacuation', 'fireFacility'];
+// 客户资料清单里的图纸项对应附件 7 的哪种图
+export const DRAWING_OF_ITEM: Record<CustomerDrawingKey, DrawingKey> = {
+  site_plan: 'sitePlan',
+  evacuation_plan: 'evacuation',
+  fire_facility_plan: 'fireFacility',
+};
 
-function keyDrawings(provided: DrawingKey[]): string {
+export const drawingFigureId = (k: DrawingKey, i: number) => `drawing-${k}-${i + 1}`;
+
+function keyDrawings(counts: Partial<Record<DrawingKey, number>>): string {
   const keys = Object.keys(DRAWINGS) as DrawingKey[];
+  const provided = keys.filter((k) => (counts[k] ?? 0) > 0);
   const missing = keys.filter((k) => !provided.includes(k));
   const fromCustomer = missing.filter((k) => BY_CUSTOMER.includes(k));
   const fromUs = missing.filter((k) => !BY_CUSTOMER.includes(k));
   return [
     '# 关键图纸',
     `本预案关键图纸包括${keys.map((k) => DRAWINGS[k]).join('、')}，标明疏散路线、警戒范围、应急资源分布及外部救援路线，具体如后续所示。`,
-    ...keys.filter((k) => provided.includes(k)).map((k) => `[[figure:drawing-${k}]]`),
+    ...provided.flatMap((k) => Array.from({ length: counts[k]! }, (_, i) => `[[figure:${drawingFigureId(k, i)}]]`)),
     ...(fromCustomer.length ? [`${fromCustomer.map((k) => DRAWINGS[k]).join('、')}（待补充）：由企业提供后纳入正式文本。`] : []),
     ...(fromUs.length ? [`${fromUs.map((k) => DRAWINGS[k]).join('、')}（待补充）：由编制单位现场踏勘后绘制，纳入正式文本。`] : []),
   ].join('\n');

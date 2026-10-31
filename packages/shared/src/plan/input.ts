@@ -1,6 +1,7 @@
 // 生成应急预案的输入：客户资料（新资料格式）+ 注册安全工程师的判断与补充 + 属地机构。
 // 专家的部分由 M2 第 4–8 项逐步接上页面；还没有时用系统建议或通用写法，不编造企业事实。
 import type { BasicInfo } from '../profile/basic.ts';
+import type { PlanDrawingRef } from '../workup-drawings.ts';
 import type { PlanFigures } from '../workup-figures.ts';
 import type { Location } from '../profile/location.ts';
 import type { Organization } from '../profile/organization.ts';
@@ -82,4 +83,6 @@ export interface PlanInput {
   agencies: LocalAgencies;
   /** 颁布日期 YYYY-MM-DD，封面、批准发布令、预案编号共用 */
   issuedOn: string;
+  /** 附件 7 放的客户图纸页（确认生成时按专家选页锁定）；没有就写「待补充」 */
+  drawings?: PlanDrawingRef[];
 }

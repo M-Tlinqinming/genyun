@@ -8,6 +8,7 @@ import { addressOptions, groupDisplayNames } from './profile/addresses.ts';
 import { PRESET_GROUPS } from './profile/organization.ts';
 import { CHART_ORDER } from './profile/organization-step.ts';
 import { PROCESS_TEMPLATES } from './profile/process-flow.ts';
+import { drawingsSaveSchema, type DrawingSelection } from './workup-drawings.ts';
 import type { Stamp } from './workup-production.ts';
 import { organizationOf, type WorkupData, type WorkupSnapshot } from './workup.ts';
 
@@ -55,6 +56,8 @@ export interface FiguresWorkup {
   process?: ProcessFigureSettings;
   // 采用时记下图的内容与画法，之后有变化就回到待采用
   adopted?: Partial<Record<FigureKey, Stamp & { signature: string }>>;
+  // 客户图纸选进附件 7 的页（workup-drawings.ts），按文件记；没记的默认第 1 页
+  drawings?: DrawingSelection;
 }
 
 // 一次保存：改某张图的画法（null = 恢复自动排版）和 / 或采用图
@@ -63,6 +66,8 @@ export const figuresSaveSchema = z.object({
   org: orgFigureSchema.nullable().optional(),
   process: processFigureSchema.nullable().optional(),
   adopt: z.array(z.enum(['org', 'process'])).max(2).optional(),
+  // 只覆盖带上的文件，其余文件的选页不动
+  drawings: drawingsSaveSchema.optional(),
 });
 export type FiguresSave = z.infer<typeof figuresSaveSchema>;
 

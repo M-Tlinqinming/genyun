@@ -8,6 +8,7 @@ import {
   draftActive,
   generationConfirmSchema,
   materialsFingerprint,
+  planDrawingsOf,
   planInputOf,
   SELF_FILL_STEP_TITLES,
   workupGaps,
@@ -50,6 +51,7 @@ import {
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { DRAFT_RENDERER, type DraftRenderer } from '../generation/drafts.ts';
 import { DRAFT_QUEUE, type DraftJob, type DraftQueue } from '../generation/queue.ts';
+import { DrawingsService } from './drawings.service.ts';
 import { WorkupService } from './workup.service.ts';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -63,6 +65,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     @Inject(DRAFT_QUEUE) private readonly queue: DraftQueue,
     @Inject(DRAFT_RENDERER) private readonly render: DraftRenderer,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
+    @Inject(DrawingsService) private readonly drawings: DrawingsService,
   ) {}
 
   async onModuleInit() {
@@ -116,6 +119,8 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
       throw new ConflictException('草稿正在生成，请等这一批生成完');
     }
 
+    // 附件 7 的客户图纸：按专家选的页锁定（第 10c 项）；页数第一次算要读文件，放在事务外
+    const drawings = planDrawingsOf(await this.drawings.drawingsOf(task.id, task.orgId, row.snapshot, row.data));
     const materials: LockedMaterial[] = (await this.workup.originals(task.id, row.snapshot)).map((o) => ({
       fileId: o.fileId,
       name: o.name,
@@ -129,7 +134,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
           taskId: task.id,
           workupVersion: row.version,
           snapshotAt: row.snapshotAt,
-          input: planInputOf(row.snapshot, row.data, chinaToday()),
+          input: { ...planInputOf(row.snapshot, row.data, chinaToday()), drawings },
           materials,
           createdBy: user.id,
         })
@@ -231,7 +236,8 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
         .where(eq(generationBatches.id, batchId))
         .limit(1);
       if (!batch) return;
-      const rendered = await this.render(kind, batch.input);
+      const drawings = kind === 'plan' ? await this.drawings.images(batch.input.drawings ?? []) : undefined;
+      const rendered = await this.render(kind, batch.input, drawings);
       const name = `${batch.input.basic.companyName}${DRAFT_KINDS[kind]}（草稿）`;
       const wordFileId = await this.store(batch.orgId, batch.createdBy, `${name}.docx`, DOCX, rendered.word);
       const pdfFileId = rendered.pdf ? await this.store(batch.orgId, batch.createdBy, `${name}.pdf`, 'application/pdf', rendered.pdf) : null;

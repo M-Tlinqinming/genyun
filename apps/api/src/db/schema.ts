@@ -454,3 +454,34 @@ export const generatedDrafts = pgTable(
   },
   (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
 );
+
+// 客户图纸转成的图片（M2 第 10c 项，附件 7 与图件页缩略图）：每份文件记一次页数，每页只转一次，
+// 存高清图和缩略图。图片只放在文件存储里（路径同样是「组织 ID/随机 ID」），不登记成文件，
+// 只经任务接口给负责专家看、生成时取用
+export const drawingSources = pgTable('drawing_sources', {
+  fileId: uuid('file_id')
+    .primaryKey()
+    .references(() => files.id, { onDelete: 'cascade' }),
+  // 转不出来（文件损坏、加密）时为 null，原因记在 error
+  pageCount: integer('page_count'),
+  error: text('error'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const drawingPages = pgTable(
+  'drawing_pages',
+  {
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
+    page: integer('page').notNull(),
+    fullKey: text('full_key').notNull(),
+    // png（PDF 线条图）或 jpg（照片）
+    fullType: text('full_type').notNull(),
+    width: integer('width').notNull(),
+    height: integer('height').notNull(),
+    thumbKey: text('thumb_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.fileId, t.page] })],
+);

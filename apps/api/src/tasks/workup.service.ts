@@ -1,4 +1,6 @@
 import {
+  CUSTOMER_DRAWING_KEYS,
+  drawingKeyOf,
   emptyProductionWorkup,
   factDefOf,
   factSaveError,
@@ -14,6 +16,7 @@ import {
   riskSaveSchema,
   scopeSaveSchema,
   SPECIAL_CATEGORY_KEYS,
+  type CustomerDrawingKey,
   type FactOverride,
   type FiguresWorkup,
   type WorkupData,
@@ -249,6 +252,11 @@ export class WorkupService {
     else if (save.org) figures.org = save.org;
     if (save.process === null) delete figures.process;
     else if (save.process) figures.process = save.process;
+    if (save.drawings) {
+      const ours = new Set((await this.drawingCandidates(task.id, row.snapshot)).map((c) => c.fileId));
+      if (Object.keys(save.drawings).some((id) => !ours.has(id))) throw new BadRequestException('这份图纸不在这个任务里');
+      figures.drawings = { ...figures.drawings, ...save.drawings };
+    }
     const view = figuresView(row.snapshot, { ...row.data, figures });
     const error = figuresSaveError(view, save);
     if (error) throw new BadRequestException(error);
@@ -387,6 +395,21 @@ export class WorkupService {
       }
     }
     return [...byFile.values()];
+  }
+
+  // 任务里的客户图纸（M2 第 10c 项）：上传已有资料挂在三项图纸上的（资料库的带资料名称），加上企业自填第 4 步上传的。
+  // 是不是本组织的 PDF / 图片由 DrawingsService 查文件表再筛
+  async drawingCandidates(taskId: string, snapshot: WorkupSnapshot): Promise<{ fileId: string; key: CustomerDrawingKey; name?: string }[]> {
+    const out = new Map<string, { fileId: string; key: CustomerDrawingKey; name?: string }>();
+    for (const o of await this.originals(taskId, snapshot)) {
+      const key = drawingKeyOf(o.itemKeys);
+      if (key && !out.has(o.fileId)) out.set(o.fileId, { fileId: o.fileId, key, name: o.name });
+    }
+    const step = snapshot.profile.resourcesStep?.step;
+    for (const key of CUSTOMER_DRAWING_KEYS) {
+      for (const fileId of step?.drawings[key] ?? []) if (!out.has(fileId)) out.set(fileId, { fileId, key });
+    }
+    return [...out.values()];
   }
 
   // 负责专家、运营可以打开；客户和其他专家看不到（与不存在同样返回）。客户提交以后才开始整理
