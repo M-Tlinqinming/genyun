@@ -2,54 +2,8 @@
  * 官网的颜色、字号都取自 Paper「10 · 官网与账户」W01–W07 画板（get_jsx / get_computed_styles）。
  * gy-brand-* 与 Paper token 同名同值；其余是画板里反复出现的字面值，集中在这里命名，页面里不再写散值。
  */
-/* 字体：scripts/subset-fonts.mjs 按页面实际用字裁剪，自托管，不走境外 CDN。
-   同一字族先声明中文、再声明西文；西文段落由后声明的西文字面接管。 */
-@font-face {
-  font-family: 'Noto Sans SC';
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/noto-sans-sc-400.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Noto Sans SC';
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/noto-sans-sc-500.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Noto Serif SC';
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/noto-serif-sc-600.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Noto Sans SC';
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/noto-sans-sc-latin-400.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+20AC, U+2122, U+2212;
-}
-@font-face {
-  font-family: 'Noto Sans SC';
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/noto-sans-sc-latin-500.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+20AC, U+2122, U+2212;
-}
-@font-face {
-  font-family: 'Noto Serif SC';
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/noto-serif-sc-latin-600.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+2000-206F, U+20AC, U+2122, U+2212;
-}
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/ibm-plex-mono-400.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+2000-206F;
-}
+/* 字体的 @font-face 由 scripts/subset-fonts.mjs 生成在 fonts.generated.css（Base.astro 引入），
+   按页面实际用字裁剪，自托管，不走境外 CDN。 */
 
 :root {
   --gy-brand-ink: #071a33;
@@ -65,12 +19,8 @@
   --site-article: #3a4456;
   /* 文字颜色都要 ≥ 4.5:1（Martin 11-01：看得清优先）。Paper 原色 #8A93A3、#B4BAC4 在白底只有 3.1 / 1.9 */
   --site-muted: #6b7484; /* 白底 4.7 */
-  --site-muted-warm: #5f6878; /* 米色底（#FAF8F3 / #F5F3EE）上的浅灰字，5.3 / 5.0 */
-  /* 品牌色做小字时的加深版（Paper 原色在白底 / 米色底不到 4.5） */
-  --site-text-blue: #007bb3; /* 原 #008BCA */
-  --site-text-teal: #18767c; /* 原 #23A6AD */
-  --site-text-green: #44754a; /* 原 #5E9E62 */
-  --site-text-gold: #855f08; /* 原 #B88C1C */
+  --site-muted-warm: #5f6878; /* 米色底（#FAF8F3 / #F5F3EE）上的浅灰字，5.3 / 5.0；#6B7484 只用在白底 */
+  /* 品牌色只用在圆点、连线、色条上，不做小字颜色 */
   --site-line: #ece8df;
   --site-line-strong: #e3dfd6;
   --site-line-soft: #f1eee7;
@@ -79,10 +29,6 @@
   --site-eyebrow: #0e7490;
   --site-eyebrow-dark: #7fc3c6;
   --site-gold-deep: #d9ae3a;
-  --site-blue-mid: #008bca;
-  --site-green-deep: #5e9e62;
-  --site-olive: #a3a23c;
-  --site-gold-text: #b88c1c;
 
   --font-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
   --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
@@ -308,6 +254,13 @@ svg {
 .text-link--sm {
   font-size: 14px;
   line-height: 22px;
+}
+
+/* 电话号码：联系窗口、收尾 CTA、页脚统一写法，数字等宽 */
+.phone {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .pill {

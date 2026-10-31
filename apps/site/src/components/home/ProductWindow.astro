@@ -1,14 +1,15 @@
 ---
 // Hero 右侧「产品轮播」里的四屏产品界面示意。第 2 屏照 Paper「产品界面 · AI 风险辨识」逐值还原，
 // 其余三屏按同一套界面写法补齐（Paper 只画了一屏，见 DESIGN-DIFF）。
+// 填报 4 步对应侧栏 ①–④；审核、下载两屏已经填完，侧栏不高亮任何一步。
 // 这是示意图，不是可操作的界面：整块对读屏软件隐藏，由轮播标签说明当前讲的是哪一步。
 const steps = ['① 企业信息', '② 设备与物料', '③ 风险辨识', '④ 确认提交'];
 
 const slides = [
   { id: 'fill', url: 'genyun.cn / 企业信息', step: 0 },
   { id: 'risk', url: 'genyun.cn / 风险辨识', step: 2 },
-  { id: 'review', url: 'genyun.cn / 审核进度', step: 3 },
-  { id: 'download', url: 'genyun.cn / 成果下载', step: 3 },
+  { id: 'review', url: 'genyun.cn / 审核进度', step: -1 },
+  { id: 'download', url: 'genyun.cn / 成果下载', step: -1 },
 ];
 ---
 
@@ -84,7 +85,7 @@ const slides = [
                   <div class="row row--head"><span class="c-grow">审核项</span><span class="c-110">说明</span><span class="c-58">状态</span></div>
                   {[
                     ['企业事实一致', '与资料逐项对上', '已通过', 'green'],
-                    ['危险源辨识完整', '按场所核对', '已通过', 'green'],
+                    ['风险辨识完整', '按场所核对', '已通过', 'green'],
                     ['预案与风险匹配', '专项一一对应', '已通过', 'green'],
                     ['组织与联络有效', '通讯录缺 2 个电话', '需补充', 'warn'],
                     ['属地信息准确', '以知识库为准', '已通过', 'green'],
@@ -93,7 +94,7 @@ const slides = [
                     <div class="row"><span class="c-grow">{item}</span><span class="c-110 muted">{note}</span><span class="c-58"><span class={`level level--${tone}`}>{state}</span></span></div>
                   ))}
                 </div>
-                <div class="note note--warn"><b>需补充</b><span>负责专家已留言：请补 2 位应急联络人的电话</span></div>
+                <div class="note note--warn"><b>需补充</b><span>注安师已留言：请补 2 位应急联络人的电话</span></div>
               </Fragment>
             )}
             {slide.id === 'download' && (
@@ -108,7 +109,7 @@ const slides = [
                 <div class="files">
                   {[
                     ['生产安全事故应急预案', '综合预案 · 专项预案 · 现场处置方案', '#0068BD'],
-                    ['风险评估报告', '危险源辨识、风险等级与控制措施', '#23A6AD'],
+                    ['风险评估报告', '风险辨识、风险等级与控制措施', '#23A6AD'],
                     ['应急资源调查报告', '内外部资源与属地机构联络', '#D9AE3A'],
                   ].map(([name, desc, color]) => (
                     <div class="file">
@@ -132,7 +133,7 @@ const slides = [
   .win {
     position: relative;
     width: 100%;
-    height: 448px;
+    height: 400px;
     display: flex;
     flex-direction: column;
     background: #0f2442;

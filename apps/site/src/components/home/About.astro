@@ -1,12 +1,12 @@
 ---
-// 06 关于耕云（Paper W01「信任与出品方」）
+// 06 关于耕云（Paper W01「信任与出品方」）。标签的颜色只放在小圆点上，文字用米色底的浅灰 #5F6878
 import { COMPANY } from '../../site';
 
 const facts = [
   { label: '标准依据', color: '#0068BD', title: 'GB/T 29639-2020', body: '《生产经营单位生产安全事故应急预案编制导则》；事故分类参照 GB 6441-2025。' },
-  { label: '专业审核', color: 'var(--site-text-teal)', title: '注册安全工程师把关', body: 'AI 起草的每一份文档，都由持证注册安全工程师审核后交付。' },
-  { label: '数据安全', color: 'var(--site-text-green)', title: '只用于生成您的文档', body: '企业数据加密存储，不做他用，支持本地导出归档。' },
-  { label: '正规票据', color: 'var(--site-text-gold)', title: '可开增值税发票', body: '支持增值税普通发票与专用发票，便于企业报销入账。' },
+  { label: '专业审核', color: '#23A6AD', title: '注册安全工程师把关', body: 'AI 起草的每一份文档，都由持证注册安全工程师审核后交付。' },
+  { label: '数据安全', color: '#75AF76', title: '只用于生成您的文档', body: '企业数据加密存储，不做他用，支持本地导出归档。' },
+  { label: '正规票据', color: '#D9AE3A', title: '可开增值税发票', body: '支持增值税普通发票与专用发票，便于企业报销入账。' },
 ];
 ---
 
@@ -16,7 +16,7 @@ const facts = [
       <p class="eyebrow">06 — 关于耕云</p>
       <h2 id="about-title" class="h2">懂 AI，<br />也懂安全生产。</h2>
       <p class="lead">
-        耕云由{COMPANY}出品，团队由前沿 AI 工程师与注册安全工程师专家团共同组成，位于惠州人工智能产业园。
+        耕云由{COMPANY}出品，团队由 AI 工程师和注册安全工程师组成，位于惠州人工智能产业园。
       </p>
       <div class="about__note">
         <p class="about__note-title">用多少，付多少。</p>
@@ -27,7 +27,7 @@ const facts = [
       {
         facts.map((f) => (
           <li>
-            <span class="grid__label" style={`color:${f.color}`}>{f.label}</span>
+            <span class="grid__label"><i style={`background:${f.color}`} aria-hidden="true" />{f.label}</span>
             <h3>{f.title}</h3>
             <p>{f.body}</p>
           </li>
@@ -92,6 +92,16 @@ const facts = [
     font-size: 11px;
     line-height: 14px;
     letter-spacing: 0.14em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--site-muted-warm);
+  }
+  .grid__label i {
+    flex-shrink: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
   }
   .grid h3 {
     font-family: var(--font-serif);

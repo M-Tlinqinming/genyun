@@ -273,7 +273,7 @@ C 线，与 M2、M3 并行；一项一个合并请求，分支名用 `m4-<序号
 ### 第 1a 项留给后续的说明
 
 - 官网是独立的静态站（`apps/site`），不进业务应用的容器；登录链接默认 `/login`，可用 `PUBLIC_APP_LOGIN_URL` 改。第 2 项 Caddy 要让 `/` 和官网各页走静态文件，`/login` 等走业务应用
-- 字体：`npm run build -w @genyun/site` 会先跑 `scripts/subset-fonts.mjs`，按页面里出现的字裁剪 Noto Serif SC / Noto Sans SC / IBM Plex Mono，输出到 `public/fonts`（不进 git）。改了文案要重新构建，否则新字会用系统字体
+- 字体：`npm run build -w @genyun/site` 会先跑 `scripts/subset-fonts.mjs`，按页面里出现的字裁剪 Noto Serif SC / Noto Sans SC / IBM Plex Mono，输出到 `public/fonts`，对应的 @font-face 生成在 `src/styles/fonts.generated.css`（都不进 git；`typecheck` 也会先跑它）。改了文案要重新构建，否则新字会用系统字体；字体里找不到的字会让构建失败
 - 截图：`npm run preview -w @genyun/site` 后跑 `node apps/site/scripts/screenshots.mjs`，输出到 `out/site/`
 - 待 Martin 定的见 DESIGN-DIFF「M4 第 1a 项」
 

@@ -4,9 +4,9 @@ import Nav from '../Nav.astro';
 import ContactTrigger from '../ContactTrigger.astro';
 import ProductWindow from './ProductWindow.astro';
 
-const tabs = ['5 步填报', 'AI 风险辨识', '注安师审核', '下载整套 Word'];
+const tabs = ['4 步填报', 'AI 风险辨识', '注安师审核', '下载整套 Word'];
 const facts = [
-  { no: '01', color: '#7FC3C6', title: '不懂专业，也能做', sub: '5 步填报，专业判断交给专家' },
+  { no: '01', color: '#7FC3C6', title: '不懂专业，也能做', sub: '4 步填报，专业判断交给注安师' },
   { no: '02', color: '#A8C98A', title: '按国标编制，注安师把关', sub: '依据 GB/T 29639-2020，持证注册安全工程师审核' },
   { no: '03', color: '#EDC147', title: '一次建档，长期复用', sub: '三份文档同版一致，下次更新不用重填' },
 ];
@@ -18,9 +18,10 @@ const facts = [
   <div class="wrap hero__inner">
     <div class="hero__copy">
       <p class="hero__eyebrow" data-enter><span aria-hidden="true"></span>AI + 注册安全工程师 · 应急预案编制</p>
-      <h1 id="hero-title" class="hero__title" data-enter>只填您知道的，<br />专业的交给耕云。</h1>
+      <!-- 大标题不参与淡入：它是手机上的最大内容元素，一加载就要显示 -->
+      <h1 id="hero-title" class="hero__title">只填您知道的，<br />专业的交给耕云。</h1>
       <p class="hero__lead" data-enter>
-        填好企业基本情况，AI 完成危险源辨识、法规匹配与预案编制，注册安全工程师审核后，交付整套可直接使用的 Word 文档。
+        填好企业基本情况，AI 完成风险辨识、法规匹配与预案编制，注册安全工程师审核后，交付整套可直接使用的 Word 文档。
       </p>
       <div class="hero__cta" data-enter>
         <ContactTrigger class="btn-gold btn-gold--lg">预约演示</ContactTrigger>
@@ -29,15 +30,13 @@ const facts = [
 
     <div class="hero__carousel" data-enter data-carousel>
       <ProductWindow />
-      <div class="tabs" role="tablist" aria-label="产品界面示意">
+      <div class="tabs" role="group" aria-label="产品界面示意">
         {
           tabs.map((label, index) => (
             <button
               type="button"
-              role="tab"
               class:list={['tab', { 'is-active': index === 1 }]}
-              aria-selected={index === 1 ? 'true' : 'false'}
-              tabindex={index === 1 ? 0 : -1}
+              aria-pressed={index === 1 ? 'true' : 'false'}
               data-tab={index}
             >
               <span class="tab__track" aria-hidden="true">
@@ -81,9 +80,11 @@ const facts = [
     position: absolute;
     left: calc(50% - 80px);
     top: 60px;
-    width: 820px;
-    height: 700px;
-    background: radial-gradient(circle farthest-corner at 50% 50%, #23a6ad33 0%, #071a3300 100%);
+    /* 宽屏下加宽到贴右 */
+    width: clamp(820px, calc(50vw + 80px), 1160px);
+    height: 760px;
+    /* closest-side：在矩形内就淡到 0，宽屏下看不到边 */
+    background: radial-gradient(ellipse closest-side at 50% 50%, #23a6ad33 0%, #23a6ad14 55%, #071a3300 100%);
     pointer-events: none;
   }
   .hero__inner {

@@ -42,7 +42,7 @@ const upcoming = [
               <h3>{m.title}</h3>
               <p>{m.body}</p>
             </div>
-            <ContactTrigger topic="notify" class="text-link text-link--sm mod__notify">
+            <ContactTrigger topic="notify" item={m.title} class="text-link text-link--sm mod__notify">
               上线时通知我
             </ContactTrigger>
           </li>
@@ -75,7 +75,6 @@ const upcoming = [
     min-width: 0;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
     gap: 40px;
     padding: 32px;
     background: var(--site-card-warm);
@@ -144,8 +143,10 @@ const upcoming = [
     color: #ffffffad;
     line-height: 25px;
   }
+  /* 卡内从上往下排，标题对齐；链接推到卡底 */
   .mod :global(.text-link) {
     align-self: flex-start;
+    margin-top: auto;
   }
   .mod :global(.mod__notify) {
     font-weight: 400;

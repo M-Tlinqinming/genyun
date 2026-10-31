@@ -93,7 +93,7 @@ test.describe('官网首页', () => {
     await page.getByRole('link', { name: '上线时通知我' }).first().click();
     const dialog = page.getByRole('dialog', { name: '上线时通知我' });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('上线时，我们第一时间告诉您');
+    await expect(dialog).toContainText('安全台账生成上线时，我们第一时间告诉您');
     await dialog.getByRole('button', { name: '关闭' }).click();
     await expect(dialog).toBeHidden();
   });
@@ -125,25 +125,40 @@ test.describe('官网首页', () => {
     });
   });
 
-  test('轮播：点标签或用方向键切换画面', async ({ page }) => {
+  // 轮播标签是普通按钮（aria-pressed），不用 role=tab
+  const slideButtons = (page: Page) => page.getByRole('group', { name: '产品界面示意' }).getByRole('button');
+  const pressed = (page: Page) => page.getByRole('group', { name: '产品界面示意' }).getByRole('button', { pressed: true });
+
+  test('轮播：点按钮或用方向键切换画面，切过之后不再自动翻页', async ({ page }) => {
     await page.goto(`${SITE}/`);
-    const tabs = page.getByRole('tablist', { name: '产品界面示意' }).getByRole('tab');
-    await expect(tabs).toHaveCount(4);
-    await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
-    await tabs.nth(3).click();
-    await expect(tabs.nth(3)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('[data-win-url]')).not.toHaveText('');
+    const buttons = slideButtons(page);
+    await expect(buttons).toHaveCount(4);
+    await expect(buttons.nth(1)).toHaveAttribute('aria-pressed', 'true');
+    await buttons.nth(3).click();
+    await expect(buttons.nth(3)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[data-win-url]')).toHaveText('genyun.cn / 成果下载');
     await page.keyboard.press('ArrowRight');
-    await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
-    await expect(tabs.nth(0)).toBeFocused();
+    await expect(buttons.nth(0)).toHaveAttribute('aria-pressed', 'true');
+    await expect(buttons.nth(0)).toBeFocused();
+    // 移开鼠标和焦点，免得因为悬停暂停而误判
+    await page.mouse.move(5, 880);
+    await page.locator('h1').click();
+    await page.waitForTimeout(6500);
+    await expect(pressed(page)).toHaveText('4 步填报');
   });
 
-  test('入场动画结束后内容全部可见，轮播 6 秒后自动翻到下一屏', async ({ page }) => {
+  test('入场动画结束后内容全部可见；自动播放只转一轮，停回第二屏', async ({ page }) => {
+    test.setTimeout(60_000);
     await page.goto(`${SITE}/`);
+    await page.mouse.move(5, 880);
     await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('opacity', '1');
     await expect(page.locator('html')).not.toHaveClass(/js-enter/);
-    await expect(page.getByRole('tab', { selected: true })).toHaveText('AI 风险辨识');
-    await expect(page.getByRole('tab', { selected: true })).toHaveText('注安师审核', { timeout: 9000 });
+    await expect(pressed(page)).toHaveText('AI 风险辨识');
+    for (const label of ['注安师审核', '下载整套 Word', '4 步填报', 'AI 风险辨识']) {
+      await expect(pressed(page)).toHaveText(label, { timeout: 9000 });
+    }
+    await page.waitForTimeout(7000);
+    await expect(pressed(page)).toHaveText('AI 风险辨识');
   });
 
   test.describe('减少动态', () => {
@@ -157,20 +172,20 @@ test.describe('官网首页', () => {
         h1Opacity: getComputedStyle(document.querySelector('h1')!).opacity,
       }));
       expect(state).toEqual({ jsEnter: false, h1Opacity: '1' });
-      const active = page.getByRole('tab', { selected: true });
+      const active = pressed(page);
       await expect(active).toHaveText('AI 风险辨识');
       await expect(active.locator('.tab__fill')).toHaveAttribute('style', /width: 100%/);
       await page.waitForTimeout(6500);
-      await expect(page.getByRole('tab', { selected: true })).toHaveText('AI 风险辨识');
+      await expect(pressed(page)).toHaveText('AI 风险辨识');
     });
 
     // 关掉动画再查，免得量到淡入一半的颜色
     test('所有文字对比度 ≥ 4.5:1（大字 3:1），轮播四屏都查', async ({ page }) => {
       await page.goto(`${SITE}/`);
-      const tabs = page.getByRole('tab');
+      const tabs = slideButtons(page);
       for (let i = 0; i < 4; i++) {
         await tabs.nth(i).click();
-        await expect(tabs.nth(i)).toHaveAttribute('aria-selected', 'true');
+        await expect(tabs.nth(i)).toHaveAttribute('aria-pressed', 'true');
         expect(await lowContrastTexts(page), `轮播第 ${i + 1} 屏`).toEqual([]);
       }
     });

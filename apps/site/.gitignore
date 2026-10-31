@@ -1,3 +1,4 @@
 # scripts/subset-fonts.mjs 生成
 public/fonts/
+src/styles/fonts.generated.css
 .astro/

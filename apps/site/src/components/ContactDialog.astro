@@ -19,11 +19,11 @@ import { PHONE, PHONE_HREF } from '../site';
     <div class="contact__ways">
       <div class="contact__phone">
         <span class="contact__label">产品咨询</span>
-        <a href={PHONE_HREF} class="contact__number">{PHONE}</a>
+        <a href={PHONE_HREF} class="contact__number phone">{PHONE}</a>
       </div>
       <figure class="contact__qr">
         <img src="/images/wechat-qr.webp" width="176" height="176" alt="企业微信二维码（占位图，正式二维码待替换）" loading="lazy" />
-        <figcaption>企业微信 · 扫码添加</figcaption>
+        <figcaption>企业微信 · 扫码添加<br />手机上可长按识别</figcaption>
       </figure>
     </div>
   </div>
@@ -31,18 +31,19 @@ import { PHONE, PHONE_HREF } from '../site';
 
 <script>
   const dialog = document.getElementById('contact-dialog') as HTMLDialogElement | null;
-  const copy: Record<string, { title: string; text: string }> = {
+  const copy: Record<string, { title: string; text: (item?: string) => string }> = {
     demo: {
       title: '预约演示',
-      text: '打电话或扫码加企业微信，约一个您方便的时间。用您手上的一家企业，走一遍从填报到交付的全过程。',
+      text: () => '打电话或扫码加企业微信，约一个您方便的时间。用您手上的一家企业，走一遍从填报到交付的全过程。',
     },
     notify: {
       title: '上线时通知我',
-      text: '扫码加企业微信，告诉我们您关心哪一项。上线时，我们第一时间告诉您。',
+      // 两句各占一行（white-space: pre-line），不让模块名被折断
+      text: (item) => `${item ?? '新功能'}上线时，我们第一时间告诉您。\n扫码加企业微信，或打电话给我们留个联系方式。`,
     },
     sample: {
       title: '索取完整样例',
-      text: '完整样例在演示时提供。打电话或扫码加企业微信，我们把脱敏样例发给您。',
+      text: () => '打电话或扫码加企业微信，我们把脱敏样例发给您。',
     },
   };
 
@@ -57,7 +58,7 @@ import { PHONE, PHONE_HREF } from '../site';
       event.preventDefault();
       const c = copy[trigger.dataset.contact ?? 'demo'] ?? copy.demo;
       title.textContent = c.title;
-      text.textContent = c.text;
+      text.textContent = c.text(trigger.dataset.item);
       opener = trigger;
       dialog.showModal();
     });
@@ -118,6 +119,9 @@ import { PHONE, PHONE_HREF } from '../site';
     font-size: 15px;
     line-height: 26px;
     color: var(--site-body);
+    white-space: pre-line;
+    /* 最后一行不只剩一两个字 */
+    text-wrap: pretty;
   }
   .contact__ways {
     display: flex;
@@ -138,7 +142,6 @@ import { PHONE, PHONE_HREF } from '../site';
     color: var(--site-body);
   }
   .contact__number {
-    font-family: var(--font-mono);
     font-size: 24px;
     line-height: 34px;
     color: var(--site-heading);
@@ -157,6 +160,7 @@ import { PHONE, PHONE_HREF } from '../site';
     height: 136px;
   }
   .contact__qr figcaption {
+    text-align: center;
     font-size: 13px;
     line-height: 20px;
     color: var(--site-body);

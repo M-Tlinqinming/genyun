@@ -8,7 +8,7 @@
     "dev": "npm run fonts && astro dev --port 4321",
     "build": "npm run fonts && astro build",
     "preview": "astro preview",
-    "typecheck": "astro check"
+    "typecheck": "npm run fonts && astro check"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",

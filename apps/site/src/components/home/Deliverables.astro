@@ -18,16 +18,16 @@ const docs = [
   {
     no: 2,
     color: '#23A6AD',
-    title: '风险评估报告',
+    title: '生产安全事故<br/>风险评估报告',
     toc: [
       ['1', '评估依据与范围', '3'],
       ['2', '企业概况', '5'],
-      ['3', '危险源辨识', '9'],
+      ['3', '风险辨识', '9'],
       ['4', '事故风险分析', '15'],
       ['5', '风险等级与控制措施', '21'],
       ['6', '评估结论', '28'],
     ],
-    summary: '从设备、物料和作业场所出发，辨识风险并给出控制措施。',
+    summary: '按设备、物料和作业场所做风险辨识，给出控制措施。',
   },
   {
     no: 3,
@@ -158,6 +158,7 @@ const docs = [
     color: var(--site-muted);
   }
   .doc__summary {
+    margin-top: auto;
     padding-top: 28px;
     border-top: 1px solid var(--site-line);
     font-size: 13px;
