@@ -16,7 +16,7 @@ async function openFeiyu(page: Page) {
 
 // 客户在任务里再补传一份文件（模拟专家看确认页时客户刚好上传）
 async function customerUploads(name: string) {
-  const api = await request.newContext({ baseURL: 'http://localhost:5174' });
+  const api = await request.newContext({ baseURL: test.info().project.use.baseURL });
   await api.post('/api/auth/login', { data: { email: 'feiyu@demo.genyun.net.cn', password: 'e2e-password' } });
   const me = await (await api.get('/api/auth/me')).json();
   const orgId = me.memberships[0].orgId as string;
