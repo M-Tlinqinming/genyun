@@ -149,8 +149,12 @@ export const editBlockSchema = z.discriminatedUnion('type', [
 
 // saveId：页面每次点保存生成一个；同一次保存重试时不变，后台据此不重复记修订（结果不确定时先查询）
 // baseRev：打开这一节时读到的修订次数（没改过为 0）
+// batchId：打开编辑页时的那一批草稿；之后重新生成过就拒绝，免得改动写进新生成的稿
+// aiPromptVersion：本节这次修改用过「帮我改写这段」并采用了 AI 的文字时，带上提示词版本
 export const sectionSaveSchema = z.object({
   saveId: z.uuid(),
+  batchId: z.uuid(),
+  aiPromptVersion: z.string().trim().min(1).max(40).optional(),
   baseRev: z.number().int().min(0),
   blocks: z.array(editBlockSchema).max(EDIT_LIMITS.blocks),
   note: z
@@ -195,4 +199,6 @@ export interface RewriteResult {
   text: string;
   source: 'ai' | 'system';
   note: string;
+  /** 用的提示词版本；没开启 AI 时为 null。保存时带上，记进修订记录 */
+  promptVersion: string | null;
 }

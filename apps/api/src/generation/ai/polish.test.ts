@@ -6,6 +6,7 @@ const context = {
   plan: '应急预案',
   section: '1.2 应急通讯录',
   companyName: '惠阳飞宇电器有限公司',
+  shortName: '飞宇电器',
   people: ['陈志刚', '李某'],
   facts: { sites: ['压铸车间'], processes: ['压铸'], equipment: ['压铸机'], materials: ['铝锭'] },
 };
@@ -31,6 +32,7 @@ describe('帮我改写这段', () => {
       source: 'ai',
       text: '惠阳飞宇电器有限公司应急办公室由陈志刚主要负责，电话 13800000001，发生事故时立即上报。',
       note: expect.stringContaining('已核对'),
+      promptVersion: 'polish-v1',
     });
   });
 
@@ -50,6 +52,27 @@ describe('帮我改写这段', () => {
     );
     expect(dropped).toMatchObject({ source: 'system' });
     expect(dropped.note).toMatch(/人名|电话/);
+  });
+
+  it('电话的各种写法、企业简称都遮掉；小组名称不当人名', async () => {
+    const d = drafter((req) => req.text.replace('负责', '主要负责'));
+    const text = '飞宇电器通讯联络组由李某负责，手机 138 0000 0001、138-0000-0002，值班电话（0752）3388123、0752-3388124。';
+    const out = await polishParagraph(d, context, text);
+    expect(d.seen[0]!.text).not.toMatch(/飞宇|李某|0000|3388/);
+    expect(d.seen[0]!.text).toContain('通讯联络组');
+    expect(out).toMatchObject({ source: 'ai', text: text.replace('负责', '主要负责'), promptVersion: 'polish-v1' });
+  });
+
+  it('强制性措辞变少、原文数字丢了都不采用；数字按整串比', async () => {
+    const text = '发现火情后必须立即报告，严禁使用电梯，2 分钟内到达集合点。';
+    const softened = await polishParagraph(drafter(() => '发现火情后应尽快报告，严禁使用电梯，2 分钟内到达集合点。'), context, text);
+    expect(softened).toMatchObject({ source: 'system', text });
+    expect(softened.note).toMatch(/少了原文里的「(必须|立即)」/);
+    const lost = await polishParagraph(drafter(() => '发现火情后必须立即报告，严禁使用电梯，并尽快到达集合点。'), context, text);
+    expect(lost.note).toMatch(/漏了原文里的数字「2」/);
+    // 原文有 1 和 2，写成 12 也算新数字
+    const merged = await polishParagraph(drafter(() => '第 12 条：发现火情后必须立即报告，严禁使用电梯，2 分钟内到达集合点。'), { ...context }, '第 1 条：' + text);
+    expect(merged.note).toMatch(/没有的数字「12」/);
   });
 
   it('服务出错或没开启：用原文', async () => {
