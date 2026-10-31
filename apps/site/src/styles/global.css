@@ -63,8 +63,14 @@
   --site-heading: #0b1b33;
   --site-body: #4a5568;
   --site-article: #3a4456;
-  --site-muted: #8a93a3;
-  --site-faint: #b4bac4;
+  /* 文字颜色都要 ≥ 4.5:1（Martin 11-01：看得清优先）。Paper 原色 #8A93A3、#B4BAC4 在白底只有 3.1 / 1.9 */
+  --site-muted: #6b7484; /* 白底 4.7 */
+  --site-muted-warm: #5f6878; /* 米色底（#FAF8F3 / #F5F3EE）上的浅灰字，5.3 / 5.0 */
+  /* 品牌色做小字时的加深版（Paper 原色在白底 / 米色底不到 4.5） */
+  --site-text-blue: #007bb3; /* 原 #008BCA */
+  --site-text-teal: #18767c; /* 原 #23A6AD */
+  --site-text-green: #44754a; /* 原 #5E9E62 */
+  --site-text-gold: #855f08; /* 原 #B88C1C */
   --site-line: #ece8df;
   --site-line-strong: #e3dfd6;
   --site-line-soft: #f1eee7;
