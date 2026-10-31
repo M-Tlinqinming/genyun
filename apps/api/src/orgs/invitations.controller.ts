@@ -47,7 +47,7 @@ export class InvitationsController {
     return {
       state: invitationState(inv),
       orgName: inv.orgName,
-      inviterName: inv.inviterName,
+      inviterName: await this.inviterName(inv),
       role: inv.role,
       email: inv.email,
       name: inv.name,
@@ -120,7 +120,7 @@ export class InvitationsController {
     }
     const title = '邀请过期，请重新发送';
     const body = `${inv.orgName}：发给 ${inv.email} 的邀请已过期，对方请您重新发送。`;
-    const link = await this.inviterLink(inv.invitedBy, inv.orgId);
+    const link = (await this.byOperator(inv.invitedBy)) ? `/operator/organizations/${inv.orgId}` : '/customer/organization';
     // 同一封邀请只提醒一次
     const [already] = await this.db
       .select({ id: notifications.id })
@@ -128,17 +128,22 @@ export class InvitationsController {
       .where(and(eq(notifications.userId, inv.invitedBy), eq(notifications.title, title), eq(notifications.body, body)))
       .limit(1);
     if (!already) await this.notifications.notify([inv.invitedBy], { title, body, link });
-    return { inviterName: inv.inviterName };
+    return { inviterName: await this.inviterName(inv) };
   }
 
-  // 运营发的邀请进组织详情；机构管理员发的（第 7 项）进组织管理
-  private async inviterLink(userId: string, orgId: string): Promise<string> {
+  // 运营发的邀请：提醒进组织详情，对客户显示「耕云运营」（和邀请邮件一致）；
+  // 机构管理员发的（第 7 项）：提醒进组织管理，显示管理员姓名
+  private async byOperator(userId: string): Promise<boolean> {
     const [m] = await this.db
       .select({ role: memberships.role })
       .from(memberships)
       .where(and(eq(memberships.userId, userId), eq(memberships.role, 'operator')))
       .limit(1);
-    return m ? `/operator/organizations/${orgId}` : '/customer/organization';
+    return Boolean(m);
+  }
+
+  private async inviterName(inv: { invitedBy: string; inviterName: string }): Promise<string> {
+    return (await this.byOperator(inv.invitedBy)) ? '耕云运营' : inv.inviterName;
   }
 
   private async find(token: string) {

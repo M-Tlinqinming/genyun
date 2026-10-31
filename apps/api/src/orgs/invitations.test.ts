@@ -107,7 +107,7 @@ describe('打开邀请链接', () => {
     expect(res.body).toMatchObject({
       state: 'valid',
       orgName: '查看邀请机构',
-      inviterName: '赵运营',
+      inviterName: '耕云运营',
       role: 'customer_admin',
       email: 'view@test.cn',
       name: '孙经理',
@@ -180,7 +180,7 @@ describe('接受邀请', () => {
     const mails = mailer.sent.length;
     const res = await anon().post(`/api/invitations/${token}/request-resend`);
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ inviterName: '赵运营' });
+    expect(res.body).toMatchObject({ inviterName: '耕云运营' });
     expect((await anon().post(`/api/invitations/${token}/request-resend`)).status).toBe(200);
     // 不发邮件、不生成新邀请
     expect(mailer.sent.length).toBe(mails);
