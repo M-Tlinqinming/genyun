@@ -336,13 +336,17 @@ class Writer {
       indent: style.firstLineChars ? { firstLineChars: style.firstLineChars * 100 } : undefined,
       numbering: opts.list ? { reference: opts.list.reference, level: 0, instance: opts.list.instance } : undefined,
       pageBreakBefore: this.takeBreak(),
-      children: runs.map(
-        (r) =>
-          new TextRun({
-            text: typeof r === 'string' ? r : r.text,
-            bold: (typeof r !== 'string' && r.bold) || style.bold || undefined,
-            size: style.size,
-          }),
+      // 段内换行（编辑器里 Shift+Enter 存成 \n）写成 Word 的换行，不然显示成空格
+      children: runs.flatMap((r) =>
+        (typeof r === 'string' ? r : r.text).split('\n').map(
+          (part, i) =>
+            new TextRun({
+              text: part,
+              break: i > 0 ? 1 : undefined,
+              bold: (typeof r !== 'string' && r.bold) || style.bold || undefined,
+              size: style.size,
+            }),
+        ),
       ),
     });
   }
