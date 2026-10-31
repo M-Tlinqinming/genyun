@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+# 官网（apps/site）不进这个镜像，只为让 npm ci 与锁文件里的工作区一致
+COPY apps/site/package.json apps/site/
 COPY packages/shared/package.json packages/shared/
 RUN npm ci
 COPY . .
@@ -20,6 +22,7 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
+COPY apps/site/package.json apps/site/
 COPY packages/shared/package.json packages/shared/
 RUN npm ci --omit=dev -w @genyun/api && npm cache clean --force
 COPY --from=build /app/packages/shared/src packages/shared/src

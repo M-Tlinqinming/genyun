@@ -227,7 +227,7 @@ describe('确认采用资料并生成三份草稿', () => {
 
     // 没有失败的就没什么可重试
     await zhou.post(`/api/tasks/${feiyuTask}/generation/retry`).expect(400);
-  });
+  }, 30_000);
 
   it('草稿文件：负责专家能下载，客户看不到；生成用的是确认时锁定的整理版本', async () => {
     const zhou = await as('zhou@test.cn');

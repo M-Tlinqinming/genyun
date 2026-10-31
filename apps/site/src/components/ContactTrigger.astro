@@ -1,0 +1,14 @@
+---
+// 打开联系窗口的入口。没有脚本时退回到页脚「联系」一栏（#contact）。
+import type { ContactTopic } from '../site';
+
+interface Props {
+  topic?: ContactTopic;
+  /** 「上线时通知我」对应的模块名，写进窗口说明 */
+  item?: string;
+  class?: string;
+}
+const { topic = 'demo', item, class: className } = Astro.props;
+---
+
+<a href="#contact" data-contact={topic} data-item={item} class={className}><slot /></a>

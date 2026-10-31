@@ -19,7 +19,7 @@ const row = (page: Page, key: string) => page.locator(`[data-fact="${key}"]`);
 
 test.beforeAll(async () => {
   // 客户提交后补传一份待补资料（应急物资台账），专家在原件对照里能看到
-  const api = await request.newContext({ baseURL: 'http://localhost:5174' });
+  const api = await request.newContext({ baseURL: test.info().project.use.baseURL });
   await api.post('/api/auth/login', { data: { email: 'feiyu@demo.genyun.net.cn', password: 'e2e-password' } });
   const me = await (await api.get('/api/auth/me')).json();
   const orgId = me.memberships[0].orgId as string;
