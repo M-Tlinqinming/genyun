@@ -25,9 +25,13 @@ export function useSection(taskId: string, kind: DraftKind, sectionId: string | 
 
 export interface SaveSectionInput {
   saveId: string;
+  // 打开编辑页时的那一批草稿；之后重新生成过，后台拒绝（409，提示刷新）
+  batchId: string;
   baseRev: number;
   blocks: EditBlock[];
   note: string;
+  // 这次修改采用了「帮我改写这段」的 AI 文字时带上提示词版本，记进修订记录
+  aiPromptVersion?: string;
 }
 
 export function saveSection(taskId: string, kind: DraftKind, sectionId: string, input: SaveSectionInput) {
@@ -37,8 +41,8 @@ export function saveSection(taskId: string, kind: DraftKind, sectionId: string, 
   });
 }
 
-export function saveStatus(taskId: string, kind: DraftKind, saveId: string) {
-  return request<{ saved: false } | { saved: true; section: SectionView }>(`${base(taskId, kind)}/saves/${saveId}`);
+export function saveStatus(taskId: string, kind: DraftKind, saveId: string, batchId: string) {
+  return request<{ saved: false } | { saved: true; section: SectionView & { version: number } }>(`${base(taskId, kind)}/saves/${saveId}?batch=${batchId}`);
 }
 
 export function rewriteParagraph(taskId: string, kind: DraftKind, sectionId: string, text: string) {

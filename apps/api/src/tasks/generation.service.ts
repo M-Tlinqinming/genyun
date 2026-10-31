@@ -42,6 +42,7 @@ import {
   enterpriseDocumentVersions,
   files,
   generatedDrafts,
+  draftEdits,
   generationBatches,
   taskDocuments,
   tasks,
@@ -290,6 +291,9 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
   private async view(batch: typeof generationBatches.$inferSelect): Promise<GenerationProgress> {
     const [by] = await this.db.select({ name: users.name }).from(users).where(eq(users.id, batch.createdBy)).limit(1);
     const iso = (d: Date | null) => (d ? d.toISOString() : null);
+    // 三份里专家保存过修订的节数：重新生成前提醒专家这些修订要在新稿里重新对照
+    const edits = await this.db.select({ sections: draftEdits.sections }).from(draftEdits).where(eq(draftEdits.batchId, batch.id));
+    const editedSections = edits.reduce((n, e) => n + Object.keys(e.sections).length, 0);
     return {
       id: batch.id,
       workupVersion: batch.workupVersion,
@@ -297,6 +301,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
       materials: batch.materials,
       createdAt: batch.createdAt.toISOString(),
       createdByName: by?.name ?? '',
+      editedSections,
       drafts: (await this.drafts(batch.id)).map((d) => ({
         kind: d.kind as DraftKind,
         status: d.status,

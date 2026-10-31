@@ -1,5 +1,5 @@
 {
-  "id": "844d466a-81a3-40de-b9b7-f34a9bc94b57",
+  "id": "afc6e7eb-c045-4351-9d72-51155cbdbea7",
   "prevId": "3fb7e95b-d395-46bc-a623-b6194525010d",
   "version": "7",
   "dialect": "postgresql",
@@ -401,6 +401,12 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "ai_prompt_version": {
+          "name": "ai_prompt_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "rev": {
           "name": "rev",

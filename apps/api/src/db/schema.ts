@@ -492,6 +492,8 @@ export const draftRevisions = pgTable(
     note: text('note').notNull(),
     before: jsonb('before').$type<EditBlock[]>().notNull(),
     after: jsonb('after').$type<EditBlock[]>().notNull(),
+    // 这次修改采用了「帮我改写这段」的 AI 文字时，记下提示词版本；没用 AI 为 null
+    aiPromptVersion: text('ai_prompt_version'),
     // 保存后这一节的 rev 和整份的 version
     rev: integer('rev').notNull(),
     version: integer('version').notNull(),
