@@ -1,11 +1,21 @@
 import { orgRegisterSchema, type OrgRegisterInput } from '@genyun/shared';
 import { App, Form, Input, Modal } from 'antd';
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { useOperatorOrg, useSaveOrg } from '../../api/operator';
 import { Loading } from '../../components/ui';
 import { gy } from '../../theme/tokens';
 
-const half = { flex: 1, minWidth: 0 } as const;
+// 出错时错误提示占掉下边距，这里固定留 20px，字段之间不会挤在一起
+const item = { marginBottom: 20 } as const;
+const half = { ...item, flex: 1, minWidth: 0 } as const;
+
+// 必填星号放在标签后面，与开通弹窗一致
+const requiredAfter = (label: ReactNode, { required }: { required: boolean }) => (
+  <>
+    {label}
+    {required && <span style={{ color: gy.error, marginLeft: 4 }}>*</span>}
+  </>
+);
 
 // 登记客户组织 / 修改资料。Paper 没有这个弹窗的高保真，按设计系统表单做（DESIGN-DIFF「M3 第 1 项」）
 export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | null; open: boolean; onClose: () => void }) {
@@ -68,7 +78,16 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
 
   return (
     <Modal
-      title={editing ? '修改客户组织资料' : '登记客户组织'}
+      title={
+        <div>
+          <div style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500 }}>{editing ? '修改客户组织资料' : '登记客户组织'}</div>
+          <div style={{ fontSize: 14, lineHeight: '22px', fontWeight: 400, color: gy.secondary, marginTop: 4 }}>
+            {editing
+              ? '改动会同步到开通信息和组织详情。'
+              : '合作已确认就可以先登记，列表里显示为「待开通」；签好合同、款到账后再开通。邮箱默认作为首位管理员的邮箱。'}
+          </div>
+        </div>
+      }
       open={open}
       onCancel={close}
       onOk={() => form.submit()}
@@ -82,11 +101,8 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
       {editing && detail.isPending ? (
         <Loading rows={6} card={false} />
       ) : (
-        <Form form={form} layout="vertical" onFinish={onFinish} requiredMark style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary, marginBottom: 16 }}>
-            合作已确认就可以先登记，列表里显示为「待开通」；签好合同、款到账后再开通。
-          </div>
-          <Form.Item name="name" label="组织名称" required rules={[fieldRule('name')]}>
+        <Form form={form} layout="vertical" onFinish={onFinish} requiredMark={requiredAfter} style={{ marginTop: 24 }}>
+          <Form.Item name="name" label="组织名称" required rules={[fieldRule('name')]} style={item}>
             <Input placeholder="与营业执照一致，如：华东安评服务有限公司" maxLength={100} />
           </Form.Item>
           <div style={{ display: 'flex', gap: 16 }}>
@@ -105,7 +121,7 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
               <Input maxLength={30} />
             </Form.Item>
           </div>
-          <Form.Item name="contactEmail" label="邮箱" rules={[fieldRule('contactEmail')]} extra="选填。开通时会默认作为首位管理员的邮箱。">
+          <Form.Item name="contactEmail" label="邮箱" rules={[fieldRule('contactEmail')]} style={item}>
             <Input />
           </Form.Item>
           <Form.Item name="note" label="备注" rules={[fieldRule('note')]} style={{ marginBottom: 0 }}>

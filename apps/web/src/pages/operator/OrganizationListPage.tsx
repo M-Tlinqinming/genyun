@@ -42,7 +42,7 @@ function ServiceCell({ org: o }: { org: OperatorOrgRow }) {
     return (
       <>
         <span>—</span>
-        <span style={secondLine}>开通时登记</span>
+        <span style={secondLine}>开通时填写</span>
       </>
     );
   }
@@ -179,7 +179,7 @@ export function OrganizationListPage() {
               />
             </div>
             <Button onClick={reset} disabled={!filtered}>
-              重置
+              清除筛选
             </Button>
           </div>
           <Table<OperatorOrgRow>
@@ -200,7 +200,10 @@ export function OrganizationListPage() {
                     {registerButton}
                   </Empty>
                 ) : (
-                  <Empty description="没有符合条件的组织" style={{ padding: '48px 0' }}>
+                  <Empty
+                    description={filtered || tab === 'all' ? '没有符合条件的组织' : `没有${ORG_SERVICE_STATES[tab]}的组织`}
+                    style={{ padding: '48px 0' }}
+                  >
                     {filtered && <Button onClick={reset}>清除筛选</Button>}
                   </Empty>
                 ),

@@ -140,7 +140,9 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
     if (gaps.length > 0) return;
     openOrg.mutate(draft, {
       onSuccess: (r) => {
-        if (r.invitation.mailSent) message.success(`已开通，邀请已发到 ${r.invitation.email}`);
+        // 模拟发信（本机、预览环境）时说明邮件没有真的发出
+        const simulated = r.invitation.mailSimulated ? '（预览环境未真实发送邮件）' : '';
+        if (r.invitation.mailSent) message.success(`已开通，邀请已发到 ${r.invitation.email}${simulated}`);
         else message.warning('已开通，但邀请邮件没发出去。请稍后在组织详情里重新发送');
         onClose();
       },
@@ -166,14 +168,18 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
         </div>
       }
       footer={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span role="status" style={{ flex: 1, textAlign: 'left', fontSize: 12, lineHeight: '20px', color: gy.secondary }}>
-            {org && gaps.length > 0 ? `还差：${gaps.join('、')}` : ''}
-          </span>
-          <Button onClick={close}>取消</Button>
-          <Button type="primary" onClick={submit} disabled={!org || gaps.length > 0} loading={openOrg.isPending}>
-            开通并发送邀请
-          </Button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {org && gaps.length > 0 && (
+            <div role="status" style={{ textAlign: 'right', fontSize: 12, lineHeight: '20px', color: gy.secondary }}>
+              还差：{gaps.join('、')}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button onClick={close}>取消</Button>
+            <Button type="primary" onClick={submit} disabled={!org || gaps.length > 0} loading={openOrg.isPending}>
+              开通并发送邀请
+            </Button>
+          </div>
         </div>
       }
     >
@@ -191,8 +197,12 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingTop: 8 }}>
             <div style={{ background: '#FAFAFB', border: `1px solid ${gy.split}`, borderRadius: 6, padding: '12px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-                <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500 }}>{org.name}</span>
-                <button type="button" style={linkButtonSmall} onClick={() => setEditingOrg(true)}>
+                <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, minWidth: 0 }}>{org.name}</span>
+                <button
+                  type="button"
+                  style={{ ...linkButtonSmall, whiteSpace: 'nowrap', flexShrink: 0 }}
+                  onClick={() => setEditingOrg(true)}
+                >
                   修改资料
                 </button>
               </div>
