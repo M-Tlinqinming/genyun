@@ -29,8 +29,9 @@ import {
 import { App, Button, Result, Tooltip } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useContacts } from '../../api/contacts';
+import { useGeneration } from '../../api/generation';
 import { ApiError } from '../../api/request';
 import { useTask, useTaskCheck } from '../../api/tasks';
 import { useSaveFact, useSaveFigures, useSaveProduction, useSaveRisk, useSaveScope, useWorkup, workupKey } from '../../api/workup';
@@ -38,9 +39,11 @@ import { linkButton, Loading } from '../../components/ui';
 import { FadeSwap } from '../../theme/motion';
 import { gy, stage } from '../../theme/tokens';
 import { ContactDialog, type AskItem } from './workup/ContactDialog';
+import { ConfirmView } from './workup/ConfirmView';
 import { ContactRecords } from './workup/ContactRecords';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { FiguresPanel, type FiguresSaveInput } from './workup/FiguresPanel';
+import { GenerationView, phaseOf } from './workup/GenerationView';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
 import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
@@ -58,7 +61,9 @@ function clock(iso: string): string {
 }
 
 // I05 处理工作台 · 专业整理（14 页 E18-00A–D、E18-00F）：左栏整理模块、中栏企业事实 / 生产设备与物料 / 危险源辨识 / 适用范围、
-// 右栏原件对照、评价依据或生成结构预览；图件的两张图占中栏和右栏
+// 右栏原件对照、评价依据或生成结构预览；图件的两张图占中栏和右栏。
+// 整理完以后同一页切到确认采用资料（E18-01，?view=confirm）和三份草稿的生成进度（E18-02、E18-02b）：
+// 生成过草稿就默认看进度，?view=workup 回到整理
 export function ExpertTaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
@@ -70,6 +75,8 @@ export function ExpertTaskPage() {
   const saveFigures = useSaveFigures(taskId);
   const contacts = useContacts(taskId);
   const check = useTaskCheck(taskId);
+  const generation = useGeneration(taskId);
+  const [params, setParams] = useSearchParams();
   const client = useQueryClient();
   const navigate = useNavigate();
   const { message } = App.useApp();
@@ -135,8 +142,14 @@ export function ExpertTaskPage() {
     setTimeout(() => sections.current.get(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
+  const showView = (view: 'workup' | 'confirm' | null) => {
+    setParams(view ? { view } : {});
+    window.scrollTo({ top: 0 });
+  };
+
   const goToNextMissing = () => {
     if (gaps.length === 0) return;
+    if (params.get('view')) setParams({});
     const at = gaps.findIndex((g) => g.key === focusKey);
     const next = gaps[at + 1] ?? gaps[0]!;
     setFocusKey(next.key);
@@ -261,7 +274,7 @@ export function ExpertTaskPage() {
       <ArrowLeftOutlined /> 返回任务中心
     </button>
   );
-  if (task.isPending || workup.isPending) return <Loading rows={6} />;
+  if (task.isPending || workup.isPending || generation.isPending) return <Loading rows={6} />;
   if (task.isError) {
     return <Result status="404" title="找不到该任务" subTitle="任务不存在，或没有分派给您。" extra={back} />;
   }
@@ -270,6 +283,80 @@ export function ExpertTaskPage() {
   }
 
   const w = workup.data;
+  const current = generation.data?.current ?? null;
+  const requested = params.get('view');
+  const view = requested === 'confirm' ? 'confirm' : requested !== 'workup' && current ? 'generation' : 'workup';
+  const phase = current ? phaseOf(current) : null;
+
+  if (view !== 'workup') {
+    const chip =
+      view === 'confirm'
+        ? gaps.length
+          ? { text: `整理中 · 必需项 ${done} / ${required}`, ...stage.action }
+          : { text: '整理完成 · 待采用', ...stage.action }
+        : phase === 'running'
+          ? { text: '生成中', color: gy.primary, bg: gy.selected }
+          : phase === 'failed'
+            ? { text: '生成部分失败', ...stage.error }
+            : { text: '草稿已生成', ...stage.done };
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, margin: '-16px 0 -24px', paddingBottom: 24 }}>
+        <header style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <nav aria-label="面包屑" style={{ ...text14, color: gy.secondary }}>
+            <Link to="/expert" style={{ color: gy.secondary }}>
+              任务中心
+            </Link>
+            {`　/　${task.data.enterpriseName}　/　${view === 'confirm' ? '确认采用资料' : '生成草稿'}`}
+          </nav>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 500, lineHeight: '32px', color: gy.text }}>{task.data.enterpriseName}</h1>
+            <span style={{ ...text14, color: gy.secondary }}>{task.data.number}</span>
+            <span style={{ flex: 1 }} />
+            <span role="status" style={{ ...text14, padding: '2px 10px', borderRadius: 4, background: chip.bg, color: chip.color }}>
+              {chip.text}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '0 0 12px', borderBottom: `1px solid ${gy.split}` }}>
+            <ol aria-label="处理阶段" style={{ display: 'flex', gap: 28, flex: 1, margin: 0, padding: 0, listStyle: 'none' }}>
+              {STAGES.map((s, i) => {
+                const at = view === 'confirm' ? 0 : 1;
+                return (
+                  <li key={s} aria-current={i === at ? 'step' : undefined} style={{ ...text14, color: i === at ? gy.primary : gy.secondary }}>
+                    {i + 1}　{s}
+                  </li>
+                );
+              })}
+            </ol>
+            <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setShowRecords(true)}>
+              处理记录{contacts.data?.length ? `（${contacts.data.length}）` : ''}
+            </button>
+          </div>
+        </header>
+        {view === 'confirm' ? (
+          <ConfirmView
+            taskId={taskId}
+            workup={w}
+            gaps={gaps}
+            required={required}
+            hasDrafts={current !== null}
+            onBackToWorkup={() => showView('workup')}
+            onNextMissing={goToNextMissing}
+            onStarted={() => showView(null)}
+          />
+        ) : (
+          <GenerationView
+            taskId={taskId}
+            taskNumber={task.data.number}
+            generation={current!}
+            onBackToCenter={() => navigate('/expert')}
+            onBackToWorkup={() => showView('workup')}
+          />
+        )}
+        <ContactRecords taskId={taskId} open={showRecords} onClose={() => setShowRecords(false)} />
+      </div>
+    );
+  }
+
   const saved = w.updatedByName ? `已自动保存 ${clock(w.updatedAt)}` : '还没有修改';
   // 适用范围的待确认开关、待采用的图在底栏各合成一条
   const scopeGaps = gaps.filter((g) => g.module === 'scope').length;
@@ -603,11 +690,17 @@ export function ExpertTaskPage() {
         <Button onClick={goToNextMissing} disabled={gaps.length === 0}>
           下一个缺失项
         </Button>
-        <Tooltip title="生成三份草稿在 M2 第 10 项开放">
-          <Button type="primary" disabled>
+        {current && phase !== 'done' ? (
+          <Tooltip title="三份草稿正在生成或有失败的份，先去看生成进度">
+            <Button type="primary" onClick={() => showView(null)}>
+              查看生成进度
+            </Button>
+          </Tooltip>
+        ) : (
+          <Button type="primary" onClick={() => showView('confirm')}>
             完成整理，去核对
           </Button>
-        </Tooltip>
+        )}
       </section>
 
       <ContactDialog

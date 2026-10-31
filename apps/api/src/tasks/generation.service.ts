@@ -7,11 +7,16 @@ import {
   DRAFT_KINDS,
   draftActive,
   generationConfirmSchema,
+  materialsFingerprint,
   planInputOf,
+  SELF_FILL_STEP_TITLES,
   workupGaps,
   type DraftKind,
+  type GenerationMaterials,
   type GenerationProgress,
   type LockedMaterial,
+  type AdoptedMaterial,
+  type WorkupSnapshot,
 } from '@genyun/shared';
 import {
   BadRequestException,
@@ -32,7 +37,16 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { files, generatedDrafts, generationBatches, tasks, taskWorkups, users } from '../db/schema.ts';
+import {
+  enterpriseDocumentVersions,
+  files,
+  generatedDrafts,
+  generationBatches,
+  taskDocuments,
+  tasks,
+  taskWorkups,
+  users,
+} from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { DRAFT_RENDERER, type DraftRenderer } from '../generation/drafts.ts';
 import { DRAFT_QUEUE, type DraftJob, type DraftQueue } from '../generation/queue.ts';
@@ -85,6 +99,18 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     if (gaps.length > 0) {
       throw new BadRequestException({ statusCode: 400, message: `还差 ${gaps.length} 项没有整理完，补齐后才能生成`, reason: 'gaps', gaps });
     }
+    // 专家看确认页以后客户又传了文件或新版本：不生成，留在本页把变了的行标出来
+    if (parsed.data.materials !== undefined) {
+      const now = await this.materialsOf(task.id, row.snapshot, row.snapshotAt);
+      if (now.fingerprint !== parsed.data.materials) {
+        throw new ConflictException({
+          statusCode: 409,
+          message: '客户刚更新了资料，已标出有变化的资料，请看过后再确认',
+          reason: 'materials',
+          materials: now,
+        });
+      }
+    }
     const current = await this.latest(task.id);
     if (current && (await this.drafts(current.id)).some(draftActive)) {
       throw new ConflictException('草稿正在生成，请等这一批生成完');
@@ -113,6 +139,63 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     });
     for (const kind of DRAFT_KIND_KEYS) await this.queue.add({ batchId: batch.id, kind });
     return this.view(batch);
+  }
+
+  // 确认页左表：本次采用的资料，以及与整理时相比有没有变化
+  async materials(user: SessionUser, id: string): Promise<GenerationMaterials> {
+    const task = await this.workup.task(user, id);
+    const [row] = await this.db.select().from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
+    if (!row) throw new BadRequestException('还没有开始整理');
+    return this.materialsOf(task.id, row.snapshot, row.snapshotAt);
+  }
+
+  private async materialsOf(taskId: string, snapshot: WorkupSnapshot, snapshotAt: Date): Promise<GenerationMaterials> {
+    const originals = await this.workup.originals(taskId, snapshot);
+    // 任务用的资料库文件，各自对应的资料现在最新是第几版
+    const linked = await this.db
+      .select({ documentId: taskDocuments.documentId, fileId: enterpriseDocumentVersions.fileId })
+      .from(taskDocuments)
+      .innerJoin(enterpriseDocumentVersions, eq(enterpriseDocumentVersions.id, taskDocuments.versionId))
+      .where(eq(taskDocuments.taskId, taskId));
+    const versions = linked.length
+      ? await this.db
+          .select({
+            documentId: enterpriseDocumentVersions.documentId,
+            version: enterpriseDocumentVersions.version,
+            createdAt: enterpriseDocumentVersions.createdAt,
+          })
+          .from(enterpriseDocumentVersions)
+          .where(inArray(enterpriseDocumentVersions.documentId, [...new Set(linked.map((l) => l.documentId))]))
+      : [];
+    const newest = (fileId: string) => {
+      const doc = linked.find((l) => l.fileId === fileId)?.documentId;
+      return versions.filter((v) => v.documentId === doc).sort((a, b) => b.version - a.version)[0];
+    };
+
+    const rows: AdoptedMaterial[] = originals.map((o) => {
+      const top = o.version !== null ? newest(o.fileId) : undefined;
+      const change =
+        top && top.version > o.version!
+          ? ({ kind: 'newer', version: top.version, uploadedAt: top.createdAt.toISOString() } as const)
+          : o.uploadedAt > snapshotAt
+            ? ({ kind: 'added' } as const)
+            : null;
+      return {
+        key: o.fileId,
+        name: o.name,
+        fileId: o.fileId,
+        version: o.version,
+        step: null,
+        uploadedAt: o.uploadedAt.toISOString(),
+        change,
+      };
+    });
+    const p = snapshot.profile;
+    [p.basicStep, p.organizationStep, p.productionStep, p.resourcesStep].forEach((filled, i) => {
+      if (!filled) return;
+      rows.push({ key: `step-${i + 1}`, name: SELF_FILL_STEP_TITLES[i]!, fileId: null, version: null, step: i + 1, uploadedAt: null, change: null });
+    });
+    return { rows, fingerprint: materialsFingerprint(rows) };
   }
 
   // 只把失败的份重新排队，已生成的不动
@@ -228,6 +311,11 @@ export class GenerationController {
   @Get()
   async progress(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     return { current: await this.service.progress(user, id) };
+  }
+
+  @Get('materials')
+  async materials(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.materials(user, id);
   }
 
   @Post()

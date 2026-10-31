@@ -22,7 +22,10 @@ export function defaultRenderer(): DraftRenderer {
   const drafter = defaultDrafter();
   // 服务器镜像装了 LibreOffice（见 Dockerfile）；本机用 SOFFICE_PATH 指定
   const pdf = Boolean(process.env.SOFFICE_PATH) || process.env.NODE_ENV === 'production';
+  // 浏览器测试模拟失败：DRAFT_FAIL_ONCE=risk 让这一份第一次生成失败；正式环境不认
+  const failOnce = new Set(process.env.NODE_ENV === 'production' ? [] : (process.env.DRAFT_FAIL_ONCE ?? '').split(',').filter(Boolean));
   return async (kind, input) => {
+    if (failOnce.delete(kind)) throw new Error('模拟连接中断');
     // 附件 7 的客户图纸转图片在第 10c 项接上
     const { document, notes } = await generateDocument(kind, input, { drafter });
     const word = await renderWord(document);
