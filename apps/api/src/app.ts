@@ -18,6 +18,8 @@ import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.
 import { LicenseReader, LicenseRecognitionController } from './license/license-reader.ts';
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
 import { NotificationsController, NotificationsService } from './notifications/notifications.service.ts';
+import { defaultMailer, MAILER, type Mailer } from './mail/mailer.ts';
+import { OperatorOrgsController } from './orgs/operator-orgs.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
 import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/drawings.service.ts';
@@ -50,6 +52,8 @@ export interface AppOptions {
   renderer?: DraftRenderer;
   // 客户图纸转图片（工作线程）；测试可以传超时更短的
   drawingRenderer?: DrawingRenderer;
+  // 发邀请邮件；不传时模拟发信（写进 .data/mail-outbox 和服务日志）
+  mailer?: Mailer;
 }
 
 export async function createApp(db: Database, options: AppOptions = {}): Promise<INestApplication> {
@@ -58,6 +62,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       HealthController,
       AuthController,
       OrgsController,
+      OperatorOrgsController,
       EnterprisesController,
       EnterpriseProfileController,
       TasksController,
@@ -81,6 +86,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       },
       { provide: DRAFT_QUEUE, useFactory: () => options.queue ?? defaultQueue() },
       { provide: DRAFT_RENDERER, useFactory: () => options.renderer ?? defaultRenderer() },
+      { provide: MAILER, useFactory: () => options.mailer ?? defaultMailer() },
       { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
       AuthService,
       GenerationService,
