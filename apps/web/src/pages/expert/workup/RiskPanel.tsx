@@ -567,9 +567,8 @@ export function RiskBasisPanel({
   return (
     <aside
       aria-label="评价依据"
+      className="gy-side-panel"
       style={{
-        width: 360,
-        flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         background: gy.surface,

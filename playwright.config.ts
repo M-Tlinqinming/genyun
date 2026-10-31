@@ -21,6 +21,8 @@ const env = {
   // 生成草稿时风险评估报告第一次失败，测试只重试这一份（generation.spec）
   DRAFT_FAIL_ONCE: 'risk',
   SOFFICE_PATH: '',
+  // 邀请邮件里的链接指向测试用的前端
+  APP_ORIGIN: WEB_URL,
 };
 
 export default defineConfig({
