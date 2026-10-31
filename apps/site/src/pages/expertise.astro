@@ -72,11 +72,11 @@ const checks = [
           <div class="sample__body">
             <ul class="tags">
               <li class="tag tag--blue">机械制造</li>
-              <li class="tag">86 人</li>
+              <li class="tag">120 人</li>
               <li class="tag">涉及喷涂、可燃液体</li>
             </ul>
             <h2>工贸企业应急预案 · 脱敏样例</h2>
-            <p>综合预案、火灾与容器爆炸专项预案、10 个现场处置方案，以及对应的风险评估和资源调查报告。</p>
+            <p>综合预案、火灾与容器爆炸专项预案、10 个现场处置方案，以及对应的风险评估和<span class="nobr">资源调查报告。</span></p>
             <ContactTrigger topic="sample" class="text-link">索取完整样例<span aria-hidden="true">→</span></ContactTrigger>
           </div>
         </article>
@@ -100,7 +100,7 @@ const checks = [
           ))
         }
 
-        <p class="samples__empty" hidden data-filter-empty>这个行业的样例还在整理中。可以先看机械制造的样例，或<ContactTrigger topic="sample" class="text-link text-link--sm">索取同行业样例</ContactTrigger>。</p>
+        <p class="samples__empty" hidden data-filter-empty>这个行业的样例还在整理中。<button type="button" class="text-link text-link--sm" data-filter-go="机械制造">先看机械制造的样例</button>，或<ContactTrigger topic="sample" class="text-link text-link--sm">索取同行业样例</ContactTrigger>。</p>
         </div>
       </div>
     </div>
@@ -138,17 +138,34 @@ const checks = [
     const chips = [...root.querySelectorAll<HTMLButtonElement>('[data-filter]')];
     const cards = [...root.querySelectorAll<HTMLElement>('[data-industry]')];
     const empty = root.querySelector<HTMLElement>('[data-filter-empty]');
+    const note = root.querySelector<HTMLElement>('[data-filter-note]');
     for (const chip of chips) {
       chip.addEventListener('click', () => {
         const want = chip.dataset.filter ?? '';
         for (const c of chips) c.setAttribute('aria-pressed', String(c === chip));
         let shown = 0;
+        let coming = 0;
         for (const card of cards) {
           const match = !want || card.dataset.industry === want;
           card.hidden = !match;
           if (match) shown++;
+          if (match && card.classList.contains('sample--coming')) coming++;
         }
         if (empty) empty.hidden = shown > 0;
+        // 读屏软件通过 aria-live 听到筛选结果，例如「电子电器：1 份（整理中）」
+        if (note) {
+          const name = want || '全部行业';
+          const detail = coming === 0 ? '' : coming === shown ? '（整理中）' : `（其中 ${coming} 份整理中）`;
+          note.textContent = shown ? `${name}：${shown} 份${detail}` : `${name}：暂无样例`;
+        }
+      });
+    }
+    // 空状态里的「先看机械制造的样例」：切到对应行业，焦点放到那个筛选按钮上（按钮本身随空状态隐藏）
+    for (const go of root.querySelectorAll<HTMLButtonElement>('[data-filter-go]')) {
+      go.addEventListener('click', () => {
+        const target = chips.find((c) => c.dataset.filter === go.dataset.filterGo);
+        target?.click();
+        target?.focus();
       });
     }
   }
@@ -289,6 +306,8 @@ const checks = [
     color: var(--site-heading);
   }
   .sample p {
+    /* 避免段落末行只剩一两个字（1366 宽主样例说明） */
+    text-wrap: pretty;
     font-size: 14px;
     line-height: 24px;
     color: var(--site-body);
@@ -374,6 +393,12 @@ const checks = [
     color: var(--site-body);
   }
 
+  /* 筛到只剩整理中的卡片时，右栏保持原来的宽度（1 / 2.3），不拉满整行；空状态的说明不受限 */
+  @media (min-width: 1101px) {
+    .samples__list:has(> .sample--main[hidden]) .samples__aside:not(:has(> [data-filter-empty]:not([hidden]))) {
+      flex: 0 0 calc((100% - 32px) / 2.3);
+    }
+  }
   @media (max-width: 1100px) {
     .samples__list {
       flex-wrap: wrap;

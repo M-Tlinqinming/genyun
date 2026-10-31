@@ -7,7 +7,7 @@ import { PHONE, PHONE_HREF } from '../site';
 
 // 「您提供」照产品里真实的填报 5 步（apps/web FILL_STEPS）；Paper 画的是 4 步，见 DESIGN-DIFF
 const inputs = [
-  ['企业基本信息', '拍照上传营业执照，自动识别名称、信用代码、地址'],
+  ['企业基本信息', '上传营业执照，自动识别（识别不了时可以手动填）'],
   ['人员与应急组织', '谁负责、怎么联系；也可直接上传花名册'],
   ['生产情况', '场所、设备、物料与工艺；拿不准有没有的拍照给耕云看'],
   ['应急资源与图纸', '应急物资、急救药箱，以及厂区平面图等图纸'],
@@ -38,7 +38,8 @@ const plans = [
   },
 ];
 // 第 1 条照 Paper；其余四条 Paper 只画了问题，答案是自拟的，待 Martin 审定（见 DESIGN-DIFF）
-const faqs = [
+// 只写系统现在真能做到的（代码审查 #59）
+const faqs: { q: string; a: string; link?: { href: string; label: string } }[] = [
   {
     q: '我们没有专职安全工程师，能用吗？',
     a: '能。表单只问您清楚的事实，比如有多少人、有哪些设备。风险评分、法规匹配这些专业判断由耕云的注册安全工程师完成；一时查不到的先选「稍后补」，拿不准有没有的拍照给耕云看。',
@@ -53,11 +54,12 @@ const faqs = [
   },
   {
     q: '交付后发现要改怎么办？',
-    a: '文件内容以您提供并确认的企业事实为准。信息有误或之后有变化，可以在任务中提交补充，我们据此修订并发布新版本，旧版本保留可查。',
+    a: '文件内容以您提供并确认的企业事实为准。交付后 3 天内，因事实变化可免费修订 2 次；如需修订，联系负责的注安师。',
   },
   {
     q: '企业资料会被用于其他用途吗？',
-    a: '不会。您提供的企业资料只用于为您生成安全文件，加密存储，只有您授权的成员和负责该任务的专业人员能看到。详见隐私说明。',
+    a: '不会。您提供的企业资料只用于为您生成安全文件：文件私有存储，本组织成员、负责该任务的注安师，以及耕云运营人员按职责查看。详见',
+    link: { href: '/privacy/', label: '隐私说明' },
   },
 ];
 ---
@@ -181,7 +183,8 @@ const faqs = [
                 <span>{f.q}</span>
                 <i aria-hidden="true" />
               </summary>
-              <p>{f.a}</p>
+              {/* 写在一行里，免得「详见」和链接之间多出空格 */}
+              <p>{f.a}{f.link && <><a href={f.link.href}>{f.link.label}</a>。</>}</p>
             </details>
           ))
         }
@@ -502,6 +505,11 @@ const faqs = [
     font-size: 15px;
     line-height: 27px;
     color: var(--site-body);
+  }
+  .faq details p a {
+    color: var(--site-heading);
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
   @media (max-width: 1100px) {

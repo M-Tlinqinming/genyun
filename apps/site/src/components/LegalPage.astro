@@ -45,26 +45,68 @@ const { title, description, pill, toc } = Astro.props;
 </Base>
 
 <script>
-  // 滚动时目录高亮当前一节；不支持 IntersectionObserver 时停在第一项
+  // 目录高亮当前一节：
+  // - 点目录项：直接标被点的那一项（后几节很短，滚不到顶部，靠位置算会标错），直到用户自己再滚动
+  // - 滚动：取顶部已经越过判定线的最后一节；滚到页底时标最后一节
+  const LINE = 120; // 判定线：视口顶部往下 120px（各节 scroll-margin-top 是 32px）
   const links = [...document.querySelectorAll<HTMLAnchorElement>('.legal__toc a')];
   const sections = links
     .map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1))))
     .filter((s): s is HTMLElement => !!s);
+  let pinned: string | null = null;
+
   const mark = (id: string) => {
     for (const a of links) {
       if (a.hash === `#${id}`) a.setAttribute('aria-current', 'true');
       else a.removeAttribute('aria-current');
     }
   };
-  if ('IntersectionObserver' in window && sections.length) {
-    const io = new IntersectionObserver(
-      (entries) => {
-        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (top) mark(top.target.id);
-      },
-      { rootMargin: '0px 0px -70% 0px' },
-    );
-    for (const s of sections) io.observe(s);
+  const current = () => {
+    const root = document.documentElement;
+    if (window.scrollY + window.innerHeight >= root.scrollHeight - 2) return sections[sections.length - 1];
+    let found = sections[0];
+    for (const s of sections) if (s.getBoundingClientRect().top <= LINE) found = s;
+    return found;
+  };
+  let queued = false;
+  const update = () => {
+    queued = false;
+    if (!pinned && sections.length) mark(current().id);
+  };
+  const schedule = () => {
+    if (!queued) {
+      queued = true;
+      requestAnimationFrame(update);
+    }
+  };
+
+  for (const a of links) {
+    a.addEventListener('click', () => {
+      pinned = decodeURIComponent(a.hash.slice(1));
+      mark(pinned);
+    });
+  }
+  // 用户自己滚动（滚轮、触摸、键盘）才取消「点哪项标哪项」；点击后的平滑滚动不算
+  const unpin = () => {
+    if (pinned) {
+      pinned = null;
+      schedule();
+    }
+  };
+  window.addEventListener('wheel', unpin, { passive: true });
+  window.addEventListener('touchstart', unpin, { passive: true });
+  window.addEventListener('keydown', (e) => {
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) unpin();
+  });
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule);
+
+  const fromHash = decodeURIComponent(location.hash.slice(1));
+  if (sections.some((s) => s.id === fromHash)) {
+    pinned = fromHash;
+    mark(fromHash);
+  } else {
+    update();
   }
 </script>
 
@@ -73,7 +115,7 @@ const { title, description, pill, toc } = Astro.props;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 20px;
+    gap: 8px 24px;
     font-size: 13px;
     line-height: 20px;
     color: #ffffff99;
@@ -96,13 +138,13 @@ const { title, description, pill, toc } = Astro.props;
     width: 240px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
   }
+  /* 「目录」行高 22、下方留 12（W06 / W07） */
   .legal__toc p {
-    margin-bottom: 8px;
+    margin-bottom: 12px;
     font-family: var(--font-mono);
     font-size: 11px;
-    line-height: 14px;
+    line-height: 22px;
     letter-spacing: 0.14em;
     color: var(--site-muted-warm);
   }
@@ -171,8 +213,9 @@ const { title, description, pill, toc } = Astro.props;
   .legal__body :global(.legal-summary) {
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    padding: 32px 36px;
+    /* 两页的卡片内边距不同，由页面用变量指定（与 --legal-accent 一样，避免和这里的选择器比优先级） */
+    gap: var(--legal-summary-gap, 20px);
+    padding: var(--legal-summary-pad, 32px 36px);
     background: #fff;
     border-radius: 12px;
     border-left: 4px solid var(--legal-accent);
