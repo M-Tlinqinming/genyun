@@ -197,6 +197,12 @@ const { title, description, pill, toc } = Astro.props;
     line-height: 30px;
     color: var(--site-article);
   }
+  .legal__body :global(section > p a) {
+    color: var(--gy-brand-blue);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    white-space: nowrap;
+  }
   .legal__body :global(.legal-note) {
     border-radius: 8px;
     padding: 14px 18px;

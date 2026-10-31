@@ -1,6 +1,7 @@
 ---
 // 隐私说明（Paper「10 · 官网与账户」/ W06）。正文是草案，待法务审定，正式发布前不让搜索引擎收录。
 import LegalPage from '../components/LegalPage.astro';
+import { EMAIL, PHONE, PHONE_HREF } from '../site';
 
 const toc = [
   { id: 'summary', label: '三句话说清' },
@@ -43,6 +44,7 @@ const summary = [
   <section id="collect">
     <h2>1　我们收集哪些信息</h2>
     <p>为编制应急预案，我们需要企业基本信息（名称、统一社会信用代码、地址）、人员与应急分工（姓名、岗位、联系电话）、设备与物料情况，以及您上传的相关文件。人员资料里的联系电话只用于电话联系。账号信息包括登录邮箱和姓名。</p>
+    <p>开通服务时，我们登记贵单位联系人和管理员的姓名、电话、邮箱，以及签约合同，用于开通服务和日常联络。</p>
     <p class="legal-note">待法务确认：个人信息的最短保存期限、日志保存范围。</p>
   </section>
 
@@ -53,8 +55,8 @@ const summary = [
 
   <section id="store">
     <h2>3　如何存储与保护</h2>
-    <p>您上传的文件私有存储，只能通过有效期 5 分钟的链接下载；传输全程加密（HTTPS）。本组织成员、负责该任务的注安师，以及耕云运营人员按职责查看。</p>
-    <p>AI 起草由阿里云百炼大模型服务处理，仅用于生成本任务的文件。</p>
+    <p>您上传的文件私有存储，需登录后按权限查看，下载链接 5 分钟内有效；传输全程加密（HTTPS）。本组织成员、负责该任务的注安师，以及耕云运营人员按职责查看。</p>
+    <p>AI 起草由阿里云百炼大模型服务处理，仅用于生成本任务的文件。发给模型的只有场所、设备、物料名称，不含人员姓名和联系方式。</p>
   </section>
 
   <section id="share">
@@ -69,7 +71,7 @@ const summary = [
 
   <section id="contact-us">
     <h2>6　联系我们</h2>
-    <p class="legal-todo">正文待法务提供。</p>
+    <p>对本说明或您的资料有任何问题，或需要导出、删除资料，请致电 <a href={PHONE_HREF}>{PHONE}</a>，或发邮件到 <a href={`mailto:${EMAIL}`}>{EMAIL}</a>。</p>
   </section>
 </LegalPage>
 
