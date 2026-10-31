@@ -1,7 +1,7 @@
 // 预览环境的 Caddy 按路径把请求分给业务应用和官网（deploy/preview/Caddyfile）。
 // 业务应用新加顶层路由却忘了改 Caddyfile，部署后那个地址会打开官网的 404，这里提前拦住。
 // 放在 src 外面：要读仓库里的文件，用 Node 的 fs，不进前端的类型检查。
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -27,6 +27,20 @@ describe('预览环境的路径分流', () => {
 
   it('前端每个顶层路由都转给业务应用（本身和下级路径）', () => {
     for (const seg of topLevelSegments()) {
+      expect(appMatchers, seg).toContain(seg);
+      expect(appMatchers, `${seg}/*`).toContain(`${seg}/*`);
+    }
+  });
+
+  it('后台邮件里的链接（appLink）也转给业务应用，前端页面还没做时也一样', () => {
+    const api = new URL('../api/src/', import.meta.url);
+    const files = readdirSync(api, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'));
+    const segs = new Set<string>();
+    for (const f of files) {
+      for (const m of readFileSync(new URL(f.replaceAll('\\', '/'), api), 'utf8').matchAll(/appLink\(`(\/[^/`$]+)/g)) segs.add(m[1]!);
+    }
+    expect(segs.size, '找到 appLink 的链接').toBeGreaterThan(0);
+    for (const seg of segs) {
       expect(appMatchers, seg).toContain(seg);
       expect(appMatchers, `${seg}/*`).toContain(`${seg}/*`);
     }

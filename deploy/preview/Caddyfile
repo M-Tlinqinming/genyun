@@ -1,7 +1,7 @@
 # 同一个域名按路径分流：业务应用的路径交给 app 容器，其余都是官网静态页（/srv/site，镜像构建时生成）。
 # 为什么不用子域名，见 README「官网和业务应用怎么分」。
 #
-# 业务应用加顶层路由（apps/web/src/router.tsx 里以 / 开头的 path）时，要同时加进下面的 @app；
+# 业务应用加顶层路由（apps/web/src/router.tsx 里以 / 开头的 path），或后台邮件里加新链接（appLink）时，要同时加进下面的 @app；
 # apps/web/proxy-routes.test.ts 会检查两边是否一致。
 # 注意 /expert 必须写成「/expert /expert/*」两项，写成 /expert* 会把官网的 /expertise/ 也带走。
 
@@ -23,7 +23,7 @@
 		-X-Powered-By
 	}
 
-	@app path /api/* /assets/* /login /login/* /recover /recover/* /reset-password /reset-password/* /account /account/* /customer /customer/* /expert /expert/* /operator /operator/*
+	@app path /api/* /assets/* /login /login/* /invite /invite/* /recover /recover/* /reset-password /reset-password/* /account /account/* /customer /customer/* /expert /expert/* /operator /operator/*
 
 	# 前端构建产物文件名带内容哈希，可以长期缓存
 	handle /assets/* {

@@ -28,7 +28,7 @@ code=$(status /no-such-page)
 [ "$code" = 404 ] && ok "不存在的官网页 → 404" || bad "不存在的官网页 → $code（应为 404）"
 
 echo "业务应用路径"
-for p in /login /recover /reset-password /account /customer /customer/tasks /expert /expert/tasks/1 /operator; do
+for p in /login /invite/abc /recover /reset-password /account /customer /customer/tasks /expert /expert/tasks/1 /operator; do
   if body "$p" | grep -q 'id="root"'; then ok "$p → 业务应用"; else bad "$p 没有分到业务应用"; fi
 done
 

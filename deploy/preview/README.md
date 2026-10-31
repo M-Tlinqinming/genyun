@@ -21,7 +21,7 @@ bash deploy/preview/deploy.sh
 | 路径 | 去哪 |
 |---|---|
 | `/api/*`、`/assets/*`（前端构建产物） | 业务应用 |
-| `/login`、`/recover`、`/reset-password`、`/account`、`/customer`、`/expert`、`/operator` 及其下级 | 业务应用 |
+| `/login`、`/invite`（邀请邮件里的链接）、`/recover`、`/reset-password`、`/account`、`/customer`、`/expert`、`/operator` 及其下级 | 业务应用 |
 | 其余（`/`、`/product/`、`/expertise/`、`/privacy/`、`/terms/`、`/_astro/*`、`/fonts/*`、`/images/*` 等） | 官网静态页 |
 
 官网在构建 Caddy 镜像时一起构建（`site.Dockerfile`：先用 Node 构建 `apps/site`，再把 `dist` 放进 Caddy 镜像），所以发布脚本不用改，`docker compose up --build` 会同时重建两个镜像。
