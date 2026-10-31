@@ -79,7 +79,7 @@ test('确认采用资料：资料又变了留在本页标出；生成时一份�
   await expect(draft(page, '应急资源调查报告')).toContainText('✓ 已生成');
   await expect(draft(page, '风险评估报告')).toContainText('生成失败');
   await expect(draft(page, '风险评估报告')).toContainText('模拟连接中断　·　可重试');
-  await expect(page.getByRole('alert')).toContainText('风险评估报告生成中断');
+  await expect(page.getByRole('alert').filter({ hasText: '风险评估报告生成中断' })).toBeVisible();
   await page.screenshot({ path: 'test-results/acceptance/m2-10b-failed.png', fullPage: true });
 
   // 刷新页面还在进度页，不会重复生成
