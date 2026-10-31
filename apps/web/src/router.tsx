@@ -15,6 +15,7 @@ import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
+import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
   customer: '客户工作台',
@@ -41,6 +42,7 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
+  '/operator/organizations': [{ index: true, element: <OrganizationListPage /> }],
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },

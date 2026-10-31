@@ -37,7 +37,7 @@ const columns = {
 };
 
 // 只接收一个文件，放在内存里校验后再写入存储
-function receiveOne(req: Request, res: Response, maxBytes: number): Promise<Express.Multer.File | undefined> {
+export function receiveOne(req: Request, res: Response, maxBytes: number): Promise<Express.Multer.File | undefined> {
   const upload = multer({
     storage: multer.memoryStorage(),
     // 浏览器按 UTF-8 发送中文文件名
