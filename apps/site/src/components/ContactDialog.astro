@@ -23,7 +23,7 @@ import { PHONE, PHONE_HREF } from '../site';
       </div>
       <figure class="contact__qr">
         <img src="/images/wechat-qr.webp" width="176" height="176" alt="企业微信二维码（占位图，正式二维码待替换）" loading="lazy" />
-        <figcaption>企业微信 · 扫码添加<br />手机上可长按识别</figcaption>
+        <figcaption>企业微信 · 扫码添加<span class="contact__hint"><br />手机上可长按识别</span></figcaption>
       </figure>
     </div>
   </div>
@@ -164,6 +164,15 @@ import { PHONE, PHONE_HREF } from '../site';
     font-size: 13px;
     line-height: 20px;
     color: var(--site-body);
+  }
+  /* 只有手机（触屏或窄屏）才提示长按识别；电脑上用手机扫码 */
+  .contact__hint {
+    display: none;
+  }
+  @media (hover: none), (max-width: 768px) {
+    .contact__hint {
+      display: inline;
+    }
   }
   @media (max-width: 520px) {
     .contact__body {

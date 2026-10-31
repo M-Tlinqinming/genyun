@@ -4,7 +4,7 @@ import ContactTrigger from '../ContactTrigger.astro';
 import ArrowIcon from '../ArrowIcon.astro';
 
 const upcoming = [
-  { no: '02', title: '安全台账生成', body: '按企业规模提供 8、10、13 要素三种规格，一次建档，长期复用。' },
+  { no: '02', title: '安全台账生成', body: '按企业规模提供 8、10、13 要素三种规格，一次建档，<span class="nobr">长期复用。</span>' },
   { no: '03', title: '培训 PPT 生成', body: '自动生成培训课件，套用专业母版排版，同步输出讲义。' },
   { no: '04', title: 'AI 隐患识别', body: '现场拍照识别隐患，自动匹配法规条款，小程序与网页联动。' },
 ];
@@ -40,7 +40,7 @@ const upcoming = [
             </div>
             <div class="mod__text">
               <h3>{m.title}</h3>
-              <p>{m.body}</p>
+              <p set:html={m.body} />
             </div>
             <ContactTrigger topic="notify" item={m.title} class="text-link text-link--sm mod__notify">
               上线时通知我
@@ -123,6 +123,8 @@ const upcoming = [
     font-size: 14px;
     line-height: 24px;
     color: var(--site-body);
+    /* 最后一行不只剩一两个字（1366 宽时安全台账一张曾剩「用。」） */
+    text-wrap: pretty;
   }
   .mod--live .mod__no {
     color: var(--site-eyebrow-dark);
