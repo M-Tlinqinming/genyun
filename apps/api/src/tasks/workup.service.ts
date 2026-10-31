@@ -334,7 +334,7 @@ export class WorkupService {
   }
 
   // 挂在资料项上的文件 + 任务选用的企业资料（某一版本）+ 快照里自填时拍的照片（铭牌、标签、药箱），按文件去重
-  private async originals(taskId: string, snapshot: WorkupSnapshot): Promise<WorkupOriginal[]> {
+  async originals(taskId: string, snapshot: WorkupSnapshot): Promise<WorkupOriginal[]> {
     const linked = await this.db
       .select({
         fileId: files.id,

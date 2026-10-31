@@ -39,10 +39,12 @@ export function canViewTask(user: SessionUser, task: { orgId: string; assignedEx
 // 专业人员只能看分派给自己的任务里用到的文件
 export function canViewFile(
   user: SessionUser,
-  file: { orgId: string; kind: 'customer_material' | 'contract' },
+  file: { orgId: string; kind: 'customer_material' | 'contract' | 'draft' },
   usedInMyAssignedTask: boolean,
 ): boolean {
   if (file.kind === 'contract') return isOperator(user);
+  // 生成的草稿发布前客户看不到，只有负责专家和运营
+  if (file.kind === 'draft') return isOperator(user) || (usedInMyAssignedTask && user.memberships.some((m) => m.role === 'expert'));
   if (canViewOrganization(user, file.orgId)) return true;
   return usedInMyAssignedTask && user.memberships.some((m) => m.role === 'expert');
 }

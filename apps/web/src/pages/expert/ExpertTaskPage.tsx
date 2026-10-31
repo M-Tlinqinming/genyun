@@ -13,6 +13,7 @@ import {
   SCOPE_GROUPS,
   scopeView,
   workupFacts,
+  workupGaps,
   workupProgress,
   workplacesOf,
   type ChecklistItemKey,
@@ -103,17 +104,11 @@ export function ExpertTaskPage() {
   const figures = useMemo(() => (workup.data ? figuresView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
   const selectedRisk = risks?.rows.find((r) => r.id === riskId) ?? risks?.rows[0];
   const inProduction = module !== 'facts' && module !== 'risks' && module !== 'scope' && module !== 'figures';
-  // 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关、待采用的图在后（底栏与「下一个缺失项」共用）
-  const gaps = useMemo(
-    () => [
-      ...progress.missing.map((f) => ({ key: f.key, label: f.label, module: 'facts' as const, section: f.section })),
-      ...(production?.pending ?? []).map((p) => ({ key: p.key, label: p.label, module: p.list, section: undefined })),
-      ...(scope?.pending ?? []).map((s) => ({ key: `scope:${s.key}`, label: s.label, module: 'scope' as const, section: undefined })),
-      ...(figures?.pending ?? []).map((f) => ({ key: `figure:${f.key}`, label: `${f.label}待采用`, module: 'figures' as const, section: undefined })),
-    ],
-    [progress, production, scope, figures],
+  // 还差的项（底栏与「下一个缺失项」共用，确认生成时后台按同一规则再查一次）
+  const { gaps, required } = useMemo(
+    () => (workup.data ? workupGaps(workup.data.snapshot, workup.data.data) : { gaps: [], required: 0 }),
+    [workup.data],
   );
-  const required = progress.required + (production?.required ?? 0) + (scope?.required ?? 0) + (figures?.required ?? 0);
   const done = required - gaps.length;
   const originals = useMemo(() => workup.data?.originals ?? [], [workup.data]);
   const currentFile = originals.find((o) => o.fileId === fileId) ?? originals[0];

@@ -22,6 +22,7 @@
     "@nestjs/platform-express": "12.2.0",
     "@node-rs/argon2": "2.2.2",
     "@resvg/resvg-js": "2.6.2",
+    "bullmq": "6.3.15",
     "cookie-parser": "1.4.7",
     "docx": "9.10.0",
     "drizzle-orm": "0.45.4",
