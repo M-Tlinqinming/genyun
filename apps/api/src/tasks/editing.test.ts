@@ -1,0 +1,262 @@
+import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
+import type { INestApplication } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import request from 'supertest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createApp } from '../app.ts';
+import { hashPassword } from '../auth/auth.service.ts';
+import { openDatabase, type DatabaseHandle } from '../db/client.ts';
+import { draftRevisions, enterprises, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
+import type { FileStorage } from '../files/storage.ts';
+import type { ParagraphPolisher, PolishRequest } from '../generation/ai/drafter.ts';
+import type { DraftRenderer } from '../generation/drafts.ts';
+import { InProcessQueue } from '../generation/queue.ts';
+import { complete, testDocument } from './test-workup.ts';
+
+// 正文编辑（M2 第 11 项）：按节保存修订、两人同时改不覆盖、同一次保存重试不重复记、帮我改写这段、越权
+const PASSWORD = 'correct horse battery staple';
+
+let handle: DatabaseHandle;
+let app: INestApplication;
+const queue = new InProcessQueue();
+const stored = new Map<string, Buffer>();
+const storage: FileStorage = {
+  async put(key, data) {
+    stored.set(key, data);
+  },
+  async read(key) {
+    return stored.get(key)!;
+  },
+  async downloadUrl(key) {
+    return `/blob/${key}`;
+  },
+};
+const renderer: DraftRenderer = async (kind) => ({ word: Buffer.from('word'), pdf: null, notes: [], document: testDocument(kind) });
+const polished: PolishRequest[] = [];
+const drafter: ParagraphPolisher = {
+  polish: async (req) => {
+    polished.push(req);
+    return req.text.replace('原来的', '');
+  },
+};
+
+let taskId = '';
+let otherTaskId = '';
+const uid: Record<string, string> = {};
+
+beforeAll(async () => {
+  handle = await openDatabase('memory://');
+  const { db } = handle;
+  const passwordHash = await hashPassword(PASSWORD);
+  const [customer, other, internal] = await db
+    .insert(organizations)
+    .values([
+      { name: '飞宇演示客户', kind: 'customer', contractStartsAt: '2026-01-01', contractEndsAt: '2099-12-31' },
+      { name: '别家客户', kind: 'customer', contractStartsAt: '2026-01-01', contractEndsAt: '2099-12-31' },
+      { name: '耕云', kind: 'internal' },
+    ])
+    .returning();
+  for (const p of [
+    { email: 'feiyu@test.cn', name: '陈志刚', orgId: customer!.id, role: 'customer_admin' as const },
+    { email: 'other@test.cn', name: '别家', orgId: other!.id, role: 'customer_admin' as const },
+    { email: 'zhou@test.cn', name: '周工', orgId: internal!.id, role: 'expert' as const },
+    { email: 'wu@test.cn', name: '吴工', orgId: internal!.id, role: 'expert' as const },
+    { email: 'ops@test.cn', name: '运营', orgId: internal!.id, role: 'operator' as const },
+  ]) {
+    const [u] = await db.insert(users).values({ email: p.email, name: p.name, passwordHash }).returning();
+    await db.insert(memberships).values({ userId: u!.id, orgId: p.orgId, role: p.role });
+    uid[p.email] = u!.id;
+  }
+  const [ent] = await db
+    .insert(enterprises)
+    .values({
+      orgId: customer!.id,
+      name: '惠阳飞宇电器有限公司',
+      socialCreditCode: '91441300726483224B',
+      legalRepresentative: '李文聪',
+      registeredAddress: '惠州市仲恺高新区陈江街道正大路 17 号',
+      profile: feiyuProfile,
+      createdBy: uid['feiyu@test.cn']!,
+    })
+    .returning();
+  const [task, second] = await db
+    .insert(tasks)
+    .values([
+      {
+        orgId: customer!.id,
+        enterpriseId: ent!.id,
+        businessType: 'emergency_plan',
+        name: '2026 年应急预案',
+        number: 'GY-2026-001',
+        status: 'submitted',
+        assignedExpertId: uid['zhou@test.cn']!,
+        createdBy: uid['feiyu@test.cn']!,
+      },
+      {
+        orgId: customer!.id,
+        enterpriseId: ent!.id,
+        businessType: 'emergency_plan',
+        // 上一年的任务已结束，只用来测「还没生成草稿」
+        closedAt: new Date('2025-12-31'),
+        name: '还没生成',
+        number: 'GY-2026-002',
+        status: 'submitted',
+        assignedExpertId: uid['zhou@test.cn']!,
+        createdBy: uid['feiyu@test.cn']!,
+      },
+    ])
+    .returning();
+  taskId = task!.id;
+  otherTaskId = second!.id;
+
+  app = await createApp(db, { loginLimitPerMinute: 1000, storage, queue, renderer, drafter });
+  await app.init();
+
+  // 整理补齐后确认生成三份草稿
+  const zhou = await as('zhou@test.cn');
+  await zhou.get(`/api/tasks/${taskId}/workup`).expect(200);
+  const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
+  await db.update(taskWorkups).set({ data: complete(row!.snapshot), version: row!.version + 1 }).where(eq(taskWorkups.taskId, taskId));
+  await zhou.post(`/api/tasks/${taskId}/generation`).send({ version: row!.version + 1 }).expect(201);
+  await queue.idle();
+});
+
+afterAll(async () => {
+  await app?.close();
+  await handle?.close();
+});
+
+async function as(email: string) {
+  const agent = request.agent(app.getHttpServer());
+  expect((await agent.post('/api/auth/login').send({ email, password: PASSWORD })).status).toBe(200);
+  return agent;
+}
+
+const url = (kind = 'plan', rest = '') => `/api/tasks/${taskId}/drafts/${kind}${rest}`;
+const save = (blocks: unknown[], baseRev: number, note = '按名册更正联系人', saveId: string = randomUUID()) => ({ saveId, baseRev, blocks, note });
+const lockedTable = { type: 'locked', index: 1, label: '随便写的' };
+
+describe('正文编辑', () => {
+  it('目录和一节的内容：表格锁定，标出业务名称', async () => {
+    const zhou = await as('zhou@test.cn');
+    const doc = (await zhou.get(url('plan', '/edit')).expect(200)).body;
+    expect(doc).toMatchObject({ kind: 'plan', version: 0, editable: true, rewrite: true });
+    expect(doc.outline[0]).toMatchObject({ id: 'ch1', title: '1 总则', edited: false });
+    expect(doc.outline[0].children.map((c: { id: string }) => c.id)).toEqual(['ch1.1', 'ch1.2']);
+
+    const section = (await zhou.get(url('plan', '/sections/ch1.2')).expect(200)).body;
+    expect(section).toEqual({
+      id: 'ch1.2',
+      title: '1.2 应急通讯录',
+      path: ['1 总则', '1.2 应急通讯录'],
+      blocks: [
+        { type: 'paragraph', text: ['应急办公室联系人：陈某，电话 13800000001。'] },
+        { type: 'locked', index: 1, label: '表格：表 1 应急通讯录' },
+      ],
+      rev: 0,
+      saved: null,
+    });
+    await zhou.get(url('plan', '/sections/nope')).expect(404);
+  });
+
+  it('保存一节：记修订说明，刷新后还在，下载的 Word 用修订后的内容', async () => {
+    const zhou = await as('zhou@test.cn');
+    const body = save([{ type: 'paragraph', text: ['应急办公室联系人：李某，电话 13800002601。'] }, lockedTable], 0);
+    const saved = (await zhou.put(url('plan', '/sections/ch1.2')).send(body).expect(200)).body;
+    expect(saved).toMatchObject({ rev: 1, version: 1, saved: { note: '按名册更正联系人', byName: '周工' } });
+    // 锁定块的名称按原文重新给，不信页面传来的
+    expect(saved.blocks[1]).toEqual({ type: 'locked', index: 1, label: '表格：表 1 应急通讯录' });
+
+    const again = (await zhou.get(url('plan', '/sections/ch1.2')).expect(200)).body;
+    expect(again.blocks[0].text).toEqual(['应急办公室联系人：李某，电话 13800002601。']);
+    const doc = (await zhou.get(url('plan', '/edit')).expect(200)).body;
+    expect(doc.version).toBe(1);
+    expect(doc.outline[0].children[1].edited).toBe(true);
+
+    const word = await zhou.get(url('plan', '/word')).buffer(true).expect(200);
+    expect(word.headers['content-type']).toContain('wordprocessingml');
+    expect(word.headers['content-disposition']).toContain(encodeURIComponent('修订稿'));
+    // 另两份不受影响
+    expect((await zhou.get(url('risk', '/edit')).expect(200)).body.version).toBe(0);
+  });
+
+  it('同一次保存重试（结果不确定）不重复记修订，并能先查询', async () => {
+    const zhou = await as('zhou@test.cn');
+    const saveId = randomUUID();
+    expect((await zhou.get(url('plan', `/saves/${saveId}`)).expect(200)).body).toEqual({ saved: false });
+    const body = save([{ type: 'paragraph', text: ['新的编制目的。'] }], 0, '改写编制目的', saveId);
+    await zhou.put(url('plan', '/sections/ch1.1')).send(body).expect(200);
+    const retry = (await zhou.put(url('plan', '/sections/ch1.1')).send(body).expect(200)).body;
+    expect(retry.rev).toBe(1);
+    const query = (await zhou.get(url('plan', `/saves/${saveId}`)).expect(200)).body;
+    expect(query).toMatchObject({ saved: true, section: { id: 'ch1.1', rev: 1 } });
+    const rows = await handle.db.select().from(draftRevisions).where(eq(draftRevisions.saveId, saveId));
+    expect(rows).toHaveLength(1);
+  });
+
+  it('两人同时改同一节：后保存的被拒绝，带回最新保存稿，不覆盖', async () => {
+    const zhou = await as('zhou@test.cn');
+    // 基于 rev 0 的旧页面再保存
+    const res = await zhou
+      .put(url('plan', '/sections/ch1.2'))
+      .send(save([{ type: 'paragraph', text: ['另一个人的写法。'] }, lockedTable], 0))
+      .expect(409);
+    expect(res.body).toMatchObject({ reason: 'stale', latest: { rev: 1, saved: { byName: '周工' } } });
+    expect(res.body.message).toMatch(/已被更新/);
+    const now = (await zhou.get(url('plan', '/sections/ch1.2')).expect(200)).body;
+    expect(now.blocks[0].text).toEqual(['应急办公室联系人：李某，电话 13800002601。']);
+  });
+
+  it('不能删表格、不能空着修订说明、没改不用保存', async () => {
+    const zhou = await as('zhou@test.cn');
+    const noTable = await zhou.put(url('plan', '/sections/ch1.2')).send(save([{ type: 'paragraph', text: ['只剩一段'] }], 1)).expect(400);
+    expect(noTable.body.message).toMatch(/表格和图/);
+    await zhou.put(url('plan', '/sections/ch1.1')).send(save([{ type: 'paragraph', text: ['再改'] }], 1, ' ')).expect(400);
+    const same = await zhou.put(url('plan', '/sections/ch1.1')).send(save([{ type: 'paragraph', text: ['新的编制目的。'] }], 1)).expect(400);
+    expect(same.body.message).toMatch(/没有修改/);
+  });
+
+  it('帮我改写这段：不发企业名称和人名，过检查后返回 AI 的写法', async () => {
+    const zhou = await as('zhou@test.cn');
+    const res = await zhou.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '原来的编制目的由陈志刚负责。' }).expect(201);
+    expect(res.body).toMatchObject({ source: 'ai', text: '编制目的由陈志刚负责。' });
+    expect(polished.at(-1)!.text).not.toContain('陈志刚');
+    expect(polished.at(-1)!.section).toBe('1.1 编制目的');
+  });
+
+  it('还没生成草稿：提示先生成', async () => {
+    const zhou = await as('zhou@test.cn');
+    const res = await zhou.get(`/api/tasks/${otherTaskId}/drafts/plan/edit`).expect(400);
+    expect(res.body.message).toMatch(/还没有生成/);
+  });
+});
+
+describe('正文编辑的权限', () => {
+  const body = () => save([{ type: 'paragraph', text: ['越权'] }], 1);
+
+  it('客户、别家客户、其他专家看不到也改不了', async () => {
+    for (const email of ['feiyu@test.cn', 'other@test.cn', 'wu@test.cn']) {
+      const agent = await as(email);
+      await agent.get(url('plan', '/edit')).expect(404);
+      await agent.get(url('plan', '/sections/ch1.1')).expect(404);
+      await agent.get(url('plan', '/word')).expect(404);
+      await agent.put(url('plan', '/sections/ch1.1')).send(body()).expect(404);
+      await agent.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '一段需要改写的文字。' }).expect(404);
+      await agent.get(url('plan', `/saves/${randomUUID()}`)).expect(404);
+    }
+  });
+
+  it('运营能看不能改', async () => {
+    const ops = await as('ops@test.cn');
+    expect((await ops.get(url('plan', '/edit')).expect(200)).body.editable).toBe(false);
+    await ops.get(url('plan', '/sections/ch1.1')).expect(200);
+    await ops.put(url('plan', '/sections/ch1.1')).send(body()).expect(403);
+    await ops.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '一段需要改写的文字。' }).expect(403);
+  });
+
+  it('不认识的文档类型', async () => {
+    const zhou = await as('zhou@test.cn');
+    await zhou.get(url('contract', '/edit')).expect(404);
+  });
+});

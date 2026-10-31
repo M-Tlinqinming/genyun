@@ -1,8 +1,36 @@
 // AI 起草的提示词，集中放在这里并带版本号；改提示词要升版本，并用飞宇和两家企业案例重跑样例对比。
 // 生成记录里写下用的是哪个版本，专家和以后排查都能对上。
-import type { RiskRequest, SlotRequest } from './drafter.ts';
+import type { PolishRequest, RiskRequest, SlotRequest } from './drafter.ts';
 
 export const PROMPT_VERSION = 'slot-v1+risk-v1';
+
+// 专家编辑页「帮我改写这段」（polish-v1，M2 第 11 项）：专家选一段，AI 只把话写通顺、写准确，不加事实。
+// 企业名称、人名、电话在发送前换成〔企业〕〔人员1〕〔电话1〕这类占位，回来后还原（见 polish.ts）。
+export const POLISH_PROMPT_VERSION = 'polish-v1';
+
+export const POLISH_SYSTEM = [
+  '你是注册安全工程师的起草助手，帮专家把生产安全事故应急文件里的一段话改得通顺、准确、符合公文写法。',
+  '硬性要求：',
+  '1. 只改措辞和语序，意思不变；不得新增任何设备、物料、场所、数字、时间、机构或做法，不得删去原文的要求和步骤。',
+  '2. 〔企业〕〔人员1〕〔电话1〕这类占位原样保留，个数不变。',
+  '3. 不得削弱原文的安全要求（如「立即」「严禁」「必须」）。',
+  '4. 篇幅与原文相当，只输出改写后的这一段，不要解释、不要加引号或其他标记。',
+].join('\n');
+
+export function polishUserPrompt(req: PolishRequest): string {
+  const list = (xs: string[]) => xs.join('、') || '（无）';
+  return [
+    `文件：${req.plan}`,
+    `所在章节：${req.section}`,
+    '企业资料（只作参考，不要往原文里加）：',
+    `- 场所：${list(req.facts.sites)}`,
+    `- 设备：${list(req.facts.equipment)}`,
+    `- 物料：${list(req.facts.materials)}`,
+    '原文：',
+    req.text,
+    '请输出改写后的这一段：',
+  ].join('\n');
+}
 
 export const SLOT_SYSTEM = [
   '你是注册安全工程师的起草助手，为企业生产安全事故应急预案的一个空位写一个名词短语。',
