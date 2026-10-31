@@ -109,6 +109,13 @@ export class DrawingsService implements OnApplicationShutdown {
     return this.storage.read(row.thumbKey);
   }
 
+  // 放大预览用高清图
+  async full(user: SessionUser, taskId: string, fileId: string, page: number): Promise<{ data: Buffer; contentType: string }> {
+    const file = await this.taskFile(user, taskId, fileId);
+    const row = await this.page(file, page);
+    return { data: await this.storage.read(row.fullKey), contentType: row.fullType === 'jpg' ? 'image/jpeg' : 'image/png' };
+  }
+
   // 生成应急预案时取锁定的各页高清图，按附件 7 的种类分组
   async images(refs: PlanDrawingRef[]): Promise<PlanDrawings> {
     if (refs.length === 0) return {};
@@ -205,6 +212,20 @@ export class DrawingsController {
   ) {
     const data = await this.service.thumbnail(user, id, fileId, page);
     res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.send(data);
+  }
+
+  @Get(':fileId/pages/:page/full')
+  async full(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Param('page', ParseIntPipe) page: number,
+    @Res() res: Response,
+  ) {
+    const { data, contentType } = await this.service.full(user, id, fileId, page);
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
     res.send(data);
   }

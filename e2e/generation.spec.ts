@@ -1,4 +1,5 @@
 import { expect, request, test, type Page } from '@playwright/test';
+import JSZip from 'jszip';
 
 // 确认采用资料并生成三份草稿（14 页 E18-01、E18-02、E18-02b）。
 // 文件名排在 expert-workup.spec 之后：那时飞宇的专业整理必需项已齐（23 / 23）。
@@ -54,6 +55,8 @@ test('确认采用资料：资料又变了留在本页标出；生成时一份�
   await expect(outline).toContainText('✓ 必需项 23 / 23 已整理');
   await expect(outline).toContainText(/危险源\s*\d+ 项/);
   await expect(outline).toContainText('已采用 2 张');
+  // 客户图纸：expert-workup-visuals-drawings 里专家选了消防设施布置图第 2、3 页
+  await expect(outline).toContainText('附件 7 放 2 页');
   await expect(page.getByRole('button', { name: '确认采用并生成三份草稿' })).toBeEnabled();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/acceptance/m2-10b-confirm.png', fullPage: true });
@@ -94,6 +97,14 @@ test('确认采用资料：资料又变了留在本页标出；生成时一份�
   await expect(draft(page, '风险评估报告')).toContainText('✓ 已生成');
   expect(await draft(page, '应急预案').innerText()).toBe(planBefore);
   await expect(draft(page, '应急预案').getByRole('button', { name: '下载 Word' })).toBeVisible();
+  // 附件 7 放了消防设施布置图选的两页：五张系统画的图 + 两页客户图纸
+  const taskId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!;
+  const progress = await (await page.request.get(`/api/tasks/${taskId}/generation`)).json();
+  const planFile = progress.current.drafts.find((d: { kind: string }) => d.kind === 'plan').wordFileId as string;
+  const { url } = await (await page.request.get(`/api/files/${planFile}/download-url`)).json();
+  const word = await JSZip.loadAsync(await (await page.request.get(url)).body());
+  expect(Object.keys(word.files).filter((n) => n.startsWith('word/media/'))).toHaveLength(7);
+  expect(await word.file('word/document.xml')!.async('string')).toContain('消防设施布置图（2）');
   await page.screenshot({ path: 'test-results/acceptance/m2-10b-done.png', fullPage: true });
 
   // 生成过以后从任务中心进来直接看进度；可以回到专业整理

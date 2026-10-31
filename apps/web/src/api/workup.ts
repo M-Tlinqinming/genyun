@@ -1,4 +1,4 @@
-import type { FactSave, FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
+import type { CustomerDrawing, FactSave, FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -80,6 +80,19 @@ export function useSaveFigures(taskId: string) {
     onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
   });
 }
+
+// 图件 · 客户图纸：任务里的图纸文件与页数（第一次打开时后台要逐份读页数，稍慢）；选页取自整理数据
+export function useDrawings(taskId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['tasks', taskId, 'drawings'] as const,
+    queryFn: () => request<{ drawings: CustomerDrawing[] }>(`/tasks/${taskId}/drawings`),
+    enabled,
+  });
+}
+
+// 每页缩略图与高清图（第一次看时后台现转，复杂的 CAD 图要几十秒）
+export const drawingPageUrl = (taskId: string, fileId: string, page: number, size: 'thumb' | 'full') =>
+  `/api/tasks/${taskId}/drawings/${fileId}/pages/${page}/${size}`;
 
 // 在页面里显示的短时效链接（PDF、图片）
 export function inlineUrl(fileId: string) {

@@ -181,6 +181,8 @@ describe('客户图纸选页（附件 7）', () => {
     expect(res.headers['content-type']).toBe('image/jpeg');
     expect((res.body as Buffer)[0]).toBe(0xff);
     await zhou.get(url).expect(200);
+    const full = await zhou.get(`/api/tasks/${taskId}/drawings/${fileId.site}/pages/2/full`).buffer(true).parse(binary).expect(200);
+    expect(full.headers['content-type']).toBe('image/png');
     const rows = await handle.db.select().from(drawingPages).where(eq(drawingPages.fileId, fileId.site));
     expect(rows.map((r) => r.page)).toEqual([2]);
     expect(rows[0]!.height).toBeGreaterThan(rows[0]!.width);

@@ -562,6 +562,7 @@ export function ExpertTaskPage() {
 
         {module === 'figures' && figures ? (
           <FiguresPanel
+            taskId={taskId}
             view={figures}
             settings={w.data.figures ?? {}}
             saving={saveFigures.isPending}

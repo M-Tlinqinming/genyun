@@ -49,8 +49,9 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
   await expect(page.getByText('整理中 · 必需项 22 / 23')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 1 项：技术人员数');
 
-  // 原件对照：客户补传的台账
+  // 原件对照：客户补传的台账（expert-workup-visuals-drawings 还补传了一份消防设施布置图，切到台账）
   const originals = page.getByRole('complementary', { name: '原件对照' });
+  await originals.getByRole('tab', { name: /应急物资台账/ }).click();
   await expect(originals.getByRole('tab', { name: /应急物资台账/ })).toHaveAttribute('aria-selected', 'true');
   await expect(originals.locator('iframe')).toHaveAttribute('src', /d=inline/);
 
