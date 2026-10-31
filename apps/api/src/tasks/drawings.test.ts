@@ -15,7 +15,7 @@ import type { DraftRenderer } from '../generation/drafts.ts';
 import { LANDSCAPE, PORTRAIT, testPdf } from '../generation/drawings/test-pdf.ts';
 import type { PlanDrawings } from '../generation/plan/assemble.ts';
 import { InProcessQueue } from '../generation/queue.ts';
-import { complete } from './test-workup.ts';
+import { complete, testDocument } from './test-workup.ts';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -40,7 +40,7 @@ const storage: FileStorage = {
 const received: { kind: string; input: PlanInput; drawings?: PlanDrawings }[] = [];
 const renderer: DraftRenderer = async (kind, input, drawings) => {
   received.push({ kind, input, drawings });
-  return { word: Buffer.from('word'), pdf: null, notes: [] };
+  return { word: Buffer.from('word'), pdf: null, notes: [], document: testDocument(kind) };
 };
 
 let taskId = '';

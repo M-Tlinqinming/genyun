@@ -49,6 +49,7 @@ import {
   users,
 } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
+import { serializeDocument } from '../generation/document-json.ts';
 import { DRAFT_RENDERER, type DraftRenderer } from '../generation/drafts.ts';
 import { DRAFT_QUEUE, type DraftJob, type DraftQueue } from '../generation/queue.ts';
 import { DrawingsService } from './drawings.service.ts';
@@ -241,9 +242,10 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
       const name = `${batch.input.basic.companyName}${DRAFT_KINDS[kind]}（草稿）`;
       const wordFileId = await this.store(batch.orgId, batch.createdBy, `${name}.docx`, DOCX, rendered.word);
       const pdfFileId = rendered.pdf ? await this.store(batch.orgId, batch.createdBy, `${name}.pdf`, 'application/pdf', rendered.pdf) : null;
+      const documentFileId = await this.store(batch.orgId, batch.createdBy, `${name}.json`, 'application/json', serializeDocument(rendered.document));
       await this.db
         .update(generatedDrafts)
-        .set({ status: 'done', wordFileId, pdfFileId, notes: rendered.notes, error: null, finishedAt: new Date() })
+        .set({ status: 'done', wordFileId, pdfFileId, documentFileId, notes: rendered.notes, error: null, finishedAt: new Date() })
         .where(where);
     } catch (err) {
       console.error('草稿生成失败', batchId, kind, err);
