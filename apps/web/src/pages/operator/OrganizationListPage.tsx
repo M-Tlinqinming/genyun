@@ -55,7 +55,7 @@ function ServiceCell({ org: o }: { org: OperatorOrgRow }) {
         : `剩余 ${c.daysLeft} 天`;
   return (
     <>
-      <span>
+      <span style={{ whiteSpace: 'nowrap' }}>
         {dotted(o.contractStartsAt)} – {dotted(o.contractEndsAt)}
       </span>
       <span style={{ ...secondLine, color: c.state === 'expiring' ? gy.warning : gy.secondary }}>{note}</span>
@@ -212,7 +212,7 @@ export function OrganizationListPage() {
               {
                 title: '客户组织',
                 key: 'name',
-                width: 280,
+                width: 240,
                 onHeaderCell: () => ({ style: { paddingLeft: 24 } }),
                 onCell: () => ({ style: { paddingLeft: 24 } }),
                 render: (_, o) => (
@@ -227,7 +227,7 @@ export function OrganizationListPage() {
               {
                 title: '主联系人',
                 key: 'contact',
-                width: 180,
+                width: 150,
                 render: (_, o) => (
                   <>
                     <span style={{ display: 'block' }}>{o.contactName ?? '—'}</span>
@@ -238,13 +238,13 @@ export function OrganizationListPage() {
               {
                 title: '企业 / 成员',
                 key: 'size',
-                width: 120,
+                width: 100,
                 render: (_, o) => (o.state === 'pending' ? '— / —' : `${o.enterprises} / ${o.members}`),
               },
               {
                 title: '在办任务',
                 key: 'tasks',
-                width: 120,
+                width: 96,
                 render: (_, o) => (o.state === 'pending' ? '—' : o.openTasks),
               },
               { title: '年度服务', key: 'service', render: (_, o) => <ServiceCell org={o} /> },
