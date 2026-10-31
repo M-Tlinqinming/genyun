@@ -29,4 +29,5 @@ git archive --format=tar HEAD | "${SSH[@]}" '
   done
   docker compose --env-file /opt/genyun/.env ps
 "
-echo "已发布 $(git rev-parse --short HEAD)"
+echo "已发布 $(git rev-parse --short HEAD)，检查分流："
+bash "$(dirname "$0")/smoke.sh" "${PREVIEW_URL:-https://preview.gengyun.net.cn}"

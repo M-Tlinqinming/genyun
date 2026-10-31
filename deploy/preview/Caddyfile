@@ -1,6 +1,66 @@
+# 同一个域名按路径分流：业务应用的路径交给 app 容器，其余都是官网静态页（/srv/site，镜像构建时生成）。
+# 为什么不用子域名，见 README「官网和业务应用怎么分」。
+#
+# 业务应用加顶层路由（apps/web/src/router.tsx 里以 / 开头的 path）时，要同时加进下面的 @app；
+# apps/web/proxy-routes.test.ts 会检查两边是否一致。
+# 注意 /expert 必须写成「/expert /expert/*」两项，写成 /expert* 会把官网的 /expertise/ 也带走。
+
 {$SITE_DOMAIN} {
 	encode zstd gzip
-	# 预览环境不让搜索引擎收录
-	header X-Robots-Tag "noindex, nofollow"
-	reverse_proxy app:3000
+
+	header {
+		# 预览环境不让搜索引擎收录；正式上线时去掉这一行
+		X-Robots-Tag "noindex, nofollow"
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# 专家看原件用同源 iframe，所以是 SAMEORIGIN 而不是 DENY
+		X-Frame-Options "SAMEORIGIN"
+		Permissions-Policy "geolocation=(), microphone=(), payment=(), usb=()"
+		# 先只报告不拦截：官网有内联脚本、Ant Design 运行时插样式，正式拦截前要在预览上看一轮浏览器控制台
+		Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+		-X-Powered-By
+	}
+
+	@app path /api/* /assets/* /login /login/* /recover /recover/* /reset-password /reset-password/* /account /account/* /customer /customer/* /expert /expert/* /operator /operator/*
+
+	# 前端构建产物文件名带内容哈希，可以长期缓存
+	handle /assets/* {
+		reverse_proxy app:3000 {
+			header_down Cache-Control "public, max-age=31536000, immutable"
+		}
+	}
+
+	handle @app {
+		reverse_proxy app:3000
+	}
+
+	handle {
+		root * /srv/site
+		# Astro 构建的脚本、样式文件名带内容哈希
+		header /_astro/* Cache-Control "public, max-age=31536000, immutable"
+		# 字体、图片文件名不带哈希，缓存一天
+		header /fonts/* Cache-Control "public, max-age=86400"
+		header /images/* Cache-Control "public, max-age=86400"
+		# 页面本身每次都向服务器确认，改了文案马上生效
+		@html not path /_astro/* /fonts/* /images/*
+		header @html Cache-Control "no-cache"
+		file_server
+	}
+
+	handle_errors 404 {
+		root * /srv/site
+		@has404 file /404.html
+		handle @has404 {
+			rewrite * /404.html
+			file_server {
+				status 404
+			}
+		}
+		handle {
+			header Content-Type "text/plain; charset=utf-8"
+			respond "页面不存在" 404
+		}
+	}
 }

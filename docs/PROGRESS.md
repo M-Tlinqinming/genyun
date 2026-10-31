@@ -281,6 +281,14 @@ C 线，与 M2、M3 并行；一项一个合并请求，分支名用 `m4-<序号
 - 截图：`npm run preview -w @genyun/site` 后跑 `node apps/site/scripts/screenshots.mjs`，输出到 `out/site/`
 - 待 Martin 定的见 DESIGN-DIFF「M4 第 1a 项」
 
+### 第 2 项留给后续的说明
+
+- 分流方案：同一域名按路径分，理由和路径表见 `deploy/preview/README.md`「官网和业务应用怎么分」。官网在 Caddy 镜像里构建（`deploy/preview/site.Dockerfile`），compose 不再挂载 Caddyfile
+- 业务应用加顶层路由要同时改 `Caddyfile` 的 `@app`；`apps/web/proxy-routes.test.ts` 会检查。`/recover`、`/reset-password`、`/account` 已为第 3 项预先加上
+- 本机没有 Docker，验收「本机 Docker 起整套」改由 CI 的「构建 Docker 镜像」任务代替：起应用 + Redis + Caddy 镜像，跑 `deploy/preview/smoke.sh`；发布脚本最后也会对预览地址跑一遍
+- CSP 目前是「只报告」；在预览环境打开官网和三个工作区看浏览器控制台没有违规后，再把 `Content-Security-Policy-Report-Only` 改成 `Content-Security-Policy`
+- 官网还没有 404 页面，不存在的地址现在是一行文字的 404；以后加 `apps/site/src/pages/404.astro` 即自动启用
+
 ## M1 任务清单（已完成）
 
 一项一个会话；按顺序做。分支名用 `m1-<序号>-<简称>`。
@@ -476,6 +484,7 @@ C 线，与 M2、M3 并行；一项一个合并请求，分支名用 `m4-<序号
 
 最新在上。每条：日期 · 做了什么 · 分支/PR · 留给下一个会话的话。
 
+- 2026-11-01 · M4 第 2 项预览环境反向代理：同一域名按路径分流（业务路径给应用，其余是官网），官网在 Caddy 镜像里构建；HTTPS、压缩、缓存头、安全响应头（CSP 先只报告）；路由与 Caddyfile 一致性测试；`smoke.sh` 分流检查，CI 起整套容器跑，发布脚本最后也跑 · 分支 `m4-2-preview-proxy` · 下一个：Martin 部署后看 smoke 结果和浏览器控制台 CSP 报告；第 3 项账户页
 - 2026-11-01 · M4 拆分（C 线，6 项）+ 第 1a 项官网骨架与首页：`apps/site`（Astro 静态页面），三种品牌字体构建时裁剪自托管，首页按 Paper W01 还原（1440 宽整页 6254 / 设计稿 6248），Hero 入场与四屏轮播（减少动态时不动），联系窗口（电话 + 二维码占位），标题 / 描述 / 分享图 / sitemap / robots / 图标；浏览器测试 12 项，CI 加官网构建；Lighthouse 桌面 99 / 97 / 100 / 100、手机 91 / 97 / 100 / 100（性能 / 无障碍 / 最佳做法 / SEO）；Paper 10 页新建「W01 · 实现对照（2026-11-01）」 · 分支 `m4-1a-site-home` · 下一个：Martin 看 DESIGN-DIFF「M4 第 1a 项」13 条；然后 1b（W02、W03、W06、W07）。
 
 - 2026-11-01 · M2 第 10c 项：客户 PDF / 照片图纸转图（单独线程，每页转一次存起来），图件模块新增「客户图纸」块逐页勾选（Martin 11-01 定专家选页，默认第 1 页），确认页加「客户图纸」一行，应急预案附件 7 按选页出图（横图横排、竖图竖排）；后台测试 12 项、共享规则测试 4 项、浏览器测试 1 项新增，`generation.spec` 检查 Word 里的图；测试集朗达、捷美奇真实 PDF 验收通过 · 分支 `m2-10c-pdf-drawings` · 下一个：第 11 项正文编辑。
