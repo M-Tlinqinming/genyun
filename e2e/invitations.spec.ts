@@ -86,6 +86,9 @@ test('首位管理员设姓名和密码后直接进入客户工作台；同一�
   await expect(rules).toContainText('✓ 含字母和数字');
   await expect(rules).toContainText('✓ 不与邮箱相同');
   await page.getByRole('checkbox').check();
+  // 改对后错误提示要消失（等淡出动画结束再截图）
+  await expect(page.getByText('密码至少 8 位', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('请先阅读并同意服务协议和隐私政策')).toHaveCount(0);
   await page.screenshot({ path: 'out/m3-2-A02-valid.png' });
   await page.getByRole('button', { name: '接受邀请并进入' }).click();
   await expect(page).toHaveURL(/\/customer$/);
