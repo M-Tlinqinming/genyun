@@ -87,7 +87,7 @@ export class DrawingsService implements OnApplicationShutdown {
 
   // 任务里的图纸文件：上传已有资料挂在资料项上的，加上企业自填第 4 步上传的；只认本组织的 PDF 与图片
   async files(taskId: string, orgId: string, snapshot: WorkupSnapshot): Promise<DrawingFile[]> {
-    const candidates = await this.workup.drawingCandidates(taskId, snapshot);
+    const candidates = await this.workup.drawingCandidates(taskId, orgId, snapshot);
     const keyOf = new Map(candidates.map((c) => [c.fileId, c.key]));
     const names = new Map(candidates.filter((c) => c.name).map((c) => [c.fileId, c.name!]));
     if (keyOf.size === 0) return [];
