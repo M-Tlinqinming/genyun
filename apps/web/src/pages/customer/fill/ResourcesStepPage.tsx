@@ -22,7 +22,9 @@ import {
   type FireRating,
   type FirstAidMode,
   type ResourcesStep,
+  type SiteAddressOption,
   type SiteType,
+  type YesNoUnknown,
 } from '@genyun/shared';
 import { Button, Input, InputNumber, Select, Upload } from 'antd';
 import { useState, type CSSProperties, type ReactNode } from 'react';
@@ -39,6 +41,7 @@ import {
   PhotoRow,
   RemoveButton,
 } from './ProductionStepPage';
+import { SiteSelect, YES_NO_UNKNOWN_OPTIONS } from './SiteSelect';
 import { useResourcesDraft } from './useProductionDraft';
 import { Loading } from '../../../components/ui';
 import { useListMotion } from '../../../theme/motion';
@@ -127,6 +130,7 @@ export function ResourcesStepPage({ task }: { task: Task }) {
             <SuppliesCard
               step={step}
               sites={view.sites}
+              addresses={view.addresses ?? []}
               people={view.people}
               fileNames={fileNames}
               uploading={uploading === 'ledger'}
@@ -221,7 +225,9 @@ export function ResourcesStepPage({ task }: { task: Task }) {
               }
               onOnSite={() => setBooking(true)}
             />
+            <AssemblyPointCard step={step} onChange={update} />
             <NeighborsCard step={step} onChange={update} />
+            <AgreementsCard step={step} onChange={update} />
           </>
         )}
       </div>
@@ -322,6 +328,7 @@ const personLabel = (p: DraftPerson) => (p.phone ? `${p.name} · ${p.phone}` : p
 function SuppliesCard({
   step,
   sites,
+  addresses,
   people,
   fileNames,
   uploading,
@@ -331,6 +338,7 @@ function SuppliesCard({
 }: {
   step: ResourcesStep;
   sites: SiteType[];
+  addresses: SiteAddressOption[];
   people: DraftPerson[];
   fileNames: Record<string, string>;
   uploading: boolean;
@@ -380,7 +388,8 @@ function SuppliesCard({
         <div style={{ display: 'flex', gap: 10, paddingLeft: 30 }}>
           <span style={{ ...muted, ...grow(1) }}>物资名称</span>
           <span style={{ ...muted, ...fixed(96) }}>数量</span>
-          <span style={{ ...muted, ...fixed(200) }}>位置</span>
+          <span style={{ ...muted, ...fixed(addresses.length > 0 ? 120 : 200) }}>位置</span>
+          {addresses.length > 0 && <span style={{ ...muted, ...fixed(112) }}>所在厂址</span>}
         </div>
       )}
       <div ref={supplyList} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -415,12 +424,19 @@ function SuppliesCard({
             onChange={(n) => put(s.id, { quantity: n ?? undefined })}
           />
           <Input
-            style={{ ...fixed(200), height: 34 }}
+            style={{ ...fixed(addresses.length > 0 ? 120 : 200), height: 34 }}
             aria-label={`${s.name || `第 ${i + 1} 项物资`}位置`}
             maxLength={50}
             placeholder="如厂区各处"
             value={s.location}
             onChange={(e) => put(s.id, { location: e.target.value })}
+          />
+          <SiteSelect
+            addresses={addresses}
+            label={`${s.name || `第 ${i + 1} 项物资`}所在厂址`}
+            value={s.addressId}
+            onChange={(addressId) => put(s.id, { addressId })}
+            style={{ ...fixed(112), height: 34 }}
           />
         </div>
       ))}
@@ -1136,6 +1152,110 @@ function NeighborsCard({ step, onChange }: { step: ResourcesStep; onChange: Chan
         {choice('unknown', '不清楚')}
         {n.answer === 'unknown' && <span style={hint}>负责专家联系您时再一起确认</span>}
       </div>
+    </FillCard>
+  );
+}
+
+// 选填问项：有 / 没有 / 不清楚，答「有」再填一项（签订对象、集合点位置）
+function OptionalQuestion({
+  question,
+  hint: note,
+  answer,
+  detail,
+  detailLabel,
+  placeholder,
+  onChange,
+}: {
+  question: string;
+  hint: string;
+  answer: YesNoUnknown | undefined;
+  detail: string | undefined;
+  detailLabel: string;
+  placeholder: string;
+  onChange: (p: { answer?: YesNoUnknown; detail?: string }) => void;
+}) {
+  return (
+    <div style={block}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>{question}</span>
+          <span style={hint}>{note}</span>
+        </div>
+        <AnswerSwitch<YesNoUnknown>
+          label={question}
+          value={answer}
+          options={YES_NO_UNKNOWN_OPTIONS}
+          width={240}
+          onChange={(a) => onChange({ answer: a })}
+        />
+      </div>
+      {answer === 'yes' && (
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={muted}>{detailLabel}</span>
+          <Input
+            aria-label={detailLabel}
+            maxLength={100}
+            placeholder={placeholder}
+            value={detail ?? ''}
+            onChange={(e) => onChange({ detail: e.target.value })}
+          />
+        </label>
+      )}
+    </div>
+  );
+}
+
+// 紧急集合点：疏散后在哪里集中清点人数（选填）
+function AssemblyPointCard({ step, onChange }: { step: ResourcesStep; onChange: Change }) {
+  const point = step.assemblyPoint ?? {};
+  return (
+    <FillCard gap={12}>
+      <CardHeading title="紧急集合点" description="选填。疏散后大家在哪里集合、清点人数；没有设定或不清楚的，预案会写明应当设置。" />
+      <OptionalQuestion
+        question="厂里定好了紧急集合点吗？"
+        hint="一般在厂区门口、空地或停车场，疏散图上会标出"
+        answer={point.answer}
+        detail={point.location}
+        detailLabel="集合点位置"
+        placeholder="如：厂区大门外停车场"
+        onChange={({ answer, detail }) =>
+          onChange({
+            ...step,
+            assemblyPoint: { ...point, ...(answer ? { answer } : {}), ...(detail !== undefined ? { location: detail } : {}) },
+          })
+        }
+      />
+    </FillCard>
+  );
+}
+
+// 救援协议、邻企互助协议（选填）：签了的预案写明对象，没有或不清楚的写成应当签订
+function AgreementsCard({ step, onChange }: { step: ResourcesStep; onChange: Change }) {
+  const put = (key: 'rescueAgreement' | 'mutualAid', answer?: YesNoUnknown, detail?: string) => {
+    const cur = step[key] ?? {};
+    onChange({ ...step, [key]: { ...cur, ...(answer ? { answer } : {}), ...(detail !== undefined ? { parties: detail } : {}) } });
+  };
+  return (
+    <FillCard gap={12}>
+      <CardHeading title="救援与互助协议" description="选填，不清楚可以选「不清楚」，专家会和您核实。" />
+      <OptionalQuestion
+        question="和医院、消防队或专业救援队伍签过救援协议吗？"
+        hint="如医疗救援协议、绿色通道协议"
+        answer={step.rescueAgreement?.answer}
+        detail={step.rescueAgreement?.parties}
+        detailLabel="和谁签的"
+        placeholder="如：某某人民医院"
+        onChange={({ answer, detail }) => put('rescueAgreement', answer, detail)}
+      />
+      <OptionalQuestion
+        question="和相邻企业签过应急互助协议吗？"
+        hint="出事时互相支援人员、物资的约定"
+        answer={step.mutualAid?.answer}
+        detail={step.mutualAid?.parties}
+        detailLabel="和哪家企业签的"
+        placeholder="多家用顿号隔开"
+        onChange={({ answer, detail }) => put('mutualAid', answer, detail)}
+      />
     </FillCard>
   );
 }

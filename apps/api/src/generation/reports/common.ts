@@ -51,14 +51,20 @@ export function companyBasicTable(ctx: PlanContext, no: string): string[] {
 export function locationText(ctx: PlanContext): string {
   const { input } = ctx;
   const address = fill(input.location.siteAddress.detail || input.basic.registeredAddress?.detail);
-  return `${ctx.company}位于${address}。公司所在地理位置、周边道路、相邻企业、居民区及其他敏感目标以现场踏勘和属地地图核实结果为准。周边环境及重大危险源情况：${fill(input.expert.facts?.surroundings)}`;
+  // 一照多址：列出全部生产经营地址
+  const where = ctx.addresses.length
+    ? `生产经营地址共 ${ctx.addresses.length} 处：${ctx.addresses.map((a) => a.address).join('；')}`
+    : `位于${address}`;
+  return `${ctx.company}${where}。公司所在地理位置、周边道路、相邻企业、居民区及其他敏感目标以现场踏勘和属地地图核实结果为准。周边环境及重大危险源情况：${fill(input.expert.facts?.surroundings)}`;
 }
 
 export function hazardFactorsTable(ctx: PlanContext, no: string): string[] {
   const byPlace = new Map<string, string[]>();
   // 一条危险源可以有多个场所（「、」分隔），按单个场所汇总
   for (const h of ctx.input.expert.hazards ?? []) {
-    for (const place of workplacesOf(h.workplace).length ? workplacesOf(h.workplace) : ['未分类作业场所']) {
+    const site = ctx.siteOf(h.addressId);
+    for (const w of workplacesOf(h.workplace).length ? workplacesOf(h.workplace) : ['未分类作业场所']) {
+      const place = site ? `${site} ${w}` : w;
       const list = byPlace.get(place) ?? [];
       if (h.factor.trim() && !list.includes(h.factor.trim())) list.push(h.factor.trim());
       byPlace.set(place, list);

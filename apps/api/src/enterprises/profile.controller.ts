@@ -1,4 +1,5 @@
 import {
+  addressOptions,
   basicInfoStartReady,
   basicStepSaveSchema,
   buildingsReady,
@@ -280,6 +281,7 @@ export class EnterpriseProfileController {
       sites: production.sites,
       // MSDS 按第 3 步的物料列出
       materials: production.materials.filter((m) => m.name.trim() !== ''),
+      addresses: this.addresses(row),
       saved: Boolean(row.profile.resourcesStep),
       updatedAt: row.updatedAt,
     };
@@ -307,6 +309,7 @@ export class EnterpriseProfileController {
       fileNames: Object.fromEntries(named.map((f) => [f.id, f.originalName])),
       // 第 1 步填的经营范围，用于说明预选了哪些场所
       businessScope: row.profile.basicStep?.basic.businessScope ?? null,
+      addresses: this.addresses(row),
       saved: Boolean(row.profile.productionStep),
       updatedAt: row.updatedAt,
     };
@@ -333,8 +336,15 @@ export class EnterpriseProfileController {
       // 按上传先后排列
       roster: stored.rosterFileIds.flatMap((fid) => roster.filter((f) => f.fileId === fid)),
       employeeCount: row.profile.basicStep?.basic.employeeCount ?? null,
+      addresses: this.addresses(row),
       updatedAt: row.updatedAt,
     };
+  }
+
+  // 一照多址：第 1 步填了两处及以上地址时，小组、设备、物料、物资可以标所在厂址；不到两处为空，页面不出厂址
+  private addresses(row: Row) {
+    const basic = row.profile.basicStep?.basic;
+    return addressOptions(basic?.siteAddress, basic?.otherAddresses);
   }
 
   // 保存一块企业资料（identity 只有第 1 步会改），版本加 1，资料清单跟着变

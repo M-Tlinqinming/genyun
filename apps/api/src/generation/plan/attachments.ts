@@ -12,9 +12,12 @@ import {
   firstAidNames,
   firstAidText,
   hasAed,
+  hazardPlace,
+  medicalAgreement,
   pick,
   practiceItemsText,
   safetyLead,
+  siteColumn,
   supplyNames,
   type PlanContext,
 } from './context.ts';
@@ -42,6 +45,7 @@ export function attachments(ctx: PlanContext, drawings: DrawingKey[]): Attachmen
 // ── 附件1 生产经营单位概况 ──
 function companyProfile(ctx: PlanContext): string {
   const { input, company } = ctx;
+  const site = siteColumn(ctx);
   const b = input.basic;
   const p = input.production;
   const facts = input.expert.facts ?? {};
@@ -61,7 +65,9 @@ function companyProfile(ctx: PlanContext): string {
   const hazards = input.expert.hazards ?? [];
   const byPlace = new Map<string, string[]>();
   for (const h of hazards) {
-    for (const place of workplacesOf(h.workplace).length ? workplacesOf(h.workplace) : ['未分类作业场所']) {
+    const site = ctx.siteOf(h.addressId);
+    for (const w of workplacesOf(h.workplace).length ? workplacesOf(h.workplace) : ['未分类作业场所']) {
+      const place = site ? `${site} ${w}` : w;
       const list = byPlace.get(place) ?? [];
       if (h.factor.trim() && !list.includes(h.factor.trim())) list.push(h.factor.trim());
       byPlace.set(place, list);
@@ -96,27 +102,31 @@ function companyProfile(ctx: PlanContext): string {
     `| 职工人数 | 在册 ${fill(b.employeeCount)} 人（技术管理 ${dash(b.technicalManagementCount)} 人 / 安全管理 ${dash(b.safetyManagementCount)} 人） |`,
     `| 注册资本 / 资产 | 注册资本 ${dash(b.registeredCapital)}；固定资产 ${dash(b.fixedAssets)}；上年销售额 ${dash(b.lastYearRevenue)} |`,
     '## 公司所在地理位置',
-    `${company}位于${fill(input.location.siteAddress.detail || b.registeredAddress?.detail)}。${neighbourText}公司东、南、西、北各方位毗邻单位及周边道路、绿地、水体等具体情况以企业现场填报 / 属地地图核实为准，详见附件7 关键图纸。`,
+    `${company}${ctx.addresses.length ? `生产经营地址共 ${ctx.addresses.length} 处：${ctx.addresses.map((a) => a.address).join('；')}` : `位于${fill(input.location.siteAddress.detail || b.registeredAddress?.detail)}`}。${neighbourText}公司东、南、西、北各方位毗邻单位及周边道路、绿地、水体等具体情况以企业现场填报 / 属地地图核实为准，详见附件7 关键图纸。`,
     '## 产品生产工艺流程图',
     ...(steps.length
       ? ['公司主要产品生产工艺流程如下图所示：', '[[figure:process-flow]]', '**主要产品生产工艺流程图**']
       : [p.processFlow.description ? `公司主要生产工艺：${p.processFlow.description}。` : `公司主要生产工艺：${MISSING}`]),
     '## 主要生产设备设施',
     '**表1-2 主要生产设备设施**',
-    '| 设备名称 | 规格型号 | 数量 | 单位 | 使用部门 | 存放地点 | 使用状况 |',
-    '| --- | --- | --- | --- | --- | --- | --- |',
+    `| 设备名称 | 规格型号 | 数量 | 单位 | 使用部门 | 存放地点 | 使用状况 |${site.head}`,
+    `| --- | --- | --- | --- | --- | --- | --- |${site.sep}`,
     ...(p.equipment.length
-      ? p.equipment.map((e) => `| ${fill(e.name)} | ${dash(e.spec)} | ${dash(e.quantity)} | ${dash(e.unit)} | ${dash(e.department)} | ${dash(e.location)} | ${dash(e.condition)} |`)
-      : [`| ${MISSING} |  |  |  |  |  |  |`]),
+      ? p.equipment.map(
+          (e) =>
+            `| ${fill(e.name)} | ${dash(e.spec)} | ${dash(e.quantity)} | ${dash(e.unit)} | ${dash(e.department)} | ${dash(e.location)} | ${dash(e.condition)} |${site.cell(e.addressId)}`,
+        )
+      : [`| ${MISSING} |  |  |  |  |  |  |${site.empty}`]),
     '## 主要原辅材料贮存量',
     '**表1-3 主要原辅材料贮存量表**',
-    '| 名称 | CAS号 | 年用量（t） | 日常最大储存量（t） | 储存位置 | 危险化学品 |',
-    '| --- | --- | --- | --- | --- | --- |',
+    `| 名称 | CAS号 | 年用量（t） | 日常最大储存量（t） | 储存位置 | 危险化学品 |${site.head}`,
+    `| --- | --- | --- | --- | --- | --- |${site.sep}`,
     ...(p.materials.length
       ? p.materials.map(
-          (m) => `| ${fill(m.name)} | ${dash(m.casNumber)} | ${dash(m.annualUsageTons)} | ${dash(m.maxStorageTons)} | ${dash(m.storageLocation)} | ${ctx.hazardous.includes(m.name) ? '是' : '否'} |`,
+          (m) =>
+            `| ${fill(m.name)} | ${dash(m.casNumber)} | ${dash(m.annualUsageTons)} | ${dash(m.maxStorageTons)} | ${dash(m.storageLocation)} | ${ctx.hazardous.includes(m.name) ? '是' : '否'} |${site.cell(m.addressId)}`,
         )
-      : [`| ${MISSING} |  |  |  |  |  |`]),
+      : [`| ${MISSING} |  |  |  |  |  |${site.empty}`]),
     '## 主要建（构）筑物',
     '**表1-4 主要建（构）筑物情况一览表**',
     '| 序号 | 建（构）筑物名称 | 结构 | 耐火等级 | 层数 | 建筑面积（m²） | 备注 |',
@@ -161,7 +171,7 @@ function riskResults(ctx: PlanContext): string {
     const d = riskScore(h);
     const level = riskLevel(d);
     if (level) counts.set(level, (counts.get(level) ?? 0) + 1);
-    return `| ${i + 1} | ${fill(h.workplace)} | ${fill(h.factor)} | ${dash(h.l)} | ${dash(h.e)} | ${dash(h.c)} | ${dash(d)} | ${level ?? '—'} |`;
+    return `| ${i + 1} | ${fill(hazardPlace(ctx.input, h))} | ${fill(h.factor)} | ${dash(h.l)} | ${dash(h.e)} | ${dash(h.c)} | ${dash(d)} | ${level ?? '—'} |`;
   });
   const summary =
     [...RISK_LEVELS]
@@ -215,16 +225,17 @@ function suppliesList(ctx: PlanContext): string {
   const aidItems = kit?.answer === 'yes' ? kit.items : [];
   const all = [...supplyNames(ctx), ...firstAidNames(ctx)];
   const maintenance = pick(all, [/空气呼吸器/, /AED|自动体外除颤|除颤器/, /防化服|隔热服/], '专业器材');
-  const header = ['| 序号 | 名称 | 型号 / 规格 | 数量 | 存放位置 | 责任人 | 联系电话 |', '| --- | --- | --- | --- | --- | --- | --- |'];
+  const site = siteColumn(ctx);
+  const header = [`| 序号 | 名称 | 型号 / 规格 | 数量 | 存放位置 | 责任人 | 联系电话 |${site.head}`, `| --- | --- | --- | --- | --- | --- | --- |${site.sep}`];
   let n = 0;
   const supplyRows = p.emergencySupplies.map((s) => {
     const keeper = ctx.person(s.custodianId);
     const qty = s.quantity === undefined ? MISSING : `${s.quantity} ${s.unit ?? ''}`.trim();
-    return `| ${++n} | ${fill(s.name)} | ${s.model?.trim() || '/'} | ${qty} | ${fill(s.location)} | ${keeper?.name || '/'} | ${keeper?.phone || '/'} |`;
+    return `| ${++n} | ${fill(s.name)} | ${s.model?.trim() || '/'} | ${qty} | ${fill(s.location)} | ${keeper?.name || '/'} | ${keeper?.phone || '/'} |${site.cell(s.addressId)}`;
   });
   const aidRows = aidItems.map((f) => {
     const qty = f.quantity === undefined ? MISSING : `${f.quantity} ${f.unit ?? ''}`.trim();
-    return `| ${++n} | ${fill(f.name)} | / | ${qty} | ${firstAidLocation(ctx) || '/'} | / | / |`;
+    return `| ${++n} | ${fill(f.name)} | / | ${qty} | ${firstAidLocation(ctx) || '/'} | / | / |${site.empty}`;
   });
   const total = supplyRows.length + aidRows.length;
   if (total === 0) {
@@ -252,32 +263,39 @@ function suppliesList(ctx: PlanContext): string {
 function contacts(ctx: PlanContext): string {
   const org = ctx.input.organization;
   const rows: string[] = [];
-  const add = (unit: string, role: string, p: { name: string; position?: string; phone?: string } | undefined) => {
+  const site = siteColumn(ctx);
+  const add = (unit: string, role: string, p: { name: string; position?: string; phone?: string } | undefined, addressId?: string) => {
     if (!p?.name.trim()) return;
-    rows.push(`| ${rows.length + 1} | ${unit} | ${p.name.trim()} | ${role} | ${dash(p.position)} | ${fill(p.phone)} |`);
+    rows.push(
+      `| ${rows.length + 1} | ${unit} | ${p.name.trim()} | ${role} | ${dash(p.position)} | ${fill(p.phone)} |${site.on ? ` ${ctx.siteOf(addressId) || '全公司'} |` : ''}`,
+    );
   };
   add('应急指挥部', '总指挥', org.commander);
   for (const d of org.deputies) add('应急指挥部', '副总指挥', d);
   for (const g of org.groups) {
-    add(g.name, '组长', g.leader);
-    for (const m of g.members) add(g.name, '组员', m);
+    add(ctx.groupName(g), '组长', g.leader, g.addressId);
+    for (const m of g.members) add(ctx.groupName(g), '组员', m, g.addressId);
   }
   const a = ctx.input.agencies;
+  const external = [
+    `| ${ctx.street} | ${a.streetOffice ? dash(a.streetOffice.phone) : MISSING} | 属地协调 / 周边疏散协助 |`,
+    ...(ctx.park ? [`| ${ctx.park.manager} | ${ctx.park.dutyPhone ?? MISSING} | 园区联动 / 事故先报园区 |`] : []),
+    `| ${ctx.bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 事故报告 / 应急资源调度 |`,
+    `| ${a.fireDept?.name || '属地消防救援机构'} | 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}` : ''} | 火灾扑救 / 抢险救援 |`,
+    `| ${ctx.hospital} | 120 / 医院急诊 | 现场急救 / 伤员转运 |`,
+    '| 公安机关 | 110 | 治安维护 / 交通疏导 |',
+    `| ${ctx.company}24小时值班电话 | ${ctx.dutyPhone} | 企业内部报警 / 值班联络 |`,
+  ];
   return [
     '# 有关应急部门、机构或人员的联系方式',
     '**内部应急通讯录**',
-    '| 序号 | 机构 / 小组 | 姓名 | 应急职务 | 实际岗位 | 联系电话 |',
-    '| --- | --- | --- | --- | --- | --- |',
-    ...(rows.length ? rows : ['| 1 | 应急组织 | — | — | — | — |']),
+    `| 序号 | 机构 / 小组 | 姓名 | 应急职务 | 实际岗位 | 联系电话 |${site.head}`,
+    `| --- | --- | --- | --- | --- | --- |${site.sep}`,
+    ...(rows.length ? rows : [`| 1 | 应急组织 | — | — | — | — |${site.on ? ' — |' : ''}`]),
     '**外部应急联系方式**',
     '| 序号 | 单位 / 机构 | 联系电话 | 用途 |',
     '| --- | --- | --- | --- |',
-    `| 1 | ${ctx.street} | ${a.streetOffice ? dash(a.streetOffice.phone) : MISSING} | 属地协调 / 周边疏散协助 |`,
-    `| 2 | ${ctx.bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 事故报告 / 应急资源调度 |`,
-    `| 3 | ${a.fireDept?.name || '属地消防救援机构'} | 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}` : ''} | 火灾扑救 / 抢险救援 |`,
-    `| 4 | ${ctx.hospital} | 120 / 医院急诊 | 现场急救 / 伤员转运 |`,
-    '| 5 | 公安机关 | 110 | 治安维护 / 交通疏导 |',
-    `| 6 | ${ctx.company}24小时值班电话 | ${ctx.dutyPhone} | 企业内部报警 / 值班联络 |`,
+    ...external.map((r, i) => `| ${i + 1} ${r}`),
   ].join('\n');
 }
 
@@ -313,7 +331,7 @@ function formTexts(ctx: PlanContext): string {
     '| 依据事故信息接报编号 | ___________ |',
     '| 启动理由（事故概况） | _________________________________________________ |',
     '| 指挥部集结地点 | ___________ |',
-    `| 要求到位的应急小组 | ${ctx.input.organization.groups.map((g) => `□ ${g.name}`).join(' ')} □ 全部 |`,
+    `| 要求到位的应急小组 | ${ctx.input.organization.groups.map((g) => `□ ${ctx.groupName(g)}`).join(' ')} □ 全部 |`,
     '| 各应急小组到位时间要求 | ____ 分钟内（白班） / ____ 分钟内（夜班） |',
     `| 启动外部联动 | □ 报告主管部门（${bureau}） □ 拨打 119 □ 拨打 120 □ 拨打 110 □ 通报相邻企业 |`,
     '| 现场临时指挥负责人 | ___________ |',
@@ -388,6 +406,11 @@ function resourceSurvey(ctx: PlanContext): string {
   const facts = input.expert.facts ?? {};
   const hospitalKm = facts.hospital?.distanceKm !== undefined ? `约 ${facts.hospital.distanceKm} km` : '';
   const hazardCount = input.expert.hazards?.length;
+  const agreed = [
+    f.hasRescueAgreements ? `与${ctx.rescueParties || '有关救援单位'}签订了救援协议` : '',
+    f.hasMutualAid ? `与${ctx.mutualAidParties || '周边企业'}签订了应急互助协议` : '',
+  ].filter(Boolean);
+  const agreedText = agreed.length ? `公司已${agreed.join('、')}；` : '';
   const specialRisks = [
     ctx.hazardous.length ? `危险化学品${ctx.chemNote}泄漏处置` : '',
     ctx.scope.pressureVessel ? '压力容器爆炸' : '',
@@ -401,7 +424,7 @@ function resourceSurvey(ctx: PlanContext): string {
     '**一、本单位内部应急资源**',
     '本单位内部应急资源是事故发生后最先调用的第一道防线，涵盖人员、物资、装备、场所、资金五大类。',
     '**1. 应急人员资源（本单位内部）**',
-    `- 全公司在册职工 ${fill(input.basic.employeeCount)} 人，其中应急指挥部及各应急小组（${org.groups.map((g) => g.name).join(' / ')}）共 **${rescuers}** 人，组织架构与职责详见 2 应急组织机构及职责与附件5。`,
+    `- 全公司在册职工 ${fill(input.basic.employeeCount)} 人，其中应急指挥部及各应急小组（${org.groups.map((g) => ctx.groupName(g)).join(' / ')}）共 **${rescuers}** 人，组织架构与职责详见 2 应急组织机构及职责与附件5。`,
     '- 关键岗位人员持证情况：电工持电工作业证、特种设备作业人员持相应作业证、消防安全管理员持消防设施操作员证。',
     '- 员工应急能力建设：全员每年至少接受 1 次综合应急培训 + 1 次综合演练，各应急小组每半年至少开展 1 次专项 / 现场处置演练，详见附件9 应急培训计划与演练安排。',
     '**2. 应急物资与装备资源（本单位内部）**',
@@ -411,7 +434,7 @@ function resourceSurvey(ctx: PlanContext): string {
     '**3. 应急场所资源（本单位内部）**',
     `- 建（构）筑物 ${p.buildings.length} 栋，合计建筑面积约 ${totalArea} m²，均设安全出口与疏散通道，通道宽度、应急照明、疏散指示标志按 GB 50016 标准配置。`,
     f.hasAssemblyPoint
-      ? '- 紧急集合点：位置见附件7 关键图纸。'
+      ? `- 紧急集合点：${ctx.assemblyPoint ? `${ctx.assemblyPoint}，` : ''}位置见附件7 关键图纸。`
       : '- 紧急集合点：应在厂区内远离建筑物和危险源的开阔地带设置，并在疏散路线图上标明。',
     f.hasEmergencyOffice
       ? '- 应急指挥部办公地点：公司应急办公室（配备电话、应急通讯录、预案纸质本）。'
@@ -423,22 +446,35 @@ function resourceSurvey(ctx: PlanContext): string {
     '本单位规模与专业救援能力有限，事故扩散或处置超出本单位能力时，需第一时间寻求**外部**社会救援力量增援。本节按可依托方向逐类列明**外单位**应急力量与调用条件；各单位到场时间以每年调查核实的结果为准，本报告不预设。',
     '| 序号 | 外部资源类别 | 单位 / 机构名称 | 联系方式 | 依托方式 |',
     '| --- | --- | --- | --- | --- |',
-    `| 1 | 属地应急管理部门 | ${bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 报告事故 / 请求资源调度 |`,
-    `| 2 | 街道应急办 | ${street} | ${a.streetOffice ? dash(a.streetOffice.phone) : MISSING} | 协调辖区资源 / 协助疏散周边 |`,
-    `| 3 | 消防救援队 | ${a.fireDept?.name || '属地消防大队'} | 报警 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}` : ''} | 火灾扑救${chem ? ' / 危化品泄漏' : ''} / 抢险救援 |`,
-    `| 4 | 医疗急救机构 | ${ctx.hospital}${hospitalKm ? `（${hospitalKm}）` : ''} | 120 / 医院急诊 | 现场急救 / 伤员转运 / 院内救治 |`,
-    '| 5 | 公安治安力量 | 属地派出所 | 110 | 治安维护 / 现场封控 / 交通疏导 |',
-    ...(neighbours?.answer === 'listed'
-      ? neighbours.items.map((n) => `| 6 | 邻企互助力量 | ${n.name} | ${[n.contact, n.phone].filter(Boolean).join(' ') || '应急通讯录'} | ${f.hasMutualAid ? '互助协议 / ' : ''}物资借调 / 人员驰援 |`)
-      : [`| 6 | 邻企互助力量 | 周边邻企 | 应急通讯录 | ${f.hasMutualAid ? '互助协议 / ' : ''}物资借调 / 人员驰援 |`]),
-    `| 7 | 专业救援队伍 | 属地${chem ? '危化品 / ' : ''}工业事故专业救援队 | 应急管理局协调调度 | 重大事故专业处置（超本单位能力时） |`,
-    '| 8 | 社会救援力量 | 红十字应急救护志愿者 / 同行业互助网 | 红十字会 / 行业协会 | 大规模事故时辅助救援 / 物资支援 |',
+    ...[
+      `| 属地应急管理部门 | ${bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 报告事故 / 请求资源调度 |`,
+      `| 街道应急办 | ${street} | ${a.streetOffice ? dash(a.streetOffice.phone) : MISSING} | 协调辖区资源 / 协助疏散周边 |`,
+      ...(ctx.park ? [`| 园区管理方 | ${ctx.park.manager} | ${ctx.park.dutyPhone ?? MISSING} | 事故先报园区 / 园区联动调度 |`] : []),
+      ...(f.hasRescueAgreements && ctx.rescueParties ? [`| 协议救援单位 | ${ctx.rescueParties} | 应急通讯录 | 救援协议 / 事故时到场支援 |`] : []),
+      ...(f.hasMutualAid && ctx.mutualAidParties && !(neighbours?.answer === 'listed' && neighbours.items.some((n) => ctx.mutualAidParties.includes(n.name)))
+        ? [`| 互助协议企业 | ${ctx.mutualAidParties} | 应急通讯录 | 互助协议 / 物资借调 / 人员驰援 |`]
+        : []),
+      `| 消防救援队 | ${a.fireDept?.name || '属地消防大队'} | 报警 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}` : ''} | 火灾扑救${chem ? ' / 危化品泄漏' : ''} / 抢险救援 |`,
+      `| 医疗急救机构 | ${ctx.hospital}${hospitalKm ? `（${hospitalKm}）` : ''} | 120 / 医院急诊 | 现场急救 / 伤员转运 / 院内救治 |`,
+      '| 公安治安力量 | 属地派出所 | 110 | 治安维护 / 现场封控 / 交通疏导 |',
+      ...(neighbours?.answer === 'listed'
+        ? neighbours.items.map((n) => `| 邻企互助力量 | ${n.name} | ${[n.contact, n.phone].filter(Boolean).join(' ') || '应急通讯录'} | ${f.hasMutualAid ? '互助协议 / ' : ''}物资借调 / 人员驰援 |`)
+        : [`| 邻企互助力量 | 周边邻企 | 应急通讯录 | ${f.hasMutualAid ? '互助协议 / ' : ''}物资借调 / 人员驰援 |`]),
+      `| 专业救援队伍 | 属地${chem ? '危化品 / ' : ''}工业事故专业救援队 | 应急管理局协调调度 | 重大事故专业处置（超本单位能力时） |`,
+      '| 社会救援力量 | 红十字应急救护志愿者 / 同行业互助网 | 红十字会 / 行业协会 | 大规模事故时辅助救援 / 物资支援 |',
+    ].map((r, i) => `| ${i + 1} ${r}`),
     '**外部资源调用程序**：',
     `- **事故发生 → 立即报告**：由总指挥（或值班负责人）在事故发生后 1 小时内向 ${bureau} 报告；符合《生产安全事故报告和调查处理条例》（国务院第 493 号令）情形的，同步上报市级及以上应急管理部门。`,
     '- **拨打外部专业电话**：火警 119、医疗 120、治安 110 — 由通讯联络组在现场负责人确认事故级别后立即拨打，详见 3.1 信息报告与附件10 报警流程。',
     `- **邻企互助启动**：${f.hasMutualAid ? '根据签订的互助协议，' : ''}通过应急通讯录直接联络周边企业应急负责人，通报情况并提出援助请求。`,
     `- **专业救援队请求**：超出本单位处置能力时，由总指挥通过 ${bureau} 调度属地${chem ? '危化品 / ' : ''}工业事故专业救援队伍，本单位提供工艺资料、${chem ? '危化品资料、' : ''}平面图等技术支持。`,
-    `**应协议化的外部资源**：公司应与 ${ctx.hospital} 签订应急医疗救援协议、与 ${a.fireDept?.name || '属地消防救援机构'} 建立应急联动机制、与周边企业签订应急互助协议。`,
+    `**应协议化的外部资源**：${agreedText}公司应${[
+      medicalAgreement(ctx) ? '' : `与 ${ctx.hospital} 签订应急医疗救援协议`,
+      `与 ${a.fireDept?.name || '属地消防救援机构'} 建立应急联动机制`,
+      f.hasMutualAid ? '' : '与周边企业签订应急互助协议',
+    ]
+      .filter(Boolean)
+      .join('、')}。`,
     '**三、应急资源差距分析与补强对策**',
     '本节对照附件2 风险评估的结果，**对应急资源现状开展差距分析**，识别**本单位内部**应急资源与外部可依托资源的不足之处，并提出补强对策。',
     '**已识别的资源差距（本单位内部）**：',
@@ -482,7 +518,7 @@ function trainingPlan(ctx: PlanContext): string {
   const keyPosts = [ctx.signals.melting ? '熔铸工、压铸机操作工' : '', '电工', ctx.scope.pressureVessel ? '压力容器操作人员' : '', '消防安全管理员']
     .filter(Boolean)
     .join('、');
-  const groups = input.organization.groups.map((g) => g.name).join('、');
+  const groups = input.organization.groups.map((g) => ctx.groupName(g)).join('、');
   const chemicalDrill = ctx.hazardous.length
     ? `| 4 月 | 化学品${ctx.chemNote}泄漏现场处置 | 抢险救灾组 + 关键岗位 | 桌面推演 + 现场实操 | 6 | 安全员 + 化学品供应商技术员 |`
     : '| 4 月 | 典型事故现场处置（结合本企业风险） | 抢险救灾组 + 关键岗位 | 桌面推演 + 现场实操 | 6 | 安全员 |';

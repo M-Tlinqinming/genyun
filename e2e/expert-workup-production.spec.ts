@@ -18,7 +18,7 @@ const impact = (page: Page) => page.getByLabel('本表影响的适用范围开�
 
 test('周工判定危化品、特种设备与耐火等级，补设备和物料', async ({ page }) => {
   await openFeiyu(page);
-  await expect(page.getByText('整理中 · 必需项 11 / 23')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 11 / 24')).toBeVisible();
   // 「下一个缺失项」：企业事实的技术人员数之后，跳到原辅材料里第一项待确认的判断
   await page.getByRole('button', { name: '下一个缺失项' }).click();
   await expect(page.locator('[data-fact="technicalManagementCount"]')).toBeVisible();
@@ -42,11 +42,11 @@ test('周工判定危化品、特种设备与耐火等级，补设备和物料',
   // 原辅材料：酒精按系统建议判定为危化品，陶瓷灯头不是
   await lists(page).getByRole('listitem').filter({ hasText: '原辅材料' }).click();
   const materials = page.getByRole('region', { name: '原辅材料' });
-  await expect(row(page, 'material:m5')).toContainText('名称含「酒精」，属于易燃液体，建议判定为危化品');
+  await expect(row(page, 'material:m5')).toContainText('即乙醇，列在《危险化学品目录》第 2568 号（易燃液体），建议判定为危化品');
   await expect(impact(page)).toContainText('开 · 使用酒精、天那水、汽油等可燃液体');
   await row(page, 'material:m5').getByRole('button', { name: '采纳' }).click();
   await expect(row(page, 'material:m5').getByText('是', { exact: true })).toBeVisible();
-  await expect(row(page, 'material:m3')).toContainText('名称不在危化品名单里');
+  await expect(row(page, 'material:m3')).toContainText('《危险化学品目录》里查不到这个名称');
   await row(page, 'material:m3').getByRole('button', { name: '不是危化品' }).click();
   await expect(row(page, 'material:m3').getByText('否', { exact: true })).toBeVisible();
 
@@ -56,7 +56,7 @@ test('周工判定危化品、特种设备与耐火等级，补设备和物料',
   await materials.getByLabel('最大储量').fill('4 瓶');
   await materials.getByRole('button', { name: '保存' }).click();
   const acetylene = materials.locator('[data-row^="material:x"]');
-  await expect(acetylene).toContainText('名称含「乙炔」，属于易燃气体');
+  await expect(acetylene).toContainText('列在《危险化学品目录》第 2629 号（易燃气体）');
   await acetylene.getByRole('button', { name: '采纳' }).click();
   await expect(impact(page)).toContainText('开 · 使用天然气、液化气、乙炔等可燃气体');
 
@@ -83,9 +83,9 @@ test('周工判定危化品、特种设备与耐火等级，补设备和物料',
 
   // 都判定完：模块打勾，剩企业事实的技术人员数、适用范围里靠名称推断的粉尘、粉尘专项、熔融三个开关和两张待采用的图
   await expect(page.getByRole('button', { name: /生产设备与物料\s*✓/ })).toBeVisible();
-  await expect(page.getByText('整理中 · 必需项 16 / 22')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 16 / 23')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText(
-    '还差 6 项：技术人员数 · 适用范围（3 个开关待确认） · 图件（2 张待采用）',
+    '还差 7 项：技术人员数 · 适用范围（4 个开关待确认） · 图件（2 张待采用）',
   );
 
   // 退出再进，判断都还在

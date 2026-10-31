@@ -3,6 +3,7 @@
 // 和企业事实一样只记在任务的专业整理里（WorkupData.production），不写回企业资料。
 // 急救药箱清单由客户填写（Martin 10-29），客户只传了照片的请客户补，专家不代为整理。
 import { z } from 'zod';
+import { addressOptions, type SiteAddressOption } from './profile/addresses.ts';
 import type { Production } from './profile/production.ts';
 import {
   draftEquipmentSchema,
@@ -173,6 +174,7 @@ export interface SupplyRow {
   quantity?: number;
   unit?: string;
   location?: string;
+  addressId?: string;
 }
 
 export interface FirstAidView {
@@ -203,6 +205,8 @@ export interface ProductionView {
   firstAid: FirstAidView;
   process: { description?: string; steps: string[]; sketchFileIds: string[] };
   pending: PendingJudgement[];
+  // 一照多址时可选的厂址（设备、物料、物资标所在厂址用）；只有一处地址为空
+  addresses: SiteAddressOption[];
   // 要专家判断（或请客户补）的项数，顶部「必需项」计数用：名单外或建议为危化品的物料、
   // 客户没答有 / 没有的特种设备、客户没选耐火等级的建筑，加上急救药箱清单
   required: number;
@@ -239,9 +243,9 @@ export function productionView(snapshot: WorkupSnapshot, data: { production?: Pr
     ...addedRows(w.equipment).map(([id, j]): EquipmentRow => ({ ...j.value, id, source: 'expert', added: true, edited: j })),
   ];
 
-  const hazardOf = (id: string, name: string): HazardView => {
+  const hazardOf = (id: string, name: string, casNumber?: string): HazardView => {
     const judged = w.hazardous[id];
-    const suggestion = hazardSuggestionOf(name);
+    const suggestion = hazardSuggestionOf(name, casNumber);
     if (judged) return { value: judged.value, decidedBy: 'expert', suggestion, judged };
     if (suggestion && !suggestion.value) return { value: false, decidedBy: 'system', suggestion };
     return { decidedBy: null, suggestion };
@@ -253,10 +257,10 @@ export function productionView(snapshot: WorkupSnapshot, data: { production?: Pr
         const edited = w.materials[m.id];
         const { id, labelPhotoFileIds, ...own } = m;
         const row = { ...own, ...(edited?.value ?? {}) };
-        return { ...row, id, labelPhotoFileIds, source: edited ? 'expert' : 'customer', added: false, edited, hazard: hazardOf(id, row.name) };
+        return { ...row, id, labelPhotoFileIds, source: edited ? 'expert' : 'customer', added: false, edited, hazard: hazardOf(id, row.name, row.casNumber) };
       }),
     ...addedRows(w.materials).map(
-      ([id, j]): MaterialRow => ({ ...j.value, id, labelPhotoFileIds: [], source: 'expert', added: true, edited: j, hazard: hazardOf(id, j.value.name) }),
+      ([id, j]): MaterialRow => ({ ...j.value, id, labelPhotoFileIds: [], source: 'expert', added: true, edited: j, hazard: hazardOf(id, j.value.name, j.value.casNumber) }),
     ),
   ];
   for (const m of materials) {
@@ -293,7 +297,7 @@ export function productionView(snapshot: WorkupSnapshot, data: { production?: Pr
       };
     });
 
-  const supplyRow = (s: DraftSupply): SupplyRow => ({ name: s.name, quantity: s.quantity, unit: s.unit, location: s.location });
+  const supplyRow = (s: DraftSupply): SupplyRow => ({ name: s.name, quantity: s.quantity, unit: s.unit, location: s.location, addressId: s.addressId });
   const supplies = (res?.supplies ?? []).filter((s) => filled(s.name));
 
   const kit = res?.firstAidKit;
@@ -323,6 +327,7 @@ export function productionView(snapshot: WorkupSnapshot, data: { production?: Pr
       sketchFileIds: step?.process.sketchFileIds ?? [],
     },
     pending,
+    addresses: addressOptions(snapshot.profile.basicStep?.basic.siteAddress, snapshot.profile.basicStep?.basic.otherAddresses),
     required:
       materials.filter((m) => m.hazard.suggestion?.value !== false).length +
       special.filter((s) => s.customer !== 'yes' && s.customer !== 'no').length +
@@ -416,16 +421,19 @@ export function planProductionOf(snapshot: WorkupSnapshot, view: ProductionView)
       department: e.location || '车间',
       location: e.location || '车间',
       condition: e.condition === '停用' ? '停用' : e.condition === '维修中' ? '异常' : '正常',
+      addressId: e.addressId,
     })),
     specialEquipment,
     materials: view.materials.map((m) => ({
       name: m.name,
+      casNumber: m.casNumber,
       annualUsageTons: parseTons(m.annualUsage),
       maxStorageTons: parseTons(m.maxStorage),
       storageLocation: m.storageLocation,
       cylinderSpec: m.kind === 'cylinder' ? m.cylinderSpec || '气瓶' : undefined,
       labelPhotoFileIds: m.labelPhotoFileIds,
       msdsFileIds: res?.msds[m.id]?.fileIds ?? [],
+      addressId: m.addressId,
     })),
     processFlow: {
       source: step?.process.source,
@@ -447,6 +455,7 @@ export function planProductionOf(snapshot: WorkupSnapshot, view: ProductionView)
         : view.fire.firePool.answer === 'no'
           ? { answer: 'no' }
           : undefined,
+    assemblyPoint: res?.assemblyPoint?.answer ? { answer: res.assemblyPoint.answer, location: res.assemblyPoint.location } : undefined,
   };
   return {
     production,

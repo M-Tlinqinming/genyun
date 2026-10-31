@@ -14,6 +14,7 @@ import type {
   RecognizedLicense,
   ResourcesStep,
   ResourcesStepSave,
+  SiteAddressOption,
   SiteType,
 } from '@genyun/shared';
 import { useQuery } from '@tanstack/react-query';
@@ -61,6 +62,8 @@ export interface OrganizationStepView {
   roster: { fileId: string; originalName: string }[];
   // 第 1 步填的员工人数，用于建议小组数量
   employeeCount: number | null;
+  // 第 1 步填了两处及以上地址时可选的厂址；不到两处为空
+  addresses: SiteAddressOption[];
   updatedAt: string;
 }
 
@@ -107,6 +110,8 @@ export interface ProductionStepView {
   fileNames: Record<string, string>;
   // 第 1 步填的经营范围
   businessScope: string | null;
+  // 可选的厂址（一照多址）
+  addresses: SiteAddressOption[];
   // false = 还没保存过，页面显示的是预选内容
   saved: boolean;
   updatedAt: string;
@@ -142,6 +147,8 @@ export interface ResourcesStepView {
   sites: SiteType[];
   // 第 3 步的物料（列出 MSDS）
   materials: DraftMaterial[];
+  // 可选的厂址（一照多址）
+  addresses: SiteAddressOption[];
   // false = 还没保存过，页面显示的是预选内容
   saved: boolean;
   updatedAt: string;

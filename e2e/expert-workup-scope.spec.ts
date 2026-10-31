@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 // 适用范围（14 页 E18-00D）：系统建议、专家确认、右栏预览即时更新。
 // 本文件排在 expert-workup-risk 之后、expert-workup 之前：production 判定完压力管道、酒精、乙炔后，
-// 只剩靠名称推断的粉尘（钻孔攻牙机）、粉尘专项（没有除尘系统）、熔融（熔炉）三个开关待确认，这里确认完
+// 只剩靠名称推断的粉尘（钻孔攻牙机）、粉尘专项（没有除尘系统）、熔融（熔炉）和淹溺（有消防水池）四个开关待确认，这里确认完
 async function openScope(page: Page) {
   await page.goto('/login');
   await page.getByPlaceholder('请输入邮箱').fill('expert@demo.genyun.net.cn');
@@ -23,8 +23,8 @@ test('周工确认待确认的开关，右栏预览即时更新；已确定的�
   await openScope(page);
   const panel = page.getByRole('region', { name: '适用范围' });
   const groups = page.getByRole('list', { name: '适用范围分组' });
-  await expect(page.getByText('整理中 · 必需项 16 / 22')).toBeVisible();
-  await expect(panel).toContainText('待确认 3 项 · 系统已给出建议');
+  await expect(page.getByText('整理中 · 必需项 16 / 23')).toBeVisible();
+  await expect(panel).toContainText('待确认 4 项 · 系统已给出建议');
   await expect(groups.getByRole('listitem').filter({ hasText: '设备资产' })).toContainText('3 待确认');
   await expect(groups.getByRole('listitem').filter({ hasText: '业务关系' })).toContainText('客户已答');
 
@@ -48,9 +48,13 @@ test('周工确认待确认的开关，右栏预览即时更新；已确定的�
   // 熔炉确认开启
   await sw(page, 'meltingProcess').getByRole('button', { name: '开启' }).click();
   await expect(plan(page, '高温熔融物爆炸事故现场处置方案')).toHaveAttribute('data-state', 'included');
+  // 有消防水池：系统建议不出淹溺方案、请专家确认；这里确认开启
+  await expect(sw(page, 'waterHazard')).toContainText('消防水池');
+  await sw(page, 'waterHazard').getByRole('button', { name: '开启' }).click();
+  await expect(plan(page, '淹溺事故现场处置方案')).toHaveAttribute('data-state', 'included');
   await expect(panel).not.toContainText('待确认');
   await expect(page.getByRole('button', { name: /^适用范围\s*✓/ })).toBeVisible();
-  await expect(page.getByText('整理中 · 必需项 19 / 22')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 20 / 23')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 3 项：技术人员数 · 图件（2 张待采用）');
 
   // 点已确定的名称看谁确认的

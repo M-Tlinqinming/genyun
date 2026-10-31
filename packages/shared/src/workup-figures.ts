@@ -4,6 +4,7 @@
 // 和其他整理内容一样只记在任务的专业整理里（WorkupData.figures），不写回企业资料。
 import { z } from 'zod';
 import type { FlowBranch } from './document/figures.ts';
+import { addressOptions, groupDisplayNames } from './profile/addresses.ts';
 import { PRESET_GROUPS } from './profile/organization.ts';
 import { CHART_ORDER } from './profile/organization-step.ts';
 import { PROCESS_TEMPLATES } from './profile/process-flow.ts';
@@ -136,8 +137,14 @@ export function figuresView(snapshot: WorkupSnapshot, data: Pick<WorkupData, 'ov
 
   // ── 组织体系图：组名按规则排序（与客户自填页一致）；副总指挥有人才显示，专家可改 ──
   const org = organizationOf(snapshot);
+  // 分厂址各设同名小组时组名带厂址
+  const basic = snapshot.profile.basicStep?.basic;
+  const names = groupDisplayNames(
+    org.groups.map((g) => ({ name: groupName(g), addressId: g.addressId })),
+    addressOptions(basic?.siteAddress, basic?.otherAddresses),
+  );
   const ruleOrder = org.groups
-    .map((g, i) => ({ n: groupName(g), kind: g.kind, i }))
+    .map((g, i) => ({ n: names[i]!, kind: g.kind, i }))
     .filter((g) => g.n !== '')
     .sort((a, b) => CHART_ORDER.indexOf(a.kind) - CHART_ORDER.indexOf(b.kind) || a.i - b.i)
     .map((g) => g.n);

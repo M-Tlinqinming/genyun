@@ -2,7 +2,8 @@
 // 企业身份四项存在企业档案上（与 P01 共用），其余存在企业资料里，下一年度的任务可直接复用。
 import { z } from 'zod';
 import { enterpriseInputSchema } from '../enterprise.ts';
-import { basicInfoSchema } from './basic.ts';
+import { MAX_OTHER_ADDRESSES, otherAddressSchema } from './addresses.ts';
+import { basicInfoSchema, YES_NO_UNKNOWN } from './basic.ts';
 import { INDUSTRY_NAMES } from './industries.ts';
 import type { OrganizationStepStored } from './organization-step.ts';
 import type { ProductionStepStored } from './production-step.ts';
@@ -17,6 +18,12 @@ export const basicStepSchema = basicInfoSchema
       .optional(),
     // 设计稿为一行地址；属地机构匹配（M3 知识库）再按需拆成省市区
     siteAddress: z.string().trim().max(200).optional(),
+    // 一照多址：其他生产经营地址（选填）
+    otherAddresses: z.array(otherAddressSchema).max(MAX_OTHER_ADDRESSES, `其他地址最多 ${MAX_OTHER_ADDRESSES} 处`).optional(),
+    // 是否位于工业园区 / 物业管理的园区；是的话填园区管理方和值班电话，用于园区上报和联动（选填）
+    inPark: z.enum(YES_NO_UNKNOWN).optional(),
+    parkManager: z.string().trim().max(100, '园区管理方最多 100 个字').optional(),
+    parkDutyPhone: z.string().trim().max(30, '电话最多 30 位').optional(),
   });
 export type BasicStep = z.infer<typeof basicStepSchema>;
 export type BasicStepField = keyof BasicStep;

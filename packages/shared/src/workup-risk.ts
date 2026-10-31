@@ -3,6 +3,7 @@
 // 候选与要写的现场处置方案一一对应（每份方案一类事故），与飞宇实际风险评估报告表 2-1 的做法一致；
 // 默认取值照该报告。和生产设备与物料一样只记在任务的专业整理里（WorkupData.risks），不写回企业资料。
 import { z } from 'zod';
+import type { SiteAddressOption } from './profile/addresses.ts';
 import { SITE_TYPES, type SiteType } from './profile/production-step.ts';
 import { accidentTypeOf, SCOPE_SWITCHES, selectPlans, type ScopeKey } from './plan/catalog.ts';
 import { riskLevel, riskScore, type Hazard, type RiskLevel } from './plan/input.ts';
@@ -81,6 +82,8 @@ export const riskRowSchema = z.object({
   note: z.string().trim().max(200, '说明最多 200 个字').optional(),
   // 不适用：不进风险评估报告，可恢复；不用写理由
   excluded: z.boolean().optional(),
+  // 所在厂址（有两处及以上地址时选填，见 profile/addresses.ts）
+  addressId: z.string().max(40).optional(),
 });
 export type RiskRowValue = z.infer<typeof riskRowSchema>;
 
@@ -155,7 +158,7 @@ export interface RiskRow extends RiskRowValue {
   added: boolean;
   excluded: boolean;
   // 系统推荐的原值（新增行没有）
-  suggested?: Pick<RiskRowValue, 'factor' | 'workplace' | 'l' | 'e' | 'c'>;
+  suggested?: Pick<RiskRowValue, 'factor' | 'workplace' | 'addressId' | 'l' | 'e' | 'c'>;
   edited?: Judged<RiskRowValue>;
   // 相对系统推荐改了哪些：「C 15 → 40」「场所 厂房一 → 冲压车间」
   changes: string[];
@@ -168,6 +171,8 @@ export interface RiskView {
   // 改场所时的可选项：设备使用地点、物料存放位置、建筑、勾选的场所和已用过的场所
   placeOptions: string[];
   levels: { level: RiskLevel; count: number }[];
+  // 一照多址时可选的厂址；只有一处地址为空
+  addresses: SiteAddressOption[];
 }
 
 const quoted = (reason: string) => reason.match(/「(.+?)」/)?.[1];
@@ -194,11 +199,11 @@ export function riskView(snapshot: WorkupSnapshot, data: RiskData): RiskView {
   const withQuantity = (name: string, quantity?: string) => (quantity?.trim() ? `${name} ${quantity.trim()}` : name);
 
   // 依据里点名的设备 / 物料 / 建筑 → 场所与清单行
-  const located = (name: string): { workplace?: string; item: string; ref?: RiskRef } => {
+  const located = (name: string): { workplace?: string; addressId?: string; item: string; ref?: RiskRef } => {
     const eq = production.equipment.find((e) => e.name === name);
-    if (eq) return { workplace: eq.location?.trim(), item: withQuantity(eq.name, eq.quantity), ref: { list: 'equipment', name } };
+    if (eq) return { workplace: eq.location?.trim(), addressId: eq.addressId, item: withQuantity(eq.name, eq.quantity), ref: { list: 'equipment', name } };
     const m = production.materials.find((x) => x.name === name);
-    if (m) return { workplace: m.storageLocation?.trim(), item: m.name, ref: { list: 'materials', name } };
+    if (m) return { workplace: m.storageLocation?.trim(), addressId: m.addressId, item: m.name, ref: { list: 'materials', name } };
     const b = production.buildings.find((x) => x.name === name);
     if (b) return { workplace: b.name, item: b.name, ref: { list: 'buildings', name } };
     return { item: name };
@@ -216,25 +221,29 @@ export function riskView(snapshot: WorkupSnapshot, data: RiskData): RiskView {
     const hits = hitNames.map(located);
     let place = hits[0];
     let workplaces = hits.map((h) => h.workplace ?? '');
+    let addressIds = hits.map((h) => h.addressId);
     if (!workplaces.some(Boolean) && rule.equipment) {
       const eqs = equipmentHits(rule.equipment);
       if (eqs[0]) {
         const eq = eqs[0];
         place = { workplace: eq.location?.trim(), item: withQuantity(eq.name, eq.quantity), ref: { list: 'equipment', name: eq.name } };
         workplaces = eqs.map((e) => e.location?.trim() ?? '');
+        addressIds = eqs.map((e) => e.addressId);
         if (!on) basis = `设备清单里有「${eq.name}」，系统默认列入`;
       }
     }
     const site = rule.sites?.find((x) => sites.includes(x));
     const workplace =
       joinWorkplaces(workplaces) || (site ? SITE_TYPES[site] : undefined) || rule.fixed || (t.id === 'SP01' ? firePlace : generalPlace);
+    // 依据的设备、物料都在同一处厂址时带出厂址
+    const addressId = addressIds.length && addressIds.every((a) => a && a === addressIds[0]) ? addressIds[0] : undefined;
     return {
       id: t.id,
       planTitle: t.title,
       basis,
       item: place?.item,
       ref: place?.ref,
-      suggested: { factor: accidentTypeOf(t.title), workplace, ...(DEFAULT_LEC[t.id] ?? FALLBACK_LEC) },
+      suggested: { factor: accidentTypeOf(t.title), workplace, ...(addressId ? { addressId } : {}), ...(DEFAULT_LEC[t.id] ?? FALLBACK_LEC) },
     };
   });
 
@@ -274,6 +283,7 @@ export function riskView(snapshot: WorkupSnapshot, data: RiskData): RiskView {
     places: [...places].map(([name, count]) => ({ name, count })),
     placeOptions,
     levels: [...levels].map(([level, count]) => ({ level, count })),
+    addresses: production.addresses,
   };
 }
 
@@ -286,6 +296,7 @@ function finish(r: Draft): RiskRow {
     const s = r.suggested;
     if (r.factor !== s.factor) changes.push(`名称 ${s.factor} → ${r.factor}`);
     if (r.workplace !== s.workplace) changes.push(`场所 ${s.workplace} → ${r.workplace}`);
+    if ((r.addressId ?? '') !== (s.addressId ?? '')) changes.push('所在厂址');
     for (const k of LEC_KEYS) if (r[k] !== s[k]) changes.push(`${k.toUpperCase()} ${s[k]} → ${r[k]}`);
   }
   return { ...r, d, level: riskLevel(d)!, excluded: Boolean(r.excluded), changes };
@@ -299,5 +310,5 @@ export function riskSaveError(snapshot: WorkupSnapshot, data: RiskData, save: Ri
 
 // 进风险评估报告（表 1.3-1、表 2-1）的危险源：不适用的去掉，名称与场所按专家改过的
 export function planHazardsOf(view: RiskView): Hazard[] {
-  return view.rows.filter((r) => !r.excluded).map(({ workplace, factor, l, e, c }) => ({ workplace, factor, l, e, c }));
+  return view.rows.filter((r) => !r.excluded).map(({ workplace, factor, addressId, l, e, c }) => ({ workplace, factor, addressId, l, e, c }));
 }

@@ -2,7 +2,7 @@
 // 改动同应急预案：中文全角标点；旧稿里「以企业 E4 模块填报为准」这类内部说法改为「（待补充）」；
 // 成立日期、周边环境取专家补充的事实。排版暂与应急预案相同（第 9c 项按实际案例定）。
 import { RISK_LEVELS, riskLevel, riskScore, workplacesOf, type PlanInput } from '@genyun/shared';
-import { MISSING, dash, fill, planContext, type PlanContext } from '../plan/context.ts';
+import { MISSING, dash, fill, planContext, siteColumn, type PlanContext } from '../plan/context.ts';
 import { buildReport, companyBasicTable, companyOverview, hazardFactorsTable, locationText } from './common.ts';
 
 function hazardRows(ctx: PlanContext) {
@@ -63,7 +63,8 @@ function factorParagraphs(ctx: PlanContext): string[] {
     const f = h.factor.trim();
     if (!f) continue;
     const ps = places.get(f) ?? [];
-    for (const w of workplacesOf(h.workplace)) if (!ps.includes(w)) ps.push(w);
+    const site = ctx.siteOf(h.addressId);
+    for (const w of workplacesOf(h.workplace)) if (!ps.includes(site ? `${site}${w}` : w)) ps.push(site ? `${site}${w}` : w);
     places.set(f, ps);
   }
   return [...places].map(([factor, ps], i) => {
@@ -157,7 +158,7 @@ function managementStatus(ctx: PlanContext): string[] {
     '### 1）公司安全生产管理情况',
     [
       `${company}设有安全生产与应急管理组织${lead ? `，${lead}` : ''}`,
-      org.groups.length ? `，下设${org.groups.map((g) => g.name).join('、')}共 ${org.groups.length} 个应急小组` : '',
+      org.groups.length ? `，下设${org.groups.map((g) => ctx.groupName(g)).join('、')}共 ${org.groups.length} 个应急小组` : '',
       people.length ? `；公司现有${people.join('、')}` : '',
       training?.department ? `；应急培训与演练由${training.department}组织实施` : '',
       training?.budget ? `，年度经费 ${training.budget}` : '',
@@ -206,6 +207,7 @@ const LEC_TABLES = [
 
 function riskMarkdown(ctx: PlanContext): string {
   const { company, input } = ctx;
+  const site = siteColumn(ctx);
   const p = input.production;
   const facts = input.expert.facts ?? {};
   const factors = uniqueFactors(ctx).join('、') || MISSING;
@@ -254,20 +256,24 @@ function riskMarkdown(ctx: PlanContext): string {
       : [`主要产品生产工艺：${fill(p.processFlow.description)}。`]),
     '### 4）主要生产设备设施',
     '**表 1.2-2 主要生产设备设施**',
-    '| 设备名称 | 规格型号 | 数量 | 单位 | 使用部门 | 存放地点 | 使用状况 |',
-    '| --- | --- | --- | --- | --- | --- | --- |',
+    `| 设备名称 | 规格型号 | 数量 | 单位 | 使用部门 | 存放地点 | 使用状况 |${site.head}`,
+    `| --- | --- | --- | --- | --- | --- | --- |${site.sep}`,
     ...(p.equipment.length
-      ? p.equipment.map((e) => `| ${fill(e.name)} | ${dash(e.spec)} | ${dash(e.quantity)} | ${dash(e.unit)} | ${dash(e.department)} | ${dash(e.location)} | ${dash(e.condition)} |`)
-      : [`| ${MISSING} | / | / | / | / | / | / |`]),
+      ? p.equipment.map(
+          (e) =>
+            `| ${fill(e.name)} | ${dash(e.spec)} | ${dash(e.quantity)} | ${dash(e.unit)} | ${dash(e.department)} | ${dash(e.location)} | ${dash(e.condition)} |${site.cell(e.addressId)}`,
+        )
+      : [`| ${MISSING} | / | / | / | / | / | / |${site.on ? ' / |' : ''}`]),
     '### 5）主要原辅材料贮存量',
     '**表 1.2-3 主要原辅材料贮存量表**',
-    '| 名称 | CAS号 | 年用量（t） | 日常最大储存量（t） | 储存位置 | 危险化学品 |',
-    '| --- | --- | --- | --- | --- | --- |',
+    `| 名称 | CAS号 | 年用量（t） | 日常最大储存量（t） | 储存位置 | 危险化学品 |${site.head}`,
+    `| --- | --- | --- | --- | --- | --- |${site.sep}`,
     ...(p.materials.length
       ? p.materials.map(
-          (m) => `| ${fill(m.name)} | ${dash(m.casNumber)} | ${dash(m.annualUsageTons)} | ${dash(m.maxStorageTons)} | ${dash(m.storageLocation)} | ${ctx.hazardous.includes(m.name) ? '是' : '否'} |`,
+          (m) =>
+            `| ${fill(m.name)} | ${dash(m.casNumber)} | ${dash(m.annualUsageTons)} | ${dash(m.maxStorageTons)} | ${dash(m.storageLocation)} | ${ctx.hazardous.includes(m.name) ? '是' : '否'} |${site.cell(m.addressId)}`,
         )
-      : [`| ${MISSING} | / | / | / | / | / |`]),
+      : [`| ${MISSING} | / | / | / | / | / |${site.on ? ' / |' : ''}`]),
     '### 6）主要建（构）筑物情况',
     '**表 1.2-4 主要建（构）筑物情况一览表**',
     '| 序号 | 建（构）筑物名称 | 耐火等级 | 层数 | 建筑面积（m²） | 备注 |',

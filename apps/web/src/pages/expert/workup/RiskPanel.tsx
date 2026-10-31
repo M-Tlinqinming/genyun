@@ -17,6 +17,7 @@ import {
   type RiskRow,
   type RiskRowValue,
   type RiskView,
+  type SiteAddressOption,
 } from '@genyun/shared';
 import { AutoComplete, Button, Empty, Input, Select } from 'antd';
 import { useEffect, useState, type CSSProperties } from 'react';
@@ -81,7 +82,37 @@ const valueOf = (r: RiskRow): RiskRowValue => ({
   c: r.c,
   ...(r.note ? { note: r.note } : {}),
   ...(r.excluded ? { excluded: true } : {}),
+  ...(r.addressId ? { addressId: r.addressId } : {}),
 });
+
+// 一照多址：危险源所在厂址（选填）；只有一处地址时不显示
+function SiteSelect({
+  addresses,
+  value,
+  disabled,
+  onChange,
+}: {
+  addresses: SiteAddressOption[];
+  value: string | undefined;
+  disabled?: boolean;
+  onChange: (id: string | undefined) => void;
+}) {
+  if (addresses.length === 0) return null;
+  return (
+    <Select
+      size="small"
+      aria-label="所在厂址"
+      allowClear
+      placeholder="所在厂址"
+      value={addresses.some((a) => a.id === value) ? value : undefined}
+      disabled={disabled}
+      onChange={(v?: string) => onChange(v || undefined)}
+      options={addresses.map((a) => ({ value: a.id, label: a.label, title: a.address }))}
+      popupMatchSelectWidth={false}
+      style={{ width: 140 }}
+    />
+  );
+}
 
 // 手动新增时可选的事故类型：预案里的各类事故 + GB 6441-2025 表 1 里没有对应方案的几类
 const FACTOR_OPTIONS = [
@@ -182,7 +213,7 @@ export function RiskPanel(props: RiskPanelProps) {
               onKeyDown={(e) => e.key === 'Enter' && onSelect(r.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 8, height: 52, borderBottom: `1px solid ${gy.split}`, cursor: 'pointer' }}
             >
-              <RowCells row={r} />
+              <RowCells row={r} site={view.addresses.find((a) => a.id === r.addressId)?.label} />
             </div>
           ),
         )}
@@ -195,12 +226,13 @@ export function RiskPanel(props: RiskPanelProps) {
   );
 }
 
-function Summary({ row, strong }: { row: RiskRow; strong?: boolean }) {
+function Summary({ row, strong, site }: { row: RiskRow; strong?: boolean; site?: string }) {
   const struck: CSSProperties = row.excluded ? { textDecoration: 'line-through', color: gy.tertiary } : {};
+  const place = site ? `${site} ${row.workplace}` : row.workplace;
   return (
     <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <span style={{ ...cell, ...ellipsis, fontWeight: strong ? 500 : 400, ...struck }}>{row.factor}</span>
-      <span style={{ ...sub, ...ellipsis }}>{row.item ? `${row.workplace} · ${row.item}` : row.workplace}</span>
+      <span style={{ ...sub, ...ellipsis }}>{row.item ? `${place} · ${row.item}` : place}</span>
     </span>
   );
 }
@@ -214,11 +246,11 @@ function SourceCell({ row }: { row: RiskRow }) {
   );
 }
 
-function RowCells({ row }: { row: RiskRow }) {
+function RowCells({ row, site }: { row: RiskRow; site?: string }) {
   const muted = row.excluded ? { color: gy.tertiary } : {};
   return (
     <>
-      <Summary row={row} />
+      <Summary row={row} site={site} />
       {LEC_KEYS.map((k) => (
         <span key={k} style={{ ...cell, ...lecCol, ...muted }}>
           {row[k]}
@@ -267,7 +299,7 @@ function SelectedRow({ row, view, dimension, onDimension, saving, onSave, regist
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 36 }}>
-        <Summary row={row} strong />
+        <Summary row={row} strong site={view.addresses.find((a) => a.id === row.addressId)?.label} />
         {LEC_KEYS.map((k) => (
           <button
             key={k}
@@ -318,6 +350,12 @@ function SelectedRow({ row, view, dimension, onDimension, saving, onSave, regist
           onChange={setWorkplace}
           onBlur={() => saveText('workplace', workplace)}
           width={240}
+        />
+        <SiteSelect
+          addresses={view.addresses}
+          value={row.addressId}
+          disabled={saving || row.excluded}
+          onChange={(addressId) => save({ addressId })}
         />
       </div>
       <Input

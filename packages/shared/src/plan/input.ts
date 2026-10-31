@@ -13,6 +13,8 @@ import type { LocalAgencies } from './agencies.ts';
 export interface Hazard {
   workplace: string;
   factor: string;
+  /** 所在厂址 id（一照多址时，见 profile/addresses.ts） */
+  addressId?: string;
   l?: number;
   e?: number;
   c?: number;

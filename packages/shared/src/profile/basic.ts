@@ -11,6 +11,11 @@ const area = z.coerce.number().min(0).optional();
 
 export const ECONOMIC_NATURES = ['全民所有制', '集体所有制', '私有制', '其它'] as const;
 
+// 选填的「有 / 没有 / 不清楚」问题（应急广播、救援协议、集合点、园区等），不清楚的等专家联系时再问
+export const YES_NO_UNKNOWN = ['yes', 'no', 'unknown'] as const;
+export type YesNoUnknown = (typeof YES_NO_UNKNOWN)[number];
+export const YES_NO_UNKNOWN_LABELS: Record<YesNoUnknown, string> = { yes: '有', no: '没有', unknown: '不清楚' };
+
 export const addressSchema = z.object({
   province: z.string().default(''),
   city: z.string().default(''),

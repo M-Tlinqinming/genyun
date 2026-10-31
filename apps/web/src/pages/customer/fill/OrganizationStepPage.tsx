@@ -17,6 +17,8 @@ import {
   type DraftPerson,
   type OrganizationStep,
   type PresetGroupKey,
+  type SiteAddressOption,
+  type YesNoUnknown,
 } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Dropdown, Input, Popconfirm, Segmented, Upload } from 'antd';
@@ -36,6 +38,8 @@ import type { Task } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
 import { OrgChart } from './OrgChart';
+import { AnswerSwitch } from './ProductionStepPage';
+import { SiteSelect, YES_NO_UNKNOWN_OPTIONS } from './SiteSelect';
 import { useAutosave } from './useAutosave';
 import { Loading } from '../../../components/ui';
 import { useListMotion } from '../../../theme/motion';
@@ -228,6 +232,7 @@ export function OrganizationStepPage({ task }: { task: Task }) {
                 <GroupsCard
                   step={step}
                   employeeCount={saved.current?.employeeCount ?? null}
+                  addresses={saved.current?.addresses ?? []}
                   expanded={expanded}
                   onExpanded={setExpanded}
                   onChange={update}
@@ -235,6 +240,7 @@ export function OrganizationStepPage({ task }: { task: Task }) {
               </>
             )}
             <DutyPhoneCard step={step} onChange={update} />
+            <CommsCard step={step} onChange={update} />
             {!rosterMode && <CompilationCard step={step} onChange={update} />}
           </>
         )}
@@ -454,12 +460,14 @@ function CommandCard({ step, onChange }: { step: OrganizationStep; onChange: (s:
 function GroupsCard({
   step,
   employeeCount,
+  addresses,
   expanded,
   onExpanded,
   onChange,
 }: {
   step: OrganizationStep;
   employeeCount: number | null;
+  addresses: SiteAddressOption[];
   expanded: Set<string>;
   onExpanded: (s: Set<string>) => void;
   onChange: (s: OrganizationStep) => void;
@@ -496,6 +504,8 @@ function GroupsCard({
         <GroupPanel
           key={g.id}
           group={g}
+          addresses={addresses}
+          onSite={(addressId) => setGroup(g.id, (x) => ({ ...x, addressId }))}
           open={expanded.has(g.id)}
           onToggle={() => toggle(g.id)}
           candidates={people.filter((p) => p.id !== g.leader?.id && !g.members.some((m) => m.id === p.id))}
@@ -561,6 +571,8 @@ function AddChip({ children, onClick }: { children: string; onClick: () => void 
 
 function GroupPanel({
   group,
+  addresses,
+  onSite,
   open,
   onToggle,
   candidates,
@@ -572,6 +584,8 @@ function GroupPanel({
   onRemove,
 }: {
   group: DraftGroup;
+  addresses: SiteAddressOption[];
+  onSite: (addressId: string | undefined) => void;
   open: boolean;
   onToggle: () => void;
   candidates: DraftPerson[];
@@ -588,6 +602,7 @@ function GroupPanel({
   const memberCount = group.members.filter((m) => filled(m.name)).length;
   const headCount = memberCount + (hasLeader ? 1 : 0);
   const warn = !open && !hasLeader;
+  const site = addresses.find((a) => a.id === group.addressId)?.label;
   const right = open
     ? { text: `${headCount} 人`, color: gy.tertiary }
     : hasLeader
@@ -630,6 +645,7 @@ function GroupPanel({
           <span style={{ fontSize: 12, lineHeight: '18px', color: '#8A93A3' }}>{GROUP_DESCRIPTIONS[group.kind]}</span>
         )}
         <span style={{ flex: 1 }} />
+        {site && <span style={{ fontSize: 13, lineHeight: '20px', color: gy.tertiary }}>{site}</span>}
         <span style={{ fontSize: 13, lineHeight: '20px', color: right.color }}>{right.text}</span>
       </button>
 
@@ -648,6 +664,21 @@ function GroupPanel({
                 onChange={(e) => onRename(e.target.value)}
                 style={{ width: 240 }}
               />
+            </div>
+          )}
+          {addresses.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ width: 64, flexShrink: 0, fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
+                所在厂址
+              </span>
+              <SiteSelect
+                addresses={addresses}
+                label={`${title}所在厂址`}
+                value={group.addressId}
+                onChange={onSite}
+                style={{ width: 240 }}
+              />
+              <span style={{ fontSize: 12, lineHeight: '18px', color: gy.tertiary }}>各厂址分别设组的才选，全公司共用的不用选</span>
             </div>
           )}
           <Columns label="职务" labelWidth={64} small />
@@ -746,6 +777,34 @@ function DutyPhoneCard({ step, onChange }: { step: OrganizationStep; onChange: (
         {error && <span style={{ fontSize: 12, lineHeight: '18px', color: gy.error }}>{error}</span>}
       </div>
     </section>
+  );
+}
+
+// 应急通讯（选填）：有应急广播、应急工作群的，预案写成现状；没有或不清楚的写成要求
+function CommsCard({ step, onChange }: { step: OrganizationStep; onChange: (s: OrganizationStep) => void }) {
+  const rows: { key: 'paSystem' | 'imGroup'; question: string; hint: string }[] = [
+    { key: 'paSystem', question: '厂里装了应急广播吗？', hint: '能对全厂喊话的固定广播，手持喇叭不算' },
+    { key: 'imGroup', question: '有应急用的微信群或工作群吗？', hint: '出事时用来通知指挥部和各小组的群' },
+  ];
+  return (
+    <FillCard gap={14}>
+      <CardHeading title="应急通讯" description="选填，不清楚可以选「不清楚」，专家会和您核实。" />
+      {rows.map((r) => (
+        <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>{r.question}</span>
+            <span style={{ fontSize: 12, lineHeight: '18px', color: gy.tertiary }}>{r.hint}</span>
+          </div>
+          <AnswerSwitch<YesNoUnknown>
+            label={r.question}
+            value={step[r.key]}
+            options={YES_NO_UNKNOWN_OPTIONS}
+            width={240}
+            onChange={(v) => onChange({ ...step, [r.key]: v })}
+          />
+        </div>
+      ))}
+    </FillCard>
   );
 }
 

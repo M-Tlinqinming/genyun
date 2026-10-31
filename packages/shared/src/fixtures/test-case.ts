@@ -55,6 +55,9 @@ const special = (s: { answer: 'yes' | 'no' | 'photo' } | undefined, items: { id:
       ? { answer: 'photo' as const, items: [], photoFileIds: [] }
       : { answer: 'no' as const, items: [], photoFileIds: [] };
 
+// 资料里 CAS 号写「/」「-」的算没填
+const cas = (v: string | undefined) => (v && /[0-9]/.test(v) ? v.trim() : undefined);
+
 /** 按企业自填各步的存法（enterprises.profile） */
 export function caseProfile(c: TestCase): EnterpriseProfile {
   const { companyName, socialCreditCode, legalRepresentative, registeredAddress, ...basic } = c.basic;
@@ -62,9 +65,18 @@ export function caseProfile(c: TestCase): EnterpriseProfile {
   const p = c.production;
   const se = p.specialEquipment;
   const custodian = p.emergencySupplies.find((s) => s.custodianId)?.custodianId;
+  const loc = c.location;
   return {
     basicStep: {
-      basic: { ...basic, industry: c.industry, siteAddress: c.location.siteAddress.detail },
+      basic: {
+        ...basic,
+        industry: c.industry,
+        siteAddress: loc.siteAddress.detail,
+        otherAddresses: loc.otherAddresses,
+        inPark: loc.park?.answer,
+        parkManager: loc.park?.manager,
+        parkDutyPhone: loc.park?.dutyPhone,
+      },
       later: [],
       sources: {},
     },
@@ -79,8 +91,11 @@ export function caseProfile(c: TestCase): EnterpriseProfile {
           name: g.name,
           leader: g.leader && draft(g.leader),
           members: g.members.map(draft),
+          addressId: g.addressId,
         })),
         dutyPhone: org.dutyPhone,
+        paSystem: org.paSystem,
+        imGroup: org.imGroup,
         compilationExtras: [],
       },
       rosterFileIds: [],
@@ -102,15 +117,18 @@ export function caseProfile(c: TestCase): EnterpriseProfile {
           quantity: e.quantity === undefined ? undefined : `${e.quantity} ${e.unit}`,
           location: e.location,
           condition: e.condition,
+          addressId: e.addressId,
         })),
         materials: p.materials.map((m, i) => ({
           id: `m${i + 1}`,
           kind: 'material' as const,
           name: m.name,
+          casNumber: cas(m.casNumber),
           annualUsage: m.annualUsageTons === undefined ? undefined : `${m.annualUsageTons} t`,
           maxStorage: m.maxStorageTons === undefined ? undefined : `${m.maxStorageTons} t`,
           storageLocation: m.storageLocation,
           labelPhotoFileIds: [],
+          addressId: m.addressId,
         })),
         ledgers: { equipment: [], materials: [] },
         leasesPremises: c.business.leasesPremises ?? false,
@@ -125,7 +143,7 @@ export function caseProfile(c: TestCase): EnterpriseProfile {
     },
     resourcesStep: {
       step: {
-        supplies: p.emergencySupplies.map((s, i) => ({ id: `r${i + 1}`, name: s.name, unit: s.unit, quantity: s.quantity, location: s.location })),
+        supplies: p.emergencySupplies.map((s, i) => ({ id: `r${i + 1}`, name: s.name, unit: s.unit, quantity: s.quantity, location: s.location, addressId: s.addressId })),
         custodianId: custodian,
         supplyLedgerFileIds: [],
         firstAidKit:
@@ -144,6 +162,9 @@ export function caseProfile(c: TestCase): EnterpriseProfile {
           c.location.neighbours?.answer === 'listed'
             ? { answer: 'has', items: c.location.neighbours.items.map((n, i) => ({ id: `n${i + 1}`, name: n.name, contact: n.contact })) }
             : { answer: 'none', items: [] },
+        rescueAgreement: loc.rescueAgreement,
+        mutualAid: loc.mutualAid,
+        assemblyPoint: p.assemblyPoint,
       },
     },
   };

@@ -1,6 +1,7 @@
 // 企业自填第 2 步「人员与应急组织」（Paper 12 页 S02；体系图规则见 12 页「组织体系图 · 生成规则」）。
 // 边填边保存，所以姓名、电话都允许暂时空着；交付前由注册安全工程师按 organizationSchema 核对。
 import { z } from 'zod';
+import { YES_NO_UNKNOWN } from './basic.ts';
 import { PRESET_GROUPS, type PresetGroupKey } from './organization.ts';
 
 const phone = z
@@ -28,6 +29,8 @@ export const draftGroupSchema = z.object({
   name: z.string().trim().max(20, '小组名称最多 20 个字'),
   leader: draftPersonSchema.optional(),
   members: z.array(draftPersonSchema).max(30, '每组最多 30 名组员').default([]),
+  // 所在厂址（有两处及以上地址时选填，见 addresses.ts）
+  addressId: z.string().max(40).optional(),
 });
 export type DraftGroup = z.infer<typeof draftGroupSchema>;
 
@@ -54,6 +57,9 @@ export const organizationStepSchema = z
       .max(MAX_GROUPS, `最多设 ${MAX_GROUPS} 个应急小组`),
     // 由客户填写，不默认总指挥手机
     dutyPhone: phone,
+    // 应急通讯（选填）：有没有覆盖厂区的应急广播系统、有没有应急微信群 / 工作群
+    paSystem: z.enum(YES_NO_UNKNOWN).optional(),
+    imGroup: z.enum(YES_NO_UNKNOWN).optional(),
     // 编制小组里总指挥、副总指挥、各组组长之外另加的成员
     compilationExtras: z.array(compilationExtraSchema).max(20).default([]),
   })

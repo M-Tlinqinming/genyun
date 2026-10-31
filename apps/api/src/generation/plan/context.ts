@@ -2,6 +2,9 @@
 // 缺的必填内容写「（待补充）」，交专家核对时补；可不填的写「—」。
 import {
   accidentTypeOf,
+  addressLabelOf,
+  addressOptions,
+  groupDisplayNames,
   hazardousMaterialsOf,
   planSignals,
   resolveScope,
@@ -12,6 +15,9 @@ import {
   type PlanSelection,
   type PlanSignals,
   type Scope,
+  type SiteAddressOption,
+  type EmergencyGroup,
+  type Hazard,
 } from '@genyun/shared';
 
 export const MISSING = '（待补充）';
@@ -46,19 +52,31 @@ export interface PlanContext {
   person: (id: string | undefined) => Person | undefined;
   /** 资料里有依据才能写成现状的设施与安排 */
   facts: PlanFacts;
+  /** 一照多址时的各处厂址（实际生产地址在前）；只有一处为空，生成稿不出厂址 */
+  addresses: SiteAddressOption[];
+  /** 按厂址 id 取短写，表格「厂址」列用；只有一处地址或没标的为空 */
+  siteOf: (id: string | undefined) => string;
+  /** 应急小组在正文里的名称：分厂址的同名小组带厂址 */
+  groupName: (g: EmergencyGroup) => string;
+  /** 位于园区：信息报告、应急支援先报园区管理方并与园区联动；不在园区或没回答为空 */
+  park?: { manager: string; dutyPhone?: string };
+  /** 签了救援协议、互助协议的对象名称；没写名称为空 */
+  rescueParties: string;
+  mutualAidParties: string;
+  /** 紧急集合点位置；没写为空 */
+  assemblyPoint: string;
 }
 
 /**
  * 通讯设施、车辆、备用电源、协议、集合点等：资料里有才写成现状，没有的写成要求（「应…」）或不写。
- * 模板里按 [[if:hasRadio]] 引用。资料清单还没有问项的（即时通讯群、互助协议、救援协议、集合点）先恒为 false，
- * 资料加了问项后在这里接上。
+ * 模板里按 [[if:hasRadio]] 引用。应急广播、工作群、协议、集合点按客户选填的问项（答「有」才算），没答、答不清楚都按没有。
  */
 export interface PlanFacts {
   /** 应急物资里有对讲机 */
   hasRadio: boolean;
   /** 应急物资里有扩音器 / 广播器 / 喊话器 */
   hasMegaphone: boolean;
-  /** 固定式应急广播系统：应急物资里写了「广播系统 / 应急广播」 */
+  /** 固定式应急广播系统：客户答了有，或应急物资里写了「广播系统 / 应急广播」 */
   hasPaSystem: boolean;
   /** 应急物资里有消防警铃 / 声光报警器 */
   hasAlarmBell: boolean;
@@ -70,13 +88,13 @@ export interface PlanFacts {
   hasVehicle: boolean;
   /** 设了应急办公室（自填或专家图件） */
   hasEmergencyOffice: boolean;
-  /** 资料无问项：应急指挥部即时通讯群（企业微信等） */
+  /** 应急微信群 / 工作群：客户答了有 */
   hasImGroup: boolean;
-  /** 资料无问项：与邻企签订的互助协议 */
+  /** 与相邻企业签订的应急互助协议：客户答了有 */
   hasMutualAid: boolean;
-  /** 资料无问项：与消防、医院签订的应急救援 / 医疗协议 */
+  /** 与医院、消防或专业救援队伍签订的救援协议：客户答了有 */
   hasRescueAgreements: boolean;
-  /** 资料无问项：已设定的紧急集合点 */
+  /** 已设定的紧急集合点：客户答了有 */
   hasAssemblyPoint: boolean;
 }
 
@@ -88,16 +106,16 @@ export function planFacts(input: PlanInput): PlanFacts {
   return {
     hasRadio: supplyHas(input, /对讲机/),
     hasMegaphone: supplyHas(input, MEGAPHONE),
-    hasPaSystem: supplyHas(input, /广播系统|应急广播/),
+    hasPaSystem: input.organization.paSystem === 'yes' || supplyHas(input, /广播系统|应急广播/),
     hasAlarmBell: supplyHas(input, /警铃|声光报警/),
     hasCctv: supplyHas(input, /监控/) || equipment.some((n) => /监控/.test(n)),
     hasBackupPower: supplyHas(input, /发电机|UPS|备用电源/i) || equipment.some((n) => /发电机|UPS/i.test(n)),
     hasVehicle: input.business.ownVehicles === true || supplyHas(input, /车辆|救护车/),
     hasEmergencyOffice: input.organization.hasEmergencyOffice || input.expert.figures?.org?.office === true,
-    hasImGroup: false,
-    hasMutualAid: false,
-    hasRescueAgreements: false,
-    hasAssemblyPoint: false,
+    hasImGroup: input.organization.imGroup === 'yes',
+    hasMutualAid: input.location.mutualAid?.answer === 'yes',
+    hasRescueAgreements: input.location.rescueAgreement?.answer === 'yes',
+    hasAssemblyPoint: input.production.assemblyPoint?.answer === 'yes',
   };
 }
 
@@ -124,12 +142,52 @@ export function commsMeans(ctx: PlanContext): string[] {
 export function hazardArea(input: PlanInput, title: string): string {
   const norm = (s: string) => s.replace(/（[^）]*）/g, '').trim();
   const type = norm(accidentTypeOf(title));
+  const addresses = addressesOf(input);
   const places = (input.expert.hazards ?? [])
     .filter((h) => norm(h.factor) === type)
-    .flatMap((h) => h.workplace.split(/[、，,；;]/))
-    .map((w) => w.trim())
-    .filter(Boolean);
+    .flatMap((h) => {
+      const site = addressLabelOf(addresses, h.addressId);
+      return h.workplace
+        .split(/[、，,；;]/)
+        .map((w) => w.trim())
+        .filter(Boolean)
+        .map((w) => (site ? `${site}${w}` : w));
+    });
   return [...new Set(places)].join('、');
+}
+
+/** 一照多址时的各处厂址；只有一处为空 */
+export function addressesOf(input: PlanInput): SiteAddressOption[] {
+  const main = input.location.siteAddress.detail || input.basic.registeredAddress?.detail;
+  return addressOptions(main, input.location.otherAddresses);
+}
+
+/** 危险源的作业场所：标了厂址的前面带厂址（「示例三路8号厂房5楼 生产车间」） */
+export function hazardPlace(input: PlanInput, h: Pick<Hazard, 'workplace' | 'addressId'>): string {
+  const site = addressLabelOf(addressesOf(input), h.addressId);
+  return site ? `${site} ${h.workplace}` : h.workplace;
+}
+
+/**
+ * 签了医疗救援协议：答了有救援协议，且签订对象是医院 / 急救机构（没写对象的按医疗协议）。
+ * 只与消防、专业救援队伍签的，医疗仍写成要求
+ */
+export function medicalAgreement(ctx: Pick<PlanContext, 'facts' | 'rescueParties'>): boolean {
+  return ctx.facts.hasRescueAgreements && (!ctx.rescueParties || /医院|卫生院|医疗|急救|诊所/.test(ctx.rescueParties));
+}
+
+/**
+ * 一照多址时表格最后加一列「厂址」：head / sep 接在表头、分隔行后面，cell 接在每行后面；只有一处地址时都为空，表格照旧
+ */
+export function siteColumn(ctx: Pick<PlanContext, 'addresses' | 'siteOf'>) {
+  const on = ctx.addresses.length > 0;
+  return {
+    on,
+    head: on ? ' 厂址 |' : '',
+    sep: on ? ' --- |' : '',
+    cell: (id: string | undefined) => (on ? ` ${ctx.siteOf(id) || '—'} |` : ''),
+    empty: on ? '  |' : '',
+  };
 }
 
 export const fill = (s: string | number | undefined | null) => {
@@ -148,6 +206,13 @@ export function planContext(input: PlanInput): PlanContext {
   const people = [org.commander, ...org.deputies, ...org.groups.flatMap((g) => [g.leader, ...g.members])].filter(
     (p): p is Person => Boolean(p),
   );
+  const addresses = addressesOf(input);
+  const groupNames = groupDisplayNames(org.groups, addresses);
+  const loc = input.location;
+  // 答了在园区但没写管理方名称的，写「园区管理方」
+  const parkManager = loc.park?.answer === 'yes' ? loc.park.manager?.trim() || '园区管理方' : undefined;
+  const answered = (a: { answer: string; parties?: string } | undefined) => (a?.answer === 'yes' ? a.parties?.trim() ?? '' : '');
+  const point = input.production.assemblyPoint;
   return {
     input,
     company: fill(input.basic.companyName),
@@ -169,6 +234,13 @@ export function planContext(input: PlanInput): PlanContext {
     dutyPhone: fill(org.dutyPhone),
     person: (id) => (id ? people.find((p) => p.id === id) : undefined),
     facts: planFacts(input),
+    addresses,
+    siteOf: (id) => addressLabelOf(addresses, id),
+    groupName: (g) => groupNames[org.groups.indexOf(g)] ?? g.name,
+    park: parkManager ? { manager: parkManager, dutyPhone: loc.park?.dutyPhone?.trim() || undefined } : undefined,
+    rescueParties: answered(loc.rescueAgreement),
+    mutualAidParties: answered(loc.mutualAid),
+    assemblyPoint: point?.answer === 'yes' ? point.location?.trim() ?? '' : '',
   };
 }
 

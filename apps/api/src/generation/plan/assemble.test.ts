@@ -450,3 +450,82 @@ describe('管道爆炸', () => {
     expect(text).not.toContain('锅炉');
   }, 60_000);
 });
+
+describe('园区、救援协议、互助协议、紧急集合点（选填问项）', () => {
+  const input: PlanInput = {
+    ...assembler,
+    location: {
+      ...assembler.location,
+      park: { answer: 'yes', manager: '示例产业园管理处', dutyPhone: '0752-0000008' },
+      rescueAgreement: { answer: 'yes', parties: '示例镇卫生院' },
+      mutualAid: { answer: 'yes', parties: '示例邻企有限公司' },
+    },
+    production: { ...assembler.production, assemblyPoint: { answer: 'yes', location: '厂门口空地' } },
+  };
+  let text: string;
+  beforeAll(() => {
+    text = allText(buildPlan(input));
+  }, 60_000);
+
+  it('信息报告、请求支援先报园区并联动，写管理方名称和值班电话', () => {
+    expect(text).toContain('先报示例产业园管理处（值班电话 0752-0000008）');
+    expect(text).toContain('园区联动');
+  });
+
+  it('协议写签订对象名称，不再写成「应签订」', () => {
+    expect(text).toContain('示例镇卫生院');
+    expect(text).toContain('示例邻企有限公司签订的互助协议');
+    expect(text).not.toContain('应与厂区周边 500 米范围内企业签订应急互助协议');
+  });
+
+  it('集合点写位置', () => {
+    expect(text).toContain('紧急集合点：厂门口空地');
+  });
+
+  it('园区答「不清楚」与没答一字不差', () => {
+    const unknown = allText(buildPlan({ ...assembler, location: { ...assembler.location, park: { answer: 'unknown' } } }));
+    expect(unknown).not.toContain('园区联动');
+    expect(unknown).toBe(allText(buildPlan(assembler)));
+  }, 120_000);
+});
+
+describe('一照多址', () => {
+  const groups = assembler.organization.groups;
+  const rescue = groups.find((g) => g.kind === 'rescue')!;
+  const input: PlanInput = {
+    ...assembler,
+    location: { ...assembler.location, otherAddresses: [{ id: 'a2', address: '惠州市惠阳区示例大道9号' }] },
+    organization: {
+      ...assembler.organization,
+      groups: [...groups.map((g) => (g === rescue ? { ...g, addressId: 'main' } : g)), { ...rescue, addressId: 'a2' }],
+    },
+    production: {
+      ...assembler.production,
+      materials: assembler.production.materials.map((m) => ({ ...m, addressId: 'a2' })),
+    },
+    expert: { ...assembler.expert, hazards: [{ factor: '触电', workplace: '配电房', addressId: 'a2' }] },
+  };
+  let text: string;
+  beforeAll(() => {
+    text = allText(buildPlan(input));
+  }, 60_000);
+
+  it('列出全部生产经营地址，表格多一列厂址，危险源场所带厂址', () => {
+    expect(text).toContain('生产经营地址共 2 处');
+    expect(text).toContain('惠州市惠阳区示例大道9号');
+    expect(text).toContain('厂址');
+    // 中文之间的空格在转文档结构时去掉
+    expect(text).toContain('事故区域：示例大道9号配电房');
+  });
+
+  it('同名小组带厂址区分', () => {
+    expect(text).toContain(`${rescue.name}（示例大道9号）`);
+  });
+
+  it('其他地址填了空的，与单一地址一字不差', () => {
+    const blank = { ...assembler, location: { ...assembler.location, otherAddresses: [{ id: 'a2', address: '' }] } };
+    const single = allText(buildPlan(assembler));
+    expect(allText(buildPlan(blank))).toBe(single);
+    expect(single).not.toContain('厂址');
+  }, 120_000);
+});

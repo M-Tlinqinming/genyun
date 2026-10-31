@@ -108,6 +108,8 @@ function placeholders(ctx: PlanContext, t?: PlanTemplate): Record<string, string
     // 了解起火点、逐区域通知的手段：资料里有监控、广播才写
     CHECK_MEANS: ctx.facts.hasCctv ? '视频监控、电话或巡逻人员' : '电话或巡逻人员',
     ALARM_MEANS: commsMeans(ctx).filter((m) => m !== '电话').join('、'),
+    // 客户答了有集合点并写了位置的，带上位置
+    ASSEMBLY_POINT: ctx.assemblyPoint ? `（${ctx.assemblyPoint}）` : '',
     COMMS: commsMeans(ctx).join('、'),
     DUST_WORKSHOPS: fill(
       join(p.processFlow.steps.filter((s) => /喷砂|抛光|打磨|研磨|抛丸|CNC/i.test(s.name)).map((s) => s.name)) ||
@@ -168,7 +170,7 @@ function compilationTeam(ctx: PlanContext): string[][] {
   if (org.commander) rows.push(['组长', org.commander.name, '总指挥', COMMANDER_DUTY]);
   for (const d of org.deputies) rows.push(['编制组成员', d.name, '副总指挥', DEPUTY_DUTY]);
   const groups = [...org.groups].sort((a, b) => CHART_ORDER.indexOf(a.kind) - CHART_ORDER.indexOf(b.kind));
-  for (const g of groups) if (g.leader) rows.push(['编制组成员', g.leader.name, `${g.name}组长`, GROUP_LEADER_DUTIES[g.kind]]);
+  for (const g of groups) if (g.leader) rows.push(['编制组成员', g.leader.name, `${ctx.groupName(g)}组长`, GROUP_LEADER_DUTIES[g.kind]]);
   return rows;
 }
 
@@ -263,7 +265,7 @@ export function buildPlan(
         deputy: figs?.org?.deputy ?? org.deputies.length > 0,
         office: figs?.org?.office,
         groups: orderGroups(
-          groups.map((g) => g.name),
+          groups.map((g) => ctx.groupName(g)),
           figs?.org?.order,
         ),
       }),

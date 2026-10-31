@@ -18,6 +18,7 @@ import {
   type MaterialRow,
   type ProductionList,
   type ProductionSave,
+  type SiteAddressOption,
   type SpecialCategory,
   type SpecialRow,
   type SupplyRow,
@@ -105,14 +106,18 @@ export function ProductionPanel(props: ProductionPanelProps) {
         )}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 16px' }}>
-        {list === 'equipment' && <EquipmentTable {...props} rows={view.equipment} adding={adding} onAdded={() => setAdding(null)} />}
-        {list === 'materials' && <MaterialTable {...props} rows={view.materials} adding={adding} onAdded={() => setAdding(null)} />}
+        {list === 'equipment' && (
+          <EquipmentTable {...props} rows={view.equipment} addresses={view.addresses} adding={adding} onAdded={() => setAdding(null)} />
+        )}
+        {list === 'materials' && (
+          <MaterialTable {...props} rows={view.materials} addresses={view.addresses} adding={adding} onAdded={() => setAdding(null)} />
+        )}
         {list === 'special' && (
           <SpecialTable {...props} rows={view.special} compressor={hasAirCompressor(view.equipment as unknown as DraftEquipment[])} />
         )}
         {list === 'buildings' && <BuildingTable {...props} rows={view.buildings} />}
         {list === 'fire' && <FireList {...props} fire={view.fire} />}
-        {list === 'supplies' && <SupplyTable rows={view.supplies} empty="客户还没有填应急物资" />}
+        {list === 'supplies' && <SupplyTable rows={view.supplies} addresses={view.addresses} empty="客户还没有填应急物资" />}
         {list === 'firstAid' && <FirstAid {...props} kit={view.firstAid} />}
         {list === 'process' && <ProcessList process={view.process} />}
         {impact.length > 0 && (
@@ -138,6 +143,18 @@ export function ProductionPanel(props: ProductionPanelProps) {
 }
 
 // ---------- 来源与行操作 ----------
+
+// 一照多址：厂址短写；只有一处地址时返回 undefined（不显示厂址列）
+const siteLabel = (addresses: SiteAddressOption[], id: string | undefined): string | undefined =>
+  addresses.length > 0 ? (addresses.find((a) => a.id === id)?.label ?? '') : undefined;
+
+function SiteCell({ site }: { site: string }) {
+  return (
+    <span style={{ ...small, ...col(88, { paddingLeft: 8 }), color: site ? gy.text : gy.tertiary }} title={site}>
+      {site || '未标'}
+    </span>
+  );
+}
 function RowSource({ edited, onOpen }: { edited: boolean; onOpen?: () => void }) {
   return (
     <span style={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
@@ -189,7 +206,9 @@ const EQUIPMENT_FIELDS: { key: keyof ExpertEquipment; label: string; width?: num
   { key: 'condition', label: '状况', width: 72 },
 ];
 
-function EquipmentTable(props: ProductionPanelProps & { rows: EquipmentRow[]; adding: string | null; onAdded: () => void }) {
+function EquipmentTable(
+  props: ProductionPanelProps & { rows: EquipmentRow[]; addresses: SiteAddressOption[]; adding: string | null; onAdded: () => void },
+) {
   const [editing, setEditing] = useState<string | null>(null);
   const listRef = useListMotion<HTMLDivElement>();
   const ledger = props.onOpenItem('equipment');
@@ -208,6 +227,7 @@ function EquipmentTable(props: ProductionPanelProps & { rows: EquipmentRow[]; ad
         <span style={{ ...head, ...col(56, { textAlign: 'right' }) }}>数量</span>
         <span style={{ ...head, ...col(80, { paddingLeft: 8 }) }}>使用部门</span>
         <span style={{ ...head, ...col(40) }}>状况</span>
+        {props.addresses.length > 0 && <span style={{ ...head, ...col(88, { paddingLeft: 8 }) }}>厂址</span>}
         <span style={{ ...head, ...col(88, { textAlign: 'right' }) }}>来源</span>
         <span style={{ width: 32, flexShrink: 0 }} />
       </div>
@@ -218,18 +238,27 @@ function EquipmentTable(props: ProductionPanelProps & { rows: EquipmentRow[]; ad
             key={r.id}
             fields={EQUIPMENT_FIELDS}
             initial={r}
+            addresses={props.addresses}
             saving={props.saving}
             onCancel={() => setEditing(null)}
             onSave={(v) => save(r.id, { ...v, name: v.name ?? '' } as ExpertEquipment)}
           />
         ) : (
-          <EquipmentLine key={r.id} row={r} ledger={ledger} onEdit={() => setEditing(r.id)} onUndo={() => save(r.id, null)} />
+          <EquipmentLine
+            key={r.id}
+            row={r}
+            site={siteLabel(props.addresses, r.addressId)}
+            ledger={ledger}
+            onEdit={() => setEditing(r.id)}
+            onUndo={() => save(r.id, null)}
+          />
         ),
       )}
       {props.adding && (
         <RowEditor
           fields={EQUIPMENT_FIELDS}
           initial={{ name: '' }}
+          addresses={props.addresses}
           saving={props.saving}
           onCancel={props.onAdded}
           onSave={(v) => save(props.adding!, { ...v, name: v.name ?? '' } as ExpertEquipment)}
@@ -239,7 +268,20 @@ function EquipmentTable(props: ProductionPanelProps & { rows: EquipmentRow[]; ad
   );
 }
 
-function EquipmentLine({ row, ledger, onEdit, onUndo }: { row: EquipmentRow; ledger?: () => void; onEdit: () => void; onUndo: () => void }) {
+function EquipmentLine({
+  row,
+  site,
+  ledger,
+  onEdit,
+  onUndo,
+}: {
+  row: EquipmentRow;
+  // 一照多址时的厂址列；只有一处地址时为 undefined，不显示这一列
+  site?: string;
+  ledger?: () => void;
+  onEdit: () => void;
+  onUndo: () => void;
+}) {
   const { hover, bind } = useHover();
   return (
     <div style={rowLine} {...bind}>
@@ -254,6 +296,7 @@ function EquipmentLine({ row, ledger, onEdit, onUndo }: { row: EquipmentRow; led
         {dash(row.location)}
       </span>
       <span style={{ ...small, ...col(40), color: gy.secondary }}>{dash(row.condition)}</span>
+      {site !== undefined && <SiteCell site={site} />}
       <RowSource edited={row.source === 'expert'} onOpen={ledger} />
       <RowActions>
         {row.edited && hover ? <UndoButton added={row.added} onClick={onUndo} /> : <EditButton label={`修改${row.name}`} shown={hover} onClick={onEdit} />}
@@ -266,6 +309,7 @@ function EquipmentLine({ row, ledger, onEdit, onUndo }: { row: EquipmentRow; led
 function RowEditor({
   fields,
   initial,
+  addresses = [],
   saving,
   onCancel,
   onSave,
@@ -274,6 +318,8 @@ function RowEditor({
   fields: { key: string; label: string; width?: number }[];
   // 客户行或空行，按字段名取文字
   initial: object;
+  // 一照多址时可选所在厂址
+  addresses?: SiteAddressOption[];
   saving: boolean;
   onCancel: () => void;
   onSave: (value: Record<string, string | undefined>) => void;
@@ -282,11 +328,13 @@ function RowEditor({
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.key, String((initial as Record<string, unknown>)[f.key] ?? '')])),
   );
+  const [addressId, setAddressId] = useState<string | undefined>((initial as { addressId?: string }).addressId);
   const name = draft[fields[0]!.key]?.trim() ?? '';
   const submit = () => {
     if (!name || saving) return;
     const out: Record<string, string | undefined> = {};
     for (const f of fields) out[f.key] = draft[f.key]?.trim() || undefined;
+    if (addresses.length > 0) out.addressId = addressId;
     onSave(out);
   };
   const keys = { onPressEnter: submit, onKeyDown: (e: React.KeyboardEvent) => e.key === 'Escape' && onCancel() };
@@ -305,6 +353,18 @@ function RowEditor({
             {...keys}
           />
         ))}
+        {addresses.length > 0 && (
+          <Select
+            aria-label="所在厂址"
+            allowClear
+            placeholder="所在厂址"
+            value={addresses.some((a) => a.id === addressId) ? addressId : undefined}
+            onChange={(v?: string) => setAddressId(v || undefined)}
+            options={addresses.map((a) => ({ value: a.id, label: a.label, title: a.address }))}
+            popupMatchSelectWidth={false}
+            style={{ width: 112, flexShrink: 0 }}
+          />
+        )}
       </Space.Compact>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ ...head, flex: 1 }}>{extra ?? '记为「专家整理」，客户原来填的内容保留，可以撤回'}</span>
@@ -320,12 +380,15 @@ function RowEditor({
 // ---------- 原辅材料 ----------
 const MATERIAL_FIELDS: { key: keyof ExpertMaterial & string; label: string; width?: number }[] = [
   { key: 'name', label: '名称' },
+  { key: 'casNumber', label: 'CAS 号', width: 104 },
   { key: 'annualUsage', label: '年用量', width: 88 },
   { key: 'maxStorage', label: '最大储量', width: 88 },
   { key: 'storageLocation', label: '存放位置', width: 96 },
 ];
 
-function MaterialTable(props: ProductionPanelProps & { rows: MaterialRow[]; adding: string | null; onAdded: () => void }) {
+function MaterialTable(
+  props: ProductionPanelProps & { rows: MaterialRow[]; addresses: SiteAddressOption[]; adding: string | null; onAdded: () => void },
+) {
   const [editing, setEditing] = useState<string | null>(null);
   const [judging, setJudging] = useState<string | null>(null);
   const listRef = useListMotion<HTMLDivElement>();
@@ -344,9 +407,11 @@ function MaterialTable(props: ProductionPanelProps & { rows: MaterialRow[]; addi
     kind: base?.kind ?? 'material',
     cylinderSpec: base?.cylinderSpec,
     name: v.name ?? '',
+    casNumber: v.casNumber,
     annualUsage: v.annualUsage,
     maxStorage: v.maxStorage,
     storageLocation: v.storageLocation,
+    addressId: props.addresses.length > 0 ? v.addressId : base?.addressId,
   });
   return (
     <div ref={listRef}>
@@ -356,6 +421,7 @@ function MaterialTable(props: ProductionPanelProps & { rows: MaterialRow[]; addi
         <span style={{ ...head, ...col(64, { textAlign: 'right' }) }}>最大储量</span>
         <span style={{ ...head, ...col(72, { paddingLeft: 8 }) }}>存放</span>
         <span style={{ ...head, ...col(64, { paddingLeft: 8 }) }}>危化品</span>
+        {props.addresses.length > 0 && <span style={{ ...head, ...col(88, { paddingLeft: 8 }) }}>厂址</span>}
         <span style={{ ...head, ...col(88, { textAlign: 'right' }) }}>来源</span>
         <span style={{ width: 32, flexShrink: 0 }} />
       </div>
@@ -368,6 +434,7 @@ function MaterialTable(props: ProductionPanelProps & { rows: MaterialRow[]; addi
               key={r.id}
               fields={MATERIAL_FIELDS}
               initial={r}
+              addresses={props.addresses}
               saving={props.saving}
               onCancel={() => setEditing(null)}
               onSave={(v) => saveRow(r.id, toMaterial(v, r))}
@@ -398,6 +465,7 @@ function MaterialTable(props: ProductionPanelProps & { rows: MaterialRow[]; addi
           >
             <MaterialLine
               row={r}
+              site={siteLabel(props.addresses, r.addressId)}
               open={open}
               ledger={ledger}
               onEdit={() => setEditing(r.id)}
@@ -420,6 +488,7 @@ function MaterialTable(props: ProductionPanelProps & { rows: MaterialRow[]; addi
         <RowEditor
           fields={MATERIAL_FIELDS}
           initial={{ name: '' }}
+          addresses={props.addresses}
           saving={props.saving}
           onCancel={props.onAdded}
           onSave={(v) => saveRow(props.adding!, toMaterial(v))}
@@ -437,6 +506,7 @@ function hazardText(r: MaterialRow): { text: string; color: string } {
 
 function MaterialLine({
   row,
+  site,
   open,
   ledger,
   onEdit,
@@ -445,6 +515,7 @@ function MaterialLine({
   onRevertJudgement,
 }: {
   row: MaterialRow;
+  site?: string;
   open: boolean;
   ledger?: () => void;
   onEdit: () => void;
@@ -457,8 +528,9 @@ function MaterialLine({
   const name = row.kind === 'cylinder' && row.cylinderSpec ? `${row.name}（${row.cylinderSpec}）` : row.name;
   return (
     <div style={open ? { display: 'flex', alignItems: 'center', gap: 8 } : rowLine} {...bind}>
-      <span style={{ ...cell, ...grow, fontWeight: open ? 500 : 400 }} title={name}>
+      <span style={{ ...cell, ...grow, fontWeight: open ? 500 : 400 }} title={row.casNumber ? `${name}（CAS ${row.casNumber}）` : name}>
         {name}
+        {row.casNumber && <span style={{ marginLeft: 6, fontSize: 12, color: gy.tertiary }}>CAS {row.casNumber}</span>}
       </span>
       <span style={{ ...cell, ...col(64, { textAlign: 'right' }) }}>{dash(row.annualUsage)}</span>
       <span style={{ ...cell, ...col(64, { textAlign: 'right' }) }}>{dash(row.maxStorage)}</span>
@@ -474,6 +546,7 @@ function MaterialLine({
           h.text
         )}
       </span>
+      {site !== undefined && <SiteCell site={site} />}
       <RowSource edited={row.source === 'expert' || row.hazard.decidedBy === 'expert'} onOpen={ledger} />
       <RowActions>
         {hover && row.hazard.judged && !row.edited ? (
@@ -904,13 +977,14 @@ function FireList(props: ProductionPanelProps & { fire: ReturnType<typeof produc
   );
 }
 
-function SupplyTable({ rows, empty }: { rows: SupplyRow[]; empty: string }) {
+function SupplyTable({ rows, empty, addresses = [] }: { rows: SupplyRow[]; empty: string; addresses?: SiteAddressOption[] }) {
   return (
     <div>
       <div style={{ ...rowLine, minHeight: 40 }}>
         <span style={{ ...head, ...grow }}>名称</span>
         <span style={{ ...head, ...col(88, { textAlign: 'right' }) }}>数量</span>
         <span style={{ ...head, ...col(160, { paddingLeft: 16 }) }}>位置</span>
+        {addresses.length > 0 && <span style={{ ...head, ...col(88, { paddingLeft: 8 }) }}>厂址</span>}
       </div>
       {rows.length === 0 && <Empty text={empty} />}
       {rows.map((s, i) => (
@@ -918,6 +992,7 @@ function SupplyTable({ rows, empty }: { rows: SupplyRow[]; empty: string }) {
           <span style={{ ...cell, ...grow }}>{s.name}</span>
           <span style={{ ...cell, ...col(88, { textAlign: 'right' }) }}>{s.quantity !== undefined ? `${s.quantity} ${s.unit ?? ''}` : '—'}</span>
           <span style={{ ...small, ...col(160, { paddingLeft: 16 }) }}>{dash(s.location)}</span>
+          {addresses.length > 0 && <SiteCell site={siteLabel(addresses, s.addressId) ?? ''} />}
         </div>
       ))}
     </div>

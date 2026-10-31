@@ -1,6 +1,7 @@
 // 生产现场（旧仓库 E4）。字段按 TECH-PLAN 3.5 扩展。
 // 专业判断（是否危化品、是否属于压力容器 / 压力管道、耐火等级）不在这里，只存在专家侧。
 import { z } from 'zod';
+import { YES_NO_UNKNOWN } from './basic.ts';
 
 const text = z.string().trim().optional();
 const amount = z.coerce.number().min(0).optional();
@@ -23,6 +24,8 @@ export const equipmentSchema = z.object({
   department: z.string().default('车间'),
   location: z.string().default('车间'),
   condition: z.enum(EQUIPMENT_CONDITIONS).default('正常'),
+  // 所在厂址 id（一照多址时，见 addresses.ts）
+  addressId: z.string().optional(),
 });
 
 // 特种设备：每类先回答有 / 没有 / 拍照给耕云看，选「有」才填参数；铭牌照片作为原件
@@ -81,6 +84,7 @@ export const materialSchema = z.object({
   labelPhotoFileIds: fileIds,
   msds: z.enum(MSDS_STATES).optional(),
   msdsFileIds: fileIds,
+  addressId: z.string().optional(),
 });
 
 export const processStepSchema = z.object({
@@ -108,6 +112,7 @@ export const supplySchema = z.object({
   location: text,
   // 引用应急组织里的人员 id，电话随人员带出
   custodianId: text,
+  addressId: z.string().optional(),
 });
 
 export const firstAidItemSchema = z.object({
@@ -140,6 +145,8 @@ export const productionSchema = z.object({
     ])
     .optional(),
   hasEmergencyPool: z.boolean().optional(),
+  // 紧急集合点：有的写位置（客户选填）
+  assemblyPoint: z.object({ answer: z.enum(YES_NO_UNKNOWN), location: text }).optional(),
 });
 export type Production = z.infer<typeof productionSchema>;
 
