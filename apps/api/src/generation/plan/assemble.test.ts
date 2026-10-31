@@ -226,6 +226,15 @@ describe('总指挥不是法定代表人', () => {
   }, 60_000);
 });
 
+describe('客户填了相邻单位', () => {
+  it('周边影响分析和外部资源表写相邻单位名称与电话', () => {
+    const location = { ...feiyuPlanInput.location, neighbours: { answer: 'listed' as const, items: [{ name: '惠州市示例邻企有限公司', phone: '0752-0000009' }] } };
+    const text = allText(buildPlan({ ...feiyuPlanInput, location }));
+    expect(text).toContain('可能对相邻的惠州市示例邻企有限公司及周边道路');
+    expect(text).toMatch(/邻企互助力量 惠州市示例邻企有限公司 0752-0000009/);
+  }, 60_000);
+});
+
 describe('企业改了小组名', () => {
   it('预置组名换成企业的组名；同类组有多个时不换', () => {
     const org = feiyuPlanInput.organization;
@@ -366,4 +375,78 @@ describe('Markdown 转文档结构', () => {
   it('引用了没画的图就报错', () => {
     expect(() => parseMarkdown('[[figure:nope]]', {})).toThrow();
   });
+});
+
+describe('资料里没有的设施、协议不写成现状', () => {
+  // 装配厂：没有危化品、对讲机、广播、自有车辆，也没有应急办公室
+  const bare: PlanInput = {
+    ...assembler,
+    business: { ...assembler.business, ownVehicles: false },
+    organization: { ...assembler.organization, hasEmergencyOffice: false },
+    expert: { ...assembler.expert, figures: undefined },
+  };
+  let text: string;
+  beforeAll(() => {
+    text = allText(buildPlan(bare));
+  }, 60_000);
+
+  it('通讯只写电话、现场呼喊；对讲机、微信群、监控录像、备用电源、应急车辆只作要求或不写', () => {
+    expect(text).not.toMatch(/口头 \/ 对讲机|使用公司配备的对讲机|企业微信群|监控录像|备用电源|UPS|应急车辆/);
+    expect(text).toContain('公司应根据厂区范围评估配备对讲机');
+  });
+
+  it('互助、医疗协议写成「应签订」，没有应急办公室、车间主任', () => {
+    // 飞宇组织里确有「安全总监」，所以安全总监照写；这里只查资料里没有的
+    const hits = [...text.matchAll(/已签订|根据签订的互助协议|应急办公室|车间主任/g)];
+    expect(hits.map((m) => text.slice(m.index - 20, m.index + 20))).toEqual([]);
+    expect(text).toContain('应与厂区周边 500 米范围内企业签订应急互助协议');
+  });
+
+  it('没有危化品：不出现化学品火灾、化学灼伤、危化品泄漏', () => {
+    expect(text).not.toMatch(/化学品火灾|化学性皮肤烧伤|危化品泄漏|危化品处置/);
+  });
+});
+
+describe('事故区域按专家确认的危险源场所写', () => {
+  it('同类事故的多个场所用「、」连起来并去重', () => {
+    const input: PlanInput = {
+      ...assembler,
+      expert: {
+        ...assembler.expert,
+        hazards: [
+          { factor: '触电', workplace: '配电房、空压机房' },
+          { factor: '触电', workplace: '配电房' },
+          { factor: '火灾', workplace: '成品仓库' },
+        ],
+      },
+    };
+    const text = allText(buildPlan(input));
+    expect(text).toContain('（2）事故区域：配电房、空压机房。');
+    expect(text).toContain('（2）事故区域：成品仓库。');
+  }, 60_000);
+});
+
+describe('锂电池', () => {
+  it('有锂电池时火灾现场处置方案加热失控处置；没有时不写', () => {
+    const input: PlanInput = {
+      ...assembler,
+      production: { ...assembler.production, materials: [{ ...assembler.production.materials[0]!, name: '锂离子电池' }] },
+    };
+    const text = allText(buildPlan(input));
+    expect(text).toContain('锂电池火灾的处置');
+    expect(text).toContain('热失控');
+    expect(allText(buildPlan(assembler))).not.toContain('热失控');
+  }, 60_000);
+});
+
+describe('管道爆炸', () => {
+  it('没有锅炉时写成通用压力管道，不出现锅炉', () => {
+    const all = Object.fromEntries(SCOPE_KEYS.map((k) => [k, true])) as Scope;
+    const plan = buildPlan({ ...assembler, expert: { ...assembler.expert, scope: all } });
+    const site = plan.sections.find((s) => s.title.endsWith('现场处置方案'))!;
+    const pipe = site.sections!.find((s) => s.title.includes('管道爆炸'))!;
+    const text = allText({ ...plan, cover: { ...plan.cover, lines: [], dates: [] }, frontPages: [], sections: [pipe] });
+    expect(text).toContain('压力管道');
+    expect(text).not.toContain('锅炉');
+  }, 60_000);
 });

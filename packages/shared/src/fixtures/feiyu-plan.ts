@@ -17,6 +17,9 @@ export const feiyuPlanInput: PlanInput = {
   issuedOn: '2026-04-11',
   expert: {
     hazardousMaterials: ['酒精'],
+    // 跌落、淹溺系统不再默认打开（资料里没有楼梯、平台的记载；消防水池多在地下或加盖）；
+    // 飞宇专家成稿两份方案都有，按专家确认打开
+    scope: { fallRisk: true, waterHazard: true },
     facts: {
       shortName: 'FY',
       establishedDate: '2001-01-03',

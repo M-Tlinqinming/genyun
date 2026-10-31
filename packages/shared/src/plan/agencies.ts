@@ -23,8 +23,9 @@ interface District {
   fire: string;
   firePhone: string;
   plan?: string;
-  /** 镇街名称（含「街道 / 镇 / 乡」或园区全称）与应急管理办公室电话；电话不详的不写 */
-  towns: [name: string, phone?: string][];
+  /** 镇街名称（含「街道 / 镇 / 乡」或园区全称）与应急管理办公室电话；电话不详的不写。
+   * 地址里不写镇街、只写村名时用 aliases 认，只收有出处的（专家成稿写明的归属） */
+  towns: [name: string, phone?: string, aliases?: string[]][];
 }
 
 const DISTRICTS: District[] = [
@@ -81,7 +82,8 @@ const DISTRICTS: District[] = [
     towns: [
       ['淡水街道', '0752-3360690'],
       ['秋长街道', '0752-3557885'],
-      ['三和街道', '0752-3502038'],
+      // 拾围村：捷美奇专家成稿写明属三和街道
+      ['三和街道', '0752-3502038', ['拾围村']],
       ['沙田镇', '0752-3754119'],
       ['新圩镇', '0752-3330001'],
       ['镇隆镇', '0752-3699129'],
@@ -186,7 +188,9 @@ export function localAgenciesOf(address: Address | undefined): LocalAgencies {
   // 镇街重名（博罗、龙门都有龙华镇），先认区县；地址里没写区县时只认全名唯一的镇街
   const district = DISTRICTS.find((d) => d.aliases.some((w) => text.includes(w)));
   const candidates = district ? [district] : DISTRICTS;
-  const hits = candidates.flatMap((d) => d.towns.filter(([t]) => text.includes(t)).map((t) => ({ d, t })));
+  const hits = candidates.flatMap((d) =>
+    d.towns.filter(([t, , aliases]) => text.includes(t) || (aliases ?? []).some((a) => text.includes(a))).map((t) => ({ d, t })),
+  );
   const shortHits = district ? district.towns.filter(([t]) => short(t) !== t && text.includes(short(t))).map((t) => ({ d: district, t })) : [];
   const found = hits.length === 1 ? hits[0] : hits.length === 0 && shortHits.length === 1 ? shortHits[0] : undefined;
   const d = district ?? found?.d;

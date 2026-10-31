@@ -7,7 +7,6 @@ import type { Production } from './profile/production.ts';
 import {
   draftEquipmentSchema,
   draftMaterialSchema,
-  isGeneralMaterial,
   SPECIAL_CATEGORIES,
   SPECIAL_CATEGORY_KEYS,
   type DraftEquipment,
@@ -18,6 +17,7 @@ import {
 } from './profile/production-step.ts';
 import { FIRE_RATINGS, type DraftSupply } from './profile/resources-step.ts';
 import { SCOPE_SWITCHES, type ScopeKey } from './plan/catalog.ts';
+import { hazchemSuggestionOf } from './plan/hazchem.ts';
 import type { PlanInput } from './plan/input.ts';
 import { suggestScope, type ScopeSuggestion } from './plan/scope.ts';
 import type { WorkupSnapshot } from './workup.ts';
@@ -105,44 +105,16 @@ export type ProductionSave = z.infer<typeof productionSaveSchema>;
 export const isAddedRow = (id: string) => id.startsWith('x');
 
 // ---------- 危化品的系统建议 ----------
-// 名单按常见名称整理：可燃液体来自知识库「产生可燃液体蒸气化学品」，腐蚀品来自「化学品灼烫分类」，
-// 其余沿用适用范围的关键词。第一版的保守写法，M3 化学品知识库（危化品目录）上线后改为查库。
-const HAZARD_GROUPS: { kind: string; names: string[]; neg?: string[] }[] = [
-  {
-    kind: '易燃液体',
-    names: [
-      '汽油', '柴油', '煤油', '石脑油', '石油醚', '甲醇', '乙醇', '酒精', '丁醇', '乙醚', '乙酸乙酯', '甲基叔丁基醚',
-      '二甲苯', '甲苯', '丙酮', '环己烷', '二硫化碳', '乙腈', '洗枪水', '天那水', '香蕉水', '稀释剂', '开油水', '油漆',
-    ],
-    neg: ['乙醇胺'],
-  },
-  { kind: '易燃气体', names: ['液化石油气', '液化气', '天然气', '氢气', '乙炔', '甲烷', '丙烷', '丁烷', '一氧化碳'] },
-  { kind: '压缩气体', names: ['氧气', '氮气', '氩气', '氦气', '二氧化碳'] },
-  {
-    kind: '腐蚀品',
-    names: ['硫酸', '盐酸', '硝酸', '氢氟酸', '磷酸', '冰醋酸', '醋酸', '氢氧化钠', '烧碱', '氢氧化钾', '氨水'],
-  },
-  { kind: '有毒品', names: ['苯酚', '甲醛', '氰', '硫化氢', '氯气', '液氨', '光气', '二氧化硫', '丙烯腈', '苯'], neg: ['聚苯', '苯板'] },
-  { kind: '氧化剂', names: ['高锰酸钾', '过氧化氢', '双氧水', '铬酸'] },
-];
-
+// 按《危险化学品目录（2015 版）》查名称、别名（物料资料里有 CAS 号时先查 CAS 号），规则见 plan/hazchem.ts
 export interface HazardSuggestion {
   value: boolean;
+  // 依据，如「即乙醇，列在《危险化学品目录》第 2568 号（易燃液体）…」
   reason: string;
 }
 
-export function hazardSuggestionOf(name: string): HazardSuggestion | undefined {
-  const n = name.trim();
-  if (!n) return undefined;
-  for (const g of HAZARD_GROUPS) {
-    if (g.neg?.some((x) => n.includes(x))) continue;
-    const hit = g.names.find((x) => n.includes(x));
-    if (hit) return { value: true, reason: `名称含「${hit}」，属于${g.kind}，建议判定为危化品` };
-  }
-  if (isGeneralMaterial(n)) {
-    return { value: false, reason: '一般原料，不是危化品' };
-  }
-  return undefined;
+export function hazardSuggestionOf(name: string, casNumber?: string): HazardSuggestion | undefined {
+  const s = hazchemSuggestionOf({ name, casNumber });
+  return s && { value: s.value, reason: s.reason };
 }
 
 // ---------- 整理结果 ----------

@@ -1,7 +1,7 @@
 // 风险评估报告与应急资源调查报告共用的部分（迁自旧仓库 lib/md-generator/reports.ts）：
 // 企业概况、企业基本情况表、地理位置、危险有害因素表，以及把 Markdown 正文拼成交付文档。
 // 章用「1. 」、节用「1.1 」，再往下（1）企业概况）是加粗段落，与旧仓库一致。
-import { flowOptionsOf, processFlowSvg, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
+import { flowOptionsOf, processFlowSvg, workplacesOf, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
 import { svgToPng } from '../word/png.ts';
 import { MISSING, cnDate, dash, fill, type PlanContext } from '../plan/context.ts';
 import { parseMarkdown, toSections, type Figure } from '../plan/markdown.ts';
@@ -56,11 +56,13 @@ export function locationText(ctx: PlanContext): string {
 
 export function hazardFactorsTable(ctx: PlanContext, no: string): string[] {
   const byPlace = new Map<string, string[]>();
+  // 一条危险源可以有多个场所（「、」分隔），按单个场所汇总
   for (const h of ctx.input.expert.hazards ?? []) {
-    const place = h.workplace.trim() || '未分类作业场所';
-    const list = byPlace.get(place) ?? [];
-    if (h.factor.trim() && !list.includes(h.factor.trim())) list.push(h.factor.trim());
-    byPlace.set(place, list);
+    for (const place of workplacesOf(h.workplace).length ? workplacesOf(h.workplace) : ['未分类作业场所']) {
+      const list = byPlace.get(place) ?? [];
+      if (h.factor.trim() && !list.includes(h.factor.trim())) list.push(h.factor.trim());
+      byPlace.set(place, list);
+    }
   }
   return [
     `**表 ${no} 主要危险有害因素**`,

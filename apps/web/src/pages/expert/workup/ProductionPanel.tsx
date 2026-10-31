@@ -514,7 +514,7 @@ function HazardBar({ row, saving, onJudge, onCancel }: { row: MaterialRow; savin
     >
       {s && <SourceTag kind="system" />}
       <span style={{ ...small, flex: 1, minWidth: 0 }}>
-        {s ? s.reason.replace(/^一般原料，不是危化品$/, '一般原料，系统判定不是危化品') : '名称不在危化品名单里，请对照包装标签或 MSDS 判断'}
+        {s ? s.reason.replace(/^一般原料，不是危化品$/, '一般原料，系统判定不是危化品') : '《危险化学品目录》里查不到这个名称，请对照包装标签或 MSDS 判断'}
       </span>
       {s?.value ? action('采纳', true) : action('是危化品', true)}
       {action('不是危化品', false)}

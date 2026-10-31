@@ -1,7 +1,7 @@
 // 生产安全事故风险评估报告。正文迁自旧仓库 lib/md-generator/reports.ts（generateRiskAssessmentReportMd），
 // 改动同应急预案：中文全角标点；旧稿里「以企业 E4 模块填报为准」这类内部说法改为「（待补充）」；
 // 成立日期、周边环境取专家补充的事实。排版暂与应急预案相同（第 9c 项按实际案例定）。
-import { RISK_LEVELS, riskLevel, riskScore, type PlanInput } from '@genyun/shared';
+import { RISK_LEVELS, riskLevel, riskScore, workplacesOf, type PlanInput } from '@genyun/shared';
 import { MISSING, dash, fill, planContext, type PlanContext } from '../plan/context.ts';
 import { buildReport, companyBasicTable, companyOverview, hazardFactorsTable, locationText } from './common.ts';
 
@@ -36,23 +36,23 @@ function factorParagraphs(ctx: PlanContext): string[] {
   const liquids = list(s.flammableLiquids, '可燃液体');
   const text: [RegExp, () => string][] = [
     [/可燃液体蒸气爆炸/, () => `${liquids}挥发产生的蒸气在通风不良处积聚，达到爆炸极限后遇明火、电火花、静电或高温，可能发生蒸气爆炸，并引发火灾。`],
-    [/可燃气体爆炸/, () => '可燃气体管道、阀门、气瓶泄漏，与空气混合达到爆炸极限，遇明火、电火花或高温，可能发生爆炸，并引发火灾。'],
+    [/可燃气体爆炸/, () => `${list(s.combustibleGases, '可燃气体')}从${s.gasPipeline ? '管道、阀门、' : ''}${s.gasTanks ? '储罐、' : ''}气瓶或用气设备处泄漏，与空气混合达到爆炸极限，遇明火、电火花或高温，可能发生爆炸，并引发火灾。`],
     [/高温熔融物爆炸/, () => `${list(s.meltTypes, '高温熔融金属')}等高温熔融物遇水、潮湿炉料或模具，水分急剧汽化，可能发生蒸气爆炸，熔融物喷溅造成灼烫和火灾。`],
-    [/粉尘爆炸/, () => `${list(s.dustWorkstations, '产尘')}等工序产生${list(s.metalDustTypes, '可燃')}粉尘，清扫不及时、除尘不畅、粉尘浓度达到爆炸极限时，遇火花、高温或静电可能发生粉尘爆炸，并可能扬起积尘引发二次爆炸。`],
+    [/粉尘爆炸/, () => `${list(s.dustSources, '产尘')}等工序产生${s.dustKinds.length ? s.dustKinds.join('、') : '可燃粉尘'}，清扫不及时、除尘不畅、粉尘浓度达到爆炸极限时，遇火花、高温或静电可能发生粉尘爆炸，并可能扬起积尘引发二次爆炸。`],
     [/管道爆炸/, () => '压力管道因腐蚀减薄、焊缝缺陷、超压运行或安全附件失灵，可能发生破裂爆炸，介质喷出伤人。'],
     [/容器爆炸/, () => `${list(s.pressureVessels, '压力容器')}因罐体腐蚀老化、安全阀和压力表等安全附件失灵、超压运行或违规操作，可能发生物理爆炸，冲击波和碎片伤人，爆炸产生的高温还可能引燃周围可燃物。`],
-    [/火灾/, () => `电气线路和设备过载、短路、接触不良产生高温或电火花，引燃周围可燃物；${s.flammableLiquids.length ? `使用${liquids}等易燃液体，通风不良时蒸气与空气形成爆炸性混合物，遇明火、电火花可能引发火灾；` : ''}物料和包装材料堆放过多、动火作业管理不严、违规吸烟等，也可能引发火灾事故。`],
+    [/火灾/, () => `电气线路和设备过载、短路、接触不良产生高温或电火花，引燃周围可燃物；${s.flammableLiquids.length ? `使用${liquids}等易燃液体，通风不良时蒸气与空气形成爆炸性混合物，遇明火、电火花可能引发火灾；` : ''}${s.lithium ? `${s.lithiumItems.join('、')}受挤压、短路、过充或损坏时可能发生热失控起火，扑灭后仍可能复燃；` : ''}物料和包装材料堆放过多、动火作业管理不严、违规吸烟等，也可能引发火灾事故。`],
     [/触电/, () => '用电场所电气线路、设备绝缘老化破损，防护罩缺失，接地、接零或漏电保护失效，或违章带电作业，人体触及带电体可能发生触电。'],
     [/机械/, () => `${list(s.dangerMachines, '生产')}等机械设备防护装置缺失或失效、维修保养不当、违章操作时，运动部件或飞出物与人体接触，可能造成挤压、剪切、卷入、绞伤等伤害。`],
     [/物体打击/, () => '货物、物料堆放不稳或堆垛过高发生倒塌，高处物件固定不牢坠落，设备带病运行或防护不足导致物体飞出，均可能砸伤作业人员。'],
     [/灼烫/, () => `${s.meltTypes.length ? `${s.meltTypes.join('、')}等高温熔融金属喷溅、` : ''}高温设备表面和焊接维修作业可能造成物理灼烫；${ctx.hazardous.length ? `接触${chem}可能造成化学灼伤。` : '操作中应做好隔热防护。'}`],
     [/道路/, () => '自备车辆道路运输中因疲劳驾驶、超速、车辆故障或路况不良，可能发生交通事故。'],
-    [/车辆/, () => '叉车、货车等厂内车辆因驾驶员操作不当、车辆故障、视线不良或人车混行，可能发生碰撞、碾压、倾翻。'],
+    [/车辆/, () => `${s.internalVehicles.length ? `${s.internalVehicles.join('、')}等厂内车辆` : '进出厂区的货车等车辆'}因驾驶员操作不当、车辆故障、视线不良或人车混行，可能发生碰撞、碾压、倾翻。`],
     [/起重/, () => '起重机械在运行、检修过程中因吊具或钢丝绳失效、超载、误操作，可能发生起重物坠落、挤压、倾覆等事故。'],
     [/泄漏/, () => `${chem}在储存、转运、使用中因容器破损、阀门密封失效或操作不当发生泄漏，可能引发火灾、中毒或环境污染。`],
     [/高处坠落/, () => '在离基准面 2 m 以上的平台、梯子、屋面作业时，护栏缺失或破损、未系安全带、无人监护，可能发生高处坠落。'],
     [/跌落/, () => '在楼梯、平台、车辆或货物上作业、行走时，地面湿滑、照明不足或注意力不集中，可能跌落至地面造成伤害。'],
-    [/中毒/, () => `${chem}泄漏逸散、作业场所通风不良时，作业人员吸入或接触，可能发生急性中毒。`],
+    [/中毒/, () => `${ctx.hazardous.length ? `${chem}泄漏逸散` : '有毒有害气体逸散'}、作业场所通风不良时，作业人员吸入或接触，可能发生急性中毒。`],
     [/窒息/, () => '惰性气体泄漏积聚或人员进入通风不良的场所，氧含量下降，可能导致人员窒息。'],
     [/坍塌/, () => '建（构）筑物、货架堆垛、临时搭建结构因设计施工缺陷、超载或老化，可能发生坍塌伤人。'],
     [/淹溺/, () => '消防水池、污水池等水体的防护栏、盖板、警示标志不足，人员检查、清理时违规操作，可能跌落水中发生淹溺。'],
@@ -63,7 +63,7 @@ function factorParagraphs(ctx: PlanContext): string[] {
     const f = h.factor.trim();
     if (!f) continue;
     const ps = places.get(f) ?? [];
-    if (h.workplace.trim() && !ps.includes(h.workplace.trim())) ps.push(h.workplace.trim());
+    for (const w of workplacesOf(h.workplace)) if (!ps.includes(w)) ps.push(w);
     places.set(f, ps);
   }
   return [...places].map(([factor, ps], i) => {
@@ -88,6 +88,7 @@ const CRITICAL_TONS: [names: string[], tons: number][] = [
   [['氧气', '液氧'], 200],
   [['氨气', '液氨'], 10],
   [['氯气', '液氯'], 5],
+  [['环氧乙烷'], 10],
 ];
 const criticalOf = (name: string) => CRITICAL_TONS.find(([names]) => names.some((n) => name.includes(n)))?.[1];
 

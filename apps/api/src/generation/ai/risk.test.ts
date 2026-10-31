@@ -43,7 +43,7 @@ describe('AI 按企业改写事故风险描述', () => {
     const docs = await generateDocuments(feiyuPlanInput, { drafter: tailor });
     const risk = docs.notes.filter((n) => n.slot.startsWith('risk-'));
     expect(risk.some((n) => n.source === 'ai' && n.label.startsWith('事故风险描述（'))).toBe(true);
-    expect(JSON.stringify(docs.plan)).toContain(`${facts.sites[0]}等使用电气设备`);
+    expect(JSON.stringify(docs.plan)).toContain(`${facts.sites[0]}等用电场所`);
   }, 60_000);
 
   it('编造的段落不用，回到系统原文并写明原因；其余段照常', async () => {

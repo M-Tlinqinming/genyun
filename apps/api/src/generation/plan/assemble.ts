@@ -26,7 +26,7 @@ import { DRAWINGS, attachments, type DrawingKey } from './attachments.ts';
 import { comprehensiveMarkdown } from './comprehensive.ts';
 import { templateBody, usesKnowledgeBlock } from './content.ts';
 import { humanize } from './humanize.ts';
-import { MISSING, cnDate, fill, ownGroupNames, planContext, type PlanContext } from './context.ts';
+import { MISSING, cnDate, commsMeans, fill, hazardArea, ownGroupNames, planContext, type PlanContext } from './context.ts';
 import { parseMarkdown, toSections, type Figure } from './markdown.ts';
 
 /** 客户上传的图纸（已转成图片）；PDF 图纸转图片在第 10 项接上 */
@@ -47,13 +47,24 @@ function nextDay(iso: string): string {
 
 const figure = (s: Svg, placement: Figure['placement'] = 'inline'): Figure => ({ type: 'figure', ...svgToPng(s.svg), placement });
 
-/** 模板里的 {{占位符}} 换成企业数据；没有数据的写「（待补充）」 */
-function placeholders(ctx: PlanContext): Record<string, string> {
+/** 模板里的 {{占位符}} 换成企业数据；没有数据的写「（待补充）」。t 是正在填的那份方案（事故区域按它取） */
+function placeholders(ctx: PlanContext, t?: PlanTemplate): Record<string, string> {
   const p = ctx.input.production;
+  const s = ctx.signals;
   const hazardousMaterials = p.materials.filter((m) => ctx.hazardous.includes(m.name));
   const join = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => Boolean(x?.trim())))].join('、');
   const elevators = p.equipment.filter((e) => /电梯/.test(e.name));
   const boilers = p.equipment.filter((e) => /锅炉|蒸汽|空压机|储气罐|压力容器/.test(e.name));
+  // 火灾知识块的特殊场景：按企业实有的液压设备、可燃液体存放处、产尘工序带出，没有的不写
+  const hydraulic = join(s.hydraulicFireSources);
+  const liquidAt = join(hazardousMaterials.filter((m) => s.flammableLiquids.some((l) => m.name.includes(l))).map((m) => m.storageLocation));
+  const liquids = join(s.flammableLiquids);
+  const dustSteps = join(s.dustWorkstations);
+  const fireScenes = [
+    hydraulic && `${hydraulic}高压液压油泄漏喷射遇火`,
+    liquids && `${liquidAt || '存放处'}内小量${liquids}遇明火火花引燃`,
+    dustSteps && `${dustSteps}工序沉积粉尘遇火高温扰动二次燃爆`,
+  ].filter(Boolean);
   return {
     COMPANY_24H_PHONE: ctx.dutyPhone,
     STREET_OFFICE_NAME: ctx.street,
@@ -64,7 +75,40 @@ function placeholders(ctx: PlanContext): Record<string, string> {
     EMERGENCY_BUREAU_PHONE: fill(ctx.bureauPhone),
     REPRESENTATIVE_CHEMICALS: fill(join(hazardousMaterials.slice(0, 3).map((m) => m.name))),
     CHEMICAL_STORAGE_LOCATIONS: fill(join(hazardousMaterials.map((m) => m.storageLocation))),
-    COMBUSTIBLE_GAS: ctx.scope.combustibleGas ? join(p.materials.filter((m) => /气/.test(m.name)).map((m) => m.name)) || '无' : '无',
+    COMBUSTIBLE_GAS: join(s.combustibleGases) || '可燃气体',
+    GAS_LOCATIONS: fill(join(s.gasLocations)),
+    GAS_FURNACES: join(s.gasFurnaces),
+    DUST_KINDS: join(s.dustKinds) || '可燃粉尘',
+    DUST_SOURCES: fill(join(s.dustSources)),
+    HEAT_SOURCES: join(s.heatSources),
+    MACHINE_AREAS: join(s.dangerMachineAreas) || (t ? hazardArea(ctx.input, t.title) : '') || '机械加工作业区域',
+    VEHICLES: join(s.internalVehicles),
+    LITHIUM_ITEMS: join(s.lithiumItems),
+    HYDRAULIC_EQUIP: join(s.hydraulicFireSources),
+    HAZARD_AREA: t ? hazardArea(ctx.input, t.title) : '',
+    DUST_STEPS: dustSteps,
+    DUST_SOURCE_TEXT: s.dustSources.length ? `${join(s.dustSources)}等产尘环节` : '产尘工序',
+    DUST_AREA: join(s.dustAreas) || '产尘作业场所',
+    DUST_COLLECTOR: s.dustCollectors.length ? `及${join(s.dustCollectors)}` : '',
+    // 灼烫：没有危险化学品时不写化学灼伤
+    CHEM_MISUSE: ctx.hazardous.length ? '；使用化学品操作失当' : '',
+    CHEM_BURN: ctx.hazardous.length ? '、化学灼伤' : '',
+    BURN_CHEM: ctx.hazardous.length
+      ? `生产过程中需使用到 \`${fill(join(hazardousMaterials.slice(0, 3).map((m) => m.name)))}\` 等化学品，员工若操作不当不慎接触皮肤、眼睛，可能发生化学品灼伤事故；`
+      : '',
+    BURN_AREA: (t && hazardArea(ctx.input, t.title)) || '生产车间',
+    FIRE_SCENES: fireScenes.map((x) => `；${x}`).join(''),
+    FIRE_EXTRA: [hydraulic && `${hydraulic}液压油泄漏`, liquids && `${liquidAt || ''}${liquids}`, dustSteps && `${dustSteps}积尘`]
+      .filter(Boolean)
+      .map((x) => `、${x}`)
+      .join(''),
+    FIRE_KEY_SPOTS:
+      [s.furnaceEquip.length ? `${join(s.furnaceEquip)}作业区` : '', dustSteps && `${dustSteps}工位`, liquidAt].filter(Boolean).join('、') || '生产车间',
+    FIRE_SIGNS: [hydraulic && '液压油喷射', dustSteps && '积尘扬尘'].filter(Boolean).map((x) => `、${x}`).join(''),
+    // 了解起火点、逐区域通知的手段：资料里有监控、广播才写
+    CHECK_MEANS: ctx.facts.hasCctv ? '视频监控、电话或巡逻人员' : '电话或巡逻人员',
+    ALARM_MEANS: commsMeans(ctx).filter((m) => m !== '电话').join('、'),
+    COMMS: commsMeans(ctx).join('、'),
     DUST_WORKSHOPS: fill(
       join(p.processFlow.steps.filter((s) => /喷砂|抛光|打磨|研磨|抛丸|CNC/i.test(s.name)).map((s) => s.name)) ||
         join(p.buildings.filter((b) => /粉|喷|打磨/.test(`${b.name}${b.remarks ?? ''}`)).map((b) => b.name)),
@@ -128,10 +172,36 @@ function compilationTeam(ctx: PlanContext): string[][] {
   return rows;
 }
 
+/** 模板里 [[if:key]] 可用的开关：适用范围、有无危化品、资料依据（facts）、设备物料推出的情况 */
+export function templateFlags(ctx: PlanContext, t?: PlanTemplate): Record<string, boolean> {
+  const s = ctx.signals;
+  return {
+    ...ctx.scope,
+    ...ctx.facts,
+    hazardousChemicals: ctx.hazardous.length > 0,
+    // 这类事故有专家确认的危险源场所：事故区域按它写
+    expertArea: Boolean(t && hazardArea(ctx.input, t.title)),
+    boiler: s.boiler,
+    lithium: s.lithium,
+    combustibleGases: s.combustibleGases.length > 0,
+    gasLocations: s.gasLocations.length > 0,
+    gasTanks: s.gasTanks,
+    gasPipeline: s.gasPipeline,
+    gasFurnaces: s.gasFurnaces.length > 0,
+    hydraulic: s.hydraulicFireSources.length > 0,
+    dustSources: s.dustSources.length > 0,
+    woodDust: s.dustKinds.includes('木粉尘'),
+    resinDust: s.dustKinds.some((k) => k.includes('树脂粉尘')),
+    powderDust: s.dustKinds.some((k) => k.includes('有机粉尘')),
+    heatSources: s.heatSources.length > 0,
+    vehicles: s.internalVehicles.length > 0,
+    flammableLiquids: s.flammableLiquids.length > 0,
+  };
+}
+
 /** 模板填好企业数据、按企业情况取舍、去掉内部编号后的正文 */
 function resolvedTemplate(ctx: PlanContext, t: PlanTemplate, filled: FilledSlots): string {
-  const flags: Record<string, boolean> = { ...ctx.scope, hazardousChemicals: ctx.hazardous.length > 0 };
-  return humanize(fillPlaceholders(applyConditions(templateBody(t, ctx.signals, filled[t.id]), flags), placeholders(ctx)));
+  return humanize(fillPlaceholders(applyConditions(templateBody(t, ctx.signals, filled[t.id]), templateFlags(ctx, t)), placeholders(ctx, t)));
 }
 
 /** AI 改写过的「事故风险描述」段：模板编号 → 系统原文 → 改写（已校验） */

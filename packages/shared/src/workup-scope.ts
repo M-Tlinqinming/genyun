@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import { PLAN_TEMPLATES, SCOPE_KEYS, SCOPE_SWITCHES, selectPlans, type PlanTemplate, type Scope, type ScopeKey } from './plan/catalog.ts';
 import { suggestScope, type ScopeSuggestion } from './plan/scope.ts';
-import { planProductionOf, productionView, type Judged, type ProductionWorkup } from './workup-production.ts';
+import { isAddedRow, planProductionOf, productionView, type Judged, type ProductionWorkup } from './workup-production.ts';
 import type { WorkupSnapshot } from './workup.ts';
 
 // 界面上的短名称（设计稿 E18-00D），完整说明用 SCOPE_SWITCHES
@@ -114,10 +114,23 @@ export interface ScopeView {
   preview: { specialty: PreviewPlan[]; site: PreviewPlan[] };
 }
 
-export function scopeView(snapshot: WorkupSnapshot, data: { production?: ProductionWorkup; scope?: ScopeWorkup }): ScopeView {
+// 危险源辨识里专家手动新增的行（结构同 workup-risk 的 RiskWorkup，这里只用名称与场所，避免循环引用）
+type AddedHazards = { rows: Record<string, Judged<{ factor: string; workplace: string; excluded?: boolean }>> };
+
+/** 专家在危险源辨识里手动新增、没标不适用的事故类型：对应方案没出时适用范围建议打开 */
+export function addedHazardsOf(risks: AddedHazards | undefined): { factor: string; workplace: string }[] {
+  return Object.entries(risks?.rows ?? {})
+    .filter(([id, r]) => isAddedRow(id) && !r.value.excluded)
+    .map(([, r]) => ({ factor: r.value.factor, workplace: r.value.workplace }));
+}
+
+export function scopeView(
+  snapshot: WorkupSnapshot,
+  data: { production?: ProductionWorkup; scope?: ScopeWorkup; risks?: AddedHazards },
+): ScopeView {
   const production = productionView(snapshot, data);
   const plan = planProductionOf(snapshot, production);
-  const suggested = suggestScope({ ...plan, expert: { hazardousMaterials: plan.hazardousMaterials } });
+  const suggested = suggestScope({ ...plan, expert: { hazardousMaterials: plan.hazardousMaterials } }, addedHazardsOf(data.risks));
   const undecided = new Set(production.materials.filter((m) => m.hazard.decidedBy === null).map((m) => m.name));
   const edits = data.scope?.switches ?? {};
 
@@ -127,8 +140,10 @@ export function scopeView(snapshot: WorkupSnapshot, data: { production?: Product
     const followsDust = key === 'dustSpecialty' && dustOff;
     const suggestion = suggested[key];
     const judged = followsDust ? undefined : edits[key];
+    // 化学品类：物料没判定是否危化品时要确认；按储量建议不出、按危险源建议打开的（basis 为 cue 但没有命中物料）也要确认
     const needsConfirm = CHEMICAL_KEYS.has(key)
-      ? suggestion.value && plan.hazardousMaterials.some((n) => undecided.has(n) && (suggestion.hit ?? '').includes(n))
+      ? (suggestion.value && plan.hazardousMaterials.some((n) => undecided.has(n) && (suggestion.hit ?? '').includes(n))) ||
+        (suggestion.basis === 'cue' && (!suggestion.value || !suggestion.hit))
       : suggestion.basis === 'cue' || suggestion.basis === 'photo';
     return {
       key,

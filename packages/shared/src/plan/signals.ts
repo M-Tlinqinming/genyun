@@ -22,6 +22,33 @@ export interface PlanSignals {
   pressureVessels: string[];
   /** 有锅炉：容器爆炸知识块没有锅炉内容，要用完整模板 */
   boiler: boolean;
+  /** 真正的可燃气体（液化石油气、天然气、乙炔、氢气…）；氧气、氩气、氮气等不算 */
+  combustibleGases: string[];
+  /** 可燃气体的存放位置 */
+  gasLocations: string[];
+  /** 可燃气体有储罐 / 罐区（含特种设备里登记的储罐） */
+  gasTanks: boolean;
+  /** 登记了压力管道，或有燃气管道、调压设施 */
+  gasPipeline: boolean;
+  /** 用气的炉窑（热处理炉、燃气炉…） */
+  gasFurnaces: string[];
+  /** 物料、设备或主要产品里有锂电池 / 电芯 */
+  lithium: boolean;
+  lithiumItems: string[];
+  /** 粉尘种类（按物料与工序推，推不出时为「可燃粉尘」）；没有产尘依据时为空 */
+  dustKinds: string[];
+  /** 产尘的工序；没有工序时是产尘设备 */
+  dustSources: string[];
+  /** 产尘设备所在场所 */
+  dustAreas: string[];
+  /** 除尘、集尘设备 */
+  dustCollectors: string[];
+  /** 产生高温的设备（灼烫） */
+  heatSources: string[];
+  /** 危险机械所在场所 */
+  dangerMachineAreas: string[];
+  /** 厂内机动车辆（叉车等），设备表里有才写 */
+  internalVehicles: string[];
 }
 
 const MELTING_CUES = ['熔融', '熔炼', '压铸', '熔铸', '熔炉', '浇铸', '浇注'];
@@ -74,6 +101,37 @@ const PRESSURE_VESSELS: { cue: string; vessel: string; neg?: string[] }[] = [
   { cue: '反应釜', vessel: '反应釜' },
 ];
 
+// 可燃气体只认这些名称；「气」字匹配会把氧气、氩气、氮气、二氧化碳都算进来
+const COMBUSTIBLE_GASES: { cue: string; gas: string }[] = [
+  { cue: '液化石油气', gas: '液化石油气' },
+  { cue: '液化气', gas: '液化石油气' },
+  { cue: '天然气', gas: '天然气' },
+  { cue: '燃气', gas: '燃气' },
+  { cue: '煤气', gas: '煤气' },
+  { cue: '乙炔', gas: '乙炔' },
+  { cue: '氢气', gas: '氢气' },
+  { cue: '丙烷', gas: '丙烷' },
+  { cue: '丁烷', gas: '丁烷' },
+  { cue: '甲烷', gas: '甲烷' },
+  { cue: '沼气', gas: '沼气' },
+  { cue: '环氧乙烷', gas: '环氧乙烷' },
+];
+const GAS_FURNACE_CUES = ['热处理炉', '燃气炉', '燃气灶', '燃气锅炉', '煤气炉', '退火炉', '淬火炉'];
+const GAS_PIPELINE_CUES = ['燃气管道', '天然气管道', '调压', '燃气表'];
+
+// 锂电池：「锂基润滑脂」「溴化锂」「氯化锂」等不是电池
+const LITHIUM_CUES = ['锂电池', '锂离子', '锂电', '电芯', '锂聚合物'];
+const LITHIUM_NEG = ['锂基', '溴化锂', '氯化锂', '碳酸锂', '氢氧化锂', '润滑脂'];
+
+// 粉尘种类：按物料与工序分，各类的处置要点不同
+const RESIN_DUST_CUES = ['喷粉', '粉末涂料', '塑粉', '静电喷涂', '环氧粉', '粉体'];
+const SPRAY_CUES = ['喷涂', '喷粉', '喷塑'];
+const POWDER_PROCESS_CUES = ['粉碎', '筛粉', '压粉', '打粉', '混粉', '磨粉', '组粉', '灌粉', '粉未灌装', '粉末灌装'];
+const WOOD_CUES = ['木材', '木料', '木工', '木板', '实木', '板材开料', '砂光', '竹'];
+
+const HEAT_SOURCE_CUES = ['炉', '焊', '烘', '加热', '注塑', '热压', '热熔', '熔', '锅炉', '蒸汽', '烙铁', '锡', '热缩', '干燥'];
+const VEHICLE_CUES = ['叉车', '货车', '电瓶车', '搬运车', '牵引车', '铲车'];
+
 const uniq = (xs: string[]) => [...new Set(xs)];
 const hits = (name: string, cue: string, neg?: string[]) => name.includes(cue) && !(neg ?? []).some((x) => name.includes(x));
 
@@ -113,6 +171,37 @@ export function planSignals(input: PlanInput): PlanSignals {
           [...equipment, ...materials].some((n) => n.includes(cue) && METAL_PRODUCT_CUES.some((m) => n.includes(m))),
         ).map((d) => d.dust);
 
+  const lithiumItems = uniq(
+    [...materials, ...equipment, ...(input.basic.mainProducts ?? '').split(/[、，,；;\s]+/)].filter(
+      (n) => LITHIUM_CUES.some((c) => n.includes(c)) && !LITHIUM_NEG.some((x) => n.includes(x)),
+    ),
+  );
+
+  const gasMaterials = p.materials.filter((m) => COMBUSTIBLE_GASES.some(({ cue }) => m.name.includes(cue)));
+  const tanks = p.specialEquipment.storageTanks;
+  const gasTankRegistered =
+    tanks?.answer === 'yes' && tanks.items.some((t) => COMBUSTIBLE_GASES.some(({ cue }) => (t.substance ?? '').includes(cue)));
+  const pipelines = p.specialEquipment.pressurePipelines;
+
+  // 产尘：工序、设备名含产尘关键词，或喷粉；带上设备所在场所
+  const dustEquipment = p.equipment.filter((e) =>
+    [...DUST_PROCESS_CUES, ...POWDER_PROCESS_CUES, '喷粉', '喷涂流水线', '除尘'].some((c) => e.name.includes(c)),
+  );
+  const resinDust =
+    materials.some((n) => RESIN_DUST_CUES.some((c) => n.includes(c))) && [...steps, ...equipment].some((n) => SPRAY_CUES.some((c) => n.includes(c)));
+  const powderDust = equipment.some((n) => POWDER_PROCESS_CUES.some((c) => n.includes(c)));
+  const woodDust = [...steps, ...equipment, ...materials].some((n) => WOOD_CUES.some((c) => n.includes(c)));
+  const dustSteps = uniq(steps.filter((n) => [...DUST_PROCESS_CUES, ...SPRAY_CUES, ...POWDER_PROCESS_CUES].some((c) => n.includes(c))));
+  const hasDust = dustWorkstations.length > 0 || dustEquipment.length > 0 || resinDust || powderDust || woodDust;
+  const dustKinds = !hasDust
+    ? []
+    : [
+        ...(metalDustTypes.length ? [`${metalDustTypes.join('、')}等金属粉尘`] : []),
+        ...(resinDust ? ['树脂粉尘（粉末涂料）'] : []),
+        ...(powderDust ? ['有机粉尘（粉体原料）'] : []),
+        ...(woodDust ? ['木粉尘'] : []),
+      ];
+
   return {
     melting,
     meltTypes,
@@ -132,5 +221,25 @@ export function planSignals(input: PlanInput): PlanSignals {
       PRESSURE_VESSELS.filter(({ cue, neg }) => equipment.some((n) => hits(n, cue, neg))).map((v) => v.vessel),
     ),
     boiler: p.specialEquipment.boilers?.answer === 'yes' || p.specialEquipment.boilers?.answer === 'photo',
+    // 每种物料只取第一个命中的名称（「液化石油气」不再算一次「液化气」）
+    combustibleGases: uniq(gasMaterials.map((m) => COMBUSTIBLE_GASES.find(({ cue }) => m.name.includes(cue))!.gas)),
+    gasLocations: uniq(gasMaterials.map((m) => m.storageLocation?.trim()).filter((s): s is string => Boolean(s))),
+    gasTanks: gasTankRegistered || gasMaterials.some((m) => BULK_STORAGE_CUES.some((b) => (m.storageLocation ?? '').includes(b))),
+    gasPipeline: pipelines?.answer === 'yes' || pipelines?.answer === 'photo' || equipment.some((n) => GAS_PIPELINE_CUES.some((c) => n.includes(c))),
+    gasFurnaces: uniq(equipment.filter((n) => GAS_FURNACE_CUES.some((c) => n.includes(c)))),
+    lithium: lithiumItems.length > 0,
+    lithiumItems,
+    dustKinds: dustKinds.length ? dustKinds : hasDust ? ['可燃粉尘'] : [],
+    dustSources: dustSteps.length ? dustSteps : uniq(dustEquipment.map((e) => e.name.trim())),
+    dustAreas: uniq(dustEquipment.map((e) => e.location?.trim()).filter((s): s is string => Boolean(s) && s !== '车间')),
+    dustCollectors: uniq(equipment.filter((n) => /除尘|集尘|吸尘/.test(n))),
+    heatSources: uniq(equipment.filter((n) => HEAT_SOURCE_CUES.some((c) => n.includes(c)) && !n.includes('炉渣'))),
+    dangerMachineAreas: uniq(
+      p.equipment
+        .filter((e) => DANGER_MACHINES.some(({ cue }) => e.name.includes(cue)))
+        .map((e) => e.location?.trim())
+        .filter((s): s is string => Boolean(s) && s !== '车间'),
+    ),
+    internalVehicles: uniq(equipment.filter((n) => VEHICLE_CUES.some((c) => n.includes(c)))),
   };
 }

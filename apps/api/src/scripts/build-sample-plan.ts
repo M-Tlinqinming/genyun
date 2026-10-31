@@ -15,7 +15,9 @@ mkdirSync(dir, { recursive: true });
 const drafter = defaultDrafter() ?? new FakeSlotDrafter();
 console.log(`AI 起草：${drafter.name}`);
 // 适用范围、危险源、图件按专业整理的结果出（与第 10 项生成同一接法），专家没动过的按系统建议
-const workup: WorkupData = { overrides: {} };
+// 跌落、淹溺系统不再默认打开，飞宇专家成稿两份方案都有：按专家在适用范围里确认打开
+const confirmed = { by: 'sample', byName: '样例专家', at: '2026-04-11T00:00:00.000Z', value: true };
+const workup: WorkupData = { overrides: {}, scope: { switches: { fallRisk: confirmed, waterHazard: confirmed } } };
 const input = {
   ...feiyuPlanInput,
   expert: {

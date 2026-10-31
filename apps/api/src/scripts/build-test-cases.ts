@@ -28,11 +28,14 @@ for (const c of TEST_CASES.filter((c) => !only.length || only.includes(c.slug)))
   const snapshot = caseSnapshot(c);
   const workup: WorkupData = { overrides: {} };
   const base = casePlanInput(c);
+  // 专家成稿列了的危险源当作专家在危险源辨识里手动新增：适用范围按它建议打开对应方案（待确认的按建议算）
+  const stamp = { by: 'testset', byName: '测试集专家', at: '2026-10-31T00:00:00.000Z' };
+  const added = Object.fromEntries((base.expert.hazards ?? []).map((h, i) => [`x${i}`, { ...stamp, value: { factor: h.factor, workplace: h.workplace } }]));
   const input = {
     ...base,
     expert: {
       ...base.expert,
-      scope: { ...planScopeOf(scopeView(snapshot, workup)), ...base.expert.scope },
+      scope: { ...planScopeOf(scopeView(snapshot, { ...workup, risks: { rows: added } })), ...base.expert.scope },
       hazards: base.expert.hazards ?? planHazardsOf(riskView(snapshot, workup)),
       figures: planFiguresOf(figuresView(snapshot, workup)),
     },
