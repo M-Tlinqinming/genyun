@@ -126,3 +126,30 @@ export function regionHasLocalAgencies(region: string | null | undefined): boole
 
 // 邀请链接的有效期（Paper 16 页开通弹窗：7 天内有效）
 export const INVITATION_TTL_DAYS = 7;
+
+// 运营组织详情「企业与任务」里每家企业当前任务的进展（只读，处理在任务中心）
+export type OperatorTaskStage = 'preparing' | 'unassigned' | 'drafting' | 'delivered';
+export const OPERATOR_TASK_STAGES: Record<OperatorTaskStage, string> = {
+  preparing: '资料准备',
+  unassigned: '待分配',
+  drafting: '耕云编制',
+  delivered: '已交付',
+};
+
+export function operatorTaskStage(t: {
+  status: 'preparing' | 'submitted';
+  assignedExpertId: string | null;
+  closedAt: string | Date | null;
+}): OperatorTaskStage {
+  if (t.closedAt) return 'delivered';
+  if (t.status === 'preparing') return 'preparing';
+  return t.assignedExpertId ? 'drafting' : 'unassigned';
+}
+
+// 重发邀请、更换首位管理员（Paper 16 页 I03「开通与邀请」）：旧链接作废，按这里的人重新发一封
+export const adminInvitationSchema = z.object({
+  name: z.string().trim().min(1, '请填写首位管理员姓名').max(50, '姓名最多 50 个字'),
+  phone: phoneSchema,
+  email: z.string().trim().toLowerCase().pipe(z.email('请填写正确的邮箱')),
+});
+export type AdminInvitationInput = z.input<typeof adminInvitationSchema>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openingGaps, orgOpenSchema, orgRegisterSchema, orgServiceState, regionHasLocalAgencies, serviceScopeLabel } from './organization.ts';
+import { openingGaps, operatorTaskStage, orgOpenSchema, orgRegisterSchema, orgServiceState, regionHasLocalAgencies, serviceScopeLabel } from './organization.ts';
 
 const FILE = '11111111-1111-4111-8111-111111111111';
 const complete = {
@@ -99,5 +99,14 @@ describe('属地机构是否齐备', () => {
     expect(regionHasLocalAgencies('广东省惠州市惠阳区')).toBe(true);
     expect(regionHasLocalAgencies('上海市闵行区')).toBe(false);
     expect(regionHasLocalAgencies(null)).toBe(false);
+  });
+});
+
+describe('运营看到的任务进展', () => {
+  it('资料准备、待分配、耕云编制、已交付', () => {
+    expect(operatorTaskStage({ status: 'preparing', assignedExpertId: null, closedAt: null })).toBe('preparing');
+    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: null, closedAt: null })).toBe('unassigned');
+    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: 'u', closedAt: null })).toBe('drafting');
+    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: 'u', closedAt: '2026-10-01' })).toBe('delivered');
   });
 });
