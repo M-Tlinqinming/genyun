@@ -1,0 +1,560 @@
+---
+// 服务内容（Paper「10 · 官网与账户」/ W02 产品与服务）
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import ContactTrigger from '../components/ContactTrigger.astro';
+import { PHONE, PHONE_HREF } from '../site';
+
+// 「您提供」照产品里真实的填报 5 步（apps/web FILL_STEPS）；Paper 画的是 4 步，见 DESIGN-DIFF
+const inputs = [
+  ['企业基本信息', '拍照上传营业执照，自动识别名称、信用代码、地址'],
+  ['人员与应急组织', '谁负责、怎么联系；也可直接上传花名册'],
+  ['生产情况', '场所、设备、物料与工艺；拿不准有没有的拍照给耕云看'],
+  ['应急资源与图纸', '应急物资、急救药箱，以及厂区平面图等图纸'],
+  ['核对并提交', '核对无误后交给耕云，审核完成后直接下载'],
+];
+const work = ['风险评分（LEC 法）', '法规与标准匹配', '专项预案推荐', '属地机构自动引用', '注册安全工程师审核'];
+const outputs = [
+  ['应急预案', '综合预案 · 专项预案 · 现场处置方案', '#0068BD'],
+  ['风险评估报告', '危险源辨识、风险等级与控制措施', '#23A6AD'],
+  ['应急资源调查报告', '内外部资源与属地机构联络', '#D9AE3A'],
+];
+const plans = [
+  {
+    key: 'single',
+    who: 'FOR 企业',
+    title: '按次编制',
+    body: '一家企业、一次编制。签约付款后开通，审核完成后直接下载。',
+    points: ['5 步填报，或上传已有资料', '注册安全工程师审核', '三份 Word，同一版本', '签约付款后开通，可开增值税发票'],
+    price: '价格以演示时报价为准',
+  },
+  {
+    key: 'annual',
+    who: 'FOR 服务机构',
+    title: '年度服务',
+    body: '为多家企业持续编制。机构账号、成员分工、企业档案一年内持续可用。',
+    points: ['包含按次编制的全部内容', '多家企业集中管理，进度一目了然', '管理员分配企业，成员各自负责', '企业资料长期复用，换年更新不用重填'],
+    price: '按机构规模报价',
+  },
+];
+// 第 1 条照 Paper；其余四条 Paper 只画了问题，答案是自拟的，待 Martin 审定（见 DESIGN-DIFF）
+const faqs = [
+  {
+    q: '我们没有专职安全工程师，能用吗？',
+    a: '能。表单只问您清楚的事实，比如有多少人、有哪些设备。风险评分、法规匹配这些专业判断由耕云的注册安全工程师完成；一时查不到的先选「稍后补」，拿不准有没有的拍照给耕云看。',
+  },
+  {
+    q: '生成的文件符合要求吗？',
+    a: '三份文件按 GB/T 29639-2020《生产经营单位生产安全事故应急预案编制导则》编制，交付前由注册安全工程师逐项审核。各地备案要求略有不同，属地应急管理部门有额外要求的，审核时一并核对。',
+  },
+  {
+    q: '提交后多久能拿到文件？',
+    a: '按资料情况安排：资料齐全时更快，需要补充时注安师会在线告诉您缺什么。审核进度在工作台随时可查，具体时间在演示时约定。',
+  },
+  {
+    q: '交付后发现要改怎么办？',
+    a: '文件内容以您提供并确认的企业事实为准。信息有误或之后有变化，可以在任务中提交补充，我们据此修订并发布新版本，旧版本保留可查。',
+  },
+  {
+    q: '企业资料会被用于其他用途吗？',
+    a: '不会。您提供的企业资料只用于为您生成安全文件，加密存储，只有您授权的成员和负责该任务的专业人员能看到。详见隐私说明。',
+  },
+];
+---
+
+<Base
+  title="服务内容"
+  description="耕云从应急预案开始：您提供企业事实，AI 完成风险辨识、法规匹配和编制，注册安全工程师审核后交付应急预案、风险评估报告、应急资源调查报告三份 Word。按次编制或年度服务。"
+>
+  <PageHeader slot="header" active="product" eyebrow="产品与服务">
+    一份企业档案，<br />一整套迎检文件。
+    <Fragment slot="aside">从应急预案开始。同一份企业信息，之后还能生成安全台账、培训课件，识别现场隐患。</Fragment>
+  </PageHeader>
+
+  <section class="io" aria-labelledby="io-title">
+    <div class="wrap io__inner">
+      <div class="heading-row">
+        <div class="heading-stack">
+          <p class="eyebrow">01 — 应急预案生成 · 已上线</p>
+          <h2 id="io-title" class="h2 h2--sub">您提供企业事实，<br />我们给出专业结论。</h2>
+        </div>
+        <p class="lead io__lead">左边是您需要准备的，右边是耕云交付的。中间的风险辨识、法规匹配和编制，由 AI 完成、注册安全工程师审核。</p>
+      </div>
+
+      <div class="io__board">
+        <div class="io__col io__col--in">
+          <div class="io__head">
+            <h3>您提供</h3>
+            <span>可分次保存，随时继续</span>
+          </div>
+          <ol class="io__steps">
+            {
+              inputs.map(([title, hint], i) => (
+                <li>
+                  <span class="io__no">{String(i + 1).padStart(2, '0')}</span>
+                  <span class="io__text">
+                    <b>{title}</b>
+                    <span>{hint}</span>
+                  </span>
+                </li>
+              ))
+            }
+          </ol>
+        </div>
+
+        <div class="io__mid on-dark">
+          <p class="io__mid-label">耕云完成</p>
+          <ul>{work.map((w) => <li>· {w}</li>)}</ul>
+          <i class="io__bar" aria-hidden="true"></i>
+        </div>
+
+        <div class="io__col io__col--out">
+          <div class="io__head">
+            <h3>您得到</h3>
+            <span>三份 Word · 同一版本</span>
+          </div>
+          <ul class="io__docs">
+            {
+              outputs.map(([title, sub, color]) => (
+                <li>
+                  <span class="io__text">
+                    <b>{title}</b>
+                    <span>{sub}</span>
+                  </span>
+                  <i style={`background:${color}`} aria-hidden="true" />
+                </li>
+              ))
+            }
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="plans" aria-labelledby="plans-title">
+    <div class="wrap plans__inner">
+      <div class="heading-stack">
+        <p class="eyebrow">02 — 使用方式</p>
+        <h2 id="plans-title" class="h2 h2--sub">用多少，付多少。</h2>
+      </div>
+      <div class="plans__list">
+        {
+          plans.map((p) => (
+            <article class:list={['plan', `plan--${p.key}`, { 'on-dark': p.key === 'annual' }]}>
+              <div class="plan__head">
+                <p class="plan__who">{p.who}</p>
+                <h3>{p.title}</h3>
+                <p class="plan__body">{p.body}</p>
+              </div>
+              <hr />
+              <ul class="plan__points">
+                {p.points.map((t) => (
+                  <li>
+                    <span aria-hidden="true">✓</span>
+                    {t}
+                  </li>
+                ))}
+              </ul>
+              <div class="plan__foot">
+                <span>{p.price}</span>
+                <ContactTrigger class="btn-gold btn-gold--md">预约演示</ContactTrigger>
+              </div>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="faq" aria-labelledby="faq-title">
+    <div class="wrap faq__inner">
+      <div class="faq__aside heading-stack">
+        <p class="eyebrow">03 — 常见问题</p>
+        <h2 id="faq-title" class="h2 h2--sub">开始之前，<br />您可能想知道。</h2>
+        <p class="faq__more">没找到答案？产品咨询 <a href={PHONE_HREF} class="phone">{PHONE}</a></p>
+      </div>
+      <div class="faq__list">
+        {
+          faqs.map((f, i) => (
+            <details open={i === 0}>
+              <summary>
+                <span>{f.q}</span>
+                <i aria-hidden="true" />
+              </summary>
+              <p>{f.a}</p>
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  /* 01 输入与产出（米色底） */
+  .io__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+    padding-block: 120px;
+  }
+  .io__lead {
+    flex-shrink: 0;
+    width: 420px;
+  }
+  .io__board {
+    display: flex;
+  }
+  .io__col {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 36px;
+    background: #fff;
+    border: 1px solid var(--site-line-strong);
+  }
+  .io__col--in {
+    border-radius: 12px 0 0 12px;
+  }
+  .io__col--out {
+    border-radius: 0 12px 12px 0;
+  }
+  .io__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .io__head h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 32px;
+    color: var(--site-heading);
+  }
+  .io__head span {
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--site-muted);
+  }
+  .io__steps {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .io__steps li {
+    display: flex;
+    gap: 14px;
+  }
+  .io__no {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 24px;
+    color: var(--gy-brand-blue);
+  }
+  .io__text {
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+    line-height: 22px;
+    color: var(--site-body);
+  }
+  .io__text b {
+    font-weight: 400;
+    font-size: 15px;
+    line-height: 24px;
+    color: var(--site-heading);
+  }
+  .io__mid {
+    flex-shrink: 0;
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 16px;
+    padding: 36px 28px;
+    background: var(--gy-brand-ink);
+  }
+  .io__mid-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 14px;
+    letter-spacing: 0.14em;
+    color: var(--site-eyebrow-dark);
+  }
+  .io__mid ul {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 14px;
+    line-height: 22px;
+    color: #fff;
+  }
+  .io__bar {
+    height: 2px;
+    background: linear-gradient(in oklab 90deg, #0068bd 0%, #23a6ad 33.33%, #75af76 66.67%, #edc147 100%);
+  }
+  .io__docs {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .io__docs li {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--site-line-soft);
+  }
+  .io__docs li:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+  .io__docs i {
+    flex-shrink: 0;
+    width: 4px;
+    border-radius: 2px;
+  }
+
+  /* 02 使用方式（白底） */
+  .plans {
+    background: #fff;
+  }
+  .plans__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+    padding-block: 120px;
+  }
+  .plans__list {
+    display: flex;
+    gap: 32px;
+  }
+  .plan {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    padding: 40px;
+    border-radius: 12px;
+    background: var(--site-card-warm);
+    border: 1px solid var(--site-line-strong);
+  }
+  .plan--annual {
+    background: var(--gy-brand-ink);
+    border-color: var(--gy-brand-ink);
+  }
+  .plan__head {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .plan__who {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.14em;
+    color: var(--gy-brand-blue);
+  }
+  .plan--annual .plan__who {
+    color: var(--gy-brand-gold);
+  }
+  .plan h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 28px;
+    line-height: 40px;
+    color: var(--site-heading);
+  }
+  .plan--annual h3 {
+    color: #fff;
+  }
+  .plan__body {
+    font-size: 15px;
+    line-height: 26px;
+    color: var(--site-body);
+  }
+  .plan--annual .plan__body {
+    color: #ffffffad;
+  }
+  .plan hr {
+    margin: 0;
+    height: 1px;
+    border: 0;
+    background: var(--site-line-strong);
+  }
+  .plan--annual hr {
+    background: #ffffff1f;
+  }
+  .plan__points {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .plan__points li {
+    display: flex;
+    gap: 10px;
+    font-size: 15px;
+    line-height: 24px;
+    color: var(--site-heading);
+  }
+  .plan__points span {
+    color: var(--gy-brand-blue);
+  }
+  .plan--annual .plan__points li {
+    color: #fff;
+  }
+  .plan--annual .plan__points span {
+    color: var(--gy-brand-gold);
+  }
+  .plan__foot {
+    margin-top: auto;
+    padding-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--site-muted-warm);
+  }
+  .plan--annual .plan__foot {
+    color: #ffffff80;
+  }
+
+  /* 03 常见问题（米色底） */
+  .faq__inner {
+    display: flex;
+    gap: 96px;
+    padding-block: 120px;
+  }
+  .faq__aside {
+    flex-shrink: 0;
+    width: 400px;
+  }
+  .faq__more {
+    font-size: 15px;
+    line-height: 26px;
+    color: var(--site-body);
+  }
+  .faq__more a:hover {
+    color: var(--site-link);
+  }
+  .faq__list {
+    flex: 1 1 0;
+    min-width: 0;
+    border-top: 1px solid var(--site-line-strong);
+  }
+  .faq details {
+    border-bottom: 1px solid var(--site-line-strong);
+  }
+  .faq summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding-block: 28px;
+    cursor: pointer;
+    list-style: none;
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 30px;
+    color: var(--site-heading);
+  }
+  .faq summary::-webkit-details-marker {
+    display: none;
+  }
+  .faq details[open] summary {
+    padding-bottom: 10px;
+  }
+  /* 加号 / 减号：两条线画出来，展开时竖线收起 */
+  .faq summary i {
+    position: relative;
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    color: var(--site-muted-warm);
+  }
+  .faq summary i::before,
+  .faq summary i::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    width: 14px;
+    height: 1.5px;
+    border-radius: 1px;
+    background: currentColor;
+  }
+  .faq summary i::after {
+    transform: rotate(90deg);
+    transition: transform 0.2s ease;
+  }
+  .faq details[open] summary i::after {
+    transform: rotate(0deg);
+  }
+  .faq details p {
+    padding-bottom: 28px;
+    font-size: 15px;
+    line-height: 27px;
+    color: var(--site-body);
+  }
+
+  @media (max-width: 1100px) {
+    .heading-row,
+    .faq__inner {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 40px;
+    }
+    .io__lead,
+    .faq__aside {
+      width: auto;
+      max-width: 560px;
+    }
+    .io__board {
+      flex-direction: column;
+    }
+    .io__col--in {
+      border-radius: 12px 12px 0 0;
+    }
+    .io__col--out {
+      border-radius: 0 0 12px 12px;
+    }
+    .io__mid {
+      width: auto;
+    }
+    .plans__list {
+      flex-direction: column;
+    }
+  }
+  @media (max-width: 720px) {
+    .io__inner,
+    .plans__inner,
+    .faq__inner {
+      padding-block: 72px;
+      gap: 40px;
+    }
+    .io__col,
+    .plan {
+      padding: 28px 24px;
+    }
+    .plan__foot {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .faq summary {
+      font-size: 18px;
+      line-height: 28px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .faq summary i::after {
+      transition: none;
+    }
+  }
+</style>

@@ -1,0 +1,118 @@
+---
+// 服务说明（Paper「10 · 官网与账户」/ W07）。正文是草案，待定条款已标出，正式发布前不让搜索引擎收录。
+import LegalPage from '../components/LegalPage.astro';
+
+const toc = [
+  { id: 'summary', label: '一页看懂' },
+  { id: 'scope', label: '1　服务内容' },
+  { id: 'flow', label: '2　服务流程' },
+  { id: 'delivery', label: '3　交付与修改' },
+  { id: 'fees', label: '4　费用与发票' },
+  { id: 'duty', label: '5　双方责任' },
+  { id: 'dispute', label: '6　争议与联系' },
+];
+// 「修改」一行 Paper 写了具体期限和次数，但第 3 节同时标着「待确认」，这里一并标出，见 DESIGN-DIFF
+const summary: { label: string; value: string; todo?: boolean }[] = [
+  { label: '您得到', value: '三份 Word：应急预案、风险评估报告、应急资源调查报告，同一版本。' },
+  { label: '谁来把关', value: 'AI 起草，持证注册安全工程师审核后交付。' },
+  { label: '何时付费', value: '签订合同并付款后开通系统；审核完成后直接下载，发票由耕云财务开具。' },
+  { label: '交付时间', value: '按资料情况安排，审核进度在工作台实时可查。' },
+  { label: '修改', value: '交付后 3 天内，因事实变化可免费修订 2 次。', todo: true },
+];
+---
+
+<LegalPage
+  title="服务说明"
+  description="耕云应急预案编制服务的内容、流程、交付与修改、费用与发票（草案，待定条款已标出）。"
+  pill="待定条款已标出"
+  toc={toc}
+>
+  <section id="summary" class="legal-summary terms-summary">
+    <h2>一页看懂</h2>
+    <dl class="terms-summary__list">
+      {
+        summary.map((r) => (
+          <div>
+            <dt>{r.label}</dt>
+            <dd>
+              {r.value}
+              {r.todo && <span class="pill terms-summary__todo">待确认</span>}
+            </dd>
+          </div>
+        ))
+      }
+    </dl>
+  </section>
+
+  <section id="scope">
+    <h2>1　服务内容</h2>
+    <p>耕云依据 GB/T 29639-2020《生产经营单位生产安全事故应急预案编制导则》，为企业编制综合应急预案、专项应急预案、现场处置方案，以及配套的风险评估报告和应急资源调查报告。</p>
+  </section>
+
+  <section id="flow">
+    <h2>2　服务流程</h2>
+    <p>签约付款后开通 → 您填写企业信息或上传已有资料 → AI 辅助起草文件 → 注册安全工程师审核，需要补充时负责的注安师联系您 → 发布后直接下载三份 Word。</p>
+  </section>
+
+  <section id="delivery">
+    <h2>3　交付与修改</h2>
+    <p>文件内容以您提供并确认的企业事实为准。如果您提供的信息有误或之后发生变化，可在任务中提交补充，我们据此修订并发布新版本，旧版本保留可查。</p>
+    <p class="legal-note">待确认：免费修订的期限与次数；超出后的计费方式。</p>
+  </section>
+
+  <section id="fees">
+    <h2>4　费用与发票</h2>
+    <p class="legal-todo">正文待法务提供。</p>
+  </section>
+
+  <section id="duty">
+    <h2>5　双方责任</h2>
+    <p class="legal-todo">正文待法务提供。</p>
+  </section>
+
+  <section id="dispute">
+    <h2>6　争议与联系</h2>
+    <p class="legal-todo">正文待法务提供。</p>
+  </section>
+</LegalPage>
+
+<style>
+  .terms-summary {
+    --legal-accent: var(--site-gold-deep);
+  }
+  .terms-summary__list > div {
+    display: flex;
+    gap: 24px;
+    padding-block: 14px;
+    border-bottom: 1px solid var(--site-line-soft);
+  }
+  .terms-summary__list > div:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+  .terms-summary__list dt {
+    flex-shrink: 0;
+    width: 100px;
+    font-size: 15px;
+    line-height: 26px;
+    color: var(--site-muted);
+  }
+  .terms-summary__list dd {
+    margin: 0;
+    font-size: 15px;
+    line-height: 26px;
+    color: var(--site-heading);
+  }
+  .terms-summary__todo {
+    margin-left: 8px;
+    vertical-align: 1px;
+    background: #fff8e8;
+    color: #7a5a12;
+  }
+  @media (max-width: 720px) {
+    .terms-summary__list > div {
+      flex-direction: column;
+      gap: 2px;
+    }
+  }
+</style>

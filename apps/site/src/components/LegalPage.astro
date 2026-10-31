@@ -1,0 +1,206 @@
+---
+// 隐私说明、服务说明共用的版式（Paper W06 / W07）：紧凑页头 + 左侧目录 + 正文
+import Base from '../layouts/Base.astro';
+import PageHeader from './PageHeader.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  /** 页头右下角的黄色提示 */
+  pill: string;
+  toc: { id: string; label: string }[];
+}
+const { title, description, pill, toc } = Astro.props;
+---
+
+<Base title={title} description={description} noindex>
+  <PageHeader slot="header" eyebrow="法律信息" compact>
+    {title}
+    <div slot="aside" class="legal-meta">
+      <span>版本 草案 v0.1</span>
+      <span>生效日期 待定</span>
+      <span class="pill legal-meta__pill">{pill}</span>
+    </div>
+  </PageHeader>
+
+  <div class="wrap legal">
+    <nav class="legal__toc" aria-labelledby="legal-toc-title">
+      <p id="legal-toc-title">目录</p>
+      <ol>
+        {
+          toc.map((t, i) => (
+            <li>
+              <a href={`#${t.id}`} aria-current={i === 0 ? 'true' : undefined}>
+                {t.label}
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+    </nav>
+    <article class="legal__body">
+      <slot />
+    </article>
+  </div>
+</Base>
+
+<script>
+  // 滚动时目录高亮当前一节；不支持 IntersectionObserver 时停在第一项
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('.legal__toc a')];
+  const sections = links
+    .map((a) => document.getElementById(decodeURIComponent(a.hash.slice(1))))
+    .filter((s): s is HTMLElement => !!s);
+  const mark = (id: string) => {
+    for (const a of links) {
+      if (a.hash === `#${id}`) a.setAttribute('aria-current', 'true');
+      else a.removeAttribute('aria-current');
+    }
+  };
+  if ('IntersectionObserver' in window && sections.length) {
+    const io = new IntersectionObserver(
+      (entries) => {
+        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (top) mark(top.target.id);
+      },
+      { rootMargin: '0px 0px -70% 0px' },
+    );
+    for (const s of sections) io.observe(s);
+  }
+</script>
+
+<style>
+  .legal-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+    font-size: 13px;
+    line-height: 20px;
+    color: #ffffff99;
+  }
+  .legal-meta__pill {
+    background: #edc14729;
+    color: var(--gy-brand-gold);
+  }
+  .legal {
+    display: flex;
+    align-items: flex-start;
+    gap: 80px;
+    padding-top: 72px;
+    padding-bottom: 120px;
+  }
+  .legal__toc {
+    position: sticky;
+    top: 32px;
+    flex-shrink: 0;
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .legal__toc p {
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 14px;
+    letter-spacing: 0.14em;
+    color: var(--site-muted-warm);
+  }
+  .legal__toc ol {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .legal__toc a {
+    display: block;
+    padding: 8px 14px;
+    border-left: 2px solid var(--site-line-strong);
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--site-body);
+    white-space: pre;
+  }
+  .legal__toc a:hover {
+    color: var(--site-heading);
+  }
+  .legal__toc a[aria-current='true'] {
+    border-left-color: var(--site-heading);
+    color: var(--site-heading);
+    font-weight: 500;
+  }
+  .legal__body {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+  }
+  /* 正文各节：页面里直接写 <section id> + h2 + p */
+  .legal__body :global(section) {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-margin-top: 32px;
+  }
+  .legal__body :global(h2) {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 24px;
+    line-height: 34px;
+    color: var(--site-heading);
+  }
+  .legal__body :global(section > p) {
+    font-size: 16px;
+    line-height: 30px;
+    color: var(--site-article);
+  }
+  .legal__body :global(.legal-note) {
+    border-radius: 8px;
+    padding: 14px 18px;
+    background: #fff8e8;
+    font-size: 14px;
+    line-height: 24px;
+    color: #7a5a12;
+  }
+  .legal__body :global(.legal-todo) {
+    font-size: 15px;
+    line-height: 26px;
+    color: var(--site-muted-warm);
+  }
+  .legal__body :global(.legal-summary) {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 32px 36px;
+    background: #fff;
+    border-radius: 12px;
+    border-left: 4px solid var(--legal-accent);
+  }
+  .legal__body :global(.legal-summary h2) {
+    font-size: 22px;
+    line-height: 32px;
+  }
+
+  @media (max-width: 1000px) {
+    .legal {
+      flex-direction: column;
+      gap: 40px;
+      padding-top: 48px;
+      padding-bottom: 80px;
+    }
+    .legal__toc {
+      position: static;
+      width: 100%;
+    }
+  }
+  @media (max-width: 720px) {
+    .legal__body :global(.legal-summary) {
+      padding: 24px 20px;
+    }
+    .legal__body :global(h2) {
+      font-size: 22px;
+      line-height: 32px;
+    }
+  }
+</style>

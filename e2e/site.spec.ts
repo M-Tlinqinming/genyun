@@ -201,10 +201,111 @@ test.describe('官网首页', () => {
   }
 });
 
+test.describe('官网内页', () => {
+  const pages = [
+    { path: '/product/', title: '服务内容 · 耕云', h1: /一份企业档案，\s*一整套迎检文件。/, nav: '服务内容', noindex: false },
+    { path: '/expertise/', title: '交付样例 · 耕云', h1: /先看成果，\s*再做决定。/, nav: '交付样例', noindex: false },
+    { path: '/privacy/', title: '隐私说明 · 耕云', h1: '隐私说明', nav: null, noindex: true },
+    { path: '/terms/', title: '服务说明 · 耕云', h1: '服务说明', nav: null, noindex: true },
+  ];
+
+  for (const p of pages) {
+    test.describe(p.path, () => {
+      test.use({ reducedMotion: 'reduce' });
+
+      test('标题、导航高亮、收录设置；文字对比度达标', async ({ page }) => {
+        await page.goto(`${SITE}${p.path}`);
+        await expect(page).toHaveTitle(p.title);
+        await expect(page.getByRole('heading', { level: 1 })).toHaveText(p.h1);
+        const current = page.getByRole('banner').locator('[aria-current="page"]');
+        if (p.nav) await expect(current).toHaveText(p.nav);
+        else await expect(current).toHaveCount(0);
+        await expect(page.locator('meta[name="robots"]')).toHaveCount(p.noindex ? 1 : 0);
+        // 常见问题全部展开再查，收起的答案量不到
+        await page.evaluate(() => document.querySelectorAll('details').forEach((d) => (d.open = true)));
+        expect(await lowContrastTexts(page)).toEqual([]);
+      });
+
+      for (const width of [390, 1366, 1920]) {
+        test(`${width} 宽没有横向滚动`, async ({ page }) => {
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto(`${SITE}${p.path}`);
+          const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+          expect(overflow).toBe(0);
+        });
+      }
+    });
+  }
+
+  test('服务内容：常见问题可以展开收起，「预约演示」打开联系窗口', async ({ page }) => {
+    await page.goto(`${SITE}/product/`);
+    const faq = page.locator('details');
+    await expect(faq).toHaveCount(5);
+    await expect(faq.first()).toHaveAttribute('open', '');
+    await faq.nth(1).locator('summary').click();
+    await expect(faq.nth(1)).toHaveAttribute('open', '');
+    await expect(faq.nth(1)).toContainText('GB/T 29639-2020');
+    await page.getByRole('main').getByRole('link', { name: '预约演示' }).first().click();
+    await expect(page.getByRole('dialog', { name: '预约演示' })).toBeVisible();
+  });
+
+  test('交付样例：按行业筛选；「索取完整样例」「上线时通知我」各换对应说明', async ({ page }) => {
+    await page.goto(`${SITE}/expertise/`);
+    const chips = page.getByRole('group', { name: '按行业筛选' }).getByRole('button');
+    await expect(chips).toHaveCount(5);
+    const cards = page.locator('[data-industry]');
+    await expect(cards).toHaveCount(3);
+
+    await chips.filter({ hasText: '电子电器' }).click();
+    await expect(chips.filter({ hasText: '电子电器' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(cards.filter({ visible: true })).toHaveCount(1);
+    await expect(cards.filter({ visible: true })).toContainText('电子装配企业');
+
+    await chips.filter({ hasText: '化工仓储' }).click();
+    await expect(cards.filter({ visible: true })).toHaveCount(0);
+    await expect(page.locator('[data-filter-empty]')).toBeVisible();
+
+    await chips.filter({ hasText: '全部行业' }).click();
+    await expect(cards.filter({ visible: true })).toHaveCount(3);
+
+    await page.getByRole('link', { name: '索取完整样例' }).click();
+    const sample = page.getByRole('dialog', { name: '索取完整样例' });
+    await expect(sample).toContainText('我们把脱敏样例发给您');
+    await page.keyboard.press('Escape');
+
+    await page.getByRole('link', { name: '上线时通知我' }).first().click();
+    await expect(page.getByRole('dialog', { name: '上线时通知我' })).toContainText('电子装配企业 · 脱敏样例上线时');
+  });
+
+  test.describe('交付样例关掉 JS', () => {
+    test.use({ javaScriptEnabled: false });
+
+    test('不显示筛选按钮，三张样例卡都在', async ({ page }) => {
+      await page.goto(`${SITE}/expertise/`);
+      await expect(page.getByRole('group', { name: '按行业筛选' })).toBeHidden();
+      await expect(page.locator('[data-industry]').filter({ visible: true })).toHaveCount(3);
+    });
+  });
+
+  test('法律页面：目录链接跳到对应一节', async ({ page }) => {
+    await page.goto(`${SITE}/terms/`);
+    const toc = page.getByRole('navigation', { name: '目录' });
+    await expect(toc.getByRole('link')).toHaveCount(7);
+    await toc.getByRole('link', { name: /交付与修改/ }).click();
+    await expect(page).toHaveURL(/#delivery$/);
+    await expect(page.locator('#delivery h2')).toBeInViewport();
+  });
+});
+
 test('robots.txt 与 sitemap.xml', async ({ request }) => {
   const robots = await (await request.get(`${SITE}/robots.txt`)).text();
   expect(robots).toContain('Sitemap: https://preview.gengyun.net.cn/sitemap.xml');
   const sitemap = await request.get(`${SITE}/sitemap.xml`);
   expect(sitemap.ok()).toBe(true);
-  expect(await sitemap.text()).toContain('<loc>https://preview.gengyun.net.cn/</loc>');
+  const xml = await sitemap.text();
+  for (const path of ['/', '/product/', '/expertise/']) {
+    expect(xml).toContain(`<loc>https://preview.gengyun.net.cn${path}</loc>`);
+  }
+  // 法律页面是草案，不进站点地图
+  expect(xml).not.toContain('/privacy/');
 });
