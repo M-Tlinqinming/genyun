@@ -18,6 +18,11 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       # 草稿生成队列（BullMQ），服务重启后没跑完的继续
       REDIS_URL: redis://redis:6379
+      # 邀请邮件：预览环境模拟发信，邮件写进 MAIL_OUTBOX_DIR（日志里只有收件人和标题）；接阿里云邮件推送后改掉
+      MAIL_DRIVER: ${MAIL_DRIVER:-mock}
+      MAIL_OUTBOX_DIR: /data/files/mail-outbox
+      # 邀请邮件里的链接指向这里
+      APP_ORIGIN: https://${SITE_DOMAIN}
     volumes:
       - files:/data/files
     depends_on:
