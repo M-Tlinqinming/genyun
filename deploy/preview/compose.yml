@@ -1,4 +1,4 @@
-# 预览环境：应用 + PostgreSQL + Caddy（自动 HTTPS）
+# 预览环境：应用 + PostgreSQL + Redis（草稿生成队列）+ Caddy（自动 HTTPS）
 # 在服务器 /opt/genyun/src/deploy/preview 下运行，密钥在 /opt/genyun/.env（不进仓库）
 name: genyun-preview
 
@@ -16,11 +16,28 @@ services:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-qwen3.8-flash}
       AI_BASE_URL: ${AI_BASE_URL:-}
+      # 草稿生成队列（BullMQ），服务重启后没跑完的继续
+      REDIS_URL: redis://redis:6379
     volumes:
       - files:/data/files
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:8
+    restart: unless-stopped
+    # BullMQ 要求不淘汰键；开 AOF，重启不丢队列
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   db:
     image: postgres:17
@@ -55,5 +72,6 @@ services:
 volumes:
   db:
   files:
+  redis:
   caddy_data:
   caddy_config:

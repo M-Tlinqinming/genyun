@@ -1,5 +1,7 @@
 import {
   CALL_TIMES,
+  DRAFT_KIND_KEYS,
+  DRAFT_STATUSES,
   ITEM_STATUSES,
   ON_SITE_STATUSES,
   type CallTime,
@@ -7,13 +9,17 @@ import {
   type ChecklistState,
   type ContactQuestion,
   type ContactTarget,
+  type DraftKind,
   type EnterpriseProfile,
+  type LockedMaterial,
+  type PlanInput,
   type SubmittedAnswer,
   type SubmittedDocument,
   type WorkupData,
   type WorkupSnapshot,
 } from '@genyun/shared';
 import { sql } from 'drizzle-orm';
+import type { SlotNote } from '../generation/ai/slots.ts';
 import {
   boolean,
   date,
@@ -265,8 +271,9 @@ export const checklistItems = pgTable(
   (t) => [primaryKey({ columns: [t.taskId, t.itemKey] })],
 );
 
-// customer_material = 客户上传的资料，本组织与相关人员可见；contract = 已签合同原件，仅运营可见（M3）
-export const fileKind = pgEnum('file_kind', ['customer_material', 'contract']);
+// customer_material = 客户上传的资料，本组织与相关人员可见；contract = 已签合同原件，仅运营可见（M3）；
+// draft = 系统生成的草稿（Word、PDF），只有负责专家和运营看得到，发布前客户看不到
+export const fileKind = pgEnum('file_kind', ['customer_material', 'contract', 'draft']);
 
 // 上传的文件。内容在文件存储里（本机磁盘 / 对象存储），这里只存登记信息
 export const files = pgTable('files', {
@@ -401,4 +408,49 @@ export const taskDocuments = pgTable(
     linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.taskId, t.documentId] })],
+);
+
+export const draftKind = pgEnum('draft_kind', DRAFT_KIND_KEYS as [DraftKind, ...DraftKind[]]);
+export const draftStatus = pgEnum('draft_status', DRAFT_STATUSES);
+
+// 确认采用资料并生成（14 页 E18-01）：专家每确认一次记一批。生成用的输入在确认时拼好存下，
+// 之后整理再改也不影响这一批；重试失败的份用同一份输入
+export const generationBatches = pgTable(
+  'generation_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    workupVersion: integer('workup_version').notNull(),
+    snapshotAt: timestamp('snapshot_at', { withTimezone: true }).notNull(),
+    input: jsonb('input').$type<PlanInput>().notNull(),
+    materials: jsonb('materials').$type<LockedMaterial[]>().notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('generation_batches_task').on(t.taskId, t.createdAt)],
+);
+
+// 一批里的三份草稿，各自排队、各自记进度
+export const generatedDrafts = pgTable(
+  'generated_drafts',
+  {
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => generationBatches.id, { onDelete: 'cascade' }),
+    kind: draftKind('kind').notNull(),
+    status: draftStatus('status').notNull().default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    wordFileId: uuid('word_file_id').references(() => files.id),
+    pdfFileId: uuid('pdf_file_id').references(() => files.id),
+    error: text('error'),
+    // 每个空位、每段用的是 AI 还是系统的内容，给专家核对
+    notes: jsonb('notes').$type<SlotNote[]>(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
 );

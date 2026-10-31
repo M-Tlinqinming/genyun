@@ -12,6 +12,8 @@ import { DocumentsService } from './documents/documents.service.ts';
 import { EnterprisesController } from './enterprises/enterprises.controller.ts';
 import { EnterpriseProfileController } from './enterprises/profile.controller.ts';
 import { FilesController } from './files/files.controller.ts';
+import { defaultRenderer, DRAFT_RENDERER, type DraftRenderer } from './generation/drafts.ts';
+import { defaultQueue, DRAFT_QUEUE, type DraftQueue } from './generation/queue.ts';
 import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.ts';
 import { LicenseReader, LicenseRecognitionController } from './license/license-reader.ts';
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
@@ -19,6 +21,7 @@ import { NotificationsController, NotificationsService } from './notifications/n
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
+import { GenerationController, GenerationService } from './tasks/generation.service.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
 import { TasksService } from './tasks/tasks.service.ts';
@@ -39,6 +42,10 @@ export interface AppOptions {
   storage?: FileStorage;
   // 营业执照识别；不传时按环境变量 LICENSE_OCR 选用，null 表示未配置
   recognizer?: LicenseRecognizer | null;
+  // 草稿生成队列；不传时有 REDIS_URL 用 BullMQ，否则用进程内队列
+  queue?: DraftQueue;
+  // 生成一份草稿的 Word、PDF；测试换成假的模拟失败
+  renderer?: DraftRenderer;
 }
 
 export async function createApp(db: Database, options: AppOptions = {}): Promise<INestApplication> {
@@ -52,6 +59,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       TasksController,
       ExpertTasksController,
       WorkupController,
+      GenerationController,
       ContactsController,
       NotificationsController,
       TaskDocumentsController,
@@ -66,7 +74,10 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
         provide: LICENSE_RECOGNIZER,
         useValue: options.recognizer === undefined ? defaultRecognizer() : options.recognizer,
       },
+      { provide: DRAFT_QUEUE, useFactory: () => options.queue ?? defaultQueue() },
+      { provide: DRAFT_RENDERER, useFactory: () => options.renderer ?? defaultRenderer() },
       AuthService,
+      GenerationService,
       TasksService,
       ExpertTasksService,
       WorkupService,

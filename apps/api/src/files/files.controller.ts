@@ -13,7 +13,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
@@ -21,7 +21,7 @@ import { canEditOrganizationData, canViewFile, canViewOrganization } from '../au
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser, Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { checklistItemFiles, enterpriseDocumentVersions, files, taskDocuments, tasks } from '../db/schema.ts';
+import { checklistItemFiles, enterpriseDocumentVersions, files, generatedDrafts, generationBatches, taskDocuments, tasks } from '../db/schema.ts';
 import { DOWNLOAD_TTL_SECONDS, FILE_STORAGE, type FileStorage, LocalDiskStorage } from './storage.ts';
 
 const NOT_FOUND = '找不到该文件';
@@ -183,6 +183,15 @@ export class FilesController {
       .innerJoin(tasks, eq(tasks.id, taskDocuments.taskId))
       .where(and(eq(enterpriseDocumentVersions.fileId, fileId), eq(tasks.assignedExpertId, user.id)))
       .limit(1);
-    return doc !== undefined;
+    if (doc) return true;
+    // 任务生成的草稿（Word、PDF）
+    const [draft] = await this.db
+      .select({ taskId: generationBatches.taskId })
+      .from(generatedDrafts)
+      .innerJoin(generationBatches, eq(generationBatches.id, generatedDrafts.batchId))
+      .innerJoin(tasks, eq(tasks.id, generationBatches.taskId))
+      .where(and(or(eq(generatedDrafts.wordFileId, fileId), eq(generatedDrafts.pdfFileId, fileId)), eq(tasks.assignedExpertId, user.id)))
+      .limit(1);
+    return draft !== undefined;
   }
 }

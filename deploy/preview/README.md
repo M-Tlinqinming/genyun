@@ -2,7 +2,7 @@
 
 地址：https://preview.gengyun.net.cn （阿里云香港轻量服务器 47.82.104.179，只放虚构样例数据，ICP 备案完成后退订）
 
-服务器上三个容器（`compose.yml`）：应用、PostgreSQL、Caddy（自动申请和续期 HTTPS 证书）。数据库、上传文件、证书都在 Docker 数据卷里，重新发布和服务器重启都不会丢；服务器重启后容器自动起来。
+服务器上四个容器（`compose.yml`）：应用、PostgreSQL、Redis（草稿生成队列）、Caddy（自动申请和续期 HTTPS 证书）。数据库、上传文件、队列、证书都在 Docker 数据卷里，重新发布和服务器重启都不会丢；服务器重启后容器自动起来。
 
 ## 发布
 
