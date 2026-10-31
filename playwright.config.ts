@@ -34,8 +34,9 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      // 官网是静态页面：测构建出来的结果（site.spec）
-      command: 'npm run build -w @genyun/site && npm run preview -w @genyun/site -- --port 4322',
+      // 官网是静态页面：测构建出来的结果（site.spec）。CI 只在这里构建一次官网
+      // --ignore-lock：本机另开着官网 preview 时也能起来
+      command: 'npm run build -w @genyun/site && npm run preview -w @genyun/site -- --port 4322 --ignore-lock',
       url: 'http://localhost:4322/',
       reuseExistingServer: false,
       timeout: 180_000,

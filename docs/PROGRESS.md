@@ -275,7 +275,6 @@ C 线，与 M2、M3 并行；一项一个合并请求，分支名用 `m4-<序号
 - 官网是独立的静态站（`apps/site`），不进业务应用的容器；登录链接默认 `/login`，可用 `PUBLIC_APP_LOGIN_URL` 改。第 2 项 Caddy 要让 `/` 和官网各页走静态文件，`/login` 等走业务应用
 - 字体：`npm run build -w @genyun/site` 会先跑 `scripts/subset-fonts.mjs`，按页面里出现的字裁剪 Noto Serif SC / Noto Sans SC / IBM Plex Mono，输出到 `public/fonts`（不进 git）。改了文案要重新构建，否则新字会用系统字体
 - 截图：`npm run preview -w @genyun/site` 后跑 `node apps/site/scripts/screenshots.mjs`，输出到 `out/site/`
-- Astro 同一台机器只允许一个 preview 进程：跑 `npm run e2e` 前先停掉自己开的官网 preview（`npx astro preview stop`，在 `apps/site` 下执行），否则 4322 起不来
 - 待 Martin 定的见 DESIGN-DIFF「M4 第 1a 项」
 
 ## M1 任务清单（已完成）
