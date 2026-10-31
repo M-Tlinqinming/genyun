@@ -503,6 +503,57 @@ export const draftRevisions = pgTable(
   (t) => [index('draft_revisions_draft').on(t.batchId, t.kind, t.createdAt)],
 );
 
+// Word 校对（M2 第 12 项，14 页 E18-05）：专家核对完一份记一行，记下核对时这份的 version（draft_edits.version，
+// 没改过为 0）。之后这份再保存修订，version 变了，这条核对就失效，要重新核对
+export const draftChecks = pgTable(
+  'draft_checks',
+  {
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => generationBatches.id, { onDelete: 'cascade' }),
+    kind: draftKind('kind').notNull(),
+    version: integer('version').notNull(),
+    checkedBy: uuid('checked_by')
+      .notNull()
+      .references(() => users.id),
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
+);
+
+// 当前稿的 PDF（校对页逐页显示）：改过正文后按新的 version 重新转一次，只留最近一份。
+// 没改过的直接用生成时转好的 PDF（generated_drafts.pdf_file_id）
+export const draftPreviews = pgTable(
+  'draft_previews',
+  {
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => generationBatches.id, { onDelete: 'cascade' }),
+    kind: draftKind('kind').notNull(),
+    version: integer('version').notNull(),
+    // converting = 正在转；done = 转好了（file_id）；failed = 转换失败（error）
+    status: text('status').$type<'converting' | 'done' | 'failed'>().notNull(),
+    fileId: uuid('file_id').references(() => files.id),
+    error: text('error'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
+);
+
+// 审核结论（14 页 E18-06）：三份都核对完后专家确认审核通过，记下当时三份的 version。
+// 之后任何一份再保存修订，结论就失效（要重新核对那一份、重新确认结论）
+export const draftReviews = pgTable('draft_reviews', {
+  batchId: uuid('batch_id')
+    .primaryKey()
+    .references(() => generationBatches.id, { onDelete: 'cascade' }),
+  note: text('note').notNull(),
+  versions: jsonb('versions').$type<Record<DraftKind, number>>().notNull(),
+  reviewedBy: uuid('reviewed_by')
+    .notNull()
+    .references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // 客户图纸转成的图片（M2 第 10c 项，附件 7 与图件页缩略图）：每份文件记一次页数，每页只转一次，
 // 存高清图和缩略图。图片只放在文件存储里（路径同样是「组织 ID/随机 ID」），不登记成文件，
 // 只经任务接口给负责专家看、生成时取用
