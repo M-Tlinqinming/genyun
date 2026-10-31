@@ -1,0 +1,173 @@
+---
+// 05 耕云平台（Paper W01「平台模块」）
+import ContactTrigger from '../ContactTrigger.astro';
+import ArrowIcon from '../ArrowIcon.astro';
+
+const upcoming = [
+  { no: '02', title: '安全台账生成', body: '按企业规模提供 8、10、13 要素三种规格，一次建档，长期复用。' },
+  { no: '03', title: '培训 PPT 生成', body: '自动生成培训课件，套用专业母版排版，同步输出讲义。' },
+  { no: '04', title: 'AI 隐患识别', body: '现场拍照识别隐患，自动匹配法规条款，小程序与网页联动。' },
+];
+---
+
+<section class="plat" aria-labelledby="plat-title">
+  <div class="wrap plat__inner">
+    <div class="heading-row">
+      <div class="heading-stack">
+        <p class="eyebrow">05 — 耕云平台</p>
+        <h2 id="plat-title" class="h2">从一份预案开始，<br />管好全年的安全工作。</h2>
+      </div>
+      <p class="lead plat__aside">同一份企业档案，接下来还能生成台账、培训课件，识别现场隐患。</p>
+    </div>
+    <ul class="mods">
+      <li class="mod mod--live on-dark">
+        <div class="mod__top">
+          <span class="mod__no">01</span>
+          <span class="mod__pill">已上线</span>
+        </div>
+        <div class="mod__text">
+          <h3>应急预案生成</h3>
+          <p>按 GB/T 29639-2020，生成综合预案、专项预案、现场处置方案、风险评估报告与应急资源调查报告。</p>
+        </div>
+        <ContactTrigger class="text-link text-link--white">预约演示<ArrowIcon /></ContactTrigger>
+      </li>
+      {
+        upcoming.map((m) => (
+          <li class="mod">
+            <div class="mod__top">
+              <span class="mod__no">{m.no}</span>
+              <span class="mod__pill">即将上线</span>
+            </div>
+            <div class="mod__text">
+              <h3>{m.title}</h3>
+              <p>{m.body}</p>
+            </div>
+            <ContactTrigger topic="notify" class="text-link text-link--sm mod__notify">
+              上线时通知我
+            </ContactTrigger>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .plat {
+    background: #fff;
+  }
+  .plat__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+    padding-block: 120px;
+  }
+  .plat__aside {
+    flex-shrink: 0;
+    width: 400px;
+  }
+  .mods {
+    display: flex;
+    gap: 24px;
+  }
+  .mod {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 40px;
+    padding: 32px;
+    background: var(--site-card-warm);
+    border: 1px solid var(--site-line);
+    border-radius: 12px;
+  }
+  .mod--live {
+    flex-grow: 1.4;
+    padding: 36px;
+    background: var(--gy-brand-ink);
+    border: 0;
+  }
+  .mod__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .mod__no {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.12em;
+    color: var(--site-muted);
+  }
+  .mod__pill {
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: #f0f2f5;
+    color: #596170;
+    font-size: 12px;
+    line-height: 20px;
+  }
+  .mod__text {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .mod__text h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 32px;
+    color: var(--site-heading);
+  }
+  .mod__text p {
+    font-size: 14px;
+    line-height: 24px;
+    color: var(--site-body);
+  }
+  .mod--live .mod__no {
+    color: var(--site-eyebrow-dark);
+  }
+  .mod--live .mod__pill {
+    background: #75af762e;
+    color: #a8d5a0;
+  }
+  .mod--live .mod__text {
+    gap: 12px;
+  }
+  .mod--live .mod__text h3 {
+    color: #fff;
+    font-size: 28px;
+    line-height: 38px;
+  }
+  .mod--live .mod__text p {
+    color: #ffffffad;
+    line-height: 25px;
+  }
+  .mod :global(.text-link) {
+    align-self: flex-start;
+  }
+  .mod :global(.mod__notify) {
+    font-weight: 400;
+  }
+  @media (max-width: 1100px) {
+    .plat__aside {
+      width: auto;
+      max-width: 560px;
+    }
+    .mods {
+      flex-wrap: wrap;
+    }
+    .mod {
+      flex-basis: calc(50% - 12px);
+    }
+  }
+  @media (max-width: 640px) {
+    .plat__inner {
+      padding-block: 80px;
+    }
+    .mod {
+      flex-basis: 100%;
+    }
+  }
+</style>

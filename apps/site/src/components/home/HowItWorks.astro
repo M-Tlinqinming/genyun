@@ -1,0 +1,120 @@
+---
+// 02 工作方式（Paper W01「工作方式」）
+const steps = [
+  { label: '01 · 您', color: '#0068BD', ring: '#0068BD1F', title: '填写企业信息', body: '5 步表单，只填您知道的；也可以直接上传已有资料。' },
+  { label: '02 · AI', color: '#008BCA', ring: '#008BCA1F', title: '辨识风险、匹配法规', body: 'AI 完成风险评分（LEC 法）、法规匹配与预案推荐，起草整套文档。' },
+  { label: '03 · 注安师', color: '#5E9E62', dot: '#75AF76', ring: '#75AF7629', title: '专业审核把关', body: '持证注册安全工程师逐项审核；需要补充时，在线告诉您缺什么。' },
+  { label: '04 · 您', color: '#B88C1C', dot: '#D9AE3A', ring: '#D9AE3A29', title: '下载整套 Word', body: '即取即用，可开增值税普通或专用发票。' },
+];
+---
+
+<section class="how" id="how" aria-labelledby="how-title">
+  <div class="wrap how__inner">
+    <div class="heading-stack">
+      <p class="eyebrow">02 — 工作方式</p>
+      <h2 id="how-title" class="h2">四步，从填表到交付。</h2>
+    </div>
+    <div class="how__flow">
+      <div class="track" aria-hidden="true">
+        {steps.map((s) => <span class="track__slot"><i style={`background:${s.dot ?? s.color};box-shadow:0 0 0 6px ${s.ring}`} /></span>)}
+      </div>
+      <ol class="steps">
+        {
+          steps.map((s) => (
+            <li class="step">
+              <span class="step__label" style={`color:${s.color}`}>{s.label}</span>
+              <h3 class="step__title">{s.title}</h3>
+              <p class="step__body">{s.body}</p>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </div>
+</section>
+
+<style>
+  .how {
+    background: #fff;
+  }
+  .how__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 72px;
+    padding-block: 128px;
+  }
+  .how__flow {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+  .track {
+    position: relative;
+    height: 16px;
+    display: flex;
+    gap: 40px;
+  }
+  .track::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 7px;
+    height: 2px;
+    background-image: linear-gradient(90deg, #0068bd 0%, #23a6ad 45%, #75af76 65%, #edc147 100%);
+  }
+  .track__slot {
+    position: relative;
+    flex: 1;
+  }
+  .track__slot i {
+    position: absolute;
+    left: 0;
+    top: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+  }
+  .steps {
+    display: flex;
+    gap: 40px;
+  }
+  .step {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .step__label {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 16px;
+    letter-spacing: 0.1em;
+  }
+  .step__title {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 22px;
+    line-height: 32px;
+    color: var(--site-heading);
+  }
+  .step__body {
+    font-size: 15px;
+    line-height: 26px;
+    color: var(--site-body);
+  }
+  @media (max-width: 900px) {
+    .how__inner {
+      padding-block: 80px;
+      gap: 48px;
+    }
+    .track {
+      display: none;
+    }
+    .steps {
+      flex-direction: column;
+      gap: 32px;
+    }
+  }
+</style>

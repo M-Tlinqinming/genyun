@@ -1,0 +1,78 @@
+---
+// 收尾 CTA（Paper W01「收尾 CTA」）。底部纹路从 Paper 导出为 public/images/cta-ribbon.svg。
+import ContactTrigger from '../ContactTrigger.astro';
+import { PHONE, PHONE_HREF } from '../../site';
+---
+
+<section class="cta on-dark" aria-labelledby="cta-title">
+  <img class="cta__ribbon" src="/images/cta-ribbon.svg" width="1560" height="300" alt="" />
+  <p class="eyebrow">从一份预案开始</p>
+  <h2 id="cta-title" class="cta__title">下一次检查之前，把预案准备好。</h2>
+  <p class="cta__text">
+    预约一次演示，用您手上的一家企业，走一遍从填报到交付的全过程。<br />产品咨询 <a href={PHONE_HREF}>{PHONE}</a>
+  </p>
+  <ContactTrigger class="btn-gold btn-gold--lg">预约演示</ContactTrigger>
+</section>
+
+<style>
+  .cta {
+    position: relative;
+    overflow: clip;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    padding: 136px var(--gutter) 200px;
+    background: var(--gy-brand-ink);
+    text-align: center;
+  }
+  .cta > :not(.cta__ribbon) {
+    position: relative;
+  }
+  .cta__ribbon {
+    position: absolute;
+    left: calc(50% - 780px);
+    top: 420px;
+    width: 1560px;
+    max-width: none;
+    height: 300px;
+    opacity: 0.28;
+    pointer-events: none;
+  }
+  .cta__title {
+    color: #fff;
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 56px;
+    line-height: 72px;
+  }
+  .cta__text {
+    max-width: 640px;
+    font-size: 17px;
+    line-height: 30px;
+    color: #ffffffad;
+  }
+  .cta__text a {
+    color: inherit;
+    white-space: nowrap;
+  }
+  .cta__text a:hover {
+    color: #fff;
+  }
+  @media (min-width: 1500px) {
+    .cta__ribbon {
+      width: calc(100% + 120px);
+      left: -60px;
+    }
+  }
+  @media (max-width: 720px) {
+    .cta {
+      padding-top: 96px;
+      padding-bottom: 140px;
+    }
+    .cta__title {
+      font-size: 34px;
+      line-height: 48px;
+    }
+  }
+</style>

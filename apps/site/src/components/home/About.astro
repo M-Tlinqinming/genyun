@@ -1,0 +1,124 @@
+---
+// 06 关于耕云（Paper W01「信任与出品方」）
+import { COMPANY } from '../../site';
+
+const facts = [
+  { label: '标准依据', color: '#0068BD', title: 'GB/T 29639-2020', body: '《生产经营单位生产安全事故应急预案编制导则》；事故分类参照 GB 6441-2025。' },
+  { label: '专业审核', color: '#23A6AD', title: '注册安全工程师把关', body: 'AI 起草的每一份文档，都由持证注册安全工程师审核后交付。' },
+  { label: '数据安全', color: '#5E9E62', title: '只用于生成您的文档', body: '企业数据加密存储，不做他用，支持本地导出归档。' },
+  { label: '正规票据', color: '#B88C1C', title: '可开增值税发票', body: '支持增值税普通发票与专用发票，便于企业报销入账。' },
+];
+---
+
+<section class="about" id="about" aria-labelledby="about-title">
+  <div class="wrap about__inner">
+    <div class="about__copy">
+      <p class="eyebrow">06 — 关于耕云</p>
+      <h2 id="about-title" class="h2">懂 AI，<br />也懂安全生产。</h2>
+      <p class="lead">
+        耕云由{COMPANY}出品，团队由前沿 AI 工程师与注册安全工程师专家团共同组成，位于惠州人工智能产业园。
+      </p>
+      <div class="about__note">
+        <p class="about__note-title">用多少，付多少。</p>
+        <p>企业按次签约，服务机构可选年度服务；签约付款后开通使用。</p>
+      </div>
+    </div>
+    <ul class="grid">
+      {
+        facts.map((f) => (
+          <li>
+            <span class="grid__label" style={`color:${f.color}`}>{f.label}</span>
+            <h3>{f.title}</h3>
+            <p>{f.body}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .about__inner {
+    display: flex;
+    gap: 96px;
+    padding-block: 120px;
+  }
+  .about__copy {
+    flex-shrink: 0;
+    width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .about__note {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 20px 24px;
+    background: #fff;
+    border-left: 3px solid var(--site-gold-deep);
+    font-size: 14px;
+    line-height: 24px;
+    color: var(--site-body);
+  }
+  .about__note-title {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 30px;
+    color: var(--site-heading);
+  }
+  .grid {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px;
+    background: var(--site-line-strong);
+    border: 1px solid var(--site-line-strong);
+    border-radius: 12px;
+    overflow: clip;
+  }
+  .grid li {
+    width: calc(50% - 0.5px);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 32px;
+    background: var(--gy-brand-paper);
+  }
+  .grid__label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 14px;
+    letter-spacing: 0.14em;
+  }
+  .grid h3 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 30px;
+    color: var(--site-heading);
+  }
+  .grid p {
+    font-size: 14px;
+    line-height: 24px;
+    color: var(--site-body);
+  }
+  @media (max-width: 1100px) {
+    .about__inner {
+      flex-direction: column;
+      gap: 48px;
+      padding-block: 80px;
+    }
+    .about__copy {
+      width: auto;
+      max-width: 560px;
+    }
+  }
+  @media (max-width: 560px) {
+    .grid li {
+      width: 100%;
+    }
+  }
+</style>

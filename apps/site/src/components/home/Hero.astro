@@ -1,0 +1,267 @@
+---
+// 首页 Hero（Paper W01「Hero」）。全站唯一一处编排好的入场动效在这里，见 scripts/hero.ts。
+import Nav from '../Nav.astro';
+import ContactTrigger from '../ContactTrigger.astro';
+import ProductWindow from './ProductWindow.astro';
+
+const tabs = ['5 步填报', 'AI 风险辨识', '注安师审核', '下载整套 Word'];
+const facts = [
+  { no: '01', color: '#7FC3C6', title: '不懂专业，也能做', sub: '5 步填报，专业判断交给专家' },
+  { no: '02', color: '#A8C98A', title: '按国标编制，注安师把关', sub: '依据 GB/T 29639-2020，持证注册安全工程师审核' },
+  { no: '03', color: '#EDC147', title: '一次建档，长期复用', sub: '三份文档同版一致，下次更新不用重填' },
+];
+---
+
+<section class="hero on-dark" aria-labelledby="hero-title">
+  <div class="hero__glow" aria-hidden="true"></div>
+  <Nav overlay />
+  <div class="wrap hero__inner">
+    <div class="hero__copy">
+      <p class="hero__eyebrow" data-enter><span aria-hidden="true"></span>AI + 注册安全工程师 · 应急预案编制</p>
+      <h1 id="hero-title" class="hero__title" data-enter>只填您知道的，<br />专业的交给耕云。</h1>
+      <p class="hero__lead" data-enter>
+        填好企业基本情况，AI 完成危险源辨识、法规匹配与预案编制，注册安全工程师审核后，交付整套可直接使用的 Word 文档。
+      </p>
+      <div class="hero__cta" data-enter>
+        <ContactTrigger class="btn-gold btn-gold--lg">预约演示</ContactTrigger>
+      </div>
+    </div>
+
+    <div class="hero__carousel" data-enter data-carousel>
+      <ProductWindow />
+      <div class="tabs" role="tablist" aria-label="产品界面示意">
+        {
+          tabs.map((label, index) => (
+            <button
+              type="button"
+              role="tab"
+              class:list={['tab', { 'is-active': index === 1 }]}
+              aria-selected={index === 1 ? 'true' : 'false'}
+              tabindex={index === 1 ? 0 : -1}
+              data-tab={index}
+            >
+              <span class="tab__track" aria-hidden="true">
+                <span class="tab__fill" />
+              </span>
+              <span class="tab__label">{label}</span>
+            </button>
+          ))
+        }
+      </div>
+    </div>
+
+    <ul class="hero__facts" data-enter>
+      {
+        facts.map((fact) => (
+          <li class="fact">
+            <span class="fact__no" style={`color:${fact.color}`}>{fact.no}</span>
+            <span class="fact__text">
+              <strong>{fact.title}</strong>
+              <span>{fact.sub}</span>
+            </span>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<script>
+  import '../../scripts/hero';
+</script>
+
+<style>
+  .hero {
+    position: relative;
+    height: 900px;
+    background: var(--gy-brand-ink);
+    overflow: clip;
+  }
+  .hero__glow {
+    position: absolute;
+    left: calc(50% - 80px);
+    top: 60px;
+    width: 820px;
+    height: 700px;
+    background: radial-gradient(circle farthest-corner at 50% 50%, #23a6ad33 0%, #071a3300 100%);
+    pointer-events: none;
+  }
+  .hero__inner {
+    --carousel-w: min(656px, calc(56% - 104px));
+    position: relative;
+    height: 100%;
+  }
+  .hero__copy {
+    position: absolute;
+    left: var(--gutter);
+    top: 196px;
+    width: min(580px, calc(100% - var(--gutter) * 2 - var(--carousel-w) - 56px));
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .hero__eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.18em;
+    color: var(--site-eyebrow-dark);
+  }
+  .hero__eyebrow span {
+    flex-shrink: 0;
+    width: 28px;
+    height: 1px;
+    background: var(--site-eyebrow-dark);
+  }
+  .hero__title {
+    color: #fff;
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 62px;
+    line-height: 84px;
+    letter-spacing: 0.02em;
+  }
+  .hero__lead {
+    max-width: 540px;
+    font-size: 17px;
+    line-height: 31px;
+    color: #ffffffb8;
+  }
+  .hero__cta {
+    padding-top: 8px;
+  }
+  .hero__carousel {
+    position: absolute;
+    right: var(--gutter);
+    top: 144px;
+    width: var(--carousel-w);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .tabs {
+    display: flex;
+    gap: 12px;
+  }
+  .tab {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 0 4px;
+    border: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+  .tab__track {
+    display: flex;
+    height: 2px;
+    background: #ffffff29;
+  }
+  .tab__fill {
+    width: 0;
+    height: 2px;
+    background-image: linear-gradient(90deg, #23a6ad 0%, #75af76 100%);
+  }
+  .tab.is-active .tab__fill {
+    width: 62%;
+  }
+  .tab__label {
+    font-size: 13px;
+    line-height: 20px;
+    color: #ffffff80;
+    transition: color 0.2s ease;
+  }
+  .tab:hover .tab__label {
+    color: #ffffffc7;
+  }
+  .tab.is-active .tab__label {
+    color: #fff;
+    font-weight: 500;
+  }
+  .hero__facts {
+    position: absolute;
+    left: var(--gutter);
+    right: var(--gutter);
+    top: 744px;
+    display: flex;
+    padding-top: 28px;
+    border-top: 1px solid #ffffff1f;
+  }
+  .fact {
+    flex: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+  .fact__no {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .fact__text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .fact__text strong {
+    color: #fff;
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 28px;
+  }
+  .fact__text span {
+    font-size: 14px;
+    line-height: 22px;
+    color: #ffffff8f;
+  }
+
+  /* 入场前的初始状态：只有支持动效、且用户没要求减少动态时才隐藏（见 Base 里的内联脚本） */
+  :global(html.js-enter) [data-enter] {
+    opacity: 0;
+  }
+
+  @media (max-width: 1100px) {
+    .hero {
+      height: auto;
+    }
+    .hero__inner {
+      display: flex;
+      flex-direction: column;
+      gap: 56px;
+      padding-top: 152px;
+      padding-bottom: 64px;
+    }
+    .hero__copy,
+    .hero__carousel,
+    .hero__facts {
+      position: static;
+      width: auto;
+    }
+    .hero__carousel {
+      max-width: 656px;
+    }
+  }
+  @media (max-width: 720px) {
+    .hero__inner {
+      padding-top: 120px;
+    }
+    .hero__title {
+      font-size: 40px;
+      line-height: 56px;
+    }
+    .hero__facts {
+      flex-direction: column;
+      gap: 20px;
+    }
+    .tab__label {
+      font-size: 12px;
+    }
+  }
+</style>
