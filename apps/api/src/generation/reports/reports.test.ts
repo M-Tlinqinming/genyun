@@ -72,6 +72,25 @@ describe('风险评估报告', () => {
     expect(rows.at(-1)).toMatch(/其他爆炸 \| 1 \| 3 \| 40 \| 120 \| 显著危险$/);
   });
 
+  it('第 3 章用 LSR 法：一行一个作业场所，没给取值的按事故类型默认，3.2 按风险度写结论', () => {
+    const view = riskView(feiyuSnapshot, {
+      risks: { rows: { SP01: { ...stamp, value: { factor: '火灾', workplace: '压铸车间、仓库', l: 1, e: 6, c: 7, likelihood: 3, severity: 4 } } } },
+    });
+    const report = buildRiskReport({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, hazards: planHazardsOf(view) } });
+    const chapter = report.sections[2]!;
+    const captions = chapter.sections[0]!.blocks.flatMap((b) => (b.type === 'table' && b.caption ? [b.caption] : []));
+    expect(captions).toEqual(['表3.1-1事件发生的可能性（L）判断准则', '表3.1-2事件后果严重性（S）判别准则', '表3.1-3风险等级风险度R及控制措施与实施期限', '表3.1-4风险程度分析情况表']);
+    const table = chapter.sections[0]!.blocks.find((b) => b.type === 'table' && b.caption?.includes('3.1-4'));
+    const rows = table?.type === 'table' ? table.rows.map((r) => r.join(' | ')) : [];
+    expect(rows).toContain('压铸车间 | 火灾 | 3 | 4 | 12 | 中等');
+    expect(rows).toContain('仓库 | 火灾 | 3 | 4 | 12 | 中等');
+    expect(rows.find((r) => r.includes('| 机械致害 |'))).toMatch(/\| 2 \| 4 \| 8 \| 可容忍$/);
+    expect(allText(report)).toMatch(/风险度最高的为火灾（R=12，中等）/);
+    // 飞宇样例只给了 LEC 取值：LSR 全按默认，不出现待补充
+    expect(text).toMatch(/由 LSR 法评估结果可知，.+风险度最高的为/);
+    expect(text).not.toMatch(/不将 LEC 分值机械换算/);
+  });
+
   it('飞宇资料齐全，没有待补充、内部编号', () => {
     expect(text).not.toContain('（待补充）');
     expect(text).not.toMatch(/\bE[1-6]\b|\{\{|undefined|null|NaN/);

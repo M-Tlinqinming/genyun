@@ -1,5 +1,6 @@
 // 专业整理 ·「危险源辨识」（Paper 14 页 E18-00C）：系统按整理后的设备、物料与适用范围推荐候选，
-// 专家用 LEC 法取值（D = L × E × C，等级自动定），可改场所、写改值说明、标为不适用或手动新增。
+// 专家用 LEC 法取值（D = L × E × C，等级自动定），同一行再给 LSR 法的可能性、严重性（R = L × S，报告第 3 章用），
+// 可改场所、写改值说明、标为不适用或手动新增。
 // 候选与要写的现场处置方案一一对应（每份方案一类事故），与飞宇实际风险评估报告表 2-1 的做法一致；
 // 默认取值照该报告。和生产设备与物料一样只记在任务的专业整理里（WorkupData.risks），不写回企业资料。
 import { z } from 'zod';
@@ -7,6 +8,10 @@ import type { SiteAddressOption } from './profile/addresses.ts';
 import { SITE_TYPES, type SiteType } from './profile/production-step.ts';
 import { accidentTypeOf, SCOPE_SWITCHES, selectPlans, type ScopeKey } from './plan/catalog.ts';
 import { riskLevel, riskScore, type Hazard, type RiskLevel } from './plan/input.ts';
+import { defaultLsr, LSR_KEYS, LSR_OPTIONS, LSR_SHORT, lsrLevel, lsrScore, type LsrKey, type LsrLevel } from './plan/lsr.ts';
+
+/** 页面上当前看取值参考的那一维：LEC 的 L / E / C 或 LSR 的可能性 / 严重性 */
+export type RiskDimension = LecKey | LsrKey;
 import { isAddedRow, planProductionOf, productionView, type Judged, type ProductionList, type ProductionWorkup } from './workup-production.ts';
 import type { WorkupSnapshot } from './workup.ts';
 import { scopeView, type ScopeWorkup } from './workup-scope.ts';
@@ -50,6 +55,12 @@ export const RISK_THRESHOLDS = 'D ≤ 20 稍有危险 · ≤ 70 一般危险 · 
 
 const lec = (key: LecKey) =>
   z.number().refine((v) => LEC_OPTIONS[key].some((o) => o.value === v), `${key.toUpperCase()} 请从取值表里选`);
+// 早先保存的行没有 LSR 取值，按事故类型补默认值
+const lsr = (key: LsrKey) =>
+  z
+    .number()
+    .refine((v) => LSR_OPTIONS[key].some((o) => o.value === v), `${LSR_SHORT[key]}请从取值表里选`)
+    .optional();
 
 export const WORKPLACE_MAX = 120;
 export const WORKPLACE_SEPARATOR = '、';
@@ -79,6 +90,8 @@ export const riskRowSchema = z.object({
   l: lec('l'),
   e: lec('e'),
   c: lec('c'),
+  likelihood: lsr('likelihood'),
+  severity: lsr('severity'),
   note: z.string().trim().max(200, '说明最多 200 个字').optional(),
   // 不适用：不进风险评估报告，可恢复；不用写理由
   excluded: z.boolean().optional(),
@@ -146,6 +159,11 @@ export interface RiskRow extends RiskRowValue {
   id: string;
   d: number;
   level: RiskLevel;
+  likelihood: number;
+  severity: number;
+  // LSR 法：R = 可能性 × 严重性
+  r: number;
+  lsrLevel: LsrLevel;
   // 依据的设备或物料（「冲床 6 台」），没有具体的写场所即可
   item?: string;
   // 为什么出现这一项，业务语言
@@ -158,7 +176,7 @@ export interface RiskRow extends RiskRowValue {
   added: boolean;
   excluded: boolean;
   // 系统推荐的原值（新增行没有）
-  suggested?: Pick<RiskRowValue, 'factor' | 'workplace' | 'addressId' | 'l' | 'e' | 'c'>;
+  suggested?: Pick<RiskRowValue, 'factor' | 'workplace' | 'addressId' | 'l' | 'e' | 'c'> & { likelihood: number; severity: number };
   edited?: Judged<RiskRowValue>;
   // 相对系统推荐改了哪些：「C 15 → 40」「场所 厂房一 → 冲压车间」
   changes: string[];
@@ -243,7 +261,13 @@ export function riskView(snapshot: WorkupSnapshot, data: RiskData): RiskView {
       basis,
       item: place?.item,
       ref: place?.ref,
-      suggested: { factor: accidentTypeOf(t.title), workplace, ...(addressId ? { addressId } : {}), ...(DEFAULT_LEC[t.id] ?? FALLBACK_LEC) },
+      suggested: {
+        factor: accidentTypeOf(t.title),
+        workplace,
+        ...(addressId ? { addressId } : {}),
+        ...(DEFAULT_LEC[t.id] ?? FALLBACK_LEC),
+        ...defaultLsr(accidentTypeOf(t.title)),
+      },
     };
   });
 
@@ -287,10 +311,13 @@ export function riskView(snapshot: WorkupSnapshot, data: RiskData): RiskView {
   };
 }
 
-type Draft = Omit<RiskRow, 'd' | 'level' | 'excluded' | 'changes'> & { excluded?: boolean };
+type Draft = Omit<RiskRow, 'd' | 'level' | 'excluded' | 'changes' | LsrKey | 'r' | 'lsrLevel'> & Partial<Pick<RiskRow, LsrKey>> & { excluded?: boolean };
 
-function finish(r: Draft): RiskRow {
+function finish(draft: Draft): RiskRow {
+  const fallback = defaultLsr(draft.factor);
+  const r = { ...draft, likelihood: draft.likelihood ?? fallback.likelihood, severity: draft.severity ?? fallback.severity };
   const d = riskScore(r)!;
+  const score = lsrScore(r)!;
   const changes: string[] = [];
   if (r.suggested && r.edited) {
     const s = r.suggested;
@@ -298,8 +325,25 @@ function finish(r: Draft): RiskRow {
     if (r.workplace !== s.workplace) changes.push(`场所 ${s.workplace} → ${r.workplace}`);
     if ((r.addressId ?? '') !== (s.addressId ?? '')) changes.push('所在厂址');
     for (const k of LEC_KEYS) if (r[k] !== s[k]) changes.push(`${k.toUpperCase()} ${s[k]} → ${r[k]}`);
+    for (const k of LSR_KEYS) if (r[k] !== s[k]) changes.push(`${LSR_SHORT[k]} ${s[k]} → ${r[k]}`);
   }
-  return { ...r, d, level: riskLevel(d)!, excluded: Boolean(r.excluded), changes };
+  return { ...r, d, level: riskLevel(d)!, r: score, lsrLevel: lsrLevel(score)!, excluded: Boolean(r.excluded), changes };
+}
+
+/** 页面上改一行时整行保存的值（LSR 取值一并存下，免得以后默认值变了跟着变） */
+export function riskRowValueOf(r: RiskRow): RiskRowValue {
+  return {
+    factor: r.factor,
+    workplace: r.workplace,
+    l: r.l,
+    e: r.e,
+    c: r.c,
+    likelihood: r.likelihood,
+    severity: r.severity,
+    ...(r.note ? { note: r.note } : {}),
+    ...(r.excluded ? { excluded: true } : {}),
+    ...(r.addressId ? { addressId: r.addressId } : {}),
+  };
 }
 
 // 保存前校验：改的是现有候选或新增行
@@ -308,7 +352,9 @@ export function riskSaveError(snapshot: WorkupSnapshot, data: RiskData, save: Ri
   return riskView(snapshot, data).rows.some((r) => r.id === save.rowId) ? null : '没有这一项危险源';
 }
 
-// 进风险评估报告（表 1.3-1、表 2-1）的危险源：不适用的去掉，名称与场所按专家改过的
+// 进风险评估报告（表 1.3-1、表 2.2-5、表 3.1-4）的危险源：不适用的去掉，名称与场所按专家改过的
 export function planHazardsOf(view: RiskView): Hazard[] {
-  return view.rows.filter((r) => !r.excluded).map(({ workplace, factor, addressId, l, e, c }) => ({ workplace, factor, addressId, l, e, c }));
+  return view.rows
+    .filter((r) => !r.excluded)
+    .map(({ workplace, factor, addressId, l, e, c, likelihood, severity }) => ({ workplace, factor, addressId, l, e, c, likelihood, severity }));
 }

@@ -18,6 +18,9 @@ export interface Hazard {
   l?: number;
   e?: number;
   c?: number;
+  /** LSR 法的可能性、严重性（1–5，见 lsr.ts）；没有时报告按事故类型取默认值 */
+  likelihood?: number;
+  severity?: number;
 }
 
 export const RISK_LEVELS = ['稍有危险', '一般危险', '显著危险', '高度危险', '极其危险'] as const;

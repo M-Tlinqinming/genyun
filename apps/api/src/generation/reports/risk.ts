@@ -1,7 +1,7 @@
 // 生产安全事故风险评估报告。正文迁自旧仓库 lib/md-generator/reports.ts（generateRiskAssessmentReportMd），
 // 改动同应急预案：中文全角标点；旧稿里「以企业 E4 模块填报为准」这类内部说法改为「（待补充）」；
-// 成立日期、周边环境取专家补充的事实。排版暂与应急预案相同（第 9c 项按实际案例定）。
-import { RISK_LEVELS, riskLevel, riskScore, workplacesOf, type PlanInput } from '@genyun/shared';
+// 成立日期、周边环境取专家补充的事实。第 2 章用 LEC 法、第 3 章用 LSR 法，与专家写的风险评估报告一致。
+import { defaultLsr, LSR_LEVELS, lsrLevel, lsrScore, RISK_LEVELS, riskLevel, riskScore, workplacesOf, type PlanInput } from '@genyun/shared';
 import { MISSING, dash, fill, planContext, siteColumn, type PlanContext } from '../plan/context.ts';
 import { buildReport, companyBasicTable, companyOverview, hazardFactorsTable, locationText } from './common.ts';
 
@@ -175,6 +175,46 @@ function managementStatus(ctx: PlanContext): string[] {
   ];
 }
 
+// 判定准则照专家写的 5 份风险评估报告表 3.1-1 ~ 3.1-3
+const LSR_TABLES = [
+  '**表3.1-1事件发生的可能性（L）判断准则**',
+  '| 等级 | 标准 |',
+  '| --- | --- |',
+  '| 5 | 在现场没有采取防范、监测、保护、控制措施，危害的发生不能被发现（没有监测系统），或在正常情况下经常发生此类事故或事件。 |',
+  '| 4 | 危害的发生不容易被发现，现场没有检测系统，也未作过任何监测，或在现场有控制措施，但未有效执行或控制措施不当；危害常发生或在预期情况下发生。 |',
+  '| 3 | 没有保护措施（如没有保护防装置、没有个人防护用品等），或未严格按操作程序执行，或危害的发生容易被发现（现场有监测系统），或曾经作过监测，或过去曾经发生、或在异常情况下发生过类似事故或事件。 |',
+  '| 2 | 危害一旦发生能及时发现，并定期进行监测，或现场有防范控制措施并能有效执行，或过去偶尔发生危险事故或事件。 |',
+  '| 1 | 有充分、有效的防范、控制、监测、保护措施，或员工安全卫生意识相当高，严格执行操作规程；极不可能发生事故或事件。 |',
+  '**表3.1-2事件后果严重性（S）判别准则**',
+  '| 等级 | 法律法规及其他要求 | 人 | 财产损失/万元 | 停工 | 公司形象 |',
+  '| --- | --- | --- | --- | --- | --- |',
+  '| 5 | 违反法律、法规 | 发生死亡 | >50 | 部分装置（>2 套）或设备停工 | 重大国内影响 |',
+  '| 4 | 潜在违反法规 | 丧失劳动能力 | >25 | 2 套装置停工或设备停工 | 行业内、集团公司内 |',
+  '| 3 | 不符合集团公司的 HSE 方针、制度、规定 | 截肢、骨折、听力丧失、慢性病 | >10 | 1 套装置停工或设备停工 | 省内影响 |',
+  '| 2 | 不符合公司的 HSE 操作程序、规定 | 轻微受伤、间歇不舒适 | <10 | 受影响不大，几乎不停工 | 公司及周边范围 |',
+  '| 1 | 完全符合 | 无伤亡 | 无损失 | 没有停工 | 形象没有受损 |',
+  '**表3.1-3风险等级风险度R及控制措施与实施期限**',
+  '| 风险度 | 等级 | 应采取的行动/控制措施 | 实施期限 |',
+  '| --- | --- | --- | --- |',
+  '| 20-25 | 巨大风险 | 在采取措施降低危害前，不能继续作业，对改进措施进行评估 | 立刻 |',
+  '| 15-16 | 重大风险 | 采取紧急措施降低风险，建立运行控制程序，定期检查、测量及评估 | 立即或近期整改 |',
+  '| 9-12 | 中等 | 可考虑建立目标、建立操作规程，加强培训及沟通 | 2 年内治理 |',
+  '| 4-8 | 可容忍 | 可考虑建立操作规程、作业指导书，但需定期检查 | 有条件、有经费时治理 |',
+  '| <4 | 轻微 | 无需采用控制措施，但需保存记录 | / |',
+];
+
+/** 表 3.1-4：一行一个作业场所（专家稿的写法），可能性、严重性没给的按事故类型取默认值 */
+function lsrRows(ctx: PlanContext) {
+  return (ctx.input.expert.hazards ?? []).flatMap((h) => {
+    const fallback = defaultLsr(h.factor);
+    const v = { likelihood: h.likelihood ?? fallback.likelihood, severity: h.severity ?? fallback.severity };
+    const r = lsrScore(v)!;
+    const site = ctx.siteOf(h.addressId);
+    const places = workplacesOf(h.workplace);
+    return (places.length ? places : [MISSING]).map((w) => ({ place: site ? `${site} ${w}` : w, factor: h.factor, ...v, r, level: lsrLevel(r)! }));
+  });
+}
+
 const LEC_TABLES = [
   '**表2.2-1事故发生的可能性分值**',
   '| 分数值 | 事故发生的可能性 | 分数值 | 事故发生的可能性 |',
@@ -223,6 +263,16 @@ function riskMarkdown(ctx: PlanContext): string {
     .map((g) => `${g.level}：${g.factors.join('、')}`)
     .join('；');
   const steps = p.processFlow.steps.map((s) => s.name);
+  // 表 3.1-4 按场所排在一起
+  const lsr = lsrRows(ctx);
+  const placeOrder = [...new Set(lsr.map((r) => r.place))];
+  lsr.sort((a, b) => placeOrder.indexOf(a.place) - placeOrder.indexOf(b.place));
+  const lsrTop = Math.max(0, ...lsr.map((r) => r.r));
+  const lsrTopTypes = [...new Set(lsr.filter((r) => r.r === lsrTop).map((r) => r.factor))];
+  const lsrGroups = [...LSR_LEVELS]
+    .reverse()
+    .map((level) => ({ level, factors: [...new Set(lsr.filter((r) => r.level === level).map((r) => r.factor))] }))
+    .filter((g) => g.factors.length);
 
   return [
     '# 危险有害因素辨识',
@@ -310,12 +360,23 @@ function riskMarkdown(ctx: PlanContext): string {
       : [`| 1 | ${MISSING} | / | / | / | / | / |`]),
     '# 事故风险评价',
     '## 事故风险程度',
-    '本报告以 LEC 半定量评价结果作为事故风险程度划定依据。LSR 明细评价需要单独的 L、S、R 评价数据支撑；在未形成 LSR 专项评价数据前，本报告不将 LEC 分值机械换算为 LSR 分值。',
-    '| 风险程度 | 危险有害因素 |',
-    '| --- | --- |',
-    ...(groups.length ? groups.map((g) => `| ${g.level} | ${g.factors.join('、')} |`) : [`| / | ${MISSING} |`]),
+    'LSR 评价法是一种对特定危害事故发生的可能性及事件后果严重性判断的评估方法。',
+    'LSR 评价法是用与风险有关的两种因素指标值的乘积来评估风险等级，这两种因素分别是：L（事件发生的可能性）、S（事件后果严重性）。给两种因素的不同等级分别确定不同的分值，再以两个等级的乘积 R 来评估作业条件危险性的大小，即：',
+    '**风险值 R = 可能性 L × 事故严重性 S。**',
+    ...LSR_TABLES,
+    '本节采用 LSR 评价法进行风险等级评价：由熟悉作业条件的专业人员按规定标准给 L、S 分别评级，再计算风险值 R，评估各类事故的风险等级。',
+    '根据各作业场所的危险源及其危险有害因素情况，对其风险程度进行分析如下：',
+    '**表3.1-4风险程度分析情况表**',
+    '| 作业场所 | 事故类型 | 事故发生的可能性（L） | 严重程度（S） | 风险度 | 风险等级 |',
+    '| --- | --- | --- | --- | --- | --- |',
+    ...(lsr.length
+      ? lsr.map((r) => `| ${r.place} | ${r.factor} | ${r.likelihood} | ${r.severity} | ${r.r} | ${r.level} |`)
+      : [`| ${MISSING} | / | / | / | / | / |`]),
     '## 划定事故风险等级',
-    `根据 LEC 法评估结果，当前风险值较高的危险有害因素为：${top.length ? top.map((r) => `${r.factor}（D=${r.d}）`).join('、') : MISSING}。企业应将一般危险及以上风险纳入日常巡查和重点管理，将涉及火灾、爆炸、触电、机械伤害、危险物料泄漏等风险的岗位作为培训、演练和应急准备重点。`,
+    lsr.length
+      ? `由 LSR 法评估结果可知，${company}生产过程中风险度最高的为${lsrTopTypes.join('、')}（R=${lsrTop}，${lsrLevel(lsrTop)}）；各类事故的风险等级为：${lsrGroups.map((g) => `${g.level}：${g.factors.join('、')}`).join('；')}。`
+      : `由 LSR 法评估结果可知：${MISSING}。`,
+    `结合第 2 章 LEC 法评估结果，当前风险值较高的危险有害因素为：${top.length ? top.map((r) => `${r.factor}（D=${r.d}）`).join('、') : MISSING}。企业应将风险度较高的事故类型纳入日常巡查和重点管理，加强机械设备保养${hazardous.length ? '和化学品管控' : ''}，操作时严格遵守安全操作规程、佩戴个体防护用品，并将相关岗位作为培训、演练和应急准备重点。`,
     '# 结论建议',
     '## 评估结论',
     `1）${company}生产过程中可能存在的主要危险因素有：${factors}。`,

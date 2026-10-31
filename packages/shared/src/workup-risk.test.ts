@@ -65,7 +65,18 @@ describe('专家取值与修改', () => {
   it('改取值后 D 和等级跟着变，记下改了什么', () => {
     const view = riskView(feiyuSnapshot, withRows({ SP01: judged({ ...base, c: 40, note: '仓库紧邻车间' }) }));
     expect(row(view, '火灾')).toMatchObject({ c: 40, d: 240, level: '高度危险', source: 'expert', note: '仓库紧邻车间', changes: ['C 7 → 40'] });
-    expect(planHazardsOf(view).find((h) => h.factor === '火灾')).toEqual({ workplace: '压铸车间、加工车间、公用工程、原料仓库、成品仓库、辅料仓库、化学品柜', factor: '火灾', l: 1, e: 6, c: 40 });
+    expect(planHazardsOf(view).find((h) => h.factor === '火灾')).toEqual({ workplace: '压铸车间、加工车间、公用工程、原料仓库、成品仓库、辅料仓库、化学品柜', factor: '火灾', l: 1, e: 6, c: 40, likelihood: 2, severity: 2 });
+  });
+
+  it('LSR 的可能性、严重性按事故类型给默认值，R 和等级自动算；改了也记下', () => {
+    const view = riskView(feiyuSnapshot, {});
+    expect(row(view, '火灾')).toMatchObject({ likelihood: 2, severity: 2, r: 4, lsrLevel: '可容忍' });
+    expect(row(view, '机械致害')).toMatchObject({ likelihood: 2, severity: 4, r: 8, lsrLevel: '可容忍' });
+    // 5 份专家报告里没出现过的类型按 1 × 3
+    expect(row(view, '高温熔融物爆炸')).toMatchObject({ likelihood: 1, severity: 3, r: 3, lsrLevel: '轻微' });
+    const edited = riskView(feiyuSnapshot, withRows({ SP01: judged({ ...base, likelihood: 3, severity: 4 }) }));
+    expect(row(edited, '火灾')).toMatchObject({ r: 12, lsrLevel: '中等', changes: ['可能性 2 → 3', '严重性 2 → 4'] });
+    expect(riskSaveSchema.safeParse({ version: 1, rowId: 'SP01', value: { ...base, severity: 6 } }).error?.issues[0]?.message).toBe('严重性请从取值表里选');
   });
 
   it('标为不适用：不进报告、不计数，可恢复', () => {
@@ -80,7 +91,8 @@ describe('专家取值与修改', () => {
   it('手动新增的一行排在候选之后', () => {
     const view = riskView(feiyuSnapshot, withRows({ xa1: judged({ factor: '其他爆炸', workplace: '气瓶间', l: 1, e: 3, c: 40 }) }));
     expect(view.rows.at(-1)).toMatchObject({ id: 'xa1', added: true, basis: '专家手动新增', d: 120, level: '显著危险', changes: [] });
-    expect(planHazardsOf(view).at(-1)).toEqual({ workplace: '气瓶间', factor: '其他爆炸', l: 1, e: 3, c: 40 });
+    // 早先保存、没有 LSR 取值的行按事故类型补默认值
+    expect(planHazardsOf(view).at(-1)).toEqual({ workplace: '气瓶间', factor: '其他爆炸', l: 1, e: 3, c: 40, likelihood: 2, severity: 3 });
   });
 
   it('场所可以多选，用「、」存成一格；太长时只留前几个加「等」', () => {

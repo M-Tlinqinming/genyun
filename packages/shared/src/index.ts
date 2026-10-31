@@ -28,6 +28,7 @@ export * from './document/model.ts';
 export * from './document/figures.ts';
 export * from './plan/catalog.ts';
 export * from './plan/input.ts';
+export * from './plan/lsr.ts';
 export * from './plan/agencies.ts';
 export * from './plan/scope.ts';
 export * from './plan/signals.ts';
