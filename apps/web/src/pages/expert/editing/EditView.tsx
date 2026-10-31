@@ -106,6 +106,7 @@ export function EditView({
   // 本节这次修改采用过 AI 改写：保存时带上提示词版本，记进修订记录
   const aiVersion = useRef<string | null>(null);
   const noteRef = useRef<InputRef>(null);
+  const focusNoteAfterLeave = useRef(false);
   const outlineRef = useRef<HTMLDivElement>(null);
 
   const editable = doc.data?.editable ?? false;
@@ -334,8 +335,10 @@ export function EditView({
   const leaveAndSave = async () => {
     // 还没写修订说明：留在本页，光标放到修订说明
     if (!note.trim()) {
+      // 弹窗关完再把光标放进修订说明（关的过程中焦点还在弹窗里）
+      focusNoteAfterLeave.current = true;
+      setNoteError('请写修订说明：改了什么、依据是什么');
       blocker.reset?.();
-      askNote();
       return;
     }
     if (await save()) blocker.proceed?.();
@@ -646,6 +649,10 @@ export function EditView({
           blocker.proceed?.();
         }}
         onSave={() => void leaveAndSave()}
+        afterClose={() => {
+          if (focusNoteAfterLeave.current) noteRef.current?.focus();
+          focusNoteAfterLeave.current = false;
+        }}
       />
       <ConflictDialog
         open={conflictOpen && state.kind === 'conflict'}

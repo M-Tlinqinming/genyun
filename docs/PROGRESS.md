@@ -93,10 +93,12 @@
 - 存什么：生成时把文档结构另存一份 JSON（图转 base64），`generated_drafts.document_file_id` 指向它（迁移 0014 之前生成的草稿没有，编辑页提示重新生成）。修订按节存在 `draft_edits.sections`（键是节的稳定编号，每节有 `rev`），整份草稿的 `version` 每保存一次加 1——**第 12 项按 version 判断核对是否失效**。每次保存一条 `draft_revisions`（改前、改后、修订说明、saveId 唯一）——**第 14 项新旧稿对照从这里取旧修订**。
 - 规则在 `packages/shared/src/editing.ts`：段落、列表可改；表格和图是锁定块（只带原位置和名称），不能删、不能挪，保存时后台再查一次；正文不能为空；修订说明必填（≤200 字）。Word 由生成时的结构 + 修订现出（`applyEdits` → `renderWord`），没有另存修订稿文件——**第 15 项发布时要把这一份定下来存档**。
 - 接口 `apps/api/src/tasks/editing.service.ts`，`/api/tasks/:id/drafts/:kind/…`：`edit`（目录、能不能改、AI 是否可用）、`sections/:sectionId`（读 / PUT 保存，带 saveId 和 baseRev，别人刚存过 409 带最新稿）、`sections/:sectionId/rewrite`（帮我改写这段）、`saves/:saveId`（结果不明时先查）、`word`（当前稿）。负责专家能改；运营只能看（写 403）；客户、其他专家 404。
-- 「帮我改写这段」：`apps/api/src/generation/ai/polish.ts`，提示词 `polish-v1`。发送前企业名称、资料里的人名、电话换成占位，回来后还原；不新增数字、不编设备物料（`risk.ts` 的 TERMS 名单）、篇幅相当才用，否则保留原文并说原因。改写会丢掉这一段里的加粗。
+- 「帮我改写这段」：`apps/api/src/generation/ai/polish.ts`，提示词 `polish-v1`。发送前企业名称和简称、资料里的人名（基本信息联系人和负责人、应急组织各级人员、编制组）、各种写法的电话换成占位，回来后还原；数字按完整数字串一个不少也不新增、「立即」「严禁」「必须」这类词不减少、不编设备物料（`risk.ts` 的 TERMS 名单）、篇幅相当才用，否则保留原文并说原因。页面先给看改写前后，点「采用」才替换。改写会丢掉这一段里的加粗。
 - 页面 `apps/web/src/pages/expert/editing/`，`?view=edit&doc=plan&section=…`，生成全部完成后「进入正文编辑」进来。编辑器用 TipTap 3.32.2（StarterKit 去掉标题、引用、代码、斜体等）。离开提醒用 `useBlocker`（换节、换文档、离开任务）+ 浏览器关闭提醒。
 - 没做（留给第 12 项）：「Word 预览」页签、「待核对」「人工核对 0 / 3」是固定的、已保存后的「查看 Word 并核对」。第 13 项：右栏「发起事实补件」。右栏现在列本次采用的全部资料，没有按节对应来源。
-- 设计稿差异 16 条记在 `docs/DESIGN-DIFF.md`「M2 第 11 项」，都标「11-01 通宵 · 待 Martin 决定」；Paper 14 页加了实现对照画板。
+- 保存和查询都带这一批草稿的 `batchId`，重新生成后旧稿上的修订一律 409「草稿已重新生成，请刷新后再改」；同一个 saveId 重放从修订记录取当次结果，用到别的节返回 409。重试保存先查上一次是否记上，失败后又改过就换新 saveId（`saveRetry.ts`）。采用 AI 改写的那次保存在 `draft_revisions.ai_prompt_version` 记提示词版本。已有人工修订时重新生成先确认（进度接口 `editedSections`）。
+- 任务关闭或成果发布以后还能不能改正文，留给第 15 项定（现在只看是不是负责专家，不看任务状态）。
+- 设计稿差异 17 条记在 `docs/DESIGN-DIFF.md`「M2 第 11 项」，都标「11-01 通宵 · 待 Martin 决定」；Paper 14 页加了实现对照画板。
 - 本机跑后台全量测试时，机器上同时有别的测试在跑，偶尔 `generation.test.ts` 进程崩、`reports.test.ts` 超时，单独重跑都通过。
 
 ### 第 10c 项留给后续的说明

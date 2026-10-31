@@ -37,8 +37,10 @@ export function LeaveDialog({
   onStay,
   onDiscard,
   onSave,
+  afterClose,
 }: {
   open: boolean;
+  afterClose?: () => void;
   /** 如「应急预案「附件 · 应急通讯录」」 */
   where: string;
   saving: boolean;
@@ -51,6 +53,7 @@ export function LeaveDialog({
       open={open}
       title="离开前保存修改？"
       focusTriggerAfterClose={false}
+      afterClose={afterClose}
       onCancel={onStay}
       width={560}
       footer={[

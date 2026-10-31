@@ -111,7 +111,7 @@ test('改一节、写修订说明保存；离开前提醒；别人刚保存过�
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/acceptance/m2-11-leave.png' });
   // 没写修订说明就点「保存并离开」：留在本页，光标到修订说明
-  await leave.getByRole('button', { name: '保存并离开' }).click();
+  await leave.getByRole('button', { name: '保存并离开', exact: true }).click();
   await expect(page.getByLabel('修订说明')).toBeFocused();
   await expect(page).not.toHaveURL(/doc=risk/);
   await page.getByRole('tab', { name: /风险评估报告/ }).click();
