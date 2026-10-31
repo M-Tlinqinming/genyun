@@ -85,7 +85,8 @@ body {
   }
 }
 .gy-editor-box:focus-within {
-  outline: 2px solid var(--gy-selected);
+  outline: 2px solid var(--gy-primary);
+  outline-offset: -1px;
 }
 
 /* 系统设置了「减少动态效果」时，组件库的动效也一律不动 */

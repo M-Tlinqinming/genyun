@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react';
 import { linkButton } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
 
-// E18-07 编辑中的恢复状态：离开前保存、保存失败、别人刚保存过（冲突）
+// E18-07 编辑中的恢复状态：离开前保存、别人刚保存过（冲突）；以及「帮我改写这段」的改写前后对照
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 
@@ -50,6 +50,7 @@ export function LeaveDialog({
     <Modal
       open={open}
       title="离开前保存修改？"
+      focusTriggerAfterClose={false}
       onCancel={onStay}
       width={560}
       footer={[
@@ -64,33 +65,26 @@ export function LeaveDialog({
         </Button>,
       ]}
     >
-      <p style={{ ...text14, color: gy.text, margin: '8px 0 16px' }}>{where}有未保存修订。离开后，本次输入将被丢弃，已保存稿不会改变。</p>
+      <p style={{ ...text14, color: gy.text, margin: '8px 0 16px' }}>{where}有未保存修订。不保存就离开，本次输入会丢弃；已保存稿不变。</p>
     </Modal>
   );
 }
 
-export function SaveFailed({ checking, onCopy, onRetry }: { checking: boolean; onCopy: () => void; onRetry: () => void }) {
+/** 两边逐行对照：对方没有的行标出来（整段比对，不做字级差异） */
+function Lines({ lines, other, mark }: { lines: string[]; other: Set<string>; mark: string }) {
   return (
-    <div
-      role="alert"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        padding: '16px 20px',
-        borderRadius: 6,
-        border: `1px solid ${gy.error}`,
-        background: gy.surface,
-      }}
-    >
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.error }}>修订未保存成功</span>
-        <span style={{ ...text14, color: gy.text }}>连接中断。当前输入仍保留在编辑区，已保存稿没有改变。请保持此页打开并重试。</span>
-      </div>
-      <Button onClick={onCopy}>复制本节内容</Button>
-      <Button type="primary" loading={checking} onClick={onRetry}>
-        重试保存
-      </Button>
+    <div style={{ ...text14, color: gy.text, maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {lines.map((l, i) =>
+        other.has(l) ? (
+          <span key={i} style={{ whiteSpace: 'pre-wrap', padding: '0 4px' }}>
+            {l || ' '}
+          </span>
+        ) : (
+          <mark key={i} aria-label={mark} style={{ whiteSpace: 'pre-wrap', padding: '0 4px', background: gy.warningBg, color: gy.text, borderLeft: `2px solid ${gy.warning}` }}>
+            {l || ' '}
+          </mark>
+        ),
+      )}
     </div>
   );
 }
@@ -120,7 +114,8 @@ export function ConflictDialog({
     borderRadius: 6,
     border: `1px solid ${gy.split}`,
   };
-  const body: CSSProperties = { ...text14, color: gy.text, whiteSpace: 'pre-wrap', maxHeight: 280, overflowY: 'auto', margin: 0 };
+  const mineLines = blocksText(mine).split('\n');
+  const latestLines = latest ? blocksText(latest.blocks).split('\n') : [];
   return (
     <Modal
       open={open}
@@ -137,18 +132,20 @@ export function ConflictDialog({
         </div>
       }
     >
-      <p style={{ ...text14, color: gy.text, margin: '8px 0 16px' }}>你的修改尚未保存。其他人已保存了更新版本，直接保存会覆盖新内容；请对照后再提交修订。</p>
+      <p style={{ ...text14, color: gy.text, margin: '8px 0 16px' }}>
+        你的修改尚未保存。其他人已保存了更新版本，直接保存会覆盖新内容；请对照后再提交修订。两边不同的段落已标出。
+      </p>
       <div style={{ display: 'flex', gap: 24 }}>
         <section aria-label="你的未保存内容" style={box}>
           <span style={{ ...text14, color: gy.text }}>你的未保存内容</span>
-          <p style={body}>{blocksText(mine)}</p>
-          <button type="button" style={{ ...linkButton, ...text14 }} onClick={onCopyMine}>
+          <Lines lines={mineLines} other={new Set(latestLines)} mark="与最新稿不同" />
+          <button type="button" style={{ ...linkButton, ...text14, alignSelf: 'flex-start' }} onClick={onCopyMine}>
             复制我的内容
           </button>
         </section>
         <section aria-label="最新保存稿" style={box}>
           <span style={{ ...text14, color: gy.text }}>最新保存稿{latest?.saved ? `　·　${stamp(latest.saved.at)}` : ''}</span>
-          <p style={body}>{latest ? blocksText(latest.blocks) : ''}</p>
+          <Lines lines={latestLines} other={new Set(mineLines)} mark="与你的内容不同" />
           {latest?.saved && (
             <span style={{ ...text14, color: gy.secondary }}>
               更新人：{latest.saved.byName}　·　修订说明：{latest.saved.note}
@@ -156,6 +153,47 @@ export function ConflictDialog({
           )}
         </section>
       </div>
+    </Modal>
+  );
+}
+
+/** 「帮我改写这段」：先给专家看改写前后，点「采用」才换进正文 */
+export function RewriteDialog({
+  preview,
+  onAdopt,
+  onReject,
+}: {
+  preview: { before: string; after: string; note: string } | null;
+  onAdopt: () => void;
+  onReject: () => void;
+}) {
+  const box: CSSProperties = { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8, padding: 16, borderRadius: 6, border: `1px solid ${gy.split}` };
+  return (
+    <Modal
+      open={preview !== null}
+      title="改写这一段"
+      onCancel={onReject}
+      width={860}
+      footer={[
+        <Button key="reject" onClick={onReject}>
+          不采用
+        </Button>,
+        <Button key="adopt" type="primary" onClick={onAdopt}>
+          采用
+        </Button>,
+      ]}
+    >
+      <div style={{ display: 'flex', gap: 24, margin: '8px 0 12px' }}>
+        <section aria-label="改写前" style={box}>
+          <span style={{ ...text14, color: gy.secondary }}>改写前</span>
+          <p style={{ ...text14, color: gy.text, whiteSpace: 'pre-wrap', margin: 0 }}>{preview?.before}</p>
+        </section>
+        <section aria-label="改写后" style={{ ...box, borderColor: gy.primary }}>
+          <span style={{ ...text14, color: gy.primary }}>改写后</span>
+          <p style={{ ...text14, color: gy.text, whiteSpace: 'pre-wrap', margin: 0 }}>{preview?.after}</p>
+        </section>
+      </div>
+      <span style={{ ...text14, color: gy.secondary }}>{preview?.note}。采用后仍可点「撤销」恢复原文。</span>
     </Modal>
   );
 }

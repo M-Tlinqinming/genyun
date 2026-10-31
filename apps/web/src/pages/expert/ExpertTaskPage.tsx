@@ -345,6 +345,7 @@ export function ExpertTaskPage() {
             gaps={gaps}
             required={required}
             hasDrafts={current !== null}
+            editedSections={current?.editedSections ?? 0}
             onBackToWorkup={() => showView('workup')}
             onNextMissing={goToNextMissing}
             onStarted={() => showView(null)}
