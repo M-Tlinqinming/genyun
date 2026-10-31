@@ -33,5 +33,12 @@ export default defineConfig({
       env: { API_TARGET: 'http://localhost:3100' },
       reuseExistingServer: false,
     },
+    {
+      // 官网是静态页面：测构建出来的结果（site.spec）
+      command: 'npm run build -w @genyun/site && npm run preview -w @genyun/site -- --port 4322',
+      url: 'http://localhost:4322/',
+      reuseExistingServer: false,
+      timeout: 180_000,
+    },
   ],
 });
