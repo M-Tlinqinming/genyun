@@ -6,7 +6,7 @@ import { LANDSCAPE, PORTRAIT, testPdf } from '../apps/api/src/generation/drawing
 // 文件名排在 expert-workup-visuals 之前（「-」排在「.」前面）；不影响必需项。
 // generation.spec 生成时附件 7 用这里选的页
 async function customerUploadsFirePlan() {
-  const api = await request.newContext({ baseURL: 'http://localhost:5174' });
+  const api = await request.newContext({ baseURL: test.info().project.use.baseURL });
   await api.post('/api/auth/login', { data: { email: 'feiyu@demo.genyun.net.cn', password: 'e2e-password' } });
   const me = await (await api.get('/api/auth/me')).json();
   const orgId = me.memberships[0].orgId as string;
