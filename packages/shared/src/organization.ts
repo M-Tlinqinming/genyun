@@ -1,14 +1,15 @@
 // 客户组织的登记与开通（Paper 16 页 I02「客户组织」与「开通与邀请弹窗」）。前后端共用。
 // 商务全部线下：签合同、对公转账后，运营登记合同信息并开通，系统向首位管理员发邀请邮件。
 import { z } from 'zod';
-import { contractState, type ContractPeriod } from './task.ts';
+import { chinaToday, contractState, type ContractPeriod } from './task.ts';
 
 const phoneSchema = z
   .string()
   .trim()
   .min(1, '请填写手机号')
   .max(30, '手机号最多 30 位')
-  .regex(/^[\d\s\-+()（）]+$/, '手机号只能填数字、空格和短横线');
+  .regex(/^[\d\s\-+()（）]+$/, '手机号只能填数字、空格和短横线')
+  .refine((v) => v.replace(/\D/g, '').length >= 7, '手机号至少 7 位数字');
 
 const optional = (max: number, label: string) =>
   z
@@ -23,20 +24,20 @@ export const orgRegisterSchema = z.object({
   name: z.string().trim().min(1, '请填写组织名称').max(100, '组织名称最多 100 个字'),
   region: z.string().trim().min(1, '请填写所在地区').max(50, '所在地区最多 50 个字'),
   socialCreditCode: z
-    .string()
+    .string('请填写统一社会信用代码')
     .trim()
     .toUpperCase()
-    .optional()
-    .transform((v) => (v ? v : null))
-    .refine((v) => v === null || /^[0-9A-Z]{18}$/.test(v), '统一社会信用代码是 18 位数字或大写字母'),
+    .min(1, '请填写统一社会信用代码')
+    .regex(/^[0-9A-Z]{18}$/, '统一社会信用代码是 18 位数字或大写字母'),
   contactName: z.string().trim().min(1, '请填写主联系人').max(50, '主联系人最多 50 个字'),
   contactPhone: phoneSchema,
+  // 开通时默认把主联系人作为首位管理员，邀请发到这个邮箱
   contactEmail: z
-    .string()
+    .string('请填写邮箱')
     .trim()
-    .optional()
-    .transform((v) => (v ? v.toLowerCase() : null))
-    .refine((v) => v === null || z.email().safeParse(v).success, '请填写正确的邮箱'),
+    .toLowerCase()
+    .min(1, '请填写邮箱')
+    .pipe(z.email('请填写正确的邮箱')),
   note: optional(200, '备注'),
 });
 export type OrgRegisterInput = z.input<typeof orgRegisterSchema>;
@@ -80,7 +81,14 @@ export function openingGaps(d: OrgOpenDraft): string[] {
   return gaps;
 }
 
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '请选择日期');
+// 日期按 年-月-日；2 月 30 日这类不存在的日期也拦下
+const dateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, '请选择日期')
+  .refine((v) => {
+    const d = new Date(`${v}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+  }, '日期不存在，请按 年-月-日 重新选择');
 
 // 后台收到的开通请求：先查 openingGaps，再按这里校验格式
 export const orgOpenSchema = z
@@ -97,6 +105,7 @@ export const orgOpenSchema = z
     adminEmail: z.string().trim().toLowerCase().pipe(z.email('请填写正确的邮箱')),
   })
   .refine((v) => v.startsAt <= v.endsAt, { message: '合同到期日不能早于开始日', path: ['endsAt'] })
+  .refine((v) => v.endsAt >= chinaToday(), { message: '合同有效期已过，请核对', path: ['endsAt'] })
   .refine((v) => v.scopeKind === 'single' || (v.scopeEnterprises ?? 0) >= 1, {
     message: '请填写年度服务包含几家企业',
     path: ['scopeEnterprises'],

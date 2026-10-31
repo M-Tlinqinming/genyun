@@ -84,7 +84,7 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
           <div style={{ fontSize: 14, lineHeight: '22px', fontWeight: 400, color: gy.secondary, marginTop: 4 }}>
             {editing
               ? '改动会同步到开通信息和组织详情。'
-              : '合作已确认就可以先登记，列表里显示为「待开通」；签好合同、款到账后再开通。邮箱默认作为首位管理员的邮箱。'}
+              : '合作已确认就可以先登记，列表里显示为「待开通」；签好合同、款到账后再开通。邮箱默认作为首位管理员的邮箱，邀请发到这里。'}
           </div>
         </div>
       }
@@ -109,8 +109,8 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
             <Form.Item name="region" label="所在地区" required rules={[fieldRule('region')]} style={half}>
               <Input placeholder="如：上海市闵行区" maxLength={50} />
             </Form.Item>
-            <Form.Item name="socialCreditCode" label="统一社会信用代码" rules={[fieldRule('socialCreditCode')]} style={half}>
-              <Input placeholder="18 位，选填" maxLength={18} />
+            <Form.Item name="socialCreditCode" label="统一社会信用代码" required rules={[fieldRule('socialCreditCode')]} style={half}>
+              <Input placeholder="18 位，与营业执照一致" maxLength={18} />
             </Form.Item>
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
@@ -121,7 +121,7 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
               <Input maxLength={30} />
             </Form.Item>
           </div>
-          <Form.Item name="contactEmail" label="邮箱" rules={[fieldRule('contactEmail')]} style={item}>
+          <Form.Item name="contactEmail" label="邮箱" required rules={[fieldRule('contactEmail')]} style={item}>
             <Input />
           </Form.Item>
           <Form.Item name="note" label="备注" rules={[fieldRule('note')]} style={{ marginBottom: 0 }}>

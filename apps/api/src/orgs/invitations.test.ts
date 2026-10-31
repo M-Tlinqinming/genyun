@@ -74,6 +74,7 @@ async function openOrg(name: string, adminEmail: string) {
   const reg = await ops.post('/api/operator/organizations').send({
     name,
     region: '广东省惠州市',
+    socialCreditCode: '91441300MA5XXXXXX1',
     contactName: '孙经理',
     contactPhone: '136 2254 1234',
     contactEmail: adminEmail,
@@ -208,7 +209,14 @@ describe('运营重发邀请、更换首位管理员', () => {
   it('还没开通的组织不能发邀请', async () => {
     const reg = await (await as('ops@test.cn'))
       .post('/api/operator/organizations')
-      .send({ name: '未开通机构', region: '惠州', contactName: '孙', contactPhone: '1' });
+      .send({
+        name: '未开通机构',
+        region: '惠州',
+        socialCreditCode: '91441300MA5XXXXXX2',
+        contactName: '孙',
+        contactPhone: '136 2254 1234',
+        contactEmail: 'not-open@test.cn',
+      });
     const res = await (await as('ops@test.cn'))
       .post(`/api/operator/organizations/${reg.body.id}/admin-invitation`)
       .send({ name: '钱经理', phone: '139 0000 1111', email: 'x@test.cn' });
