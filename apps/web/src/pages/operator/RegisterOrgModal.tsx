@@ -1,21 +1,13 @@
 import { orgRegisterSchema, type OrgRegisterInput } from '@genyun/shared';
 import { App, Form, Input, Modal } from 'antd';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect } from 'react';
 import { useOperatorOrg, useSaveOrg } from '../../api/operator';
-import { Loading } from '../../components/ui';
+import { Loading, requiredAfter } from '../../components/ui';
 import { gy } from '../../theme/tokens';
 
 // 出错时错误提示占掉下边距，这里固定留 20px，字段之间不会挤在一起
 const item = { marginBottom: 20 } as const;
 const half = { ...item, flex: 1, minWidth: 0 } as const;
-
-// 必填星号放在标签后面，与开通弹窗一致
-const requiredAfter = (label: ReactNode, { required }: { required: boolean }) => (
-  <>
-    {label}
-    {required && <span style={{ color: gy.error, marginLeft: 4 }}>*</span>}
-  </>
-);
 
 // 登记客户组织 / 修改资料。Paper 没有这个弹窗的高保真，按设计系统表单做（DESIGN-DIFF「M3 第 1 项」）
 export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | null; open: boolean; onClose: () => void }) {

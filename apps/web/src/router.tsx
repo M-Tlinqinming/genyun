@@ -2,6 +2,7 @@ import type { Workspace } from '@genyun/shared';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
 import { NAVIGATION } from './layouts/navigation';
 import { WorkspaceLayout } from './layouts/WorkspaceLayout';
+import { InvitePage } from './pages/InvitePage';
 import { LoginPage } from './pages/LoginPage';
 import { PendingPage } from './pages/PendingPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
@@ -74,6 +75,8 @@ function workspaceRoutes(workspace: Workspace): RouteObject {
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  // 邮件里的邀请链接，不用登录
+  { path: '/invite/:token', element: <InvitePage /> },
   // 选择开始方式是全屏页，不在工作区框架里
   { path: '/customer/tasks/:taskId/start', element: <StartMethodPage /> },
   { path: '/customer/tasks/:taskId/fill/:step', element: <SelfFillPage /> },
