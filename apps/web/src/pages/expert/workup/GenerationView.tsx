@@ -1,6 +1,6 @@
 import { LoadingOutlined } from '@ant-design/icons';
 import { draftActive, DRAFT_KINDS, type DraftProgress, type GenerationProgress } from '@genyun/shared';
-import { App, Button, Tooltip } from 'antd';
+import { App, Button } from 'antd';
 import type { CSSProperties } from 'react';
 import { openFile } from '../../../api/documents';
 import { useRetryGeneration } from '../../../api/generation';
@@ -37,12 +37,14 @@ export function GenerationView({
   generation,
   onBackToCenter,
   onBackToWorkup,
+  onEdit,
 }: {
   taskId: string;
   taskNumber: string;
   generation: GenerationProgress;
   onBackToCenter: () => void;
   onBackToWorkup: () => void;
+  onEdit: () => void;
 }) {
   const retry = useRetryGeneration(taskId);
   const { message } = App.useApp();
@@ -116,11 +118,9 @@ export function GenerationView({
           </Button>
         )}
         {phase === 'done' && (
-          <Tooltip title="正文编辑即将开放；现在可以先下载 Word 查看">
-            <Button type="primary" disabled>
-              进入正文编辑
-            </Button>
-          </Tooltip>
+          <Button type="primary" onClick={onEdit}>
+            进入正文编辑
+          </Button>
         )}
       </div>
 

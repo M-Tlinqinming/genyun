@@ -43,6 +43,7 @@ import { ConfirmView } from './workup/ConfirmView';
 import { ContactRecords } from './workup/ContactRecords';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { FiguresPanel, type FiguresSaveInput } from './workup/FiguresPanel';
+import { EditView } from './editing/EditView';
 import { GenerationView, phaseOf } from './workup/GenerationView';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
@@ -142,7 +143,7 @@ export function ExpertTaskPage() {
     setTimeout(() => sections.current.get(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
-  const showView = (view: 'workup' | 'confirm' | null) => {
+  const showView = (view: 'workup' | 'confirm' | 'edit' | null) => {
     setParams(view ? { view } : {});
     window.scrollTo({ top: 0 });
   };
@@ -288,6 +289,11 @@ export function ExpertTaskPage() {
   const view = requested === 'confirm' ? 'confirm' : requested !== 'workup' && current ? 'generation' : 'workup';
   const phase = current ? phaseOf(current) : null;
 
+  // 审核与修订 · 正文编辑（E18-03）：三份草稿都生成完才进得来
+  if (requested === 'edit' && current && phaseOf(current) === 'done') {
+    return <EditView taskId={taskId} enterpriseName={task.data.enterpriseName} taskNumber={task.data.number} generation={current} />;
+  }
+
   if (view !== 'workup') {
     const chip =
       view === 'confirm'
@@ -350,6 +356,7 @@ export function ExpertTaskPage() {
             generation={current!}
             onBackToCenter={() => navigate('/expert')}
             onBackToWorkup={() => showView('workup')}
+            onEdit={() => showView('edit')}
           />
         )}
         <ContactRecords taskId={taskId} open={showRecords} onClose={() => setShowRecords(false)} />
