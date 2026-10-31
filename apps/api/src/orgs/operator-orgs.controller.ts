@@ -35,7 +35,7 @@ import { canManageOrganizations } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { enterprises, files, memberships, organizationContracts, organizations, tasks, users } from '../db/schema.ts';
+import { files, organizationContracts, organizations, users } from '../db/schema.ts';
 import { receiveOne } from '../files/files.controller.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { MAILER, type Mailer } from '../mail/mailer.ts';
@@ -56,7 +56,7 @@ const columns = {
   contractEndsAt: organizations.contractEndsAt,
   activatedAt: organizations.activatedAt,
   createdAt: organizations.createdAt,
-  registeredByName: sql<string | null>`(select ${users.name} from ${users} where ${users.id} = ${organizations.registeredBy})`,
+  registeredByName: sql<string | null>`(select u.name from users u where u.id = "organizations"."registered_by")`,
 };
 
 type OrgRow = { activatedAt: Date | null; contractStartsAt: string | null; contractEndsAt: string | null };
@@ -81,9 +81,10 @@ export class OperatorOrgsController {
     const rows = await this.db
       .select({
         ...columns,
-        enterprises: sql<number>`(select count(*)::int from ${enterprises} where ${enterprises.orgId} = ${organizations.id})`,
-        members: sql<number>`(select count(*)::int from ${memberships} where ${memberships.orgId} = ${organizations.id})`,
-        openTasks: sql<number>`(select count(*)::int from ${tasks} where ${tasks.orgId} = ${organizations.id} and ${tasks.closedAt} is null)`,
+        // 子查询里写全表名：drizzle 在这里不带表名，会和子查询里的同名列混淆
+        enterprises: sql<number>`(select count(*)::int from enterprises e where e.org_id = "organizations"."id")`,
+        members: sql<number>`(select count(*)::int from memberships m where m.org_id = "organizations"."id")`,
+        openTasks: sql<number>`(select count(*)::int from tasks t where t.org_id = "organizations"."id" and t.closed_at is null)`,
       })
       .from(organizations)
       .where(eq(organizations.kind, 'customer'))

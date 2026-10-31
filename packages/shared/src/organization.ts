@@ -118,5 +118,11 @@ export function orgServiceState(org: ContractPeriod & { activatedAt: string | nu
   return contractState(org, today).state === 'expired' ? 'expired' : 'active';
 }
 
+// 知识库里有没有这个地区的属地机构（plan/agencies.ts 目前只收了惠州市）。
+// 没有也能开通，开通弹窗里提醒「编制前需要补齐」；知识库页（M3 第 5 项）上线后改为查库
+export function regionHasLocalAgencies(region: string | null | undefined): boolean {
+  return !!region && region.includes('惠州');
+}
+
 // 邀请链接的有效期（Paper 16 页开通弹窗：7 天内有效）
 export const INVITATION_TTL_DAYS = 7;

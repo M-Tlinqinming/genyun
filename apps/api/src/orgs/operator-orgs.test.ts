@@ -8,7 +8,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { memberships, organizationContracts, organizationInvitations, organizations, users } from '../db/schema.ts';
+import {
+  enterprises,
+  memberships,
+  organizationContracts,
+  organizationInvitations,
+  organizations,
+  tasks,
+  users,
+} from '../db/schema.ts';
 import { LocalDiskStorage } from '../files/storage.ts';
 import { MemoryMailer } from '../mail/mailer.ts';
 
@@ -43,6 +51,27 @@ beforeAll(async () => {
   ]) {
     const [u] = await db.insert(users).values({ email: p.email, name: p.email.split('@')[0]!, passwordHash }).returning();
     await db.insert(memberships).values({ userId: u!.id, orgId: p.orgId, role: p.role });
+    if (p.role === 'customer_admin') {
+      // A 组织：两家企业，一个在办任务、一个已结束
+      const ents = await db
+        .insert(enterprises)
+        .values([
+          { orgId: org.a, name: '甲企业', createdBy: u!.id },
+          { orgId: org.a, name: '乙企业', createdBy: u!.id },
+        ])
+        .returning();
+      await db.insert(tasks).values(
+        ents.map((e, i) => ({
+          orgId: org.a,
+          enterpriseId: e.id,
+          number: `GY-2026-90${i}`,
+          businessType: 'emergency_plan' as const,
+          name: '应急预案编制',
+          createdBy: u!.id,
+          closedAt: i === 1 ? new Date() : null,
+        })),
+      );
+    }
   }
   app = await createApp(db, {
     loginLimitPerMinute: 1000,
@@ -111,8 +140,13 @@ describe('登记客户组织', () => {
     expect(list.status).toBe(200);
     const row = (list.body as { id: string; state: string; members: number }[]).find((o) => o.id === created.id);
     expect(row).toMatchObject({ state: 'pending', members: 0 });
-    // 已有合同的老组织算服务中
-    expect((list.body as { id: string; state: string }[]).find((o) => o.id === org.a)?.state).toBe('active');
+    // 已有合同的老组织算服务中；企业、成员、在办任务按本组织计数
+    expect((list.body as { id: string }[]).find((o) => o.id === org.a)).toMatchObject({
+      state: 'active',
+      enterprises: 2,
+      members: 1,
+      openTasks: 1,
+    });
     // 内部组织不在客户组织列表里
     expect((list.body as { id: string }[]).some((o) => o.id === org.internal)).toBe(false);
   });
