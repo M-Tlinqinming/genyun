@@ -48,8 +48,8 @@ function lowContrastTexts(page: Page) {
   });
 }
 
-// 官网（apps/site）：构建后的静态页面，由 playwright.config.ts 的第三个 webServer 在 4322 端口提供
-const SITE = 'http://localhost:4322';
+// 官网（apps/site）：构建后的静态页面，由 playwright.config.ts 的第三个 webServer 提供，端口见 E2E_SITE_PORT（默认 3322）
+const SITE = `http://localhost:${process.env.E2E_SITE_PORT ?? '3322'}`;
 
 test.describe('官网首页', () => {
   test('标题、描述、分享信息和「登录」链接', async ({ page }) => {
