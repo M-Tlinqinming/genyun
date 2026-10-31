@@ -1,11 +1,11 @@
-// 专业整理 ·「适用范围」（Paper 14 页 E18-00D）：系统按整理后的设备、物料与客户回答给 20 个开关提出建议，
+// 专业整理 ·「适用范围」（Paper 14 页 E18-00D）：系统按整理后的设备、物料与客户回答给 21 个开关提出建议，
 // 名称推断的、客户拍照待看的、物料还没判定是否危化品的开关要专家逐个确认；客户明确回答的、工贸企业默认打开的、
 // 资料里没有依据的直接算已确定，专家也可以改。确认后的开关决定生成哪些专项预案与现场处置方案，危险源候选跟着增减。
 // 和其他整理内容一样只记在任务的专业整理里（WorkupData.scope），不写回企业资料。
 import { z } from 'zod';
 import { PLAN_TEMPLATES, SCOPE_KEYS, SCOPE_SWITCHES, selectPlans, type PlanTemplate, type Scope, type ScopeKey } from './plan/catalog.ts';
 import { suggestScope, type ScopeSuggestion } from './plan/scope.ts';
-import { planProductionOf, productionView, type Judged, type ProductionWorkup } from './workup-production.ts';
+import { isAddedRow, planProductionOf, productionView, type Judged, type ProductionWorkup } from './workup-production.ts';
 import type { WorkupSnapshot } from './workup.ts';
 
 // 界面上的短名称（设计稿 E18-00D），完整说明用 SCOPE_SWITCHES
@@ -18,6 +18,7 @@ export const SCOPE_SHORT: Record<ScopeKey, string> = {
   elevator: '电梯',
   craneHoist: '有起重机械',
   dustProcess: '粉尘',
+  dustSpecialty: '粉尘专项',
   meltingProcess: '熔融',
   waterHazard: '淹溺',
   chemicalsOver1t: '危化品 > 1 t',
@@ -48,6 +49,7 @@ const GROUP_OF: Record<ScopeKey, ScopeGroup> = {
   craneHoist: 'equipment',
   internalVehicle: 'equipment',
   dustProcess: 'equipment',
+  dustSpecialty: 'equipment',
   meltingProcess: 'equipment',
   chemicalsOver1t: 'chemicals',
   combustibleGas: 'chemicals',
@@ -112,18 +114,36 @@ export interface ScopeView {
   preview: { specialty: PreviewPlan[]; site: PreviewPlan[] };
 }
 
-export function scopeView(snapshot: WorkupSnapshot, data: { production?: ProductionWorkup; scope?: ScopeWorkup }): ScopeView {
+// 危险源辨识里专家手动新增的行（结构同 workup-risk 的 RiskWorkup，这里只用名称与场所，避免循环引用）
+type AddedHazards = { rows: Record<string, Judged<{ factor: string; workplace: string; excluded?: boolean }>> };
+
+/** 专家在危险源辨识里手动新增、没标不适用的事故类型：对应方案没出时适用范围建议打开 */
+export function addedHazardsOf(risks: AddedHazards | undefined): { factor: string; workplace: string }[] {
+  return Object.entries(risks?.rows ?? {})
+    .filter(([id, r]) => isAddedRow(id) && !r.value.excluded)
+    .map(([, r]) => ({ factor: r.value.factor, workplace: r.value.workplace }));
+}
+
+export function scopeView(
+  snapshot: WorkupSnapshot,
+  data: { production?: ProductionWorkup; scope?: ScopeWorkup; risks?: AddedHazards },
+): ScopeView {
   const production = productionView(snapshot, data);
   const plan = planProductionOf(snapshot, production);
-  const suggested = suggestScope({ ...plan, expert: { hazardousMaterials: plan.hazardousMaterials } });
+  const suggested = suggestScope({ ...plan, expert: { hazardousMaterials: plan.hazardousMaterials } }, addedHazardsOf(data.risks));
   const undecided = new Set(production.materials.filter((m) => m.hazard.decidedBy === null).map((m) => m.name));
   const edits = data.scope?.switches ?? {};
 
+  // 粉尘专项跟着「产尘工序」：专家关掉产尘工序后它也关掉、算已确定（必需项总数不变）
+  const dustOff = (edits.dustProcess?.value ?? suggested.dustProcess.value) === false;
   const switches = SCOPE_KEYS.map((key): ScopeSwitch => {
+    const followsDust = key === 'dustSpecialty' && dustOff;
     const suggestion = suggested[key];
-    const judged = edits[key];
+    const judged = followsDust ? undefined : edits[key];
+    // 化学品类：物料没判定是否危化品时要确认；按储量建议不出、按危险源建议打开的（basis 为 cue 但没有命中物料）也要确认
     const needsConfirm = CHEMICAL_KEYS.has(key)
-      ? suggestion.value && plan.hazardousMaterials.some((n) => undecided.has(n) && (suggestion.hit ?? '').includes(n))
+      ? (suggestion.value && plan.hazardousMaterials.some((n) => undecided.has(n) && (suggestion.hit ?? '').includes(n))) ||
+        (suggestion.basis === 'cue' && (!suggestion.value || !suggestion.hit))
       : suggestion.basis === 'cue' || suggestion.basis === 'photo';
     return {
       key,
@@ -133,8 +153,8 @@ export function scopeView(snapshot: WorkupSnapshot, data: { production?: Product
       suggestion,
       needsConfirm,
       judged,
-      value: judged?.value ?? suggestion.value,
-      status: needsConfirm && !judged ? 'pending' : 'confirmed',
+      value: followsDust ? false : (judged?.value ?? suggestion.value),
+      status: needsConfirm && !judged && !followsDust ? 'pending' : 'confirmed',
       plans: PLAN_TEMPLATES.filter((t) => [t.trigger ?? []].flat().includes(key)),
     };
   });

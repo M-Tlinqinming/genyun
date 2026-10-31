@@ -20,15 +20,18 @@ const withWork = (patch: Partial<ProductionWorkup>) => ({ production: { ...empty
 const none = {};
 
 describe('危化品的系统建议', () => {
-  it('按知识库名单给出建议和理由', () => {
-    expect(hazardSuggestionOf('酒精')).toEqual({ value: true, reason: '名称含「酒精」，属于易燃液体，建议判定为危化品' });
+  it('按《危险化学品目录》给出建议和理由', () => {
+    expect(hazardSuggestionOf('酒精')?.value).toBe(true);
+    expect(hazardSuggestionOf('酒精')?.reason).toContain('第 2568 号');
     expect(hazardSuggestionOf('天那水（稀释剂）')?.value).toBe(true);
     expect(hazardSuggestionOf('乙炔')?.reason).toContain('易燃气体');
     expect(hazardSuggestionOf('氢氧化钠')?.reason).toContain('腐蚀品');
   });
 
-  it('防误判：乙醇胺、聚苯板不算；钢材等一般原料直接判定不是', () => {
-    expect(hazardSuggestionOf('乙醇胺')).toBeUndefined();
+  it('防误判：乙醇胺是腐蚀品不是酒精，聚苯板不算；钢材等一般原料直接判定不是', () => {
+    expect(hazardSuggestionOf('乙醇胺')?.reason).toContain('第 33 号');
+    expect(hazardSuggestionOf('乙醇胺')?.reason).not.toContain('易燃液体');
+    expect(hazardSuggestionOf('气瓶柜')).toBeUndefined();
     expect(hazardSuggestionOf('聚苯板')).toBeUndefined();
     expect(hazardSuggestionOf('铝锭')).toEqual({ value: false, reason: '一般原料，不是危化品' });
   });
@@ -140,7 +143,7 @@ describe('换算与适用范围预览', () => {
 
   it('飞宇：酒精按建议算可燃液体；专家判定不是危化品后开关跟着关', () => {
     const before = scopeImpact(feiyuSnapshot, productionView(feiyuSnapshot, none), 'materials');
-    expect(before.find((s) => s.key === 'flammableLiquid')?.suggestion).toMatchObject({ value: true, reason: '资料里有「酒精」' });
+    expect(before.find((s) => s.key === 'flammableLiquid')?.suggestion).toMatchObject({ value: true, reason: '危险化学品「酒精」属于易燃液体，最大储存量合计 50 kg' });
     expect(before.find((s) => s.key === 'chemicalsOver1t')?.suggestion.value).toBe(false);
 
     const view = productionView(feiyuSnapshot, withWork({ hazardous: { m5: judged(false) } }));

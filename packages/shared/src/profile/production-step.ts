@@ -99,6 +99,8 @@ export const draftEquipmentSchema = z.object({
   location: text(50, '使用部门 / 地点'),
   // 可选常用值，也可直接写（如「运行 4 台」）
   condition: text(20, '使用状况'),
+  // 所在厂址（有两处及以上地址时选填，见 addresses.ts）
+  addressId: z.string().max(40).optional(),
 });
 export type DraftEquipment = z.infer<typeof draftEquipmentSchema>;
 
@@ -107,12 +109,15 @@ export const draftMaterialSchema = z.object({
   // cylinder = 气瓶，名称旁显示规格
   kind: z.enum(['material', 'cylinder']).default('material'),
   name: z.string().trim().max(50, '物料名称最多 50 个字').default(''),
+  // 选填，包装标签或 MSDS 上有就填；危化品的系统建议先按它查
+  casNumber: text(30, 'CAS 号'),
   // 如「40L」
   cylinderSpec: text(20, '气瓶规格'),
   annualUsage: text(20, '年用量'),
   maxStorage: text(20, '最大存放量'),
   storageLocation: text(50, '存放位置'),
   labelPhotoFileIds: fileIds,
+  addressId: z.string().max(40).optional(),
 });
 export type DraftMaterial = z.infer<typeof draftMaterialSchema>;
 

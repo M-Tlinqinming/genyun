@@ -1,6 +1,7 @@
 // 企业自填第 4 步「应急资源与图纸」（Paper 12 页 S04）：应急物资、急救药箱、消防水池、厂区建筑、MSDS、三张图纸、相邻企业。
 // 边填边保存，数量大概即可；交付前由注册安全工程师按 productionSchema 整理。耐火等级、是否危化品不要求客户判断。
 import { z } from 'zod';
+import { YES_NO_UNKNOWN } from './basic.ts';
 import { newId } from './organization-step.ts';
 import { msdsHintOf, type DraftMaterial, type SiteType } from './production-step.ts';
 
@@ -45,6 +46,8 @@ export const draftSupplySchema = z.object({
   unit: text(10, '单位'),
   quantity: count,
   location: text(50, '位置'),
+  // 所在厂址（有两处及以上地址时选填，见 addresses.ts）
+  addressId: z.string().max(40).optional(),
 });
 export type DraftSupply = z.infer<typeof draftSupplySchema>;
 
@@ -145,6 +148,15 @@ export const resourcesStepSchema = z.object({
       items: z.array(draftNeighborSchema).max(20, '相邻企业最多 20 家').default([]),
     })
     .prefault({}),
+  // 以下都是选填，可答「不清楚」，不影响资料是否齐全；早先保存的资料没有这几项
+  // 与医院、消防或专业救援队伍签订的救援协议；签了写对象名称
+  rescueAgreement: z
+    .object({ answer: z.enum(YES_NO_UNKNOWN).optional(), parties: text(100, '签订对象') })
+    .optional(),
+  // 与相邻企业签订的应急互助协议
+  mutualAid: z.object({ answer: z.enum(YES_NO_UNKNOWN).optional(), parties: text(100, '签订对象') }).optional(),
+  // 紧急集合点（疏散后清点人数的地方）：有的写位置
+  assemblyPoint: z.object({ answer: z.enum(YES_NO_UNKNOWN).optional(), location: text(100, '集合点位置') }).optional(),
 });
 export type ResourcesStep = z.infer<typeof resourcesStepSchema>;
 

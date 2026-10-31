@@ -11,7 +11,8 @@
     "test": "vitest run",
     "seed:demo": "tsx src/scripts/seed-demo.ts",
     "sample:word": "tsx src/scripts/build-sample-word.ts",
-    "sample:plan": "tsx --env-file-if-exists=.env src/scripts/build-sample-plan.ts"
+    "sample:plan": "tsx --env-file-if-exists=.env src/scripts/build-sample-plan.ts",
+    "sample:cases": "tsx --env-file-if-exists=.env src/scripts/build-test-cases.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.11",

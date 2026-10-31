@@ -13,9 +13,13 @@ describe('适用范围：哪些开关要专家确认', () => {
   const view = scopeView(feiyuSnapshot, {});
   const sw = (label: string) => view.switches.find((s) => s.label === label)!;
 
-  it('飞宇：名称推断、拍照待看、物料没判定的 4 个开关待确认，其余 16 个已确定', () => {
-    expect(view.pending.map((s) => s.label)).toEqual(['压力管道', '粉尘', '熔融', '使用可燃液体']);
-    expect(view.required).toBe(4);
+  it('飞宇：名称推断、拍照待看、物料没判定、粉尘量大小、消防水池的 6 个开关待确认，其余 15 个已确定', () => {
+    expect(view.pending.map((s) => s.label)).toEqual(['压力管道', '粉尘', '粉尘专项', '熔融', '淹溺', '使用可燃液体']);
+    expect(view.required).toBe(6);
+    // 跌落不再默认打开
+    expect(sw('跌落坠落')).toMatchObject({ status: 'confirmed', value: false, suggestion: { basis: 'none' } });
+    expect(sw('粉尘专项').suggestion).toMatchObject({ value: false, basis: 'cue' });
+    expect(sw('粉尘专项').suggestion.reason).toContain('没有除尘系统');
     expect(sw('粉尘').suggestion).toMatchObject({ value: true, basis: 'cue', reason: '资料里有「钻孔攻牙机」' });
     expect(sw('压力管道').suggestion.basis).toBe('photo');
     // 客户明确回答、工贸企业默认打开、没有依据的都算已确定
@@ -33,8 +37,11 @@ describe('适用范围：哪些开关要专家确认', () => {
 
   it('专家确认后不再待确认，必需项总数不变；撤回回到系统建议', () => {
     const v = scopeView(feiyuSnapshot, withScope({ dustProcess: judged(false), meltingProcess: judged(true) }));
-    expect(v.pending.map((s) => s.key)).toEqual(['pressurePipeline', 'flammableLiquid']);
-    expect(v.required).toBe(4);
+    // 关掉产尘工序，粉尘专项跟着关、算已确定
+    expect(v.pending.map((s) => s.key)).toEqual(['pressurePipeline', 'waterHazard', 'flammableLiquid']);
+    expect(v.required).toBe(6);
+    expect(v.switches.find((s) => s.key === 'dustSpecialty')).toMatchObject({ status: 'confirmed', value: false });
+    expect(v.scope.dustSpecialty).toBe(false);
     expect(v.scope.dustProcess).toBe(false);
     expect(scopeView(feiyuSnapshot, withScope({})).scope.dustProcess).toBe(true);
   });
@@ -50,9 +57,15 @@ describe('生成结构预览', () => {
   it('待确认开关影响的章节标出来；按建议含的和不含的分开', () => {
     const view = scopeView(feiyuSnapshot, {});
     const dust = view.preview.specialty.find((p) => p.template.title === '粉尘爆炸事故专项应急预案');
-    expect(dust).toMatchObject({ state: 'pendingIn', pendingKey: 'dustProcess' });
+    // 飞宇没有除尘系统，粉尘专项建议不含；现场处置方案跟着产尘工序，建议含
+    expect(dust).toMatchObject({ state: 'pendingOut', pendingKey: 'dustSpecialty' });
+    expect(view.preview.site.find((p) => p.template.title === '粉尘爆炸事故现场处置方案')).toMatchObject({ state: 'pendingIn', pendingKey: 'dustProcess' });
+    const big = scopeView(feiyuSnapshot, withScope({ dustSpecialty: judged(true) }));
+    expect(big.preview.specialty.find((p) => p.template.title === '粉尘爆炸事故专项应急预案')?.state).toBe('included');
     expect(view.preview.specialty.find((p) => p.template.title === '火灾爆炸事故专项应急预案')?.state).toBe('always');
-    expect(view.preview.site.find((p) => p.template.title === '淹溺事故现场处置方案')?.state).toBe('included');
+    // 有消防水池建议不出淹溺方案，请专家确认
+    expect(view.preview.site.find((p) => p.template.title === '淹溺事故现场处置方案')?.state).toBe('pendingOut');
+    expect(view.preview.site.find((p) => p.template.title === '触电事故现场处置方案')?.state).toBe('always');
     // 已确定关闭的不出现
     expect(titles(view.preview.site)).not.toContain('起重致害事故现场处置方案');
   });

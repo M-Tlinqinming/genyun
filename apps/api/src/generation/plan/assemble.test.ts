@@ -67,18 +67,13 @@ describe('飞宇整份应急预案', () => {
     text = allText(plan);
   }, 60_000);
 
-  it('件的顺序与旧仓库一致：综合、两个专项、现场处置方案、附件', () => {
-    expect(plan.sections.map((s) => s.title)).toEqual([
-      '一、综合应急预案',
-      '二、火灾爆炸事故专项应急预案',
-      '三、粉尘爆炸事故专项应急预案',
-      '四、现场处置方案',
-      '五、附件',
-    ]);
+  // 旧仓库有粉尘专项；10-30 起粉尘量小只出现场处置方案（批注 [17]），飞宇没有除尘系统
+  it('件的顺序：综合、火灾爆炸专项、现场处置方案、附件', () => {
+    expect(plan.sections.map((s) => s.title)).toEqual(['一、综合应急预案', '二、火灾爆炸事故专项应急预案', '三、现场处置方案', '四、附件']);
   });
 
   it('综合预案五章，专项五要素，现场处置 14 个方案，附件 10 个', () => {
-    const [comprehensive, fire, , site, attachments] = plan.sections;
+    const [comprehensive, fire, site, attachments] = plan.sections;
     expect(comprehensive!.sections!.map((s) => s.title)).toEqual(['1. 总则', '2. 应急组织机构及职责', '3. 应急响应', '4. 后期处置', '5. 应急保障']);
     expect(comprehensive!.sections![2]!.sections![0]!.title).toBe('3.1 信息报告');
     expect(fire!.sections!.map((s) => s.title)).toEqual(['1. 适用范围', '2. 应急组织机构及职责', '3. 响应启动', '4. 处置措施', '5. 应急保障']);
@@ -117,21 +112,41 @@ describe('飞宇整份应急预案', () => {
     expect(text).not.toMatch(/undefined|null|NaN/);
   });
 
-  it('飞宇资料齐全，没有「待补充」', () => {
-    expect(text).not.toContain('（待补充）');
+  it('飞宇资料齐全，除了还没有的关键图纸，没有「待补充」', () => {
+    expect(text).toContain('周边环境图、至医院路线图、外部交通图（待补充）：由编制单位现场踏勘后绘制');
+    expect(text.split('\n').filter((l) => l.includes('（待补充）') && !/（待补充）：由(企业提供|编制单位)/.test(l))).toEqual([]);
   });
 
   it('值班电话、属地机构、消防大队按企业数据填', () => {
     expect(text).toContain('0752-3324567');
     expect(text).toContain('仲恺高新区消防救援大队');
-    expect(text).toContain('0752-3271388');
+    expect(text).toContain('0752-3271385');
+    expect(text).toContain('陈江街道应急管理办公室');
+    expect(text).toContain('上级预案《仲恺高新区生产工贸行业事故应急预案》、《陈江街道生产安全事故应急预案》');
   });
+
+  it('报警写「火灾报警 119」，辖区消防大队写名称和值班座机；资源调查不写没有依据的到场时间', () => {
+    expect(text).toContain('火灾报警 119；');
+    expect(text).not.toMatch(/消防救援大队["“]119["”]/);
+    expect(text).toContain('仲恺高新区消防救援大队（值班电话 0752-3165029）');
+    expect(text).toContain('119；值班 0752-3165029');
+    expect(text).not.toMatch(/\d+(?:-\d+)? ?min 到场|500 m 范围邻企|30-60 min/);
+  });
+
+  it('1.1 事故类别只列事故，不混入专项预案名称', () => {
+    const scope = plan.sections[0]!.sections![0]!.sections![0]!;
+    const table = scope.blocks.find((b) => b.type === 'table') as Extract<DocBlock, { type: 'table' }>;
+    const kinds = table.rows.map((r) => String(r[1]));
+    expect(kinds).toContain('火灾事故');
+    expect(kinds.every((k) => !/专项|疏散|承租|火灾爆炸/.test(k))).toBe(true);
+  });
+
 
   it('压铸、金属粉尘、酒精的知识块都用上了，安全要点句一字不差', () => {
     const signals = planSignals(feiyuPlanInput);
     const selection = selectPlans(resolveScope(feiyuPlanInput));
     const used = [...selection.specialty, ...selection.site].filter((t) => usesKnowledgeBlock(t, signals)).map((t) => t.id);
-    expect(used.sort()).toEqual(['P1', 'P2', 'SP01', 'SP03', 'SP05', 'SP06', 'SP10', 'SP20', 'SP21']);
+    expect(used.sort()).toEqual(['P1', 'SP01', 'SP03', 'SP05', 'SP06', 'SP10', 'SP20', 'SP21']);
     expect(text).toContain('严禁用水扑救与熔融物直接接触或邻近的可燃物');
     expect(text).toContain('严禁用高压水枪或压缩空气直吹积尘部位');
     expect(text).toContain('不可用倒转设备的方法取出肢体');
@@ -182,6 +197,66 @@ describe('飞宇整份应急预案', () => {
   });
 });
 
+describe('粉尘量较大的企业（专家打开粉尘专项）', () => {
+  let plan: ReturnType<typeof buildPlan>;
+  let text = '';
+  beforeAll(() => {
+    plan = buildPlan({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, scope: { dustSpecialty: true } } });
+    text = allText(plan);
+  }, 60_000);
+
+  it('多出粉尘爆炸专项，用金属粉尘知识块，产尘场所只写一遍', () => {
+    expect(plan.sections.map((s) => s.title)).toContain('三、粉尘爆炸事故专项应急预案');
+    expect(usesKnowledgeBlock(selectPlans(resolveScope({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, scope: { dustSpecialty: true } } })).specialty[1]!, planSignals(feiyuPlanInput))).toBe(true);
+    const places = /适用于公司(.+?)等产尘作业场所/.exec(text)![1]!.split('、');
+    expect(new Set(places).size).toBe(places.length);
+  });
+
+  it('知识块里不写死厂型（铝锌压铸件加工厂、压铸加工厂）', () => {
+    expect(text).not.toMatch(/压铸件机械加工厂|本企业为压铸加工厂/);
+    expect(text).toContain('等工序产生铝粉、锌粉等可燃金属粉尘');
+  });
+});
+
+describe('总指挥不是法定代表人', () => {
+  it('凡写「总指挥（…）」只填总指挥姓名，不带法定代表人，也不套两层括号', () => {
+    const org = feiyuPlanInput.organization;
+    const text = allText(buildPlan({ ...feiyuPlanInput, organization: { ...org, commander: { ...org.commander!, name: '张示例' } } }));
+    expect(text).toContain('总指挥（张示例）');
+    expect(text).not.toContain('总指挥（李文聪）');
+    expect(text).not.toMatch(/（总指挥））/);
+  }, 60_000);
+});
+
+describe('客户填了相邻单位', () => {
+  it('周边影响分析和外部资源表写相邻单位名称与电话', () => {
+    const location = { ...feiyuPlanInput.location, neighbours: { answer: 'listed' as const, items: [{ name: '惠州市示例邻企有限公司', phone: '0752-0000009' }] } };
+    const text = allText(buildPlan({ ...feiyuPlanInput, location }));
+    expect(text).toContain('可能对相邻的惠州市示例邻企有限公司及周边道路');
+    expect(text).toMatch(/邻企互助力量 惠州市示例邻企有限公司 0752-0000009/);
+  }, 60_000);
+});
+
+describe('企业改了小组名', () => {
+  it('预置组名换成企业的组名；同类组有多个时不换', () => {
+    const org = feiyuPlanInput.organization;
+    const renamed = org.groups.map((g) => (g.kind === 'logistics' ? { ...g, name: '后勤保障组' } : g));
+    const text = allText(buildPlan({ ...feiyuPlanInput, organization: { ...org, groups: renamed } }));
+    expect(text).toContain('后勤保障组');
+    expect(text).not.toContain('综合保障组');
+    const twice = [...org.groups, { ...org.groups.find((g) => g.kind === 'logistics')!, name: '综合保障二组' }];
+    expect(allText(buildPlan({ ...feiyuPlanInput, organization: { ...org, groups: twice } }))).toContain('综合保障组');
+  }, 120_000);
+});
+
+describe('上级主管单位', () => {
+  it('专家没填就整句不写', () => {
+    const text = allText(buildPlan({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, facts: { ...feiyuPlanInput.expert.facts, superior: undefined } } }));
+    expect(text).not.toContain('上级主管单位');
+    expect(allText(buildPlan(feiyuPlanInput))).toContain('隶属关系 / 上级主管单位：独立法人');
+  }, 60_000);
+});
+
 describe('没有压铸、粉尘的企业', () => {
   let plan: ReturnType<typeof buildPlan>;
   beforeAll(() => {
@@ -211,6 +286,10 @@ describe('所有开关都打开', () => {
     expect(text).toContain('起重致害事故现场处置方案');
     expect(text).not.toMatch(/15986988133|0752-(?:2230498|2312399|3223119|3328738|6761118|7872806|7783260)|13113411616|15875227223|13719613523/);
     expect(text).not.toMatch(/水口街道|龙门县|专职消防队|油墨|稀释剂|环氧乙烷/);
+    // 写给模板作者的说明不进交付物；电话一行括号要配对
+    const notes = [...text.matchAll(/同源|认知贯通|命门|逐字一致|硬约束|模板原文|签名灼烫|本项略|本节略|本方案聚焦|本方案不覆盖/g)];
+    expect(notes.map((m) => text.slice(m.index - 30, m.index + 30))).toEqual([]);
+    expect(text).not.toContain('电话（公司');
     expect(text).not.toMatch(/\bS?P\d{1,2}[ab]?\b|§|\{\{|\[\[/);
   }, 60_000);
 });
@@ -288,7 +367,167 @@ describe('Markdown 转文档结构', () => {
     expect(JSON.stringify(deep.blocks)).toContain('更深');
   });
 
+  it('中文之间模板留下的空格去掉，中英文、数字之间的不动', () => {
+    const { blocks } = parseMarkdown('公司 李文聪 （总指挥）；配备 2 台 **灭火器** 。\nGB 6441 标准', {});
+    expect(blocks[0]).toMatchObject({ text: ['公司李文聪（总指挥）；配备 2 台', { text: '灭火器', bold: true }, '。'] });
+    expect(blocks[1]).toMatchObject({ text: ['GB 6441 标准'] });
+    expect(parseMarkdown('需使用到 `酒精` 等化学品', {}).blocks[0]).toMatchObject({ text: ['需使用到酒精等化学品'] });
+  });
+
   it('引用了没画的图就报错', () => {
     expect(() => parseMarkdown('[[figure:nope]]', {})).toThrow();
   });
+});
+
+describe('资料里没有的设施、协议不写成现状', () => {
+  // 装配厂：没有危化品、对讲机、广播、自有车辆，也没有应急办公室
+  const bare: PlanInput = {
+    ...assembler,
+    business: { ...assembler.business, ownVehicles: false },
+    organization: { ...assembler.organization, hasEmergencyOffice: false },
+    expert: { ...assembler.expert, figures: undefined },
+  };
+  let text: string;
+  beforeAll(() => {
+    text = allText(buildPlan(bare));
+  }, 60_000);
+
+  it('通讯只写电话、现场呼喊；对讲机、微信群、监控录像、备用电源、应急车辆只作要求或不写', () => {
+    expect(text).not.toMatch(/口头 \/ 对讲机|使用公司配备的对讲机|企业微信群|监控录像|备用电源|UPS|应急车辆/);
+    expect(text).toContain('公司应根据厂区范围评估配备对讲机');
+  });
+
+  it('互助、医疗协议写成「应签订」，没有应急办公室、车间主任', () => {
+    // 飞宇组织里确有「安全总监」，所以安全总监照写；这里只查资料里没有的
+    const hits = [...text.matchAll(/已签订|根据签订的互助协议|应急办公室|车间主任/g)];
+    expect(hits.map((m) => text.slice(m.index - 20, m.index + 20))).toEqual([]);
+    expect(text).toContain('应与厂区周边 500 米范围内企业签订应急互助协议');
+  });
+
+  it('没有危化品：不出现化学品火灾、化学灼伤、危化品泄漏', () => {
+    expect(text).not.toMatch(/化学品火灾|化学性皮肤烧伤|危化品泄漏|危化品处置/);
+  });
+});
+
+describe('事故区域按专家确认的危险源场所写', () => {
+  it('同类事故的多个场所用「、」连起来并去重', () => {
+    const input: PlanInput = {
+      ...assembler,
+      expert: {
+        ...assembler.expert,
+        hazards: [
+          { factor: '触电', workplace: '配电房、空压机房' },
+          { factor: '触电', workplace: '配电房' },
+          { factor: '火灾', workplace: '成品仓库' },
+        ],
+      },
+    };
+    const text = allText(buildPlan(input));
+    expect(text).toContain('（2）事故区域：配电房、空压机房。');
+    expect(text).toContain('（2）事故区域：成品仓库。');
+  }, 60_000);
+});
+
+describe('锂电池', () => {
+  it('有锂电池时火灾现场处置方案加热失控处置；没有时不写', () => {
+    const input: PlanInput = {
+      ...assembler,
+      production: { ...assembler.production, materials: [{ ...assembler.production.materials[0]!, name: '锂离子电池' }] },
+    };
+    const text = allText(buildPlan(input));
+    expect(text).toContain('锂电池火灾的处置');
+    expect(text).toContain('热失控');
+    expect(allText(buildPlan(assembler))).not.toContain('热失控');
+  }, 60_000);
+});
+
+describe('管道爆炸', () => {
+  it('没有锅炉时写成通用压力管道，不出现锅炉', () => {
+    const all = Object.fromEntries(SCOPE_KEYS.map((k) => [k, true])) as Scope;
+    const plan = buildPlan({ ...assembler, expert: { ...assembler.expert, scope: all } });
+    const site = plan.sections.find((s) => s.title.endsWith('现场处置方案'))!;
+    const pipe = site.sections!.find((s) => s.title.includes('管道爆炸'))!;
+    const text = allText({ ...plan, cover: { ...plan.cover, lines: [], dates: [] }, frontPages: [], sections: [pipe] });
+    expect(text).toContain('压力管道');
+    expect(text).not.toContain('锅炉');
+  }, 60_000);
+});
+
+describe('园区、救援协议、互助协议、紧急集合点（选填问项）', () => {
+  const input: PlanInput = {
+    ...assembler,
+    location: {
+      ...assembler.location,
+      park: { answer: 'yes', manager: '示例产业园管理处', dutyPhone: '0752-0000008' },
+      rescueAgreement: { answer: 'yes', parties: '示例镇卫生院' },
+      mutualAid: { answer: 'yes', parties: '示例邻企有限公司' },
+    },
+    production: { ...assembler.production, assemblyPoint: { answer: 'yes', location: '厂门口空地' } },
+  };
+  let text: string;
+  beforeAll(() => {
+    text = allText(buildPlan(input));
+  }, 60_000);
+
+  it('信息报告、请求支援先报园区并联动，写管理方名称和值班电话', () => {
+    expect(text).toContain('先报示例产业园管理处（值班电话 0752-0000008）');
+    expect(text).toContain('园区联动');
+  });
+
+  it('协议写签订对象名称，不再写成「应签订」', () => {
+    expect(text).toContain('示例镇卫生院');
+    expect(text).toContain('示例邻企有限公司签订的互助协议');
+    expect(text).not.toContain('应与厂区周边 500 米范围内企业签订应急互助协议');
+  });
+
+  it('集合点写位置', () => {
+    expect(text).toContain('紧急集合点：厂门口空地');
+  });
+
+  it('园区答「不清楚」与没答一字不差', () => {
+    const unknown = allText(buildPlan({ ...assembler, location: { ...assembler.location, park: { answer: 'unknown' } } }));
+    expect(unknown).not.toContain('园区联动');
+    expect(unknown).toBe(allText(buildPlan(assembler)));
+  }, 120_000);
+});
+
+describe('一照多址', () => {
+  const groups = assembler.organization.groups;
+  const rescue = groups.find((g) => g.kind === 'rescue')!;
+  const input: PlanInput = {
+    ...assembler,
+    location: { ...assembler.location, otherAddresses: [{ id: 'a2', address: '惠州市惠阳区示例大道9号' }] },
+    organization: {
+      ...assembler.organization,
+      groups: [...groups.map((g) => (g === rescue ? { ...g, addressId: 'main' } : g)), { ...rescue, addressId: 'a2' }],
+    },
+    production: {
+      ...assembler.production,
+      materials: assembler.production.materials.map((m) => ({ ...m, addressId: 'a2' })),
+    },
+    expert: { ...assembler.expert, hazards: [{ factor: '触电', workplace: '配电房', addressId: 'a2' }] },
+  };
+  let text: string;
+  beforeAll(() => {
+    text = allText(buildPlan(input));
+  }, 60_000);
+
+  it('列出全部生产经营地址，表格多一列厂址，危险源场所带厂址', () => {
+    expect(text).toContain('生产经营地址共 2 处');
+    expect(text).toContain('惠州市惠阳区示例大道9号');
+    expect(text).toContain('厂址');
+    // 中文之间的空格在转文档结构时去掉
+    expect(text).toContain('事故区域：示例大道9号配电房');
+  });
+
+  it('同名小组带厂址区分', () => {
+    expect(text).toContain(`${rescue.name}（示例大道9号）`);
+  });
+
+  it('其他地址填了空的，与单一地址一字不差', () => {
+    const blank = { ...assembler, location: { ...assembler.location, otherAddresses: [{ id: 'a2', address: '' }] } };
+    const single = allText(buildPlan(assembler));
+    expect(allText(buildPlan(blank))).toBe(single);
+    expect(single).not.toContain('厂址');
+  }, 120_000);
 });

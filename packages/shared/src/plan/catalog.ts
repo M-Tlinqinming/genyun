@@ -1,4 +1,4 @@
-// 应急预案由哪些专项预案、现场处置方案组成：28 份模板（起重致害电梯与起重机 10-29 合成一份）与 20 个「适用范围」开关。
+// 应急预案由哪些专项预案、现场处置方案组成：28 份模板（起重致害电梯与起重机 10-29 合成一份）与 21 个「适用范围」开关。
 // 迁自旧仓库 lib/decision-engine/templates.ts 与 constants/e6-switches.ts，逻辑照搬，开关名改为业务含义。
 // 编号（P1、SP01…）只在代码和模板文件名里用，不进界面和交付文档。
 
@@ -12,6 +12,8 @@ export const SCOPE_SWITCHES = {
   elevator: '有电梯或升降设备',
   craneHoist: '有行车、电动葫芦等起重机械',
   dustProcess: '有喷砂、打磨、抛光等产尘工序',
+  // 粉尘量小只出现场处置方案、不出专项（Martin 批注 [17]，10-30 定由专家判断，系统按有无除尘系统建议）
+  dustSpecialty: '粉尘量较大，需要单独的粉尘爆炸专项预案',
   meltingProcess: '有熔炼、压铸、浇铸等熔融工序',
   waterHazard: '有消防水池、污水池等可能淹溺的水体',
   chemicalsOver1t: '危险化学品年用量超过 1 吨',
@@ -43,7 +45,7 @@ export interface PlanTemplate {
 export const PLAN_TEMPLATES: PlanTemplate[] = [
   // 名称按 Martin 10-29 给的新知识库（与实际交付成稿一致）
   { id: 'P1', kind: 'specialty', title: '火灾爆炸事故专项应急预案' },
-  { id: 'P2', kind: 'specialty', title: '粉尘爆炸事故专项应急预案', trigger: 'dustProcess' },
+  { id: 'P2', kind: 'specialty', title: '粉尘爆炸事故专项应急预案', trigger: 'dustSpecialty' },
   { id: 'P3', kind: 'specialty', title: '化学品泄漏事故专项应急预案', trigger: 'chemicalsOver1t' },
   { id: 'P4', kind: 'specialty', title: '有限空间专项应急预案', trigger: 'confinedSpace' },
   { id: 'P5', kind: 'specialty', title: '人员疏散专项应急预案', trigger: 'highRise' },
@@ -55,7 +57,7 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
   { id: 'SP04', kind: 'site', title: '物体打击事故现场处置方案' },
   { id: 'SP05', kind: 'site', title: '容器爆炸事故现场处置方案', trigger: 'pressureVessel' },
   { id: 'SP06', kind: 'site', title: '灼烫事故现场处置方案' },
-  { id: 'SP07', kind: 'site', title: '厂内车辆致害事故现场处置方案', trigger: 'internalVehicle' },
+  { id: 'SP07', kind: 'site', title: '厂（场）内车辆致害事故现场处置方案', trigger: 'internalVehicle' },
   // 电梯与起重机合成一份（Martin 10-29 定），正文按企业有哪种写对应内容
   { id: 'SP08', kind: 'site', title: '起重致害事故现场处置方案', trigger: ['elevator', 'craneHoist'] },
   { id: 'SP09', kind: 'site', title: '泄漏事故现场处置方案', trigger: 'chemicalsOver1t' },
@@ -71,7 +73,7 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
   { id: 'SP19', kind: 'site', title: '可燃气体爆炸事故现场处置方案', trigger: 'combustibleGas' },
   { id: 'SP20', kind: 'site', title: '可燃液体蒸气爆炸事故现场处置方案', trigger: 'flammableLiquid' },
   { id: 'SP21', kind: 'site', title: '高温熔融物爆炸事故现场处置方案', trigger: 'meltingProcess' },
-  { id: 'SP22', kind: 'site', title: '其他伤害事故现场处置方案' },
+  { id: 'SP22', kind: 'site', title: '其他事故现场处置方案' },
 ];
 
 export interface PlanSelection {

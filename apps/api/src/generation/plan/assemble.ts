@@ -25,8 +25,8 @@ import { svgToPng } from '../word/png.ts';
 import { DRAWINGS, attachments, type DrawingKey } from './attachments.ts';
 import { comprehensiveMarkdown } from './comprehensive.ts';
 import { templateBody, usesKnowledgeBlock } from './content.ts';
-import { humanize } from './humanize.ts';
-import { MISSING, fill, planContext, type PlanContext } from './context.ts';
+import { dropMissingRefs, humanize } from './humanize.ts';
+import { MISSING, cnDate, commsMeans, fill, hazardArea, ownGroupNames, planContext, type PlanContext } from './context.ts';
 import { parseMarkdown, toSections, type Figure } from './markdown.ts';
 
 /** 客户上传的图纸（已转成图片）；PDF 图纸转图片在第 10 项接上 */
@@ -38,11 +38,6 @@ const cnOrdinal = (n: number) => (n <= 10 ? CN[n - 1]! : n < 20 ? `十${CN[n - 1
 const INTRO =
   '本章是公司应对各类生产安全事故的综合性、纲领性工作方案，统辖「专项应急预案」与「现场处置方案」，规定本企业应急工作的适用范围与响应分级、应急组织机构及职责、信息报告、预警机制、响应启动、应急处置、应急支援、响应终止、后期处置以及通信与信息、应急队伍、物资装备等应急保障的共性条款。具体分事故的处置程序见对应的专项应急预案与现场处置方案，本章与其相互衔接、共同构成本企业完整的生产安全事故应急预案体系。';
 
-/** 「2026-04-11」→「2026年4月11日」 */
-function cnDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${y}年${m}月${d}日`;
-}
 
 function nextDay(iso: string): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -52,24 +47,72 @@ function nextDay(iso: string): string {
 
 const figure = (s: Svg, placement: Figure['placement'] = 'inline'): Figure => ({ type: 'figure', ...svgToPng(s.svg), placement });
 
-/** 模板里的 {{占位符}} 换成企业数据；没有数据的写「（待补充）」 */
-function placeholders(ctx: PlanContext): Record<string, string> {
+/** 模板里的 {{占位符}} 换成企业数据；没有数据的写「（待补充）」。t 是正在填的那份方案（事故区域按它取） */
+function placeholders(ctx: PlanContext, t?: PlanTemplate): Record<string, string> {
   const p = ctx.input.production;
+  const s = ctx.signals;
   const hazardousMaterials = p.materials.filter((m) => ctx.hazardous.includes(m.name));
   const join = (xs: (string | undefined)[]) => [...new Set(xs.filter((x): x is string => Boolean(x?.trim())))].join('、');
   const elevators = p.equipment.filter((e) => /电梯/.test(e.name));
   const boilers = p.equipment.filter((e) => /锅炉|蒸汽|空压机|储气罐|压力容器/.test(e.name));
+  // 火灾知识块的特殊场景：按企业实有的液压设备、可燃液体存放处、产尘工序带出，没有的不写
+  const hydraulic = join(s.hydraulicFireSources);
+  const liquidAt = join(hazardousMaterials.filter((m) => s.flammableLiquids.some((l) => m.name.includes(l))).map((m) => m.storageLocation));
+  const liquids = join(s.flammableLiquids);
+  const dustSteps = join(s.dustWorkstations);
+  const fireScenes = [
+    hydraulic && `${hydraulic}高压液压油泄漏喷射遇火`,
+    liquids && `${liquidAt || '存放处'}内小量${liquids}遇明火火花引燃`,
+    dustSteps && `${dustSteps}工序沉积粉尘遇火高温扰动二次燃爆`,
+  ].filter(Boolean);
   return {
     COMPANY_24H_PHONE: ctx.dutyPhone,
     STREET_OFFICE_NAME: ctx.street,
     STREET_OFFICE_PHONE: fill(ctx.streetPhone),
     FIRE_DEPT_NAME: ctx.fireDept,
     FIRE_DEPT_PHONE: ctx.firePhone,
+    // 联系方式里的辖区消防大队：名称后带值班座机；报警一律写「火灾报警 119」
+    FIRE_DEPT_DUTY: ctx.fireDutyPhone ? `（值班电话 ${ctx.fireDutyPhone}）` : '',
     EMERGENCY_BUREAU_NAME: ctx.bureau,
     EMERGENCY_BUREAU_PHONE: fill(ctx.bureauPhone),
     REPRESENTATIVE_CHEMICALS: fill(join(hazardousMaterials.slice(0, 3).map((m) => m.name))),
     CHEMICAL_STORAGE_LOCATIONS: fill(join(hazardousMaterials.map((m) => m.storageLocation))),
-    COMBUSTIBLE_GAS: ctx.scope.combustibleGas ? join(p.materials.filter((m) => /气/.test(m.name)).map((m) => m.name)) || '无' : '无',
+    COMBUSTIBLE_GAS: join(s.combustibleGases) || '可燃气体',
+    GAS_LOCATIONS: fill(join(s.gasLocations)),
+    GAS_FURNACES: join(s.gasFurnaces),
+    DUST_KINDS: join(s.dustKinds) || '可燃粉尘',
+    DUST_SOURCES: fill(join(s.dustSources)),
+    HEAT_SOURCES: join(s.heatSources),
+    MACHINE_AREAS: join(s.dangerMachineAreas) || (t ? hazardArea(ctx.input, t.title) : '') || '机械加工作业区域',
+    VEHICLES: join(s.internalVehicles),
+    LITHIUM_ITEMS: join(s.lithiumItems),
+    HYDRAULIC_EQUIP: join(s.hydraulicFireSources),
+    HAZARD_AREA: t ? hazardArea(ctx.input, t.title) : '',
+    DUST_STEPS: dustSteps,
+    DUST_SOURCE_TEXT: s.dustSources.length ? `${join(s.dustSources)}等产尘环节` : '产尘工序',
+    DUST_AREA: join(s.dustAreas) || '产尘作业场所',
+    DUST_COLLECTOR: s.dustCollectors.length ? `及${join(s.dustCollectors)}` : '',
+    // 灼烫：没有危险化学品时不写化学灼伤
+    CHEM_MISUSE: ctx.hazardous.length ? '；使用化学品操作失当' : '',
+    CHEM_BURN: ctx.hazardous.length ? '、化学灼伤' : '',
+    BURN_CHEM: ctx.hazardous.length
+      ? `生产过程中需使用到 \`${fill(join(hazardousMaterials.slice(0, 3).map((m) => m.name)))}\` 等化学品，员工若操作不当不慎接触皮肤、眼睛，可能发生化学品灼伤事故；`
+      : '',
+    BURN_AREA: (t && hazardArea(ctx.input, t.title)) || '生产车间',
+    FIRE_SCENES: fireScenes.map((x) => `；${x}`).join(''),
+    FIRE_EXTRA: [hydraulic && `${hydraulic}液压油泄漏`, liquids && `${liquidAt || ''}${liquids}`, dustSteps && `${dustSteps}积尘`]
+      .filter(Boolean)
+      .map((x) => `、${x}`)
+      .join(''),
+    FIRE_KEY_SPOTS:
+      [s.furnaceEquip.length ? `${join(s.furnaceEquip)}作业区` : '', dustSteps && `${dustSteps}工位`, liquidAt].filter(Boolean).join('、') || '生产车间',
+    FIRE_SIGNS: [hydraulic && '液压油喷射', dustSteps && '积尘扬尘'].filter(Boolean).map((x) => `、${x}`).join(''),
+    // 了解起火点、逐区域通知的手段：资料里有监控、广播才写
+    CHECK_MEANS: ctx.facts.hasCctv ? '视频监控、电话或巡逻人员' : '电话或巡逻人员',
+    ALARM_MEANS: commsMeans(ctx).filter((m) => m !== '电话').join('、'),
+    // 客户答了有集合点并写了位置的，带上位置
+    ASSEMBLY_POINT: ctx.assemblyPoint ? `（${ctx.assemblyPoint}）` : '',
+    COMMS: commsMeans(ctx).join('、'),
     DUST_WORKSHOPS: fill(
       join(p.processFlow.steps.filter((s) => /喷砂|抛光|打磨|研磨|抛丸|CNC/i.test(s.name)).map((s) => s.name)) ||
         join(p.buildings.filter((b) => /粉|喷|打磨/.test(`${b.name}${b.remarks ?? ''}`)).map((b) => b.name)),
@@ -129,14 +172,42 @@ function compilationTeam(ctx: PlanContext): string[][] {
   if (org.commander) rows.push(['组长', org.commander.name, '总指挥', COMMANDER_DUTY]);
   for (const d of org.deputies) rows.push(['编制组成员', d.name, '副总指挥', DEPUTY_DUTY]);
   const groups = [...org.groups].sort((a, b) => CHART_ORDER.indexOf(a.kind) - CHART_ORDER.indexOf(b.kind));
-  for (const g of groups) if (g.leader) rows.push(['编制组成员', g.leader.name, `${g.name}组长`, GROUP_LEADER_DUTIES[g.kind]]);
+  for (const g of groups) if (g.leader) rows.push(['编制组成员', g.leader.name, `${ctx.groupName(g)}组长`, GROUP_LEADER_DUTIES[g.kind]]);
   return rows;
+}
+
+/** 模板里 [[if:key]] 可用的开关：适用范围、有无危化品、资料依据（facts）、设备物料推出的情况 */
+export function templateFlags(ctx: PlanContext, t?: PlanTemplate): Record<string, boolean> {
+  const s = ctx.signals;
+  return {
+    ...ctx.scope,
+    ...ctx.facts,
+    hazardousChemicals: ctx.hazardous.length > 0,
+    // 这类事故有专家确认的危险源场所：事故区域按它写
+    expertArea: Boolean(t && hazardArea(ctx.input, t.title)),
+    boiler: s.boiler,
+    lithium: s.lithium,
+    combustibleGases: s.combustibleGases.length > 0,
+    gasLocations: s.gasLocations.length > 0,
+    gasTanks: s.gasTanks,
+    gasPipeline: s.gasPipeline,
+    gasFurnaces: s.gasFurnaces.length > 0,
+    hydraulic: s.hydraulicFireSources.length > 0,
+    dustSources: s.dustSources.length > 0,
+    woodDust: s.dustKinds.includes('木粉尘'),
+    resinDust: s.dustKinds.some((k) => k.includes('树脂粉尘')),
+    powderDust: s.dustKinds.some((k) => k.includes('有机粉尘')),
+    heatSources: s.heatSources.length > 0,
+    vehicles: s.internalVehicles.length > 0,
+    flammableLiquids: s.flammableLiquids.length > 0,
+  };
 }
 
 /** 模板填好企业数据、按企业情况取舍、去掉内部编号后的正文 */
 function resolvedTemplate(ctx: PlanContext, t: PlanTemplate, filled: FilledSlots): string {
-  const flags: Record<string, boolean> = { ...ctx.scope, hazardousChemicals: ctx.hazardous.length > 0 };
-  return humanize(fillPlaceholders(applyConditions(templateBody(t, ctx.signals, filled[t.id]), flags), placeholders(ctx)));
+  const included = new Set([...ctx.selection.specialty, ...ctx.selection.site].map((x) => x.id));
+  const body = fillPlaceholders(applyConditions(templateBody(t, ctx.signals, filled[t.id]), templateFlags(ctx, t)), placeholders(ctx, t));
+  return humanize(dropMissingRefs(body, included));
 }
 
 /** AI 改写过的「事故风险描述」段：模板编号 → 系统原文 → 改写（已校验） */
@@ -182,7 +253,7 @@ export function buildPlan(
   const templateMarkdown = (t: PlanTemplate) => {
     const md = resolvedTemplate(ctx, t, filled);
     const r = rewrites[t.id];
-    return r ? md.split('\n').map((l) => r[l.trim()] ?? l).join('\n') : md;
+    return ownGroupNames(r ? md.split('\n').map((l) => r[l.trim()] ?? l).join('\n') : md, input);
   };
 
   const org = input.organization;
@@ -198,7 +269,7 @@ export function buildPlan(
         deputy: figs?.org?.deputy ?? org.deputies.length > 0,
         office: figs?.org?.office,
         groups: orderGroups(
-          groups.map((g) => g.name),
+          groups.map((g) => ctx.groupName(g)),
           figs?.org?.order,
         ),
       }),
@@ -216,7 +287,7 @@ export function buildPlan(
   let part = 0;
 
   // 一、综合应急预案：# 章 1.、## 节 1.1、### 小节 1.1.1
-  const comprehensive = parseMarkdown(comprehensiveMarkdown(ctx), figures);
+  const comprehensive = parseMarkdown(ownGroupNames(comprehensiveMarkdown(ctx), input), figures);
   sections.push({
     id: 'plan.comprehensive',
     title: `${cnOrdinal(++part)}、综合应急预案`,
@@ -264,7 +335,7 @@ export function buildPlan(
     blocks: [],
     childrenOnNewPage: true,
     sections: attachments(ctx, providedDrawings).map((a, i) => {
-      const parsed = parseMarkdown(a.markdown, figures);
+      const parsed = parseMarkdown(ownGroupNames(a.markdown, input), figures);
       const root = parsed.sections[0]!;
       const n = i + 1;
       return {

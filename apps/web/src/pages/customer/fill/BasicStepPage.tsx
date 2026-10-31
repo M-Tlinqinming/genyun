@@ -5,10 +5,14 @@ import {
   enterpriseInputSchema,
   FIELD_SOURCES,
   INDUSTRY_SECTIONS,
+  MAX_OTHER_ADDRESSES,
+  newId,
   type BasicStep,
   type BasicStepField,
   type BasicStepSave,
   type FieldSource,
+  type OtherAddress,
+  type YesNoUnknown,
 } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Form, Input, InputNumber, Select, Upload } from 'antd';
@@ -29,13 +33,14 @@ import type { Task } from '../../../api/tasks';
 import { useSession } from '../../../auth/session';
 import { gy } from '../../../theme/tokens';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
+import { AnswerSwitch, RemoveButton } from './ProductionStepPage';
 import { useAutosave } from './useAutosave';
 import { Loading } from '../../../components/ui';
 
 const IDENTITY = ['name', 'socialCreditCode', 'legalRepresentative', 'registeredAddress'] as const;
 type IdentityField = (typeof IDENTITY)[number];
 type Field = IdentityField | BasicStepField;
-type Values = Partial<Record<Field, string | number | null>>;
+type Values = Partial<Record<Field, string | number | null | OtherAddress[]>>;
 type Sources = Partial<Record<string, FieldSource>>;
 
 const BASIC_FIELDS = Object.keys(basicStepSchema.shape) as BasicStepField[];
@@ -53,12 +58,22 @@ const OTHER_INFO: { name: BasicStepField; label: string }[] = [
   { name: 'lastYearRevenue', label: '上年销售额' },
 ];
 
-const isEmpty = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+const isEmpty = (v: unknown) =>
+  v === undefined ||
+  v === null ||
+  (typeof v === 'string' && v.trim() === '') ||
+  (Array.isArray(v) && v.every((a: OtherAddress) => !a.address?.trim()));
+
+const PARK_OPTIONS: { value: YesNoUnknown; label: string }[] = [
+  { value: 'yes', label: '是' },
+  { value: 'no', label: '不是' },
+  { value: 'unknown', label: '不清楚' },
+];
 
 function toValues(view: BasicStepView): Values {
   const values: Values = {};
   for (const f of IDENTITY) values[f] = view.identity[f] ?? undefined;
-  for (const f of BASIC_FIELDS) values[f] = (view.basic[f] as string | number | undefined) ?? undefined;
+  for (const f of BASIC_FIELDS) values[f] = (view.basic[f] as Values[Field]) ?? undefined;
   return values;
 }
 
@@ -81,8 +96,11 @@ function toPayload(
   const basic: Record<string, unknown> = {};
   for (const f of BASIC_FIELDS) {
     if (later.includes(f)) continue;
-    const v = values[f];
+    // 其他生产经营地址：没写地址的空行不保存
+    const v = Array.isArray(values[f]) ? (values[f] as OtherAddress[]).filter((a) => a.address?.trim()) : values[f];
     if (isEmpty(v)) continue;
+    // 不在园区的，园区管理方和值班电话不保存
+    if ((f === 'parkManager' || f === 'parkDutyPhone') && values.inPark !== 'yes') continue;
     const check = basicStepSchema.shape[f].safeParse(v);
     basic[f] = check.success ? check.data : saved.basic[f];
   }
@@ -363,6 +381,16 @@ export function BasicStepPage({ task }: { task: Task }) {
               >
                 <Input maxLength={200} />
               </Item>
+              <OtherAddresses />
+              <Item name="inPark" label={<Label text="厂区在工业园区、或由物业统一管理的园区里吗？" hint="选填" />}>
+                <ParkSwitch />
+              </Item>
+              {values.inPark === 'yes' && (
+                <Row>
+                  <TextField name="parkManager" label="园区管理方" placeholder="如：某某产业园管理处" maxLength={100} />
+                  <TextField name="parkDutyPhone" label="园区值班电话" placeholder="出事时先打的那个电话" maxLength={30} />
+                </Row>
+              )}
               <Row>
                 <NumberField name="employeeCount" label="员工人数" unit="人" />
                 <Item
@@ -518,16 +546,58 @@ function TextField({
   label,
   source,
   maxLength,
+  placeholder,
 }: {
   name: Field;
   label: string;
   source?: FieldSource;
   maxLength: number;
+  placeholder?: string;
 }) {
   return (
     <Item name={name} label={<Label text={label} source={source} />}>
-      <Input maxLength={maxLength} />
+      <Input maxLength={maxLength} placeholder={placeholder} />
     </Item>
+  );
+}
+
+// 表单项里的「是 / 不是 / 不清楚」：value、onChange 由 Form.Item 传入
+function ParkSwitch({ value, onChange }: { value?: YesNoUnknown; onChange?: (v: YesNoUnknown) => void }) {
+  return <AnswerSwitch label="厂区在园区里吗" value={value} options={PARK_OPTIONS} width={240} onChange={(v) => onChange?.(v)} />;
+}
+
+// 一照多址：营业执照一个，生产经营地址有多处的，逐条添加（选填）
+function OtherAddresses() {
+  return (
+    <Form.List name="otherAddresses">
+      {(fields, { add, remove }) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {fields.length > 0 && (
+            <span style={{ fontSize: 14, lineHeight: '22px', color: gy.text }}>
+              其他生产经营地址
+              <span style={{ marginLeft: 8, fontSize: 12, lineHeight: '18px', color: gy.tertiary }}>
+                同一张营业执照、在别处还有厂房或仓库的填这里
+              </span>
+            </span>
+          )}
+          {fields.map((field, i) => (
+            <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Form.Item name={[field.name, 'address']} noStyle>
+                <Input aria-label={`其他生产经营地址 ${i + 1}`} maxLength={200} placeholder="填写完整地址" style={{ flex: 1 }} />
+              </Form.Item>
+              <RemoveButton label={`删除其他生产经营地址 ${i + 1}`} onClick={() => remove(field.name)} />
+            </div>
+          ))}
+          {fields.length < MAX_OTHER_ADDRESSES && (
+            <div>
+              <Button type="link" style={{ padding: 0, height: 22 }} onClick={() => add({ id: newId('a'), address: '' })}>
+                + 还有其他生产经营地址
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </Form.List>
   );
 }
 
@@ -721,7 +791,7 @@ function LicenseInfo({
 }) {
   const fromLicense = LICENSE_EXTRA.some((f) => sources[f] === 'license');
   const small = { fontSize: 12, lineHeight: '18px', color: gy.tertiary } as const;
-  const value = (f: Field) => (isEmpty(values[f]) ? <span style={{ color: gy.tertiary }}>未填写</span> : values[f]);
+  const value = (f: Field) => (isEmpty(values[f]) ? <span style={{ color: gy.tertiary }}>未填写</span> : String(values[f]));
   return (
     <div
       style={{

@@ -50,6 +50,21 @@ const REF_RE = new RegExp(
   'g',
 );
 
+/**
+ * 方案之间的互相引用（「按 SP13 中毒事故处置方案联动」）：引用的方案这家企业没出时改成「相应现场处置方案」，
+ * 专项预案同理；included 是本预案出了的模板编号。须在 humanize 之前做，编号还在
+ */
+export function dropMissingRefs(src: string, included: ReadonlySet<string>): string {
+  return src.replace(
+    /\bS?P\d{1,2}[ab]?\b(?:[ 　]?[^，。；、（）\s]{0,12}?(?:现场处置方案|处置方案|专项应急预案|专项预案))?/g,
+    (m) => {
+      const id = /^S?P\d{1,2}/.exec(m)![0];
+      if (!ID_TITLE.has(id) || included.has(id)) return m;
+      return id.startsWith('SP') ? '相应现场处置方案' : '相应专项应急预案';
+    },
+  );
+}
+
 export function humanize(src: string): string {
   // 1) 内部编号（单个或用 / 、连起来的一组）→ 名称；名称已在后面时只去掉编号
   let out = src.replace(/[ 　]?\bS?P\d{1,2}[ab]?(?:[ 　]?[/、][ 　]?S?P\d{1,2}[ab]?)*\b[ 　]?/g, (m, offset: number, full: string) => {

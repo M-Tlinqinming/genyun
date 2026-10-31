@@ -13,6 +13,7 @@ import {
   scopeView,
   workupFacts,
   workupProgress,
+  workplacesOf,
   type ChecklistItemKey,
   type Fact,
   type FactSection,
@@ -394,7 +395,7 @@ export function ExpertTaskPage() {
             title="危险源辨识"
             sub="LEC 法风险评价"
             active={module === 'risks'}
-            count={`${risks?.places.reduce((n, p) => n + p.count, 0) ?? 0} 项`}
+            count={`${risks?.rows.filter((r) => !r.excluded).length ?? 0} 项`}
             warn={false}
             onClick={() => setModule('risks')}
           />
@@ -406,14 +407,14 @@ export function ExpertTaskPage() {
                   type="button"
                   role="listitem"
                   onClick={() => {
-                    const first = risks.rows.find((r) => r.workplace === p.name && !r.excluded);
+                    const first = risks.rows.find((r) => !r.excluded && workplacesOf(r.workplace).includes(p.name));
                     if (!first) return;
                     setRiskId(first.id);
                     setTimeout(() => scrollTo(rows.current.get(first.id)), 0);
                   }}
                   style={{ ...linkButton, display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%', ...text13 }}
                 >
-                  <span style={{ color: selectedRisk?.workplace === p.name ? gy.primary : gy.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: selectedRisk && workplacesOf(selectedRisk.workplace).includes(p.name) ? gy.primary : gy.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.name}
                   </span>
                   <span style={{ color: gy.secondary }}>{p.count}</span>

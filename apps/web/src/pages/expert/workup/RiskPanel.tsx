@@ -8,13 +8,16 @@ import {
   PRODUCTION_LISTS,
   RISK_THRESHOLDS,
   riskLevel,
+  joinWorkplaces,
   riskScore,
+  workplacesOf,
   type LecKey,
   type ProductionList,
   type RiskLevel,
   type RiskRow,
   type RiskRowValue,
   type RiskView,
+  type SiteAddressOption,
 } from '@genyun/shared';
 import { AutoComplete, Button, Empty, Input, Select } from 'antd';
 import { useEffect, useState, type CSSProperties } from 'react';
@@ -33,6 +36,43 @@ const dCol: CSSProperties = { width: 40, flexShrink: 0, textAlign: 'right' };
 const levelCol: CSSProperties = { width: 72, flexShrink: 0, paddingLeft: 8 };
 const sourceCol: CSSProperties = { width: 64, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' };
 
+// 作业场所多选：从设备使用地点、存放位置、建筑里选，也可以直接输入新的；存成「、」隔开的一格
+function PlaceSelect({
+  value,
+  options,
+  onChange,
+  onBlur,
+  disabled,
+  width,
+}: {
+  value: string;
+  options: string[];
+  onChange: (workplace: string) => void;
+  onBlur?: () => void;
+  disabled?: boolean;
+  width: number;
+}) {
+  const selected = workplacesOf(value);
+  return (
+    <Select
+      mode="tags"
+      size="small"
+      aria-label="作业场所"
+      placeholder="作业场所，可多选或直接输入"
+      prefix={<span style={{ color: gy.secondary }}>场所</span>}
+      value={selected}
+      options={[...new Set([...options, ...selected])].map((p) => ({ value: p, label: p }))}
+      tokenSeparators={['、', '，', ',']}
+      maxTagCount="responsive"
+      disabled={disabled}
+      onChange={(list: string[]) => onChange(joinWorkplaces(list))}
+      onBlur={onBlur}
+      popupMatchSelectWidth={false}
+      style={{ width }}
+    />
+  );
+}
+
 const newRowId = () => `x${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const valueOf = (r: RiskRow): RiskRowValue => ({
   factor: r.factor,
@@ -42,11 +82,48 @@ const valueOf = (r: RiskRow): RiskRowValue => ({
   c: r.c,
   ...(r.note ? { note: r.note } : {}),
   ...(r.excluded ? { excluded: true } : {}),
+  ...(r.addressId ? { addressId: r.addressId } : {}),
 });
 
-// 手动新增时可选的事故类型：预案里的各类事故 +《企业职工伤亡事故分类》常见的几类
+// 一照多址：危险源所在厂址（选填）；只有一处地址时不显示
+function SiteSelect({
+  addresses,
+  value,
+  disabled,
+  onChange,
+}: {
+  addresses: SiteAddressOption[];
+  value: string | undefined;
+  disabled?: boolean;
+  onChange: (id: string | undefined) => void;
+}) {
+  if (addresses.length === 0) return null;
+  return (
+    <Select
+      size="small"
+      aria-label="所在厂址"
+      allowClear
+      placeholder="所在厂址"
+      value={addresses.some((a) => a.id === value) ? value : undefined}
+      disabled={disabled}
+      onChange={(v?: string) => onChange(v || undefined)}
+      options={addresses.map((a) => ({ value: a.id, label: a.label, title: a.address }))}
+      popupMatchSelectWidth={false}
+      style={{ width: 140 }}
+    />
+  );
+}
+
+// 手动新增时可选的事故类型：预案里的各类事故 + GB 6441-2025 表 1 里没有对应方案的几类
 const FACTOR_OPTIONS = [
-  ...new Set([...PLAN_TEMPLATES.filter((t) => t.kind === 'site').map((t) => accidentTypeOf(t.title)), '其他爆炸', '锅炉爆炸', '中毒和窒息']),
+  ...new Set([
+    ...PLAN_TEMPLATES.filter((t) => t.kind === 'site').map((t) => accidentTypeOf(t.title)),
+    '水害',
+    '民用爆炸物品爆炸',
+    '烟花爆竹爆炸',
+    '其他可燃固体爆炸',
+    '滑坡',
+  ]),
 ].map((value) => ({ value }));
 
 const LEVEL_COLORS: Record<RiskLevel, { color: string; bg: string }> = {
@@ -121,7 +198,7 @@ export function RiskPanel(props: RiskPanelProps) {
           <span style={{ ...head, ...levelCol }}>等级</span>
           <span style={{ ...head, ...sourceCol }}>来源</span>
         </div>
-        {adding && <AddRow key={adding} id={adding} places={view.places.map((p) => p.name)} {...props} onDone={() => setAdding(null)} />}
+        {adding && <AddRow key={adding} id={adding} places={view.placeOptions} {...props} onDone={() => setAdding(null)} />}
         {view.rows.map((r) =>
           r.id === selectedId ? (
             <SelectedRow key={r.id} row={r} {...props} />
@@ -136,7 +213,7 @@ export function RiskPanel(props: RiskPanelProps) {
               onKeyDown={(e) => e.key === 'Enter' && onSelect(r.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 8, height: 52, borderBottom: `1px solid ${gy.split}`, cursor: 'pointer' }}
             >
-              <RowCells row={r} />
+              <RowCells row={r} site={view.addresses.find((a) => a.id === r.addressId)?.label} />
             </div>
           ),
         )}
@@ -149,12 +226,13 @@ export function RiskPanel(props: RiskPanelProps) {
   );
 }
 
-function Summary({ row, strong }: { row: RiskRow; strong?: boolean }) {
+function Summary({ row, strong, site }: { row: RiskRow; strong?: boolean; site?: string }) {
   const struck: CSSProperties = row.excluded ? { textDecoration: 'line-through', color: gy.tertiary } : {};
+  const place = site ? `${site} ${row.workplace}` : row.workplace;
   return (
     <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <span style={{ ...cell, ...ellipsis, fontWeight: strong ? 500 : 400, ...struck }}>{row.factor}</span>
-      <span style={{ ...sub, ...ellipsis }}>{row.item ? `${row.workplace} · ${row.item}` : row.workplace}</span>
+      <span style={{ ...sub, ...ellipsis }}>{row.item ? `${place} · ${row.item}` : place}</span>
     </span>
   );
 }
@@ -168,11 +246,11 @@ function SourceCell({ row }: { row: RiskRow }) {
   );
 }
 
-function RowCells({ row }: { row: RiskRow }) {
+function RowCells({ row, site }: { row: RiskRow; site?: string }) {
   const muted = row.excluded ? { color: gy.tertiary } : {};
   return (
     <>
-      <Summary row={row} />
+      <Summary row={row} site={site} />
       {LEC_KEYS.map((k) => (
         <span key={k} style={{ ...cell, ...lecCol, ...muted }}>
           {row[k]}
@@ -188,7 +266,7 @@ function RowCells({ row }: { row: RiskRow }) {
 }
 
 // 选中的一行：L / E / C 直接选，作业场所与说明离开输入框时保存
-function SelectedRow({ row, dimension, onDimension, saving, onSave, registerRow }: RiskPanelProps & { row: RiskRow }) {
+function SelectedRow({ row, view, dimension, onDimension, saving, onSave, registerRow }: RiskPanelProps & { row: RiskRow }) {
   const [workplace, setWorkplace] = useState(row.workplace);
   const [note, setNote] = useState(row.note ?? '');
   useEffect(() => {
@@ -221,7 +299,7 @@ function SelectedRow({ row, dimension, onDimension, saving, onSave, registerRow 
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 36 }}>
-        <Summary row={row} strong />
+        <Summary row={row} strong site={view.addresses.find((a) => a.id === row.addressId)?.label} />
         {LEC_KEYS.map((k) => (
           <button
             key={k}
@@ -265,17 +343,19 @@ function SelectedRow({ row, dimension, onDimension, saving, onSave, registerRow 
             options={LEC_OPTIONS[k].map((o) => ({ value: o.value, label: `${o.value}　${o.label}` }))}
           />
         ))}
-        <Input
-          size="small"
-          aria-label="作业场所"
-          prefix={<span style={{ color: gy.secondary }}>场所</span>}
+        <PlaceSelect
           value={workplace}
-          maxLength={30}
+          options={view.placeOptions}
           disabled={saving || row.excluded}
-          onChange={(e) => setWorkplace(e.target.value)}
+          onChange={setWorkplace}
           onBlur={() => saveText('workplace', workplace)}
-          onPressEnter={() => saveText('workplace', workplace)}
-          style={{ width: 168 }}
+          width={240}
+        />
+        <SiteSelect
+          addresses={view.addresses}
+          value={row.addressId}
+          disabled={saving || row.excluded}
+          onChange={(addressId) => save({ addressId })}
         />
       </div>
       <Input
@@ -322,7 +402,7 @@ function SelectedRow({ row, dimension, onDimension, saving, onSave, registerRow 
 
 // 手动新增一行：危险有害因素、作业场所必填，取值先给一组常见值
 function AddRow({ id, places, saving, onSave, onSelect, onDone }: RiskPanelProps & { id: string; places: string[]; onDone: () => void }) {
-  const [value, setValue] = useState<RiskRowValue>({ factor: '', workplace: places[0] ?? '', l: 1, e: 3, c: 7 });
+  const [value, setValue] = useState<RiskRowValue>({ factor: '', workplace: '', l: 1, e: 3, c: 7 });
   const d = riskScore(value);
   const ready = value.factor.trim() !== '' && value.workplace.trim() !== '';
   const submit = async () => {
@@ -341,22 +421,14 @@ function AddRow({ id, places, saving, onSave, onSelect, onDone }: RiskPanelProps
         <AutoComplete
           size="small"
           aria-label="危险有害因素"
-          placeholder="危险有害因素，如 其他爆炸"
+          placeholder="危险有害因素，如 水害"
           options={FACTOR_OPTIONS}
           value={value.factor}
           onChange={(factor) => setValue((v) => ({ ...v, factor }))}
           filterOption={(input, o) => String(o?.value).includes(input)}
           style={{ width: 168 }}
         />
-        <AutoComplete
-          size="small"
-          aria-label="作业场所"
-          placeholder="作业场所"
-          options={places.map((p) => ({ value: p }))}
-          value={value.workplace}
-          onChange={(workplace) => setValue((v) => ({ ...v, workplace }))}
-          style={{ width: 140 }}
-        />
+        <PlaceSelect value={value.workplace} options={places} onChange={(workplace) => setValue((v) => ({ ...v, workplace }))} width={200} />
         {LEC_KEYS.map((k) => (
           <Select
             key={k}

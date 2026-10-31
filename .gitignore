@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 dist/
 out/
 .env
@@ -13,3 +13,5 @@ test-results/
 playwright-report/
 .claude/worktrees/
 .claude/settings.local.json
+# 测试集含客户真实资料，只在本机保存（见 apps/api/src/scripts/build-test-cases.ts）
+testset/

@@ -1,7 +1,7 @@
 // 生产安全应急资源调查报告。正文迁自旧仓库 lib/md-generator/reports.ts（generateResourceSurveyReportMd），
 // 改动同风险评估报告；值班电话取客户填的 24 小时值班电话（旧稿误用企业联系电话），物资保管人与电话按应急组织人员带出。
 import type { PlanInput } from '@genyun/shared';
-import { MISSING, dash, fill, planContext, type PlanContext } from '../plan/context.ts';
+import { MISSING, dash, fill, planContext, siteColumn, type PlanContext } from '../plan/context.ts';
 import { buildReport, companyBasicTable, companyOverview, hazardFactorsTable, locationText } from './common.ts';
 
 // 旧仓库建议补充的装备；企业已有的不再列
@@ -16,15 +16,18 @@ const RECOMMENDED: [string, string, string][] = [
 function memberRows(ctx: PlanContext): string[] {
   const org = ctx.input.organization;
   const rows: string[] = [];
-  const add = (unit: string, role: string, p: { name: string; position?: string; phone?: string } | undefined) => {
+  const site = siteColumn(ctx);
+  const add = (unit: string, role: string, p: { name: string; position?: string; phone?: string } | undefined, addressId?: string) => {
     if (!p?.name.trim()) return;
-    rows.push(`| ${rows.length + 1} | ${unit} | ${p.name.trim()} | ${role} | ${dash(p.position)} | ${fill(p.phone)} |`);
+    rows.push(
+      `| ${rows.length + 1} | ${unit} | ${p.name.trim()} | ${role} | ${dash(p.position)} | ${fill(p.phone)} |${site.on ? ` ${ctx.siteOf(addressId) || '全公司'} |` : ''}`,
+    );
   };
   add('应急指挥部', '总指挥', org.commander);
   for (const d of org.deputies) add('应急指挥部', '副总指挥', d);
   for (const g of org.groups) {
-    add(g.name, '组长', g.leader);
-    for (const m of g.members) add(g.name, '组员', m);
+    add(ctx.groupName(g), '组长', g.leader, g.addressId);
+    for (const m of g.members) add(ctx.groupName(g), '组员', m, g.addressId);
   }
   return rows;
 }
@@ -37,10 +40,11 @@ function resourceMarkdown(ctx: PlanContext): string {
   const factors = [...new Set((input.expert.hazards ?? []).map((h) => h.factor.trim()).filter(Boolean))].join('、') || MISSING;
   const communication = org.groups.find((g) => g.kind === 'communication');
   const members = memberRows(ctx);
+  const site = siteColumn(ctx);
   const supplies = p.emergencySupplies.map((s, i) => {
     const keeper = ctx.person(s.custodianId);
     const qty = s.quantity === undefined ? MISSING : `${s.quantity} ${s.unit ?? ''}`.trim();
-    return `| ${i + 1} | ${fill(s.name)} | ${qty} | ${fill(s.location)} | ${keeper?.name || '/'} | ${keeper?.phone || '/'} |`;
+    return `| ${i + 1} | ${fill(s.name)} | ${qty} | ${fill(s.location)} | ${keeper?.name || '/'} | ${keeper?.phone || '/'} |${site.cell(s.addressId)}`;
   });
   const kit = p.firstAidKit;
   const aid = kit?.answer === 'yes' ? kit.items.map((f, i) => `| ${i + 1} | ${fill(f.name)} | ${dash(f.quantity)} | ${dash(f.unit)} |`) : [];
@@ -71,15 +75,15 @@ function resourceMarkdown(ctx: PlanContext): string {
     '### 2）公司所在地理位置',
     locationText(ctx),
     '### 3）公司生产过程主要风险状况',
-    '主要危险源：根据周边环境、总平面布置、作业环境、场所特点等，参照《企业职工伤亡事故分类》，公司各区域主要危险、有害因素详见下表。',
+    '主要危险源：根据周边环境、总平面布置、作业环境、场所特点等，参照《生产安全事故分类与编码》（GB 6441-2025），公司各区域主要危险、有害因素详见下表。',
     ...hazardFactorsTable(ctx, '1.3-2'),
     '## 公司内部人力和物资应急资源',
     '### 1）公司内部人力资源',
     '为认真编制切实可行的生产安全事故应急预案，公司结合内部人力资源和实际情况设置应急救援组织体系。公司内部应急小组成员联系方式如下。',
     '**表 1.4-1 各应急小组成员姓名联系方式**',
-    '| 序号 | 小组 | 姓名 | 应急职务 | 职务或岗位 | 联系方式 |',
-    '| --- | --- | --- | --- | --- | --- |',
-    ...(members.length ? members : [`| 1 | 应急组织 | ${MISSING} | / | / | / |`]),
+    `| 序号 | 小组 | 姓名 | 应急职务 | 职务或岗位 | 联系方式 |${site.head}`,
+    `| --- | --- | --- | --- | --- | --- |${site.sep}`,
+    ...(members.length ? members : [`| 1 | 应急组织 | ${MISSING} | / | / | / |${site.on ? ' / |' : ''}`]),
     '### 2）通信与信息保障',
     '公司通过固定电话、移动电话、现场呼喊、企业通信群和应急通讯录进行信息报告、指挥调度和外部联络。应急通讯录应根据人员变化及时修订。',
     '**通信与信息保障表**',
@@ -87,15 +91,18 @@ function resourceMarkdown(ctx: PlanContext): string {
     '| --- | --- | --- | --- |',
     `| 1 | 企业 24 小时值班电话 | ${ctx.dutyPhone} | 企业内部报警 / 值班联络 |`,
     `| 2 | 总指挥 | ${fill(org.commander?.phone)} | 应急指挥启动 |`,
-    `| 3 | ${communication?.name ?? '通讯联络组'} | ${communication ? fill(communication.leader?.phone) : '/'} | 信息报告 / 内外部联络 |`,
-    `| 4 | ${street} | ${a.streetOffice?.phone || '街道办值班电话'} | 属地协调 |`,
-    `| 5 | ${bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 事故报告 / 资源调度 |`,
+    `| 3 | ${communication ? ctx.groupName(communication) : '通讯联络组'} | ${communication ? fill(communication.leader?.phone) : '/'} | 信息报告 / 内外部联络 |`,
+    ...[
+      `| ${street} | ${a.streetOffice ? dash(a.streetOffice.phone) : MISSING} | 属地协调 |`,
+      ...(ctx.park ? [`| ${ctx.park.manager} | ${ctx.park.dutyPhone ?? MISSING} | 事故先报园区 / 园区联动 |`] : []),
+      `| ${bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 事故报告 / 资源调度 |`,
+    ].map((r, i) => `| ${i + 4} ${r}`),
     '### 3）应急物资保障情况',
     '公司根据事故风险类型和现场处置需要配置消防器材、应急照明、疏散指示、警戒隔离、急救药品等应急物资装备。现有应急物资及装备如下。',
     '**表 1.4-2 公司内现有应急物资及装备一览表**',
-    '| 序号 | 设施名称 | 数量 | 位置 | 保管人 | 联系电话 |',
-    '| --- | --- | --- | --- | --- | --- |',
-    ...(supplies.length ? supplies : [`| 1 | ${MISSING} | / | / | / | / |`]),
+    `| 序号 | 设施名称 | 数量 | 位置 | 保管人 | 联系电话 |${site.head}`,
+    `| --- | --- | --- | --- | --- | --- |${site.sep}`,
+    ...(supplies.length ? supplies : [`| 1 | ${MISSING} | / | / | / | / |${site.on ? ' / |' : ''}`]),
     '**急救药箱药品清单**',
     '| 序号 | 药品名称 | 数量 | 单位 |',
     '| --- | --- | --- | --- |',
@@ -109,8 +116,11 @@ function resourceMarkdown(ctx: PlanContext): string {
     '| 交通 | 122 | 24 小时 |',
     '| 急救 | 120 | 24 小时 |',
     `| ${bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 事故报告 / 应急资源调度 |`,
-    `| ${street} | ${a.streetOffice?.phone || '街道办值班电话'} | 属地协调 / 周边疏散协助 |`,
-    `| ${a.fireDept?.name || '属地消防救援机构'} | ${ctx.firePhone} | 火灾扑救 / 抢险救援 |`,
+    `| ${street} | ${a.streetOffice ? dash(a.streetOffice.phone) : MISSING} | 属地协调 / 周边疏散协助 |`,
+    ...(ctx.park ? [`| ${ctx.park.manager} | ${ctx.park.dutyPhone ?? MISSING} | 事故先报园区 / 园区联动调度 |`] : []),
+    ...(ctx.facts.hasRescueAgreements && ctx.rescueParties ? [`| ${ctx.rescueParties} | / | 救援协议单位 |`] : []),
+    ...(ctx.facts.hasMutualAid && ctx.mutualAidParties ? [`| ${ctx.mutualAidParties} | / | 应急互助协议企业 |`] : []),
+    `| ${a.fireDept?.name || '属地消防救援机构'} | ${a.fireDept?.phone || '119'} | 火灾扑救 / 抢险救援 |`,
     `| ${ctx.hospital} | 120 / 医院急诊 | ${hospitalDistance} |`,
     '# 应急资源差距分析',
     '**1）差距分析**',

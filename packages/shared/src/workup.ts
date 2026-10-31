@@ -4,6 +4,8 @@
 import { z } from 'zod';
 import type { ChecklistItemKey } from './checklist/items.ts';
 import type { BasicStepAnyField, EnterpriseProfile } from './profile/basic-step.ts';
+import { addressLabelOf, addressOptions } from './profile/addresses.ts';
+import { YES_NO_UNKNOWN_LABELS, type YesNoUnknown } from './profile/basic.ts';
 import { INDUSTRY_NAMES } from './profile/industries.ts';
 import { PRESET_GROUPS } from './profile/organization.ts';
 import {
@@ -148,7 +150,13 @@ export function formatFact(value: FactValue | undefined, kind: FactKind): string
 const asPerson = (p: DraftPerson | undefined): FactPerson | undefined =>
   p && p.name.trim() ? { name: p.name.trim(), position: p.position || undefined, phone: p.phone || undefined } : undefined;
 
-const groupKey = (g: DraftGroup) => `group.${g.kind === 'custom' ? g.id : g.kind}`;
+// 选填的有 / 没有 / 不清楚：有的带上名称或位置；没回答的为空
+const answerText = (answer: YesNoUnknown | undefined, detail?: string) =>
+  answer === undefined ? undefined : answer === 'yes' ? [YES_NO_UNKNOWN_LABELS.yes, detail?.trim()].filter(Boolean).join(' · ') : YES_NO_UNKNOWN_LABELS[answer];
+
+// 同类小组有多个（分厂址各设一套）时，第二个起按 id 记
+const groupKey = (g: DraftGroup, groups: readonly DraftGroup[]) =>
+  `group.${g.kind === 'custom' || groups.find((x) => x.kind === g.kind) !== g ? g.id : g.kind}`;
 
 export function organizationOf(snapshot: WorkupSnapshot): OrganizationStep {
   return snapshot.profile.organizationStep?.step ?? defaultOrganizationStep(snapshot.profile.basicStep?.basic.employeeCount);
@@ -190,6 +198,10 @@ function basicEntries(snapshot: WorkupSnapshot): Entry[] {
     [def('legalRepresentative', 'basic', '法定代表人', { required: true, ...license, use: '企业概况与批准发布令' }), fromCustomer('legalRepresentative', id.legalRepresentative)],
     [def('registeredAddress', 'basic', '注册地址', { required: true, ...license, use: '企业概况；属地机构按地址调取' }), fromCustomer('registeredAddress', id.registeredAddress)],
     [def('siteAddress', 'basic', '实际生产地址'), fromCustomer('siteAddress', basic.siteAddress)],
+    [
+      def('otherAddresses', 'basic', '其他生产经营地址', { use: '一照多址：适用范围与各清单的厂址' }),
+      fromCustomer('otherAddresses', (basic.otherAddresses ?? []).map((a) => a.address.trim()).filter(Boolean).join('；') || undefined),
+    ],
     [def('industry', 'basic', '所属行业'), fromCustomer('industry', industry)],
     [def('companyType', 'basic', '企业类型', license), fromCustomer('companyType', basic.companyType)],
     [def('mainProducts', 'basic', '主要产品', { required: true, use: '企业概况与风险评估' }), fromCustomer('mainProducts', basic.mainProducts)],
@@ -218,10 +230,17 @@ function agencyEntries(snapshot: WorkupSnapshot): Entry[] {
       ? { value: [a.name, a.phone].filter(Boolean).join(' · '), source: 'system', sourceNote: '知识库' }
       : { hint: address ? '知识库还没有收录这个地区，请对照当地资料填写' : '还没有地址，无法调取' };
   const def = (key: string, label: string): FactDef => ({ key, section: 'agencies', label, kind: 'text', required: false });
+  const basic = snapshot.profile.basicStep?.basic;
+  const res = snapshot.profile.resourcesStep?.step;
+  const customer = (v: string | undefined): FactBase => (v ? { value: v, source: 'customer', sourceNote: '自填' } : {});
+  const park = basic?.inPark === 'yes' ? [basic.parkManager, basic.parkDutyPhone].map((x) => x?.trim()).filter(Boolean).join(' · ') : '';
   return [
     [def('agency.emergencyBureau', '应急管理局'), known(agencies.emergencyBureau)],
     [def('agency.streetOffice', '街道'), known(agencies.streetOffice)],
     [def('agency.fireDept', '消防'), known(agencies.fireDept)],
+    [def('agency.park', '园区管理方'), customer(answerText(basic?.inPark, park))],
+    [def('agency.rescueAgreement', '救援协议'), customer(answerText(res?.rescueAgreement?.answer, res?.rescueAgreement?.parties))],
+    [def('agency.mutualAid', '邻企互助协议'), customer(answerText(res?.mutualAid?.answer, res?.mutualAid?.parties))],
   ];
 }
 
@@ -245,12 +264,16 @@ function organizationEntries(snapshot: WorkupSnapshot): Entry[] {
       person(d),
     ]);
   });
+  const basic = snapshot.profile.basicStep?.basic;
+  const addresses = addressOptions(basic?.siteAddress, basic?.otherAddresses);
   for (const g of org.groups) {
     const members = g.members.filter((m) => m.name.trim()).length;
-    const name = g.kind === 'custom' ? g.name || '自定义小组' : PRESET_GROUPS[g.kind];
+    const preset = g.kind === 'custom' ? g.name || '自定义小组' : PRESET_GROUPS[g.kind];
+    const site = org.groups.filter((x) => x.kind === g.kind).length > 1 ? addressLabelOf(addresses, g.addressId) : '';
+    const name = site ? `${preset}（${site}）` : preset;
     const base = person(g.leader);
     entries.push([
-      { key: groupKey(g), section: 'organization', label: `${name}组长`, kind: 'person', required: false, itemKey: 'emergency_groups' },
+      { key: groupKey(g, org.groups), section: 'organization', label: `${name}组长`, kind: 'person', required: false, itemKey: 'emergency_groups' },
       { ...base, hint: base.hint ?? (members ? `组员 ${members} 人` : rosterHint ?? '客户还没有填组长') },
     ]);
   }
@@ -259,6 +282,16 @@ function organizationEntries(snapshot: WorkupSnapshot): Entry[] {
     { key: 'dutyPhone', section: 'organization', label: '值班电话', kind: 'text', required: true, itemKey: 'duty_phone', use: '应急响应与信息报告' },
     duty ? { value: duty, source: 'customer', sourceNote: '自填' } : {},
   ]);
+  const optional = (key: string, label: string, v: string | undefined): Entry => [
+    { key, section: 'organization', label, kind: 'text', required: false },
+    v ? { value: v, source: 'customer', sourceNote: '自填' } : {},
+  ];
+  const point = snapshot.profile.resourcesStep?.step.assemblyPoint;
+  entries.push(
+    optional('paSystem', '应急广播系统', answerText(org.paSystem)),
+    optional('imGroup', '应急工作群', answerText(org.imGroup)),
+    optional('assemblyPoint', '紧急集合点', answerText(point?.answer, point?.location)),
+  );
   return entries;
 }
 

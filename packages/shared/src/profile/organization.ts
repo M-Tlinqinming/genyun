@@ -1,6 +1,7 @@
 // 应急组织（旧仓库 E3）。TECH-PLAN 3.5：默认 3 组，可加警戒疏散、医疗救护、自定义，2–6 组；
 // 副总指挥 0–2 人；24 小时值班电话由客户填写（不默认总指挥手机）；编制小组可添加非应急组成员。
 import { z } from 'zod';
+import { YES_NO_UNKNOWN } from './basic.ts';
 
 export const personSchema = z.object({
   // 供应急物资「保管人」等处引用
@@ -28,6 +29,8 @@ export const groupSchema = z.object({
   name: z.string().trim().min(1, '请填写小组名称'),
   leader: personSchema.optional(),
   members: z.array(personSchema).default([]),
+  // 所在厂址 id（一照多址时，见 addresses.ts）
+  addressId: z.string().optional(),
 });
 export type EmergencyGroup = z.infer<typeof groupSchema>;
 
@@ -47,6 +50,9 @@ export const organizationSchema = z.object({
     .max(6, '最多设 6 个应急小组'),
   // 由客户填写；值班的往往不是总指挥
   dutyPhone: z.string().trim().optional(),
+  // 应急通讯：有没有应急广播系统、应急微信群 / 工作群（客户选填）
+  paSystem: z.enum(YES_NO_UNKNOWN).optional(),
+  imGroup: z.enum(YES_NO_UNKNOWN).optional(),
   compilationTeam: z
     .object({
       leader: compilationMemberSchema.optional(),

@@ -1,26 +1,20 @@
 // 风险评估报告与应急资源调查报告共用的部分（迁自旧仓库 lib/md-generator/reports.ts）：
 // 企业概况、企业基本情况表、地理位置、危险有害因素表，以及把 Markdown 正文拼成交付文档。
 // 章用「1. 」、节用「1.1 」，再往下（1）企业概况）是加粗段落，与旧仓库一致。
-import { flowOptionsOf, processFlowSvg, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
+import { flowOptionsOf, processFlowSvg, workplacesOf, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
 import { svgToPng } from '../word/png.ts';
-import { MISSING, dash, fill, type PlanContext } from '../plan/context.ts';
+import { MISSING, cnDate, dash, fill, type PlanContext } from '../plan/context.ts';
 import { parseMarkdown, toSections, type Figure } from '../plan/markdown.ts';
-
-/** 「2026-04-11」→「2026年4月11日」 */
-export function cnDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${y}年${m}月${d}日`;
-}
 
 export function companyOverview(ctx: PlanContext): string[] {
   const { company, input } = ctx;
   const b = input.basic;
-  const established = input.expert.facts?.establishedDate ? `成立于 ${input.expert.facts.establishedDate}，` : '';
+  const established = input.expert.facts?.establishedDate ? `成立于${cnDate(input.expert.facts.establishedDate)}，` : '';
   const tech = b.technicalManagementCount === undefined ? '' : `，技术管理人员 ${b.technicalManagementCount} 人`;
   const safety = b.safetyManagementCount === undefined ? '' : `，安全管理人员 ${b.safetyManagementCount} 人`;
   return [
-    `${company}${established}注册地址为${fill(b.registeredAddress?.detail)}；经国家企业信用信息公示系统查询，统一社会信用代码为 ${fill(b.socialCreditCode)}，法定代表人为${fill(b.legalRepresentative)}，注册资本为 ${dash(b.registeredCapital)}。企业经营范围为：${fill(b.businessScope)}。主要产品 / 服务为：${fill(b.mainProducts)}。`,
-    `${company}现有职工 ${fill(b.employeeCount)} 人${tech}${safety}。员工每班工作 8 小时，年工作日按 300 天计。企业规模、行业分类及安全管理要求以企业提供的资料、营业执照和属地监管要求为准。`,
+    `${company}${established}注册地址为${fill(b.registeredAddress?.detail)}；据营业执照，统一社会信用代码为 ${fill(b.socialCreditCode)}，法定代表人为${fill(b.legalRepresentative)}，注册资本为 ${dash(b.registeredCapital)}。企业经营范围为：${fill(b.businessScope)}。主要产品 / 服务为：${fill(b.mainProducts)}。`,
+    `${company}现有职工 ${fill(b.employeeCount)} 人${tech}${safety}。企业规模、行业分类及安全管理要求以企业提供的资料、营业执照和属地监管要求为准。`,
   ];
 }
 
@@ -57,16 +51,24 @@ export function companyBasicTable(ctx: PlanContext, no: string): string[] {
 export function locationText(ctx: PlanContext): string {
   const { input } = ctx;
   const address = fill(input.location.siteAddress.detail || input.basic.registeredAddress?.detail);
-  return `${ctx.company}位于${address}。公司所在地理位置、周边道路、相邻企业、居民区及其他敏感目标以现场踏勘和属地地图核实结果为准。周边环境及重大危险源情况：${fill(input.expert.facts?.surroundings)}`;
+  // 一照多址：列出全部生产经营地址
+  const where = ctx.addresses.length
+    ? `生产经营地址共 ${ctx.addresses.length} 处：${ctx.addresses.map((a) => a.address).join('；')}`
+    : `位于${address}`;
+  return `${ctx.company}${where}。公司所在地理位置、周边道路、相邻企业、居民区及其他敏感目标以现场踏勘和属地地图核实结果为准。周边环境及重大危险源情况：${fill(input.expert.facts?.surroundings)}`;
 }
 
 export function hazardFactorsTable(ctx: PlanContext, no: string): string[] {
   const byPlace = new Map<string, string[]>();
+  // 一条危险源可以有多个场所（「、」分隔），按单个场所汇总
   for (const h of ctx.input.expert.hazards ?? []) {
-    const place = h.workplace.trim() || '未分类作业场所';
-    const list = byPlace.get(place) ?? [];
-    if (h.factor.trim() && !list.includes(h.factor.trim())) list.push(h.factor.trim());
-    byPlace.set(place, list);
+    const site = ctx.siteOf(h.addressId);
+    for (const w of workplacesOf(h.workplace).length ? workplacesOf(h.workplace) : ['未分类作业场所']) {
+      const place = site ? `${site} ${w}` : w;
+      const list = byPlace.get(place) ?? [];
+      if (h.factor.trim() && !list.includes(h.factor.trim())) list.push(h.factor.trim());
+      byPlace.set(place, list);
+    }
   }
   return [
     `**表 ${no} 主要危险有害因素**`,

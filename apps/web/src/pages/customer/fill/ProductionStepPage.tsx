@@ -16,12 +16,14 @@ import {
   type SiteType,
   type SpecialAnswer,
   type SpecialCategory,
+  type SiteAddressOption,
 } from '@genyun/shared';
 import { AutoComplete, Button, Dropdown, Input, InputNumber, Popconfirm, Radio, Select, Upload } from 'antd';
 import { useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Task } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
+import { SiteSelect } from './SiteSelect';
 import { useProductionDraft } from './useProductionDraft';
 import { Loading } from '../../../components/ui';
 import { useListMotion } from '../../../theme/motion';
@@ -42,6 +44,9 @@ const blankMaterial = (kind: DraftMaterial['kind'] = 'material'): DraftMaterial 
   name: '',
   labelPhotoFileIds: [],
 });
+
+// 一照多址时「所在厂址」列的宽度
+const SITE_WIDTH = 112;
 
 const muted = { fontSize: 12, lineHeight: '18px', color: gy.tertiary } as const;
 const hint = { fontSize: 12, lineHeight: '18px', color: '#8A93A3' } as const;
@@ -153,6 +158,7 @@ export function ProductionStepPage({ task }: { task: Task }) {
             />
             <AssetsCard
               step={step}
+              addresses={saved.current?.addresses ?? []}
               fileNames={fileNames}
               uploading={uploading}
               onChange={update}
@@ -702,6 +708,7 @@ const cellInput: CSSProperties = { paddingInline: 10 };
 
 function AssetsCard({
   step,
+  addresses,
   fileNames,
   uploading,
   onChange,
@@ -710,6 +717,7 @@ function AssetsCard({
   onLabel,
 }: {
   step: ProductionStep;
+  addresses: SiteAddressOption[];
   fileNames: Record<string, string>;
   uploading: string | null;
   onChange: (s: ProductionStep) => void;
@@ -726,6 +734,7 @@ function AssetsCard({
   const putMaterial = (id: string, p: Partial<DraftMaterial>) =>
     onChange({ ...step, materials: step.materials.map((m) => (m.id === id ? { ...m, ...p } : m)) });
   const ledgerBusy = uploading?.startsWith('ledger-');
+  const multiSite = addresses.length > 0;
 
   const ledgerList = (ledger: Ledger) =>
     step.ledgers[ledger].length > 0 && (
@@ -783,6 +792,7 @@ function AssetsCard({
         <span style={colLabel(fixed(72))}>数量</span>
         <span style={colLabel(grow(0.9))}>使用部门 / 地点</span>
         <span style={colLabel(fixed(92))}>使用状况</span>
+        {multiSite && <span style={colLabel(fixed(SITE_WIDTH))}>所在厂址</span>}
         <span style={fixed(24)} />
       </div>
       <div ref={equipmentList} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -829,6 +839,13 @@ function AssetsCard({
             value={e.condition}
             onChange={(condition: string) => putEquipment(e.id, { condition })}
           />
+          <SiteSelect
+            addresses={addresses}
+            label={`第 ${i + 1} 台设备所在厂址`}
+            value={e.addressId}
+            onChange={(addressId) => putEquipment(e.id, { addressId })}
+            style={fixed(SITE_WIDTH)}
+          />
           <RemoveButton
             label={`删除第 ${i + 1} 台设备`}
             hidden={step.equipment.length <= 1}
@@ -852,10 +869,12 @@ function AssetsCard({
       {ledgerList('materials')}
       <div style={{ display: 'flex', gap: 10 }}>
         <span style={colLabel(grow(1.2))}>名称</span>
+        <span style={colLabel(fixed(96))}>CAS 号</span>
         <span style={colLabel(fixed(84))}>年用量</span>
         <span style={colLabel(fixed(84))}>最大存放量</span>
         <span style={colLabel(grow(0.8))}>存放位置</span>
         <span style={colLabel(fixed(168))}>包装标签 / MSDS</span>
+        {multiSite && <span style={colLabel(fixed(SITE_WIDTH))}>所在厂址</span>}
         <span style={fixed(24)} />
       </div>
       <div ref={materialList} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -904,6 +923,14 @@ function AssetsCard({
             }
           />
           <Input
+            style={{ ...fixed(96), ...cellInput }}
+            aria-label={`第 ${i + 1} 种物料 CAS 号`}
+            maxLength={30}
+            placeholder="选填"
+            value={m.casNumber ?? ''}
+            onChange={(ev) => putMaterial(m.id, { casNumber: ev.target.value })}
+          />
+          <Input
             style={{ ...fixed(84), ...cellInput }}
             aria-label={`第 ${i + 1} 种物料年用量`}
             maxLength={20}
@@ -933,6 +960,13 @@ function AssetsCard({
             uploading={uploading === `label-${m.id}`}
             onFile={(file) => onLabel(m.id, file)}
             onClear={() => putMaterial(m.id, { labelPhotoFileIds: [] })}
+          />
+          <SiteSelect
+            addresses={addresses}
+            label={`第 ${i + 1} 种物料所在厂址`}
+            value={m.addressId}
+            onChange={(addressId) => putMaterial(m.id, { addressId })}
+            style={fixed(SITE_WIDTH)}
           />
           <RemoveButton
             label={`删除第 ${i + 1} 种物料`}

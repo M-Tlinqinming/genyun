@@ -77,6 +77,23 @@ describe('风险评估报告', () => {
     expect(text).not.toMatch(/\bE[1-6]\b|\{\{|undefined|null|NaN/);
     expect(text).toContain('酒精');
   });
+
+  it('危险有害因素按事故类型逐条写场所和成因', () => {
+    expect(text).toMatch(/（1）火灾：主要场所：/);
+    expect(text).toMatch(/粉尘爆炸：主要场所：[^\n]*抛光/);
+  });
+
+  it('重大危险源由系统按 ∑q/Q 判定', () => {
+    expect(text).toMatch(/酒精 \| [\d.]+ \| 500 \| [\d.]+/);
+    expect(text).toContain('不构成危险化学品重大危险源');
+    expect(text).not.toContain('待核定');
+  });
+
+  it('不写没有依据的班制，现有管理情况写到指挥部和小组', () => {
+    expect(text).not.toContain('年工作日按 300 天');
+    expect(text).toMatch(/总指挥/);
+    expect(text).toMatch(/小组/);
+  });
 });
 
 describe('应急资源调查报告', () => {
