@@ -1,0 +1,133 @@
+---
+// 页脚（Paper W01「页脚」）。真实内容还在等 Martin 的批注，先照画板放，见 DESIGN-DIFF。
+import Logo from './Logo.astro';
+import ContactTrigger from './ContactTrigger.astro';
+import { COMPANY, EMAIL, LOGIN_URL, PHONE, PHONE_HREF } from '../site';
+---
+
+<footer class="footer on-dark">
+  <div class="wrap footer__inner">
+    <div class="footer__top">
+      <div class="footer__brand">
+        <Logo variant="footer" />
+        <p>AI + 注册安全工程师，为中小企业与安全服务机构编制应急预案。</p>
+      </div>
+      <div class="footer__cols">
+        <nav class="footer__col" aria-labelledby="footer-service">
+          <h2 id="footer-service">服务</h2>
+          <a href="/product/">服务内容</a>
+          <a href="/#how">工作方式</a>
+          <a href="/expertise/">交付样例</a>
+        </nav>
+        <nav class="footer__col" aria-labelledby="footer-genyun">
+          <h2 id="footer-genyun">耕云</h2>
+          <a href="/#about">关于耕云</a>
+          <ContactTrigger>预约演示</ContactTrigger>
+          <a href={LOGIN_URL}>客户登录</a>
+        </nav>
+        <div class="footer__col" id="contact">
+          <h2>联系</h2>
+          <a href={PHONE_HREF} class="phone">{PHONE}</a>
+          <a href={`mailto:${EMAIL}`}>{EMAIL}</a>
+          <span>惠州 · 人工智能产业园</span>
+        </div>
+      </div>
+    </div>
+    <div class="footer__bottom">
+      <p>© 2026 {COMPANY} · ICP 备案号（待补）</p>
+      <div class="footer__legal">
+        <a href="/terms/">服务协议</a>
+        <a href="/privacy/">隐私政策</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    background: var(--site-ink-deep);
+  }
+  .footer__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 48px;
+    padding-top: 72px;
+    padding-bottom: 40px;
+  }
+  .footer__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 48px;
+  }
+  .footer__brand {
+    width: 360px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .footer__brand p {
+    font-size: 14px;
+    line-height: 24px;
+    color: #ffffff80;
+  }
+  .footer__cols {
+    display: flex;
+    gap: 96px;
+  }
+  .footer__col {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .footer__col h2 {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-size: 11px;
+    line-height: 22px;
+    letter-spacing: 0.16em;
+    color: #ffffff80;
+  }
+  .footer__col :global(a),
+  .footer__col span {
+    font-size: 14px;
+    line-height: 22px;
+    color: #ffffffc7;
+  }
+  .footer__col :global(a:hover),
+  .footer__legal a:hover {
+    color: #fff;
+  }
+  .footer__bottom {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    padding-top: 24px;
+    border-top: 1px solid #ffffff14;
+    font-size: 12px;
+    line-height: 20px;
+    color: #ffffff80;
+  }
+  .footer__legal {
+    display: flex;
+    gap: 24px;
+  }
+  @media (max-width: 1000px) {
+    .footer__top {
+      flex-direction: column;
+    }
+    .footer__cols {
+      gap: 48px;
+      flex-wrap: wrap;
+    }
+  }
+  @media (max-width: 560px) {
+    .footer__brand {
+      width: auto;
+    }
+    .footer__bottom {
+      flex-direction: column;
+    }
+  }
+</style>

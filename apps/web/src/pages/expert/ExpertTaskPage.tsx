@@ -306,7 +306,7 @@ export function ExpertTaskPage() {
             ? { text: '生成部分失败', ...stage.error }
             : { text: '草稿已生成', ...stage.done };
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24, margin: '-16px 0 -24px', paddingBottom: 24 }}>
+      <div className="gy-wide-workbench" style={{ display: 'flex', flexDirection: 'column', gap: 24, margin: '-16px 0 -24px', paddingBottom: 24 }}>
         <header style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <nav aria-label="面包屑" style={{ ...text14, color: gy.secondary }}>
             <Link to="/expert" style={{ color: gy.secondary }}>
@@ -377,7 +377,7 @@ export function ExpertTaskPage() {
   const busy = save.isPending || saveProduction.isPending || saveRisk.isPending || saveScope.isPending || saveFigures.isPending;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, margin: '-16px 0 -24px' }}>
+    <div className="gy-wide-workbench" style={{ display: 'flex', flexDirection: 'column', gap: 16, margin: '-16px 0 -24px' }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <nav aria-label="面包屑" style={{ ...text14, color: gy.secondary }}>
           <Link to="/expert" style={{ color: gy.secondary }}>

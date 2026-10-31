@@ -392,7 +392,7 @@ export function EditView({
   const failed = state.kind === 'failed' ? state : null;
 
   return (
-    <div className="gy-edit-page" style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '-16px 0 -48px' }}>
+    <div className="gy-edit-page gy-wide-workbench" style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '-16px 0 -48px' }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <nav aria-label="面包屑" style={{ ...text14, color: gy.secondary }}>
           <Link to="/expert" style={{ color: gy.secondary }}>
