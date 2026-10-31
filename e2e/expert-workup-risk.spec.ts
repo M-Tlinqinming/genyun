@@ -44,6 +44,15 @@ test('周工按推荐候选取值，改值后等级跟着变，标不适用并�
   await fire.getByLabel('改值说明').press('Enter');
   await expect(fire).toContainText('成品仓紧邻车间，火灾可致数人伤亡。周工');
 
+  // LSR（报告第 3 章）：火灾默认可能性 2 × 严重性 2 = 4 可容忍；严重性改 5 → R = 10，中等
+  await expect(fire).toContainText('可容忍');
+  await fire.getByLabel('事件后果严重性').click();
+  await expect(basis(page)).toContainText('严重性 · 事件后果严重性取值参考');
+  await page.getByTitle('5　发生死亡，损失 50 万元以上').click();
+  await expect(fire).toContainText('10');
+  await expect(fire).toContainText('中等');
+  await expect(fire).toContainText('严重性 2 → 5');
+
   // 退出再进还在
   await page.reload();
   await page.getByRole('button', { name: /危险源辨识/ }).click();

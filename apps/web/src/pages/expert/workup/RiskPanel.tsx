@@ -1,18 +1,29 @@
 import { PlusOutlined } from '@ant-design/icons';
 import {
   accidentTypeOf,
+  defaultLsr,
   LEC_DIMENSIONS,
   LEC_KEYS,
   LEC_OPTIONS,
+  LSR_DIMENSIONS,
+  LSR_KEYS,
+  LSR_OPTIONS,
+  LSR_SHORT,
+  LSR_THRESHOLDS,
+  lsrLevel,
+  lsrScore,
   PLAN_TEMPLATES,
   PRODUCTION_LISTS,
   RISK_THRESHOLDS,
   riskLevel,
   joinWorkplaces,
+  riskRowValueOf,
   riskScore,
   workplacesOf,
-  type LecKey,
+  type LsrKey,
+  type LsrLevel,
   type ProductionList,
+  type RiskDimension,
   type RiskLevel,
   type RiskRow,
   type RiskRowValue,
@@ -34,6 +45,8 @@ const ellipsis: CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', 
 const lecCol: CSSProperties = { width: 28, flexShrink: 0, textAlign: 'center' };
 const dCol: CSSProperties = { width: 40, flexShrink: 0, textAlign: 'right' };
 const levelCol: CSSProperties = { width: 72, flexShrink: 0, paddingLeft: 8 };
+const rCol: CSSProperties = { width: 28, flexShrink: 0, textAlign: 'right' };
+const lsrLevelCol: CSSProperties = { width: 60, flexShrink: 0, paddingLeft: 8 };
 const sourceCol: CSSProperties = { width: 64, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' };
 
 // 作业场所多选：从设备使用地点、存放位置、建筑里选，也可以直接输入新的；存成「、」隔开的一格
@@ -74,16 +87,9 @@ function PlaceSelect({
 }
 
 const newRowId = () => `x${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-const valueOf = (r: RiskRow): RiskRowValue => ({
-  factor: r.factor,
-  workplace: r.workplace,
-  l: r.l,
-  e: r.e,
-  c: r.c,
-  ...(r.note ? { note: r.note } : {}),
-  ...(r.excluded ? { excluded: true } : {}),
-  ...(r.addressId ? { addressId: r.addressId } : {}),
-});
+const isLsr = (k: RiskDimension): k is LsrKey => (LSR_KEYS as string[]).includes(k);
+const dimensionOptions = (k: RiskDimension) => (isLsr(k) ? LSR_OPTIONS[k] : LEC_OPTIONS[k]);
+const dimensionTitle = (k: RiskDimension) => (isLsr(k) ? `${LSR_SHORT[k]} · ${LSR_DIMENSIONS[k]}` : `${k.toUpperCase()} · ${LEC_DIMENSIONS[k]}`);
 
 // 一照多址：危险源所在厂址（选填）；只有一处地址时不显示
 function SiteSelect({
@@ -143,6 +149,38 @@ function LevelTag({ level, excluded }: { level: RiskLevel; excluded?: boolean })
   return <Tag text={level} {...LEVEL_COLORS[level]} />;
 }
 
+// LSR 法（报告第 3 章）的风险等级
+const LSR_LEVEL_COLORS: Record<LsrLevel, { color: string; bg: string }> = {
+  轻微: stage.progress,
+  可容忍: stage.progress,
+  中等: stage.action,
+  重大风险: stage.error,
+  巨大风险: stage.error,
+};
+
+function LsrTag({ level, excluded }: { level: LsrLevel; excluded?: boolean }) {
+  if (excluded) return null;
+  return <Tag text={level} {...LSR_LEVEL_COLORS[level]} />;
+}
+
+// LSR 的可能性 / 严重性下拉，和 LEC 的 L 区分开，写成「可能性 2」
+function LsrSelect({ k, value, disabled, onFocus, onChange }: { k: LsrKey; value: number; disabled?: boolean; onFocus?: () => void; onChange: (v: number) => void }) {
+  return (
+    <Select
+      size="small"
+      aria-label={LSR_DIMENSIONS[k]}
+      value={value}
+      disabled={disabled}
+      onFocus={onFocus}
+      onChange={onChange}
+      popupMatchSelectWidth={false}
+      style={{ width: 92 }}
+      labelRender={({ value: v }) => `${LSR_SHORT[k]} ${v}`}
+      options={LSR_OPTIONS[k].map((o) => ({ value: o.value, label: `${o.value}　${o.label}` }))}
+    />
+  );
+}
+
 function clock(iso: string): string {
   return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
 }
@@ -152,8 +190,8 @@ export interface RiskPanelProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   // 当前看的取值维度（右栏显示这一维的取值参考）
-  dimension: LecKey;
-  onDimension: (key: LecKey) => void;
+  dimension: RiskDimension;
+  onDimension: (key: RiskDimension) => void;
   saving: boolean;
   onSave: (rowId: string, value: RiskRowValue | null) => Promise<boolean>;
   registerRow: (key: string, el: HTMLElement | null) => void;
@@ -181,7 +219,7 @@ export function RiskPanel(props: RiskPanelProps) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: `1px solid ${gy.split}` }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>危险源辨识</h2>
-        <span style={{ ...head, flex: 1, minWidth: 0, ...ellipsis }}>候选由设备与物料推导 · D = L × E × C</span>
+        <span style={{ ...head, flex: 1, minWidth: 0, ...ellipsis }}>候选由设备与物料推导 · D = L × E × C · R = 可能性 × 严重性</span>
         <button type="button" style={{ ...linkButton, fontSize: 14 }} onClick={() => setAdding(newRowId())}>
           <PlusOutlined /> 手动新增
         </button>
@@ -196,6 +234,8 @@ export function RiskPanel(props: RiskPanelProps) {
           ))}
           <span style={{ ...head, ...dCol }}>D</span>
           <span style={{ ...head, ...levelCol }}>等级</span>
+          <span style={{ ...head, ...rCol }}>R</span>
+          <span style={{ ...head, ...lsrLevelCol }}>R 等级</span>
           <span style={{ ...head, ...sourceCol }}>来源</span>
         </div>
         {adding && <AddRow key={adding} id={adding} places={view.placeOptions} {...props} onDone={() => setAdding(null)} />}
@@ -219,7 +259,7 @@ export function RiskPanel(props: RiskPanelProps) {
         )}
         <div style={{ display: 'flex', gap: 16, marginTop: 12, ...head }}>
           <span>{counted || '没有计入报告的危险源'}</span>
-          <span>结果写入风险评估报告 表 2-1</span>
+          <span>D 写入风险评估报告表 2.2-5，R 写入表 3.1-4</span>
         </div>
       </div>
     </section>
@@ -260,6 +300,10 @@ function RowCells({ row, site }: { row: RiskRow; site?: string }) {
       <span style={levelCol}>
         <LevelTag level={row.level} excluded={row.excluded} />
       </span>
+      <span style={{ ...cell, ...rCol, fontWeight: 500, ...muted }}>{row.r}</span>
+      <span style={lsrLevelCol}>
+        <LsrTag level={row.lsrLevel} excluded={row.excluded} />
+      </span>
       <SourceCell row={row} />
     </>
   );
@@ -274,7 +318,7 @@ function SelectedRow({ row, view, dimension, onDimension, saving, onSave, regist
     setNote(row.note ?? '');
   }, [row.workplace, row.note]);
 
-  const save = (patch: Partial<RiskRowValue>) => void onSave(row.id, { ...valueOf(row), ...patch });
+  const save = (patch: Partial<RiskRowValue>) => void onSave(row.id, { ...riskRowValueOf(row), ...patch });
   const saveText = (key: 'workplace' | 'note', text: string) => {
     const v = text.trim();
     if (key === 'workplace' && (!v || v === row.workplace)) return setWorkplace(row.workplace);
@@ -324,6 +368,10 @@ function SelectedRow({ row, view, dimension, onDimension, saving, onSave, regist
         <span style={levelCol}>
           <LevelTag level={row.level} excluded={row.excluded} />
         </span>
+        <span style={{ ...cell, ...rCol, fontWeight: 500 }}>{row.r}</span>
+        <span style={lsrLevelCol}>
+          <LsrTag level={row.lsrLevel} excluded={row.excluded} />
+        </span>
         <SourceCell row={row} />
       </div>
 
@@ -342,6 +390,9 @@ function SelectedRow({ row, view, dimension, onDimension, saving, onSave, regist
             labelRender={({ value }) => `${k.toUpperCase()} ${value}`}
             options={LEC_OPTIONS[k].map((o) => ({ value: o.value, label: `${o.value}　${o.label}` }))}
           />
+        ))}
+        {LSR_KEYS.map((k) => (
+          <LsrSelect key={k} k={k} value={row[k]} disabled={saving || row.excluded} onFocus={() => onDimension(k)} onChange={(v) => save({ [k]: v })} />
         ))}
         <PlaceSelect
           value={workplace}
@@ -402,8 +453,11 @@ function SelectedRow({ row, view, dimension, onDimension, saving, onSave, regist
 
 // 手动新增一行：危险有害因素、作业场所必填，取值先给一组常见值
 function AddRow({ id, places, saving, onSave, onSelect, onDone }: RiskPanelProps & { id: string; places: string[]; onDone: () => void }) {
-  const [value, setValue] = useState<RiskRowValue>({ factor: '', workplace: '', l: 1, e: 3, c: 7 });
+  const [value, setValue] = useState<RiskRowValue & { likelihood: number; severity: number }>({ factor: '', workplace: '', l: 1, e: 3, c: 7, ...defaultLsr('') });
+  // 没动过可能性 / 严重性时，跟着事故类型换默认值
+  const [lsrTouched, setLsrTouched] = useState(false);
   const d = riskScore(value);
+  const r = lsrScore(value);
   const ready = value.factor.trim() !== '' && value.workplace.trim() !== '';
   const submit = async () => {
     if (await onSave(id, { ...value, factor: value.factor.trim(), workplace: value.workplace.trim() })) {
@@ -424,7 +478,7 @@ function AddRow({ id, places, saving, onSave, onSelect, onDone }: RiskPanelProps
           placeholder="危险有害因素，如 水害"
           options={FACTOR_OPTIONS}
           value={value.factor}
-          onChange={(factor) => setValue((v) => ({ ...v, factor }))}
+          onChange={(factor) => setValue((v) => ({ ...v, factor, ...(lsrTouched ? {} : defaultLsr(factor)) }))}
           filterOption={(input, o) => String(o?.value).includes(input)}
           style={{ width: 168 }}
         />
@@ -442,6 +496,17 @@ function AddRow({ id, places, saving, onSave, onSelect, onDone }: RiskPanelProps
             options={LEC_OPTIONS[k].map((o) => ({ value: o.value, label: `${o.value}　${o.label}` }))}
           />
         ))}
+        {LSR_KEYS.map((k) => (
+          <LsrSelect
+            key={k}
+            k={k}
+            value={value[k]}
+            onChange={(n) => {
+              setLsrTouched(true);
+              setValue((v) => ({ ...v, [k]: n }));
+            }}
+          />
+        ))}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ ...small, flex: 1 }}>
@@ -450,6 +515,13 @@ function AddRow({ id, places, saving, onSave, onSelect, onDone }: RiskPanelProps
             <>
               {'　'}
               <LevelTag level={riskLevel(d)!} />
+            </>
+          )}
+          {'　'}R = {r}
+          {r !== undefined && (
+            <>
+              {'　'}
+              <LsrTag level={lsrLevel(r)!} />
             </>
           )}
         </span>
@@ -468,7 +540,7 @@ function AddRow({ id, places, saving, onSave, onSelect, onDone }: RiskPanelProps
 type BasisTab = 'basis' | 'table' | 'originals';
 const TABS: { key: BasisTab; label: string }[] = [
   { key: 'basis', label: '推导依据' },
-  { key: 'table', label: 'LEC 取值表' },
+  { key: 'table', label: '取值表' },
   { key: 'originals', label: '原件' },
 ];
 
@@ -481,10 +553,10 @@ export function RiskBasisPanel({
   originals,
 }: {
   row: RiskRow | undefined;
-  dimension: LecKey;
+  dimension: RiskDimension;
   saving: boolean;
   // 在取值参考里点一个值，直接改选中行
-  onPick: (key: LecKey, value: number) => void;
+  onPick: (key: RiskDimension, value: number) => void;
   onJump: (list: ProductionList) => void;
   originals: WorkupOriginal[];
 }) {
@@ -554,10 +626,8 @@ export function RiskBasisPanel({
                 )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span style={{ ...cell, fontWeight: 500 }}>
-                  {dimension.toUpperCase()} · {LEC_DIMENSIONS[dimension]}取值参考
-                </span>
-                {LEC_OPTIONS[dimension].map((o) => {
+                <span style={{ ...cell, fontWeight: 500 }}>{dimensionTitle(dimension)}取值参考</span>
+                {dimensionOptions(dimension).map((o) => {
                   const current = row[dimension] === o.value;
                   const suggested = row.suggested?.[dimension] === o.value;
                   return (
@@ -585,7 +655,7 @@ export function RiskBasisPanel({
                   );
                 })}
               </div>
-              <span style={head}>{RISK_THRESHOLDS}</span>
+              <span style={head}>{isLsr(dimension) ? LSR_THRESHOLDS : RISK_THRESHOLDS}</span>
             </>
           ) : (
             <Empty style={{ margin: 'auto' }} image={Empty.PRESENTED_IMAGE_SIMPLE} description="选中一项危险源查看推导依据" />
@@ -595,11 +665,10 @@ export function RiskBasisPanel({
 
       {tab === 'table' && (
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16, padding: 16 }}>
+          <span style={{ ...head, fontWeight: 500 }}>LEC 法 · 报告第 2 章</span>
           {LEC_KEYS.map((k) => (
             <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ ...cell, fontWeight: 500 }}>
-                {k.toUpperCase()} · {LEC_DIMENSIONS[k]}
-              </span>
+              <span style={{ ...cell, fontWeight: 500 }}>{dimensionTitle(k)}</span>
               {LEC_OPTIONS[k].map((o) => (
                 <span key={o.value} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 10px', ...small }}>
                   <span style={{ color: gy.secondary }}>{o.value}</span>
@@ -609,6 +678,19 @@ export function RiskBasisPanel({
             </div>
           ))}
           <span style={head}>{RISK_THRESHOLDS}</span>
+          <span style={{ ...head, fontWeight: 500, marginTop: 8 }}>LSR 法 · 报告第 3 章</span>
+          {LSR_KEYS.map((k) => (
+            <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ ...cell, fontWeight: 500 }}>{dimensionTitle(k)}</span>
+              {LSR_OPTIONS[k].map((o) => (
+                <span key={o.value} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 10px', ...small }}>
+                  <span style={{ color: gy.secondary }}>{o.value}</span>
+                  <span>{o.label}</span>
+                </span>
+              ))}
+            </div>
+          ))}
+          <span style={head}>{LSR_THRESHOLDS}</span>
         </div>
       )}
 
@@ -637,7 +719,7 @@ export function RiskBasisPanel({
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: `1px solid ${gy.split}`, ...head }}>
-        <span style={{ flex: 1 }}>GB 6441-2025 · LEC 法</span>
+        <span style={{ flex: 1 }}>GB 6441-2025 · LEC 法 · LSR 法</span>
         {tab !== 'table' && (
           <button type="button" style={{ ...linkButton, fontSize: 13 }} onClick={() => setTab('table')}>
             查看全表

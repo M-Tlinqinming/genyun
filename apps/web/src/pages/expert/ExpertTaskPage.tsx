@@ -7,6 +7,7 @@ import {
   PRODUCTION_LIST_KEYS,
   PRODUCTION_LISTS,
   productionView,
+  riskRowValueOf,
   riskView,
   SCOPE_GROUP_KEYS,
   SCOPE_GROUPS,
@@ -18,7 +19,7 @@ import {
   type Fact,
   type FactSection,
   type FactValue,
-  type LecKey,
+  type RiskDimension,
   type ProductionList,
   type RiskRowValue,
   type ScopeGroup,
@@ -84,7 +85,7 @@ export function ExpertTaskPage() {
   // 中栏显示哪个模块：企业事实、生产设备与物料的某一类清单、危险源辨识、适用范围或图件
   const [module, setModule] = useState<'facts' | 'risks' | 'scope' | 'figures' | ProductionList>('facts');
   const [riskId, setRiskId] = useState<string | null>(null);
-  const [dimension, setDimension] = useState<LecKey>('c');
+  const [dimension, setDimension] = useState<RiskDimension>('c');
   const [scopeGroup, setScopeGroup] = useState<ScopeGroup | null>(null);
   const [scopeKey, setScopeKey] = useState<ScopeKey | null>(null);
   const sections = useRef(new Map<FactSection, HTMLElement>());
@@ -393,7 +394,7 @@ export function ExpertTaskPage() {
           )}
           <ModuleButton
             title="危险源辨识"
-            sub="LEC 法风险评价"
+            sub="LEC · LSR 法风险评价"
             active={module === 'risks'}
             count={`${risks?.rows.filter((r) => !r.excluded).length ?? 0} 项`}
             warn={false}
@@ -575,8 +576,7 @@ export function ExpertTaskPage() {
             saving={saveRisk.isPending}
             onPick={(key, value) => {
               if (!selectedRisk) return;
-              const { factor, workplace, l, e, c, note, excluded } = selectedRisk;
-              void saveRiskRow(selectedRisk.id, { factor, workplace, l, e, c, note, excluded: excluded || undefined, [key]: value });
+              void saveRiskRow(selectedRisk.id, { ...riskRowValueOf(selectedRisk), [key]: value });
             }}
             onJump={setModule}
             originals={originals}
