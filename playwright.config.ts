@@ -6,6 +6,8 @@ const DB = '.data/e2e-db';
 // 例如 E2E_API_PORT=3200 E2E_WEB_PORT=5274 npx playwright test。不设时仍是 3100 / 5174
 const API_PORT = process.env.E2E_API_PORT ?? '3100';
 const WEB_PORT = process.env.E2E_WEB_PORT ?? '5174';
+// 官网（静态页面）的端口：默认放在 C 线的 33xx 段，也可用 E2E_SITE_PORT 改
+const SITE_PORT = process.env.E2E_SITE_PORT ?? '3322';
 const WEB_URL = `http://localhost:${WEB_PORT}`;
 const API_URL = `http://localhost:${API_PORT}`;
 // 营业执照识别用模拟服务：不看图片，总是返回同一组样例内容
@@ -40,6 +42,14 @@ export default defineConfig({
       url: `${WEB_URL}/login`,
       env: { API_TARGET: API_URL },
       reuseExistingServer: false,
+    },
+    {
+      // 官网是静态页面：测构建出来的结果（site.spec）。CI 只在这里构建一次官网
+      // --ignore-lock：本机另开着官网 preview 时也能起来
+      command: `npm run build -w @genyun/site && npm run preview -w @genyun/site -- --port ${SITE_PORT} --ignore-lock`,
+      url: `http://localhost:${SITE_PORT}/`,
+      reuseExistingServer: false,
+      timeout: 180_000,
     },
   ],
 });

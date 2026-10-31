@@ -1,0 +1,186 @@
+---
+// 「预约演示 / 上线时通知我 / 索取完整样例」共用的联系窗口。
+// 官网暂不收集任何表单信息（隐私说明未定稿），只给电话和企业微信二维码。
+// 二维码是 Paper 里的占位图，拿到真实二维码后替换 public/images/wechat-qr.webp。
+import { PHONE, PHONE_HREF } from '../site';
+---
+
+<dialog class="contact" id="contact-dialog" aria-labelledby="contact-title">
+  <div class="contact__body">
+    <button type="button" class="contact__close" data-close aria-label="关闭">
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+      </svg>
+    </button>
+    <h2 id="contact-title" class="contact__title" data-title>预约演示</h2>
+    <p class="contact__text" data-text>
+      打电话或扫码加企业微信，约一个您方便的时间。用您手上的一家企业，走一遍从填报到交付的全过程。
+    </p>
+    <div class="contact__ways">
+      <div class="contact__phone">
+        <span class="contact__label">产品咨询</span>
+        <a href={PHONE_HREF} class="contact__number phone">{PHONE}</a>
+      </div>
+      <figure class="contact__qr">
+        <img src="/images/wechat-qr.webp" width="176" height="176" alt="企业微信二维码（占位图，正式二维码待替换）" loading="lazy" />
+        <figcaption>企业微信 · 扫码添加<span class="contact__hint"><br />手机上可长按识别</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  const dialog = document.getElementById('contact-dialog') as HTMLDialogElement | null;
+  const copy: Record<string, { title: string; text: (item?: string) => string }> = {
+    demo: {
+      title: '预约演示',
+      text: () => '打电话或扫码加企业微信，约一个您方便的时间。用您手上的一家企业，走一遍从填报到交付的全过程。',
+    },
+    notify: {
+      title: '上线时通知我',
+      // 两句各占一行（white-space: pre-line），不让模块名被折断
+      text: (item) => `${item ?? '新功能'}上线时，我们第一时间告诉您。\n扫码加企业微信，或打电话给我们留个联系方式。`,
+    },
+    sample: {
+      title: '索取完整样例',
+      text: () => '打电话或扫码加企业微信，我们把脱敏样例发给您。',
+    },
+  };
+
+  if (dialog && typeof dialog.showModal === 'function') {
+    const title = dialog.querySelector('[data-title]')!;
+    const text = dialog.querySelector('[data-text]')!;
+    let opener: HTMLElement | null = null;
+
+    document.addEventListener('click', (event) => {
+      const trigger = (event.target as Element).closest<HTMLElement>('[data-contact]');
+      if (!trigger) return;
+      event.preventDefault();
+      const c = copy[trigger.dataset.contact ?? 'demo'] ?? copy.demo;
+      title.textContent = c.title;
+      text.textContent = c.text(trigger.dataset.item);
+      opener = trigger;
+      dialog.showModal();
+    });
+
+    dialog.addEventListener('click', (event) => {
+      // 点遮罩或关闭按钮都关掉
+      if (event.target === dialog || (event.target as Element).closest('[data-close]')) dialog.close();
+    });
+    dialog.addEventListener('close', () => opener?.focus());
+  }
+</script>
+
+<style>
+  .contact {
+    width: min(560px, calc(100vw - 32px));
+    padding: 0;
+    border: 0;
+    border-radius: 12px;
+    background: #fff;
+    color: var(--site-heading);
+    box-shadow: var(--shadow-card);
+  }
+  .contact::backdrop {
+    background: #071a33b3;
+  }
+  .contact__body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 40px;
+    border-top: 4px solid var(--site-gold-deep);
+  }
+  .contact__close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--site-body);
+    cursor: pointer;
+  }
+  .contact__close:hover {
+    background: var(--gy-brand-paper);
+  }
+  .contact__title {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 28px;
+    line-height: 40px;
+  }
+  .contact__text {
+    font-size: 15px;
+    line-height: 26px;
+    color: var(--site-body);
+    white-space: pre-line;
+    /* 最后一行不只剩一两个字 */
+    text-wrap: pretty;
+  }
+  .contact__ways {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--site-line);
+  }
+  .contact__phone {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .contact__label {
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--site-body);
+  }
+  .contact__number {
+    font-size: 24px;
+    line-height: 34px;
+    color: var(--site-heading);
+  }
+  .contact__number:hover {
+    color: var(--site-link);
+  }
+  .contact__qr {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .contact__qr img {
+    width: 136px;
+    height: 136px;
+  }
+  .contact__qr figcaption {
+    text-align: center;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--site-body);
+  }
+  /* 只有手机（触屏或窄屏）才提示长按识别；电脑上用手机扫码 */
+  .contact__hint {
+    display: none;
+  }
+  @media (hover: none), (max-width: 768px) {
+    .contact__hint {
+      display: inline;
+    }
+  }
+  @media (max-width: 520px) {
+    .contact__body {
+      padding: 32px 24px;
+    }
+    .contact__ways {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+</style>
