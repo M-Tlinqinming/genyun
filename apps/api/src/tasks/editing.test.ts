@@ -160,6 +160,8 @@ describe('正文编辑', () => {
       ],
       rev: 0,
       saved: null,
+      // 表格内容只读显示
+      locked: [{ index: 1, kind: 'table', header: [['姓名']], rows: [['陈某']] }],
     });
     await zhou.get(url('plan', '/sections/nope')).expect(404);
   });
