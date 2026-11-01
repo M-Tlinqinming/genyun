@@ -391,6 +391,11 @@ export function ExpertTaskPage() {
                 );
               })}
             </ol>
+            {view !== 'supplement' && (
+              <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => startSupplement()}>
+                {supplementOpen ? '查看事实补件' : '发起事实补件'}
+              </button>
+            )}
             <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setShowRecords(true)}>
               处理记录{contacts.data?.length ? `（${contacts.data.length}）` : ''}
             </button>
