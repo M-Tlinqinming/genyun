@@ -1,9 +1,11 @@
-import { DELIVERY_DOC_SUMMARY, type DeliveredVersion, type TaskDeliveries } from '@genyun/shared';
+import { DELIVERY_DOC_SUMMARY, deliveryLabel, type DeliveredVersion, type TaskDeliveries } from '@genyun/shared';
 import { App, Button, Result, Tooltip } from 'antd';
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { downloadBundle, downloadWord, useTaskDeliveries } from '../../../api/deliveries';
 import { ContactLink } from '../../../components/ContactLink';
+import { FeedbackModal } from '../../../components/FeedbackModal';
+import { useWorkspace } from '../../../layouts/workspace';
 import { Loading } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
 import { card, MissingVersion, NOT_READABLE, pickVersion, stampFull, text14, textLink, textLinkDisabled, versionText } from './shared';
@@ -35,6 +37,7 @@ export function DeliveryPage() {
 
 function Delivery({ data, current, isLatest, missing }: { data: TaskDeliveries; current: DeliveredVersion; isLatest: boolean; missing: string | null }) {
   const { message } = App.useApp();
+  const { orgId } = useWorkspace();
   const [bundling, setBundling] = useState(false);
   const v = versionText(current.version);
   const bundle = async () => {
@@ -167,9 +170,12 @@ function Delivery({ data, current, isLatest, missing }: { data: TaskDeliveries; 
           <span style={{ fontSize: 16, lineHeight: '22px', fontWeight: 500, color: gy.text }}>发现文稿问题或企业情况变化？</span>
           <span style={{ ...text14, color: gy.text }}>文稿更正与新增企业事实分别处理；反馈不会影响当前成果下载。</span>
           <div style={{ display: 'flex', gap: 24 }}>
-            <ContactLink
+            <FeedbackModal
+              orgId={orgId}
+              source="delivery"
               title="反馈文稿问题"
-              hint="请告诉耕云是哪份文档、哪一处需要更正，注安师核实后会发布新的交付版本。"
+              intro="请告诉耕云是哪份文档、哪一处需要更正。耕云受理后会安排注安师核实，需要更正时发布新的交付版本，当前版本照常可用。"
+              context={{ taskId: data.taskId, deliveryVersion: current.version, label: `${data.enterpriseName} · ${data.taskNumber} · ${deliveryLabel(current.version)}` }}
               trigger={(open) => (
                 <button type="button" style={textLink} onClick={open}>
                   反馈文稿问题

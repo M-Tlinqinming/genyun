@@ -51,6 +51,8 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
           { path: '/customer/enterprises', label: '企业', icon: <BankOutlined /> },
           { path: '/customer/tasks', label: '业务任务', icon: <ProfileOutlined /> },
           { path: '/customer/documents', label: '成果文档', icon: <FileTextOutlined /> },
+          // 我的反馈：平时不在菜单里，从站内提醒、反馈提交成功、成果文档页进入
+          { path: '/customer/feedback', label: '我的反馈', icon: <MessageOutlined />, onlyWhenActive: true },
         ],
       },
       {

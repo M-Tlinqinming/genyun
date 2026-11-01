@@ -42,7 +42,7 @@ test.afterAll(async () => {
 test('运营概览：四个统计、今天先处理、年度服务、最近操作', async () => {
   await expect(page.getByRole('heading', { name: '运营概览', level: 1 })).toBeVisible();
   const stats = page.getByRole('region', { name: '运营统计' });
-  for (const label of ['客户组织', '在办任务', '本月交付', '需要运营兜底']) await expect(stats).toContainText(label);
+  for (const label of ['客户组织', '在办任务', '本月交付', '待跟进反馈']) await expect(stats).toContainText(label);
   await expect(page.getByRole('region', { name: '今天先处理' })).toBeVisible();
   await expect(page.getByRole('region', { name: '客户年度服务' })).toContainText('服务中');
   await expect(page.getByRole('region', { name: '最近操作' })).toBeVisible();

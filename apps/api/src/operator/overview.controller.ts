@@ -1,5 +1,6 @@
 import {
   chinaToday,
+  feedbackTitle,
   contractState,
   INTERNAL_ROLE_LABELS,
   invitationState,
@@ -20,6 +21,7 @@ import {
   auditLogs,
   deliveries,
   enterprises,
+  feedback,
   memberships,
   onSiteRequests,
   organizationInvitations,
@@ -48,7 +50,7 @@ export class OperatorOverviewController {
     const now = new Date();
     const today = chinaToday(now);
 
-    const [orgRows, taskRows, overdue, orders, invitations, delivered, recent] = await Promise.all([
+    const [orgRows, taskRows, overdue, orders, invitations, delivered, recent, feedbackRows] = await Promise.all([
       this.db
         .select({
           id: organizations.id,
@@ -136,6 +138,23 @@ export class OperatorOverviewController {
         .where(notInArray(auditLogs.action, ACCOUNT_ACTIONS))
         .orderBy(desc(auditLogs.at), desc(auditLogs.id))
         .limit(5),
+      // 反馈受理：待受理、处理中（已关闭的不算）
+      this.db
+        .select({
+          id: feedback.id,
+          status: feedback.status,
+          content: feedback.content,
+          createdAt: feedback.createdAt,
+          deliveryVersion: feedback.deliveryVersion,
+          orgName: organizations.name,
+          enterpriseName: enterprises.name,
+          taskNumber: tasks.number,
+        })
+        .from(feedback)
+        .innerJoin(organizations, eq(organizations.id, feedback.orgId))
+        .leftJoin(enterprises, eq(enterprises.id, feedback.enterpriseId))
+        .leftJoin(tasks, eq(tasks.id, feedback.taskId))
+        .where(inArray(feedback.status, ['new', 'processing'])),
     ]);
 
     const orgs = orgRows.map((o) => {
@@ -190,6 +209,20 @@ export class OperatorOverviewController {
         since: (t.submittedAt ?? now).toISOString(),
         action: '分派注安师',
         link: `/operator/tasks?task=${t.id}`,
+      });
+    }
+    // 待受理反馈（处理中的不放进今天先处理，在反馈受理页里跟进）
+    for (const f of feedbackRows.filter((x) => x.status === 'new')) {
+      const subtitle = f.taskNumber ? `${f.taskNumber}${f.deliveryVersion ? ` · 已交付 V${f.deliveryVersion}` : ''}` : f.orgName;
+      todos.push({
+        kind: 'feedback',
+        id: f.id,
+        title: f.enterpriseName ?? f.orgName,
+        subtitle,
+        note: `“${feedbackTitle(f.content)}”${f.deliveryVersion ? '，不影响已交付成果' : ''}`,
+        since: f.createdAt.toISOString(),
+        action: '受理反馈',
+        link: `/operator/feedback?id=${f.id}`,
       });
     }
     for (const t of overdue) {
@@ -252,6 +285,10 @@ export class OperatorOverviewController {
       },
       deliveries: { thisMonth: delivered.length },
       followUps: { overdue: overdue.length, onSiteNew: orders.length },
+      feedback: {
+        new: feedbackRows.filter((f) => f.status === 'new').length,
+        processing: feedbackRows.filter((f) => f.status === 'processing').length,
+      },
       todos,
       services,
       recent: recent.map((r) => ({ ...r, at: r.at.toISOString() })),

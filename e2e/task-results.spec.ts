@@ -81,10 +81,18 @@ test('客户在成果文档里看到交付 V1，在线阅读，下载三份 Word
     ['惠阳飞宇电器有限公司应急预案.docx', '惠阳飞宇电器有限公司应急资源调查报告.docx', '惠阳飞宇电器有限公司风险评估报告.docx'].sort(),
   );
 
-  // 反馈入口：联系耕云，不显示注安师电话
+  // 反馈入口：提交给耕云受理（带上这个任务和交付版本），不显示注安师电话
   await page.getByRole('button', { name: '反馈文稿问题' }).click();
-  await expect(page.getByRole('dialog', { name: '反馈文稿问题' })).toContainText('0752-5200831');
-  await page.keyboard.press('Escape');
+  const feedback = page.getByRole('dialog', { name: '反馈文稿问题' });
+  await expect(feedback).toContainText('惠阳飞宇电器有限公司 · ');
+  await expect(feedback).toContainText('交付 V1');
+  await expect(feedback).not.toContainText(/1[3-9]\d[ -]?\d{4}[ -]?\d{4}/);
+  await feedback.getByLabel('您的意见').fill('应急预案第 3 页值班电话写错了');
+  await feedback.getByRole('button', { name: '提交反馈' }).click();
+  await expect(page.getByRole('dialog')).toContainText('感谢您的反馈');
+  await page.getByRole('dialog').getByRole('button', { name: '返回原页面' }).click();
+  // 反馈不影响成果：交付详情照常可下载
+  await expect(page.getByRole('button', { name: '下载整套 Word' })).toBeEnabled();
 
   // 在线阅读（R06）：发布时那一版的版式，可翻页
   await page.getByRole('link', { name: '在线阅读 惠阳飞宇电器有限公司应急预案.docx' }).click();

@@ -1,4 +1,4 @@
-import { LogoutOutlined, QuestionCircleOutlined, UserOutlined } from '@ant-design/icons';
+import { CommentOutlined, LogoutOutlined, QuestionCircleOutlined, UserOutlined } from '@ant-design/icons';
 import { ROLES, type Workspace } from '@genyun/shared';
 import { Avatar, Button, Divider, Dropdown, Layout, Menu, Select, Spin, Typography } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
 import { useOperatorOverview } from '../api/operatorOverview';
 import { ContactLink } from '../components/ContactLink';
+import { FeedbackModal } from '../components/FeedbackModal';
 import { Logo } from '../components/Logo';
 import { membershipsIn, useLogout, useSession } from '../auth/session';
 import { gy, layout } from '../theme/tokens';
@@ -20,7 +21,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [orgId, setOrgId] = useState<string>();
-  // 运营侧栏的角标：客户组织 = 待开通，任务中心 = 待分派 + 超时兜底 + 新上门工单（Paper 16 页侧栏）
+  // 运营侧栏的角标：客户组织 = 待开通，任务中心 = 待分派 + 超时兜底 + 新上门工单，反馈受理 = 待受理（Paper 16 页侧栏）
   const isOperator = workspace === 'operator' && Boolean(session.data && membershipsIn(session.data, 'operator').length > 0);
   const overview = useOperatorOverview(isOperator);
 
@@ -46,6 +47,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
     if (!o) return 0;
     if (path === '/operator/organizations') return o.orgs.pending;
     if (path === '/operator/tasks') return o.tasks.unassigned + o.followUps.overdue + o.followUps.onSiteNew;
+    if (path === '/operator/feedback') return o.feedback.new;
     return 0;
   };
 
@@ -154,6 +156,16 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
         >
           <Typography.Text type="secondary">{nav.headerTitle}</Typography.Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            {nav.showContact && (
+              <FeedbackModal
+                orgId={current.orgId}
+                trigger={(open) => (
+                  <Button type="text" icon={<CommentOutlined />} style={{ color: gy.secondary, padding: 0 }} onClick={open}>
+                    意见反馈
+                  </Button>
+                )}
+              />
+            )}
             {nav.showContact && (
               <ContactLink
                 trigger={(open) => (
