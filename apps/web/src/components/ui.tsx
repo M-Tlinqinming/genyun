@@ -5,6 +5,14 @@ import { gy } from '../theme/tokens';
 
 // 页面上反复出现的几种基础样式与组件，只在这里写一份；页面里不再各写各的（设计对齐第 2 步）
 
+// 表单必填星号放在标签后面（登记、开通弹窗和接受邀请一致）
+export const requiredAfter = (label: ReactNode, { required }: { required: boolean }) => (
+  <>
+    {label}
+    {required && <span style={{ color: gy.error, marginLeft: 4 }}>*</span>}
+  </>
+);
+
 // 白底卡片面板
 export const panel: CSSProperties = { borderRadius: 8, background: gy.surface, border: `1px solid ${gy.split}` };
 

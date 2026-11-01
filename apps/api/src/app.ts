@@ -20,6 +20,7 @@ import { LicenseReader, LicenseRecognitionController } from './license/license-r
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
 import { NotificationsController, NotificationsService } from './notifications/notifications.service.ts';
 import { defaultMailer, MAILER, type Mailer } from './mail/mailer.ts';
+import { InvitationsController } from './orgs/invitations.controller.ts';
 import { OperatorOrgsController } from './orgs/operator-orgs.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
@@ -72,6 +73,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       AuthController,
       OrgsController,
       OperatorOrgsController,
+      InvitationsController,
       EnterprisesController,
       EnterpriseProfileController,
       TasksController,
@@ -134,6 +136,18 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       limit: options.loginLimitPerMinute ?? 10,
       standardHeaders: 'draft-8',
       legacyHeaders: false,
+      message: { statusCode: 429, message: '尝试次数过多，请一分钟后再试' },
+    }),
+  );
+  // 接受邀请（设置密码）也限流，与登录相同
+  app.use(
+    '/api/invitations',
+    rateLimit({
+      windowMs: 60_000,
+      limit: options.loginLimitPerMinute ?? 10,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      skip: (req) => req.method !== 'POST',
       message: { statusCode: 429, message: '尝试次数过多，请一分钟后再试' },
     }),
   );

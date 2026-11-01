@@ -1,7 +1,7 @@
 import { checkedCount, checkValid, DRAFT_KINDS, REVIEW_NOTE_DEFAULT, REVIEW_NOTE_MAX, reviewValid, type DraftKind, type ReviewView } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Checkbox, Input, Result } from 'antd';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router';
 import { ApiError } from '../../../api/request';
 import { concludeReview, reviewKey, useReview } from '../../../api/review';
@@ -16,7 +16,8 @@ import { stamp } from './EditDialogs';
 const STAGES = ['资料核实', '专业编制', '审核与修订', '成果发布'];
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const panel: CSSProperties = { background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 6 };
-const cell: CSSProperties = { ...text14, padding: '16px 24px', textAlign: 'left', borderBottom: `1px solid ${gy.split}` };
+const cell: CSSProperties = { ...text14, padding: '22px 24px', textAlign: 'left', borderBottom: `1px solid ${gy.split}` };
+const head: CSSProperties = { ...cell, padding: '14px 24px' };
 
 export function ConclusionView({
   taskId,
@@ -39,12 +40,21 @@ export function ConclusionView({
   const [noteError, setNoteError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showRecords, setShowRecords] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement | null>(null);
 
   // 已有结论（包括失效的）时，结论框里放上次写的
   const lastNote = review.data?.review?.note;
   useEffect(() => {
     if (lastNote) setNote(lastNote);
   }, [lastNote]);
+
+  // 进到这一页、确认审核通过以后：焦点放到标题上
+  const passedNow = review.data ? reviewValid(review.data) : false;
+  const loaded = review.data !== undefined;
+  useEffect(() => {
+    if (loaded) titleRef.current?.focus();
+  }, [loaded, passedNow]);
 
   if (review.isLoading) return <Loading />;
   if (review.isError) {
@@ -79,6 +89,7 @@ export function ConclusionView({
     const trimmed = note.trim();
     if (!trimmed) {
       setNoteError('请填写审核结论');
+      noteRef.current?.focus();
       return;
     }
     setSaving(true);
@@ -94,6 +105,7 @@ export function ConclusionView({
         message.warning(err.message);
       } else if (err instanceof ApiError && err.status === 400) {
         setNoteError(err.message);
+        noteRef.current?.focus();
       } else {
         message.error('审核结论没有记下，请检查网络后重试');
       }
@@ -103,7 +115,7 @@ export function ConclusionView({
   };
 
   return (
-    <div className="gy-wide-workbench" style={{ display: 'flex', flexDirection: 'column', gap: 24, margin: '-16px 0 -24px', paddingBottom: 24 }}>
+    <div className="gy-review-page gy-wide-workbench" style={{ display: 'flex', flexDirection: 'column', gap: 24, margin: '-16px 0 -24px', paddingBottom: 24 }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <nav aria-label="面包屑" style={{ ...text14, color: gy.secondary }}>
           <Link to="/expert" style={{ color: gy.secondary }}>
@@ -137,7 +149,8 @@ export function ConclusionView({
         </div>
       </header>
 
-      <h2 style={{ margin: 0, fontSize: 24, lineHeight: '32px', fontWeight: 500, color: gy.text }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <h2 ref={titleRef} tabIndex={-1} data-page-title style={{ margin: 0, fontSize: 24, lineHeight: '32px', fontWeight: 500, color: gy.text }}>
         {passed ? '本次审核已通过' : allChecked ? '三份文稿已核对，确认本次审核结论' : '还有文稿没有核对'}
       </h2>
       {passed ? (
@@ -155,13 +168,14 @@ export function ConclusionView({
           人工核对 {count} / 3 · {pending.map((d) => DRAFT_KINDS[d.kind]).join('、')}还没有核对当前稿，三份都核对后才能确认审核结论。
         </Banner>
       )}
+      </div>
 
       <section aria-label="三份文稿的核对记录" style={{ ...panel, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ background: gy.canvas }}>
               {['文档', '本次保存稿', '人工核对记录', '操作'].map((h) => (
-                <th key={h} scope="col" style={{ ...cell, fontWeight: 500, color: gy.text }}>
+                <th key={h} scope="col" style={{ ...head, fontWeight: 500, color: gy.text }}>
                   {h}
                 </th>
               ))}
@@ -205,6 +219,9 @@ export function ConclusionView({
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <Input.TextArea
+                ref={(r) => {
+                  noteRef.current = r?.resizableTextArea?.textArea ?? null;
+                }}
                 id="review-note"
                 value={note}
                 maxLength={REVIEW_NOTE_MAX}

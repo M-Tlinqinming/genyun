@@ -13,6 +13,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { uploadContractFile, useOpenOrg, useOperatorOrg, type ContractFile } from '../../api/operator';
+import { ApiError } from '../../api/request';
 import { inlineUrl } from '../../api/workup';
 import { linkButton, linkButtonSmall, Loading } from '../../components/ui';
 import { gy } from '../../theme/tokens';
@@ -57,6 +58,8 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
   const [adminName, setAdminName] = useState('');
   const [adminPhone, setAdminPhone] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
+  // 邮箱已有耕云账号等，接口指明是邮箱的问题时显示在邮箱下面
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editingOrg, setEditingOrg] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
@@ -146,7 +149,10 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
         else message.warning('已开通，但邀请邮件没发出去。请稍后在组织详情里重新发送');
         onClose();
       },
-      onError: (err) => message.error(err.message),
+      onError: (err) => {
+        if (err instanceof ApiError && err.body?.field === 'email') setEmailError(err.message);
+        else message.error(err.message);
+      },
     });
   };
 
@@ -361,9 +367,19 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
                     id={`${id}-admin-email`}
                     type="email"
                     value={adminEmail}
-                    onChange={(e) => touch(setAdminEmail)(e.target.value)}
+                    status={emailError ? 'error' : undefined}
+                    aria-describedby={emailError ? `${id}-admin-email-error` : undefined}
+                    onChange={(e) => {
+                      touch(setAdminEmail)(e.target.value);
+                      setEmailError(null);
+                    }}
                   />
                 </Field>
+                {emailError && (
+                  <div id={`${id}-admin-email-error`} role="alert" style={{ ...hint, color: gy.error }}>
+                    {emailError}
+                  </div>
+                )}
                 <div style={hint}>
                   邀请链接发到邮箱，{INVITATION_TTL_DAYS} 天内有效；对方没收到可提醒查看垃圾邮件，或在组织详情中重新发送。
                 </div>

@@ -273,6 +273,9 @@ describe('审核结论', () => {
     const done: ReviewView = (await zhou.post(reviewUrl()).send({ note, versions }).expect(201)).body;
     expect(done.review).toMatchObject({ note, byName: '周工', versions });
     expect(reviewValid(done)).toBe(true);
+    // 已经有效通过时再确认：原样返回，不覆盖审核时间、审核人和结论
+    const repeat: ReviewView = (await zhou.post(reviewUrl()).send({ note: '换一句结论', versions }).expect(201)).body;
+    expect(repeat.review).toEqual(done.review);
 
     await saveSection(zhou, 'risk', '风险评估改过的措辞。');
     const after: ReviewView = (await zhou.get(reviewUrl()).expect(200)).body;
