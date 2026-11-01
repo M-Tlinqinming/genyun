@@ -17,6 +17,28 @@ export interface NewInvitation {
   phone: string | null;
   invitedBy: string;
   inviterName: string;
+  // 重发或更换后发的新邮件：写明以最新一封为准
+  resend?: boolean;
+}
+
+export const EMAIL_HAS_ACCOUNT = '这个邮箱已经有耕云账号，请换一个邮箱';
+
+// 有效期写到分钟（北京时间），收信人不用自己算 7 天
+function expiresText(d: Date): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return `${p.year} 年 ${p.month} 月 ${p.day} 日 ${p.hour}:${p.minute}`;
 }
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -41,15 +63,18 @@ export async function createInvitation(db: Database | Tx, inv: NewInvitation) {
   const link = appLink(`/invite/${token}`);
   const mail = {
     to: inv.email,
-    subject: `耕云：${inv.inviterName}邀请您加入「${inv.orgName}」`,
+    subject: `${inv.inviterName}邀请您加入「${inv.orgName}」`,
     text: [
       `${inv.name}，您好：`,
       '',
-      `${inv.inviterName}邀请您以${inv.role === 'customer_admin' ? '管理员' : '成员'}身份加入耕云工作空间「${inv.orgName}」。打开下面的链接，设置登录密码后即可开始使用：`,
+      `${inv.inviterName}邀请您以${inv.role === 'customer_admin' ? '机构管理员' : '成员'}身份加入耕云工作空间「${inv.orgName}」。打开下面的链接，设置登录密码后即可开始使用：`,
       link,
       '',
-      `链接 ${INVITATION_TTL_DAYS} 天内有效，只能使用一次。不认识这个机构？忽略这封邮件即可，链接过期后会自动失效。`,
-      '如有疑问请致电耕云 0752-5200831。',
+      `链接有效期至 ${expiresText(expiresAt)}（北京时间），只能使用一次。`,
+      ...(inv.resend ? ['这是重新发送的邀请，之前的邀请链接已作废，请以最新一封为准。'] : []),
+      '不认识这个机构？忽略这封邮件即可，链接过期后会自动失效。如有疑问请致电耕云 0752-5200831。',
+      '',
+      '耕云团队',
     ].join('\n'),
   };
   return { id: row!.id, expiresAt, mail };

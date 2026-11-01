@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, request, test, type Page } from '@playwright/test';
 
-// 用吴工（expert2@）测：别的测试文件很少用他；改过的密码、姓名在最后改回去
+// 用吴工（expert2@）测：别的测试文件很少用他；改过的密码、姓名在每个测试后改回去
 const EMAIL = 'expert2@demo.genyun.net.cn';
 const PASSWORD = 'e2e-password';
 const OUTBOX = join(__dirname, '..', 'apps', 'api', '.data', 'e2e-mail-outbox');
@@ -38,8 +38,8 @@ async function fillCode(page: Page, code: string) {
   for (const [i, d] of [...code].entries()) await page.getByLabel(`验证码第 ${i + 1} 位`).fill(d);
 }
 
-// 不管中途哪一步失败，都把吴工的密码、姓名改回去，别的测试文件还要用
-test.afterAll(async () => {
+// 每个测试结束（不管中途哪一步失败）都把吴工的密码、姓名改回去，后面的测试和别的测试文件还要用
+test.afterEach(async () => {
   const api = await request.newContext({ baseURL: test.info().project.use.baseURL });
   try {
     for (const pw of [PASSWORD, 'newpass123', 'changed123']) {

@@ -16,7 +16,7 @@ import { AuthService, SESSION_TTL_MS, type SessionUser } from './auth.service.ts
 import { RecoveryService } from './recovery.service.ts';
 import { CurrentUser, Public, SESSION_COOKIE } from './session.guard.ts';
 
-function setSessionCookie(res: Response, token: string) {
+export function setSessionCookie(res: Response, token: string): void {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',

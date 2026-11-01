@@ -6,7 +6,7 @@ export const gy = {
   canvas: '#F8F9FB',
   text: '#18243B',
   secondary: '#596170',
-  tertiary: '#697386',
+  tertiary: '#6B7484',
   split: '#E5E7EB',
   border: '#89909C',
   primary: '#245BDB',

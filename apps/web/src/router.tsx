@@ -2,7 +2,8 @@ import type { Workspace } from '@genyun/shared';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
 import { NAVIGATION } from './layouts/navigation';
 import { WorkspaceLayout } from './layouts/WorkspaceLayout';
-import { AccountPage, AccountShell } from './pages/AccountPage';
+import { AccountPage, AccountLayout } from './pages/AccountPage';
+import { InvitePage } from './pages/InvitePage';
 import { LoginPage } from './pages/LoginPage';
 import { RecoverPage } from './pages/RecoverPage';
 import { PendingPage } from './pages/PendingPage';
@@ -17,6 +18,7 @@ import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
+import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
 import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
@@ -44,7 +46,10 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
-  '/operator/organizations': [{ index: true, element: <OrganizationListPage /> }],
+  '/operator/organizations': [
+    { index: true, element: <OrganizationListPage /> },
+    { path: ':orgId', element: <OrganizationDetailPage /> },
+  ],
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
@@ -78,7 +83,9 @@ export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/recover', element: <RecoverPage /> },
   // 个人账户不属于某个工作区，套用登录人第一个身份所在工作区的框架（顶层路由要和 deploy/preview/Caddyfile 对上）
-  { path: '/account', element: <AccountShell />, children: [{ index: true, element: <AccountPage /> }] },
+  { path: '/account', element: <AccountLayout />, children: [{ index: true, element: <AccountPage /> }] },
+  // 邮件里的邀请链接，不用登录
+  { path: '/invite/:token', element: <InvitePage /> },
   // 选择开始方式是全屏页，不在工作区框架里
   { path: '/customer/tasks/:taskId/start', element: <StartMethodPage /> },
   { path: '/customer/tasks/:taskId/fill/:step', element: <SelfFillPage /> },

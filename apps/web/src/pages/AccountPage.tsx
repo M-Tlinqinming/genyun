@@ -13,7 +13,7 @@ import { gy } from '../theme/tokens';
 const ACCOUNT_KEY = ['account'];
 
 // /account 不属于某个工作区：套用登录人第一个身份所在工作区的框架
-export function AccountShell() {
+export function AccountLayout() {
   const session = useSession();
   if (session.isPending) return <Spin fullscreen />;
   const first = session.data?.memberships[0];

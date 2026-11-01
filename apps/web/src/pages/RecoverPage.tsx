@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { ApiError, authApi } from '../auth/api';
 import { useSession } from '../auth/session';
-import { AuthShell } from '../components/AuthShell';
+import { AccountShell, accountCard } from '../components/AccountShell';
 import { gy } from '../theme/tokens';
 import { homeOf } from './LoginPage';
 
@@ -49,7 +49,8 @@ export function RecoverPage() {
   const [form] = Form.useForm<ResetForm>();
   const otp = useRef<OTPRef>(null);
   // 登录页已经填好的邮箱带过来
-  const initialEmail = (location.state as { email?: string } | null)?.email;
+  // 「换个邮箱」回到第 1 步时，输入框里保留刚才的邮箱
+  const [prefill, setPrefill] = useState((location.state as { email?: string } | null)?.email);
   const [email, setEmail] = useState<string>();
   // 什么时候可以重新发送
   const [resendAt, setResendAt] = useState(0);
@@ -61,11 +62,14 @@ export function RecoverPage() {
   const [failures, setFailures] = useState(0);
   const remaining = RECOVERY_CODE_MAX_ATTEMPTS - failures;
 
-  // 清空验证码格子、清掉错误，焦点回到第 1 格
-  const clearCode = () => {
-    form.setFields([{ name: 'code', value: '', errors: [] }]);
-    setTimeout(() => otp.current?.nativeElement.querySelector('input')?.focus(), 0);
-  };
+  // 清空验证码格子、清掉错误，焦点回到第 1 格（格子换 key 重新挂载后再聚焦）
+  const [clearTick, setClearTick] = useState(0);
+  const clearCode = () => setClearTick((n) => n + 1);
+  useEffect(() => {
+    if (clearTick === 0) return;
+    form.resetFields(['code']);
+    otp.current?.nativeElement.querySelector('input')?.focus();
+  }, [clearTick, form]);
 
   const enterStep2 = (to: string, waitSeconds: number, note?: string) => {
     const again = !!email;
@@ -135,7 +139,9 @@ export function RecoverPage() {
         : `${reset.error.message}。还可以再试 ${remaining} 次`;
 
   return (
-    <AuthShell raise={48}>
+    // A03 的卡片比登录页高，设计稿把它顶边放在页头下 60px（登录页是 108px）
+    <AccountShell cardTop={60}>
+      <section style={accountCard}>
       <Link to="/login" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: gy.secondary, fontSize: 14 }}>
         <LeftOutlined style={{ fontSize: 12 }} />
         返回登录
@@ -154,6 +160,7 @@ export function RecoverPage() {
               type="link"
               style={{ padding: 0, height: 'auto', marginLeft: 4, verticalAlign: 'baseline' }}
               onClick={() => {
+                setPrefill(email);
                 setEmail(undefined);
                 setNotice(undefined);
                 setAnnounce('');
@@ -177,11 +184,13 @@ export function RecoverPage() {
       <Steps step={step} />
 
       {step === 1 ? (
+        // 两步的表单各给一个 key：不然 React 会复用同一个表单组件，第 2 步拿不到 form 实例
         <Form<{ email: string }>
+          key="send"
           className="gy-form-gap"
           layout="vertical"
           requiredMark={false}
-          initialValues={{ email: email ?? initialEmail }}
+          initialValues={{ email: prefill }}
           onFinish={(v) => send.mutate(v.email.trim())}
         >
           <Form.Item
@@ -199,6 +208,7 @@ export function RecoverPage() {
         </Form>
       ) : (
         <Form<ResetForm>
+          key="reset"
           form={form}
           className="gy-form-gap"
           layout="vertical"
@@ -230,6 +240,8 @@ export function RecoverPage() {
             style={{ marginBottom: 20 }}
           >
             <Input.OTP
+              // 组件库的格子不跟着表单值清空，换 key 重新挂载
+              key={clearTick}
               ref={otp}
               length={6}
               size="large"
@@ -282,7 +294,8 @@ export function RecoverPage() {
       <Typography.Text type="secondary" style={{ fontSize: 12, lineHeight: '20px', display: 'block' }}>
         邮箱已无法使用？请联系机构管理员或耕云更换登录邮箱。
       </Typography.Text>
-    </AuthShell>
+      </section>
+    </AccountShell>
   );
 }
 

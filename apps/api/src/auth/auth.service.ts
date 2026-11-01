@@ -44,7 +44,7 @@ export class AuthService {
     return this.startSession(found.id);
   }
 
-  // 新建一个会话（登录、重设密码后直接登录）
+  // 登录成功、接受邀请设好密码、重设密码后都从这里开会话
   async startSession(userId: string): Promise<{ token: string; user: SessionUser }> {
     const token = randomBytes(32).toString('base64url');
     await this.db.insert(sessions).values({

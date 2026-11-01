@@ -269,6 +269,33 @@ describe('越权', () => {
     expect((await agent.post(`/api/operator/organizations/${org.internal}/open`).send(opening(MISSING))).status).toBe(404);
   });
 
+  it('本组织自己的客户管理员也取不到合同原件', async () => {
+    const up = await uploadContract(org.a);
+    expect(up.status).toBe(201);
+    expect((await (await as('a-admin@test.cn')).get(`/api/files/${up.body.id}/download-url`)).status).toBe(404);
+    expect((await (await as('a-admin@test.cn')).get(`/api/files/${up.body.id}/download-url?inline=1`)).status).toBe(404);
+  });
+
+  it('客户看不了运营的组织详情，包括自己组织的', async () => {
+    expect((await (await as('a-admin@test.cn')).get(`/api/operator/organizations/${org.a}`)).status).toBe(403);
+    expect((await (await as('expert@test.cn')).get(`/api/operator/organizations/${org.a}`)).status).toBe(403);
+  });
+
+  it('同时点两次开通，只有一次成功', async () => {
+    const created = await register({ ...registration, name: '并发开通' });
+    const up = await uploadContract(created.id);
+    const ops = await as('ops@test.cn');
+    const before = mailer.sent.length;
+    const results = await Promise.all([
+      ops.post(`/api/operator/organizations/${created.id}/open`).send(opening(up.body.id)),
+      ops.post(`/api/operator/organizations/${created.id}/open`).send(opening(up.body.id)),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    const contracts = await handle.db.select().from(organizationContracts).where(eq(organizationContracts.orgId, created.id));
+    expect(contracts).toHaveLength(1);
+    expect(mailer.sent.length).toBe(before + 1);
+  });
+
   it('没登录不能访问', async () => {
     expect((await request(app.getHttpServer()).get('/api/operator/organizations')).status).toBe(401);
   });

@@ -1,6 +1,15 @@
-import type { OrgOpenDraft, OrgRegisterInput, OrgServiceState, ServiceScopeKind } from '@genyun/shared';
+import type {
+  AdminInvitationInput,
+  InvitationState,
+  OperatorTaskStage,
+  OrgOpenDraft,
+  OrgRegisterInput,
+  OrgServiceState,
+  Role,
+  ServiceScopeKind,
+} from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ApiError, request } from './request';
+import { request } from './request';
 
 // 运营看到的客户组织（Paper 16 页 I02）
 export interface OperatorOrg {
@@ -35,8 +44,47 @@ export interface ContractFile {
   uploadedByName: string;
 }
 
+export interface OrgMember {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  createdAt: string;
+}
+
+export interface OrgInvitation {
+  id: string;
+  email: string;
+  name: string;
+  phone: string | null;
+  role: Role;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+  invitedByName: string;
+  state: InvitationState;
+}
+
+export interface OrgEnterpriseTask {
+  id: string;
+  name: string;
+  task: { id: string; number: string; stage: OperatorTaskStage } | null;
+}
+
+// 组织详情（Paper 16 页 I03）：合同原件、成员、邀请记录（新的在前）、企业与当前任务
 export interface OperatorOrgDetail extends OperatorOrg {
   contractFile: ContractFile | null;
+  members: OrgMember[];
+  invitations: OrgInvitation[];
+  enterprises: OrgEnterpriseTask[];
+}
+
+export interface SentInvitation {
+  email: string;
+  expiresAt: string;
+  mailSent: boolean;
+  mailSimulated: boolean;
 }
 
 export const operatorOrgKeys = {
@@ -75,10 +123,26 @@ export function useOpenOrg(id: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (draft: OrgOpenDraft) =>
-      request<OperatorOrg & { invitation: { email: string; expiresAt: string; mailSent: boolean; mailSimulated: boolean } }>(
+      request<OperatorOrg & { invitation: SentInvitation }>(
         `/operator/organizations/${id}/open`,
         { method: 'POST', body: JSON.stringify(draft) },
       ),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: operatorOrgKeys.list });
+      void client.invalidateQueries({ queryKey: operatorOrgKeys.detail(id) });
+    },
+  });
+}
+
+// 重发首位管理员邀请，或换一个人：旧链接作废，按这里填的人重新发一封
+export function useInviteAdmin(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AdminInvitationInput) =>
+      request<SentInvitation>(`/operator/organizations/${id}/admin-invitation`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: operatorOrgKeys.list });
       void client.invalidateQueries({ queryKey: operatorOrgKeys.detail(id) });
@@ -90,14 +154,6 @@ export function useOpenOrg(id: string) {
 export async function uploadContractFile(orgId: string, file: File): Promise<ContractFile> {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`/api/operator/organizations/${orgId}/contract-file`, {
-    method: 'POST',
-    credentials: 'include',
-    body: form,
-  });
-  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!res.ok) {
-    throw new ApiError(res.status, typeof body?.message === 'string' ? body.message : '上传失败，请重新上传', body);
-  }
-  return body as unknown as ContractFile;
+  // 走 request：服务出错、断网时提示和其他请求一样
+  return request<ContractFile>(`/operator/organizations/${orgId}/contract-file`, { method: 'POST', body: form });
 }
