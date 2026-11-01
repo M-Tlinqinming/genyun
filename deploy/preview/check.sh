@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # 发布后、交给测试人员之前的检查：服务通、官网和登录页能打开、五个演示账号都能登录、
 # 各角色能看到演示数据、模拟发件箱能打开。只读，不改任何数据。
-# 用法：DEMO_PASSWORD=<演示密码> bash deploy/preview/check.sh https://preview.gengyun.net.cn
-#       本机整套容器（同 CI 冒烟）：DEMO_PASSWORD=<密码> bash deploy/preview/check.sh http://localhost:8080
-#       只开前端开发服务时官网首页一项会失败（开发服务的 / 是业务应用），其余照常检查
-# 演示密码在服务器 /opt/genyun/.env 的 DEMO_PASSWORD（见 README「演示账号」），脚本不会打印它。
+# 用法（密码怎么传见 README「交给测试人员前检查」，别把密码直接写在命令里，会留在命令行历史）：
+#   read -rs DEMO_PASSWORD; export DEMO_PASSWORD
+#   bash deploy/preview/check.sh https://preview.gengyun.net.cn
+# 本机整套容器（同 CI 冒烟）用 http://localhost:8080；只开前端开发服务时官网首页一项会失败
+# （开发服务的 / 是业务应用），其余照常检查。脚本不会打印密码。
 set -uo pipefail
 
 BASE="${1:?用法：DEMO_PASSWORD=<演示密码> check.sh <地址>}"
@@ -33,9 +34,9 @@ if [ "$code" = 200 ] && get "$BASE/login" | grep -q 'id="root"'; then ok "登录
 # 登录一个演示账号，会话 cookie 存进 $jar_dir/<名字>
 login() {
   local email="$1" jar="$jar_dir/$2"
-  local body
-  body=$(printf '{"email":"%s","password":"%s"}' "$email" "$DEMO_PASSWORD")
-  code=$(curl -sS -o "$jar.json" -w '%{http_code}' --max-time 20 -c "$jar" -H 'Content-Type: application/json' -d "$body" "$BASE/api/auth/login")
+  # 请求体从标准输入传（-d @-），密码不出现在 curl 的命令参数里
+  code=$(printf '{"email":"%s","password":"%s"}' "$email" "$DEMO_PASSWORD" |
+    curl -sS -o "$jar.json" -w '%{http_code}' --max-time 20 -c "$jar" -H 'Content-Type: application/json' -d @- "$BASE/api/auth/login")
   if [ "$code" = 200 ]; then ok "$email 登录"; return 0; fi
   if [ "$code" = 429 ]; then bad "$email 登录 → 429（一分钟内登录太多次，等一分钟再跑）"; else bad "$email 登录 → $code（演示数据没写入，或密码不对）"; fi
   return 1

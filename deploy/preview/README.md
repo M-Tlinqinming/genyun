@@ -98,10 +98,16 @@ docker compose --env-file /opt/genyun/.env logs app | grep 模拟发信
 ssh -F /dev/null -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts root@47.82.104.179 "grep DEMO_PASSWORD /opt/genyun/.env"
 ```
 
-写入演示数据（每次发布后都可以跑，反复运行不出错、不重复）：
+写入演示数据（每次发布后都可以跑，反复运行不出错、不重复），在本机仓库根目录：
 
 ```sh
-docker exec -e ALLOW_DEMO_SEED=1 -e DEMO_PASSWORD=<密码> genyun-preview-app-1 node apps/api/dist/scripts/seed-demo.js
+bash deploy/preview/seed.sh
+```
+
+脚本通过 ssh 在服务器上执行写入，演示密码在服务器上从 `/opt/genyun/.env` 读，不经过本机、不进命令行历史。已经登录在服务器上时，也可以直接运行：
+
+```sh
+docker exec -e ALLOW_DEMO_SEED=1 -e DEMO_PASSWORD="$(grep ^DEMO_PASSWORD= /opt/genyun/.env | cut -d= -f2-)" genyun-preview-app-1 node apps/api/dist/scripts/seed-demo.js
 ```
 
 脚本只补还没有的：账号按邮箱、组织按名称、企业按信用代码（没有代码的按名称）、任务按企业、合同按组织先查后插。已有的账号不改密码和姓名，已有组织只补空着的地区、联系人、合同有效期，测试人员在预览环境里录的数据一概不动、不删。演示任务的编号和客户新建任务用同一个流水，不会撞号。运行完会列出「新写入」和「已有、跳过」各哪几项。
@@ -118,7 +124,14 @@ docker exec -e ALLOW_DEMO_SEED=1 -e DEMO_PASSWORD=<密码> genyun-preview-app-1 
 发布、写入演示数据之后，在本机运行（只读，不改数据）：
 
 ```sh
-DEMO_PASSWORD=<密码> bash deploy/preview/check.sh https://preview.gengyun.net.cn
+DEMO_PASSWORD=$(ssh -F /dev/null -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts root@47.82.104.179 "grep ^DEMO_PASSWORD= /opt/genyun/.env | cut -d= -f2-") bash deploy/preview/check.sh https://preview.gengyun.net.cn
+```
+
+密码从服务器上取，不写进命令行历史。也可以手动输入（输入时不显示）：
+
+```sh
+read -rs DEMO_PASSWORD; export DEMO_PASSWORD
+bash deploy/preview/check.sh https://preview.gengyun.net.cn
 ```
 
 逐项检查：`/api/health` 通；官网首页、`/login` 能打开；五个演示账号都能登录；周工、吴工各自看到自己的演示任务且互相看不到；飞宇客户在自己的组织里；运营的客户组织列表里两家演示组织都是服务中；运营能打开模拟发件箱。服务器上的版本还没有模拟发件箱入口（合并请求 #63 之前）时这一项显示「跳过」，不算失败。
@@ -130,7 +143,8 @@ DEMO_PASSWORD=<密码> bash deploy/preview/check.sh https://preview.gengyun.net.
 ```sh
 ssh ... root@<IP> 'bash -s preview.gengyun.net.cn' < deploy/preview/server-setup.sh
 bash deploy/preview/deploy.sh
-# 再写入演示数据、跑检查（见上）
+bash deploy/preview/seed.sh
+# 再跑检查（见上）
 ```
 
 `server-setup.sh` 会加 2G 交换空间、安装 Docker、生成密钥文件。阿里云防火墙只需开 22 / 80 / 443。
