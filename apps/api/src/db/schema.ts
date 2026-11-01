@@ -145,8 +145,10 @@ export const tasks = pgTable(
     // 还没选开始方式时为空
     startMethod: startMethod('start_method'),
     status: taskStatus('status').notNull().default('preparing'),
-    // 负责专家，运营分派前为空
+    // 负责注安师，运营分派前为空
     assignedExpertId: uuid('assigned_expert_id').references(() => users.id),
+    // 现在这位负责注安师接手的时间；改派后「客户请电话联系」的期限从这里重新算
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),

@@ -19,7 +19,7 @@ export interface VerifyItem {
   kind: 'photo' | 'call';
 }
 
-// 客户请专家电话联系：从提交（或提交后才点的那一刻）起算 2 个工作日
+// 客户请专家电话联系：从提交（或提交后才点的那一刻）起算 2 个工作日；改派后从新注安师接手时重新算
 export interface ContactRequest {
   requestedAt: Date;
   requestedBy: string;
@@ -55,6 +55,7 @@ export class ExpertTasksService {
         startMethod: tasks.startMethod,
         updatedAt: tasks.updatedAt,
         submittedAt: tasks.submittedAt,
+        assignedAt: tasks.assignedAt,
         closedAt: tasks.closedAt,
       })
       .from(tasks)
@@ -108,10 +109,12 @@ export class ExpertTasksService {
 
       let contact: ContactRequest | null = null;
       const calls = mine.filter((p) => p.callRequested);
-      // 提交以后才轮到专家打电话，期限从提交起算
+      // 提交以后才轮到专家打电话，期限从提交起算；改派过的从新注安师接手起算，原注安师的联系记录不算
       if (t.submittedAt !== null && t.closedAt === null && calls.length > 0) {
         const first = calls.reduce((a, b) => (a.updatedAt <= b.updatedAt ? a : b));
-        const requestedAt = new Date(Math.max(first.updatedAt.getTime(), t.submittedAt.getTime()));
+        const requestedAt = new Date(
+          Math.max(first.updatedAt.getTime(), t.submittedAt.getTime(), t.assignedAt?.getTime() ?? 0),
+        );
         const records = contacts.filter((c) => c.taskId === t.id).map((c) => ({ ...c, createdAt: c.createdAt.toISOString() }));
         // 电话联系上客户以后不再进倒计时横幅（未接通不算）
         if (!reachedCustomer(records, requestedAt)) {

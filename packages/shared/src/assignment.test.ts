@@ -21,7 +21,7 @@ describe('能不能分派', () => {
   });
 
   it('资料准备中、已结束的说明原因', () => {
-    expect(assignmentBlockedReason({ status: 'preparing', closedAt: null })).toBe('客户还没提交资料，提交后才能分派专家');
+    expect(assignmentBlockedReason({ status: 'preparing', closedAt: null })).toBe('客户还没提交资料，提交后才能分派注安师');
     expect(assignmentBlockedReason({ status: 'submitted', closedAt: '2026-11-01T00:00:00Z' })).toBe('任务已结束，不能再分派');
   });
 });
@@ -32,8 +32,14 @@ describe('分派表单', () => {
     expect(assignExpertSchema.parse({ expertId: ID, currentExpertId: ID, note: ' 客户比较急 ' }).note).toBe('客户比较急');
   });
 
-  it('没选专业人员、说明超过 200 字都拒绝', () => {
-    expect(assignExpertSchema.safeParse({ expertId: '', currentExpertId: null }).error?.issues[0]?.message).toBe('请选择专业人员');
+  it('改派理由选填，只认四种', () => {
+    expect(assignExpertSchema.parse({ expertId: ID, currentExpertId: ID, reason: 'leave' }).reason).toBe('leave');
+    expect(assignExpertSchema.parse({ expertId: ID, currentExpertId: ID }).reason).toBeUndefined();
+    expect(assignExpertSchema.safeParse({ expertId: ID, currentExpertId: ID, reason: 'tired' }).success).toBe(false);
+  });
+
+  it('没选注安师、说明超过 200 字都拒绝', () => {
+    expect(assignExpertSchema.safeParse({ expertId: '', currentExpertId: null }).error?.issues[0]?.message).toBe('请选择注安师');
     expect(assignExpertSchema.safeParse({ expertId: ID, currentExpertId: null, note: '字'.repeat(201) }).error?.issues[0]?.message).toBe(
       '说明最多 200 个字',
     );

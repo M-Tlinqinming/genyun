@@ -88,6 +88,7 @@ const [feiyuTask, otherTask] = await db
       createdAt: submittedAt,
       updatedAt: submittedAt,
       assignedExpertId: t.expert ? uid[t.expert]! : null,
+      assignedAt: t.expert ? submittedAt : null,
       createdBy: customer,
     })),
   )

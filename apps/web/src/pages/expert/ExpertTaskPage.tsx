@@ -276,7 +276,13 @@ export function ExpertTaskPage() {
   );
   if (task.isPending || workup.isPending || generation.isPending) return <Loading rows={6} />;
   if (task.isError) {
-    return <Result status="404" title="找不到该任务" subTitle="任务不存在，或没有分派给您。" extra={back} />;
+    // 原负责注安师打开旧链接：接口说明已改派给谁
+    const moved = task.error.message.startsWith('这个任务已改派给');
+    return moved ? (
+      <Result status="info" title={task.error.message} subTitle="您不用再处理。已整理的内容和联系记录都随任务交给了对方。" extra={back} />
+    ) : (
+      <Result status="404" title="找不到该任务" subTitle="任务不存在，或没有分派给您。" extra={back} />
+    );
   }
   if (workup.isError) {
     return <Result status="info" title="还不能开始整理" subTitle={workup.error.message} extra={back} />;

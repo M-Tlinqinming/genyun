@@ -68,7 +68,21 @@ export function NotificationBell() {
                 <span style={{ width: 6, height: 6, marginTop: 8, flexShrink: 0, borderRadius: 3, background: n.readAt ? 'transparent' : gy.error }} />
                 <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontSize: 14, lineHeight: '22px', color: gy.text, fontWeight: n.readAt ? 400 : 500 }}>{n.title}</span>
-                  <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {/* 正文最多 3 行；运营说明等要紧的话放在正文第一句 */}
+                  <span
+                    data-role="notification-body"
+                    title={n.body}
+                    style={{
+                      fontSize: 13,
+                      lineHeight: '20px',
+                      color: gy.secondary,
+                      overflow: 'hidden',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      wordBreak: 'break-all',
+                    }}
+                  >
                     {n.body}
                   </span>
                   <span style={{ fontSize: 12, lineHeight: '20px', color: gy.tertiary }}>{dateTime(n.createdAt)}</span>

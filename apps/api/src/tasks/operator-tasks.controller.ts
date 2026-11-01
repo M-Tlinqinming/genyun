@@ -1,4 +1,4 @@
-import { assignExpertSchema, assignmentBlockedReason, needsAssignment, operatorTaskStage } from '@genyun/shared';
+import { REASSIGN_REASONS, assignExpertSchema, assignmentBlockedReason, needsAssignment, operatorTaskStage } from '@genyun/shared';
 import {
   BadRequestException,
   Body,
@@ -19,7 +19,7 @@ import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { enterprises, memberships, organizations, taskContacts, taskWorkups, tasks, users } from '../db/schema.ts';
-import { NotificationsService } from '../notifications/notifications.service.ts';
+import { NotificationsService, REASSIGNED_TITLE } from '../notifications/notifications.service.ts';
 
 const NOT_FOUND = '找不到该任务';
 
@@ -51,8 +51,12 @@ const withStage = <T extends Row>(t: T) => ({
   assignBlockedReason: assignmentBlockedReason(t),
 });
 
-// 运营任务中心（Paper 16 页 I04「待分派」「全部任务」、分配专业人员弹窗）。
-// 只有运营能看和分派；客户、专业人员一律 403。超时兜底、上门工单在第 4 项
+// 能被分派的注安师：耕云内部组织里有 expert 角色的人。客户组织里就算有人挂了 expert 角色也不算。
+// 第 5 项加账号停用时，这里和分派校验要一起排除已停用的账号
+const assignableExpert = and(eq(memberships.role, 'expert'), eq(organizations.kind, 'internal'));
+
+// 运营任务中心（Paper 16 页 I04「待分派」「全部任务」、分配注安师弹窗）。
+// 只有运营能看和分派；客户、注安师一律 403。超时兜底、上门工单在第 4 项
 @Controller('operator/tasks')
 export class OperatorTasksController {
   constructor(
@@ -81,7 +85,7 @@ export class OperatorTasksController {
     return { ...task, contactCount: contacts?.n ?? 0, workupStartedAt: workup?.updatedAt ?? null };
   }
 
-  // 分配弹窗里的专业人员：在办任务数，以及正在处理这家客户的其他几家企业（同一客户交给同一人更顺）
+  // 分配弹窗里的注安师：在办任务数，以及正在处理这家客户的其他几家企业（同一客户交给同一人更顺）
   @Get(':id/experts')
   async experts(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     this.guard(user);
@@ -90,7 +94,8 @@ export class OperatorTasksController {
       .selectDistinct({ id: users.id, name: users.name, email: users.email })
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
-      .where(eq(memberships.role, 'expert'))
+      .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+      .where(assignableExpert)
       .orderBy(users.name);
     if (people.length === 0) return [];
     const open = await this.db
@@ -106,61 +111,78 @@ export class OperatorTasksController {
     });
   }
 
-  // 分派或改派。专业整理、联系记录都挂在任务上，改派后自动归新专家；原专家从此看不到这个任务
+  // 分派或改派。专业整理、联系记录都挂在任务上，改派后自动归新注安师；原注安师从此打不开这个任务（404）
   @Post(':id/assign')
   async assign(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     this.guard(user);
     const parsed = assignExpertSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '分派信息不完整');
-    const { expertId, currentExpertId, note } = parsed.data;
+    const { expertId, currentExpertId, note, reason } = parsed.data;
     const task = await this.load(id);
     const blocked = assignmentBlockedReason(task);
     if (blocked) throw new ConflictException(blocked);
-    if (expertId === task.assignedExpertId) throw new ConflictException(`${task.assignedExpertName ?? '这位专业人员'}已经是负责专家`);
+    if (expertId === task.assignedExpertId) throw new ConflictException(`${task.assignedExpertName ?? '这位注安师'}已经是负责注安师`);
 
     const [target] = await this.db
       .select({ id: users.id, name: users.name })
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
-      .where(and(eq(users.id, expertId), eq(memberships.role, 'expert')))
+      .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+      .where(and(eq(users.id, expertId), assignableExpert))
       .limit(1);
-    if (!target) throw new BadRequestException('请选择专业人员');
+    if (!target) throw new BadRequestException('请选择注安师');
 
-    // 只在负责专家仍是运营打开弹窗时看到的那位时才改，别人刚分派过就提示刷新
-    const [updated] = await this.db
-      .update(tasks)
-      .set({ assignedExpertId: expertId, updatedAt: new Date() })
-      .where(
-        and(
-          eq(tasks.id, id),
-          currentExpertId === null ? isNull(tasks.assignedExpertId) : eq(tasks.assignedExpertId, currentExpertId),
-        ),
-      )
-      .returning({ id: tasks.id });
+    const what = `${task.enterpriseName} · ${task.name}`;
+    const previous = task.assignedExpertId;
+    const why = reason ? `改派理由：${REASSIGN_REASONS[reason]}` : null;
+    const said = note ? `运营说明：${note}` : null;
+    // 改任务和发提醒在同一个事务里：不会出现分派生效、提醒却没发的情况
+    const updated = await this.db.transaction(async (tx) => {
+      // 只在负责注安师仍是运营打开弹窗时看到的那位时才改，别人刚分派过就提示刷新
+      const [row] = await tx
+        .update(tasks)
+        .set({ assignedExpertId: expertId, assignedAt: new Date(), updatedAt: new Date() })
+        .where(
+          and(
+            eq(tasks.id, id),
+            currentExpertId === null ? isNull(tasks.assignedExpertId) : eq(tasks.assignedExpertId, currentExpertId),
+          ),
+        )
+        .returning({ id: tasks.id });
+      if (!row) return false;
+      // 运营说明放在正文第一句，铃铛里最多显示 3 行
+      await this.notifications.notify(
+        [expertId],
+        {
+          taskId: id,
+          title: previous ? '改派给你的任务' : '分配给你的新任务',
+          body: [said, `${what}（${task.number}，${task.orgName}）`, previous ? '已有的专业整理和联系记录都在任务里。' : null]
+            .filter(Boolean)
+            .join(' '),
+          link: `/expert/tasks/${id}`,
+        },
+        tx,
+      );
+      if (previous) {
+        // 原注安师点开会看到「这个任务已改派给 X」
+        await this.notifications.notify(
+          [previous],
+          {
+            taskId: id,
+            title: REASSIGNED_TITLE,
+            body: [why, `${what}（${task.number}）已改派给${target.name}，你不用再处理。`].filter(Boolean).join(' '),
+            link: `/expert/tasks/${id}`,
+          },
+          tx,
+        );
+      }
+      return true;
+    });
     if (!updated) {
       const now = await this.load(id);
       throw new ConflictException(
-        now.assignedExpertName ? `这个任务刚被分派给${now.assignedExpertName}，请看最新情况再决定` : '这个任务的负责专家刚有变化，请刷新后再试',
+        now.assignedExpertName ? `这个任务刚被分派给${now.assignedExpertName}，请看最新情况再决定` : '这个任务的负责注安师刚有变化，请刷新后再试',
       );
-    }
-
-    const what = `${task.enterpriseName} · ${task.name}`;
-    const reassigned = task.assignedExpertId !== null;
-    await this.notifications.notify([expertId], {
-      taskId: id,
-      title: reassigned ? '改派给你的任务' : '分配给你的新任务',
-      body: [`${what}（${task.number}，${task.orgName}）`, reassigned ? '已有的专业整理和联系记录都在任务里。' : null, note ? `运营说明：${note}` : null]
-        .filter(Boolean)
-        .join(' '),
-      link: `/expert/tasks/${id}`,
-    });
-    if (task.assignedExpertId) {
-      // 原专家打不开这个任务了，提醒里不放任务链接
-      await this.notifications.notify([task.assignedExpertId], {
-        title: '任务已改派',
-        body: `${what}（${task.number}）已改派给${target.name}，你不用再处理。`,
-        link: '/expert',
-      });
     }
     return withStage(await this.load(id));
   }
