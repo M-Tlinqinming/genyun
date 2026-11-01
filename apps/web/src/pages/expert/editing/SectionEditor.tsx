@@ -257,8 +257,14 @@ export function Toolbar({ editor, extra }: { editor: Editor; extra?: React.React
       editable: e.isEditable,
     }),
   });
-  const on = (active: boolean): CSSProperties => (active ? { ...tool, background: gy.selected, color: gy.primary } : tool);
   const disabled = !state.editable;
+  // 只读（运营查看、非负责专家）时格式按钮置灰
+  const on = (active: boolean): CSSProperties =>
+    disabled
+      ? { ...tool, color: gy.tertiary, cursor: 'not-allowed' }
+      : active
+        ? { ...tool, background: gy.selected, color: gy.primary }
+        : tool;
   return (
     <div
       role="toolbar"
@@ -304,7 +310,7 @@ export function Toolbar({ editor, extra }: { editor: Editor; extra?: React.React
       <button
         type="button"
         disabled={disabled || !state.canUndo}
-        style={{ ...tool, color: disabled || !state.canUndo ? gy.tertiary : gy.text }}
+        style={{ ...tool, color: disabled || !state.canUndo ? gy.tertiary : gy.text, cursor: disabled || !state.canUndo ? 'not-allowed' : 'pointer' }}
         onClick={() => editor.chain().focus().undo().run()}
       >
         撤销

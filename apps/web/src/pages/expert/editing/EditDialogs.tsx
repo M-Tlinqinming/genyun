@@ -34,6 +34,7 @@ export function LeaveDialog({
   open,
   where,
   saving,
+  keptOnly = false,
   onStay,
   onDiscard,
   onSave,
@@ -44,10 +45,36 @@ export function LeaveDialog({
   /** 如「应急预案「附件 · 应急通讯录」」 */
   where: string;
   saving: boolean;
+  /** 编辑区没有改动、只有右栏冲突前的输入没合并：没有可保存的，只能继续合并或放弃 */
+  keptOnly?: boolean;
   onStay: () => void;
   onDiscard: () => void;
   onSave: () => void;
 }) {
+  if (keptOnly) {
+    return (
+      <Modal
+        open={open}
+        title="还有内容没有合并"
+        focusTriggerAfterClose={false}
+        afterClose={afterClose}
+        onCancel={onStay}
+        width={560}
+        footer={[
+          <Button key="discard" danger onClick={onDiscard}>
+            放弃并离开
+          </Button>,
+          <Button key="stay" type="primary" onClick={onStay}>
+            继续合并
+          </Button>,
+        ]}
+      >
+        <p style={{ ...text14, color: gy.text, margin: '8px 0 16px' }}>
+          {where}的右栏还有你冲突前的输入没合并，编辑区目前没有改动。放弃就离开，这些输入会丢弃；已保存稿不变。
+        </p>
+      </Modal>
+    );
+  }
   return (
     <Modal
       open={open}
