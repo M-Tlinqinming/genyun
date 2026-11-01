@@ -61,6 +61,12 @@ docker tag genyun-site:previous genyun-site:preview
 docker compose --env-file /opt/genyun/.env up -d --no-build
 ```
 
+回退后 `/opt/genyun/DEPLOYED_COMMIT` 不会跟着改，它仍是有问题的那个提交；可以顺手把它改回上一次发布的提交号（例如 `echo <上一个提交号> > /opt/genyun/DEPLOYED_COMMIT`）。
+
+第一次按新方式发布后，官网镜像还没有 `genyun-site:previous`，这时只能回退业务应用：只执行第一条 `docker tag`，再 `up -d --no-build`。
+
+新版本有问题时，先回退，再修好后重新发布。不要在有问题的版本还在运行时直接再发一次，否则 `previous` 会被有问题的版本覆盖，就退不回去了。
+
 只能退一版。要退得更远，在本机切到那个提交重新运行 `deploy.sh`。数据库迁移只会往前加，退回旧版本的代码一般能直接用新表结构；如果某次发布删过列或改过列名，退回前先确认。
 
 ## 查看模拟发信
