@@ -100,7 +100,7 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
   });
   const otherId = await ensureEnterprise(db, report, { orgId: feiyuOrgId, name: DEMO_OTHER_ENTERPRISE, createdBy: customer });
 
-  // 已提交的两个任务：飞宇分派给周工，另一家分派给吴工（验证专家互相看不到）。
+  // 已提交的两个任务：飞宇预置分派给周工（直接演示专家端）；另一家（五金）待运营在任务中心分派。
   // 飞宇的资料：样例里已备齐的照旧，另有两项请专家电话联系、一项拍照给耕云看
   const submittedAt = new Date(now.getTime() - 2 * 3_600_000);
   const feiyuItems: ChecklistState = {
@@ -119,10 +119,10 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
     submittedAt,
   });
   await ensureSubmittedTask(db, report, {
-    label: `${DEMO_OTHER_ENTERPRISE}（吴工）`,
+    label: `${DEMO_OTHER_ENTERPRISE}（待分派）`,
     orgId: feiyuOrgId,
     enterpriseId: otherId,
-    expertId: uid[DEMO_EMAILS.expert2]!,
+    expertId: null,
     customerId: customer,
     items: { fire_pool: { status: 'later', fileIds: [], callRequested: true } },
     submittedAt,
@@ -253,7 +253,7 @@ async function ensureEnterprise(
 async function ensureSubmittedTask(
   db: Database,
   report: DemoSeedReport,
-  t: { label: string; orgId: string; enterpriseId: string; expertId: string; customerId: string; items: ChecklistState; submittedAt: Date },
+  t: { label: string; orgId: string; enterpriseId: string; expertId: string | null; customerId: string; items: ChecklistState; submittedAt: Date },
 ) {
   // 这家企业已有应急预案任务（不管进行到哪一步、有没有结束）就不再建，免得把测试人员的进度弄乱
   const [found] = await db
@@ -281,6 +281,7 @@ async function ensureSubmittedTask(
         createdAt: t.submittedAt,
         updatedAt: t.submittedAt,
         assignedExpertId: t.expertId,
+        assignedAt: t.expertId ? t.submittedAt : null,
         createdBy: t.customerId,
       })
       .returning({ id: tasks.id });

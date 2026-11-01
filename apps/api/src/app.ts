@@ -25,12 +25,16 @@ import { defaultMailer, MAIL_OUTBOX, MAILER, type Mailer, outboxEnabled } from '
 import { OutboxController } from './mail/outbox.controller.ts';
 import { InvitationsController } from './orgs/invitations.controller.ts';
 import { OperatorOrgsController } from './orgs/operator-orgs.controller.ts';
+import { OperatorTasksController } from './tasks/operator-tasks.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
 import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/drawings.service.ts';
 import { DrawingRenderer } from './generation/drawings/renderer.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
 import { EDIT_DRAFTER, EditingController, EditingService } from './tasks/editing.service.ts';
+import { ReviewController, ReviewService } from './tasks/review.service.ts';
+import { SupplementsController, SupplementsService } from './tasks/supplements.service.ts';
+import { defaultPdfConverter, PDF_CONVERTER, type PdfConverter } from './generation/word/preview-pdf.ts';
 import { GenerationController, GenerationService } from './tasks/generation.service.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
@@ -57,6 +61,8 @@ export interface AppOptions {
   drawingRenderer?: DrawingRenderer;
   // 正文编辑「帮我改写这段」用的 AI；不传时按环境变量 AI_DRAFTER，null 表示不开启
   drafter?: ParagraphPolisher | null;
+  // Word 校对页把当前稿转 PDF；不传时按环境变量（LibreOffice），null 表示没装转换工具
+  pdf?: PdfConverter | null;
   // 发邮件；不传时按环境变量 MAIL_DRIVER 选用（mail/mailer.ts）
   mailer?: Mailer;
   // 健康检查的各项探测；不传时按环境变量（数据库、REDIS_URL、FILE_STORAGE_DIR 所在分区）
@@ -75,6 +81,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       AccountController,
       OrgsController,
       OperatorOrgsController,
+      OperatorTasksController,
       InvitationsController,
       EnterprisesController,
       EnterpriseProfileController,
@@ -83,8 +90,10 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       WorkupController,
       GenerationController,
       EditingController,
+      ReviewController,
       DrawingsController,
       ContactsController,
+      SupplementsController,
       NotificationsController,
       TaskDocumentsController,
       EnterpriseDocumentsController,
@@ -103,6 +112,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       { provide: DRAFT_QUEUE, useFactory: () => options.queue ?? defaultQueue() },
       { provide: DRAFT_RENDERER, useFactory: () => options.renderer ?? defaultRenderer() },
       { provide: EDIT_DRAFTER, useFactory: () => (options.drafter === undefined ? defaultDrafter() : options.drafter) },
+      { provide: PDF_CONVERTER, useFactory: () => (options.pdf === undefined ? defaultPdfConverter() : options.pdf) },
       { provide: MAILER, useFactory: () => options.mailer ?? defaultMailer() },
       { provide: MAIL_OUTBOX, useValue: mailOutbox },
       { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
@@ -112,11 +122,13 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       AccountService,
       GenerationService,
       EditingService,
+      ReviewService,
       DrawingsService,
       TasksService,
       ExpertTasksService,
       WorkupService,
       ContactsService,
+      SupplementsService,
       NotificationsService,
       LicenseReader,
       SubmissionService,

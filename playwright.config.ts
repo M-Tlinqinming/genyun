@@ -21,6 +21,8 @@ const env = {
   // 生成草稿时风险评估报告第一次失败，测试只重试这一份（generation.spec）
   DRAFT_FAIL_ONCE: 'risk',
   SOFFICE_PATH: '',
+  // Word 校对页的当前稿 PDF 用假的转换（几页英文），不装 LibreOffice 也能测
+  PDF_CONVERTER: 'fake',
   // 邀请邮件里的链接指向测试用的前端
   APP_ORIGIN: WEB_URL,
   // 模拟发信写到这里（相对 apps/api）；account、invitations、operator-org-detail 从这里读验证码和邀请链接
@@ -32,8 +34,12 @@ export default defineConfig({
   // 各测试文件共用一个演示数据库，按文件名顺序逐个跑，互不干扰
   workers: 1,
   use: { baseURL: WEB_URL, viewport: { width: 1440, height: 1000 } },
+  // 启动等待一律 240 s（Playwright 默认 60 s）：本机 Windows 上演示数据 seed 约 55 s，机器忙时更久。
+  // 慢在加载模块（argon2、Nest、drizzle、PGlite）和 PGlite 跑全部迁移，不在写入的数据（只有 5 个账号、2 个任务）；
+  // seed 之后接口服务还要再启动一次，60 s 不够
   webServer: [
     {
+      timeout: 240_000,
       // 每次先清空临时数据库和模拟发件箱，读到的邮件都是这一轮发的
       command: `node -e "for (const d of ['${DB}','${env.MAIL_OUTBOX_DIR}']) require('fs').rmSync('apps/api/'+d,{recursive:true,force:true})" && npm run seed:demo -w @genyun/api && npm run dev -w @genyun/api`,
       url: `${API_URL}/api/health`,
@@ -55,7 +61,7 @@ export default defineConfig({
       command: `npm run build -w @genyun/site && npm run preview -w @genyun/site -- --port ${SITE_PORT} --ignore-lock`,
       url: `http://localhost:${SITE_PORT}/`,
       reuseExistingServer: false,
-      timeout: 180_000,
+      timeout: 240_000,
     },
   ],
 });

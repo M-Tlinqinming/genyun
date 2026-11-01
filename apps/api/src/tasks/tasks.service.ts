@@ -26,15 +26,18 @@ import {
 } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { canEditOrganizationData, canViewOrganization, canViewTask } from '../auth/access.ts';
+import { canEditOrganizationData, canViewOrganization, canViewTask, isExpert } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
+import { REASSIGNED_TITLE } from '../notifications/notifications.service.ts';
 import {
   checklistItemFiles,
   checklistItems,
   enterprises,
+  factSupplements,
   files,
+  notifications,
   onSiteRequests,
   organizations,
   taskNumberCounters,
@@ -91,6 +94,11 @@ export class TasksService {
       .select({ taskId: taskSubmissions.taskId, pendingKeys: taskSubmissions.pendingKeys })
       .from(taskSubmissions)
       .where(inArray(taskSubmissions.taskId, ids));
+    // 专家发起、正在等客户回应的事实补件（工作台「待我处理」：去回应）
+    const asks = await this.db
+      .select({ taskId: factSupplements.taskId, title: factSupplements.title })
+      .from(factSupplements)
+      .where(and(inArray(factSupplements.taskId, ids), eq(factSupplements.status, 'awaiting_customer')));
 
     return list.map((t) => {
       const mine = rows.filter((r) => r.taskId === t.id);
@@ -105,6 +113,7 @@ export class TasksService {
         ...t,
         missing: checkChecklist(items).blocking.map((b) => b.label),
         remaining: progress.total - progress.done,
+        supplement: asks.find((a) => a.taskId === t.id)?.title ?? null,
         activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
       };
     });
@@ -113,8 +122,24 @@ export class TasksService {
   // 无权访问与不存在返回同样的结果，不暴露别家任务是否存在
   async load(user: SessionUser, id: string) {
     const [found] = await this.selectTasks().where(eq(tasks.id, id)).limit(1);
-    if (!found || !canViewTask(user, found)) throw new NotFoundException(NOT_FOUND);
+    if (!found) throw new NotFoundException(NOT_FOUND);
+    if (!canViewTask(user, found)) {
+      // 原负责注安师打开旧链接：说明已改派给谁（他收到过这个任务的改派提醒才说，别人一律「找不到」）
+      if (isExpert(user) && found.assignedExpertName && (await this.wasReassignedFrom(user, id))) {
+        throw new NotFoundException(`这个任务已改派给${found.assignedExpertName}`);
+      }
+      throw new NotFoundException(NOT_FOUND);
+    }
     return found;
+  }
+
+  private async wasReassignedFrom(user: SessionUser, taskId: string) {
+    const [hit] = await this.db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(eq(notifications.userId, user.id), eq(notifications.taskId, taskId), eq(notifications.title, REASSIGNED_TITLE)))
+      .limit(1);
+    return hit !== undefined;
   }
 
   async create(user: SessionUser, enterpriseId: string, input: TaskCreateInput) {

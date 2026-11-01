@@ -170,7 +170,7 @@ PGLITE_TOOLS_DIR=/tmp/pgtools bash deploy/preview/rehearsal/rehearse.sh
 
 ## 演示账号
 
-`admin@demo.genyun.net.cn`（客户机构管理员）、`expert@demo.genyun.net.cn`（专业人员周工）、`ops@demo.genyun.net.cn`（运营管理员）、`feiyu@demo.genyun.net.cn`（飞宇演示客户管理员）、`expert2@demo.genyun.net.cn`（专业人员吴工），同一个密码。演示数据里飞宇的已提交任务分派给周工，另一家分派给吴工。查看密码：
+`admin@demo.genyun.net.cn`（客户机构管理员）、`expert@demo.genyun.net.cn`（专业人员周工）、`ops@demo.genyun.net.cn`（运营管理员）、`feiyu@demo.genyun.net.cn`（飞宇演示客户管理员）、`expert2@demo.genyun.net.cn`（专业人员吴工），同一个密码。演示数据里飞宇的已提交任务分派给周工，另一家（示例五金）待运营在任务中心分派（M3 第 3 项之前写入的老预览库里它在吴工名下，不用改）。查看密码：
 
 ```sh
 ssh -F /dev/null -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts root@47.82.104.179 "grep DEMO_PASSWORD /opt/genyun/.env"
@@ -195,7 +195,7 @@ docker exec -e ALLOW_DEMO_SEED=1 -e DEMO_PASSWORD="$(grep ^DEMO_PASSWORD= /opt/g
 - 五个演示账号（见上）
 - 两家已开通的客户组织「示例安全咨询机构」「飞宇演示客户」，各登记一份演示合同（合同原件是一页英文样张 PDF），运营在「客户组织」列表里看到都是服务中
 - 飞宇演示客户名下两家企业：飞宇（各步资料都填了，技术人员数故意留空，演示专家整理时补齐）和示例五金
-- 两个已提交的任务：飞宇分派给周工（有两项请专家电话联系、一项拍照给耕云看），示例五金分派给吴工。周工补齐专家判断后就能确认生成三份草稿
+- 两个已提交的任务：飞宇分派给周工（有两项请专家电话联系、一项拍照给耕云看），示例五金待运营分派（老预览库里在吴工名下）。周工补齐专家判断后就能确认生成三份草稿
 
 ## 交给测试人员前检查
 
@@ -212,7 +212,7 @@ read -rs DEMO_PASSWORD; export DEMO_PASSWORD
 bash deploy/preview/check.sh https://preview.gengyun.net.cn
 ```
 
-逐项检查：`/api/health` 通；官网首页、`/login` 能打开；五个演示账号都能登录；周工、吴工各自看到自己的演示任务且互相看不到；飞宇客户在自己的组织里；运营的客户组织列表里两家演示组织都是服务中；运营能打开模拟发件箱。服务器上的版本还没有模拟发件箱入口（合并请求 #63 之前）时这一项显示「跳过」，不算失败。
+逐项检查：`/api/health` 通；官网首页、`/login` 能打开；五个演示账号都能登录；周工看到飞宇任务、看不到示例五金，吴工看不到飞宇；飞宇客户在自己的组织里；运营的客户组织列表里两家演示组织都是服务中；运营能打开模拟发件箱。服务器上的版本还没有模拟发件箱入口（合并请求 #63 之前）时这一项显示「跳过」，不算失败。
 
 脚本一共登录 5 次，正式环境每分钟限 10 次，一分钟内别连跑两遍。
 

@@ -68,6 +68,8 @@ export interface AdoptedMaterial {
   uploadedAt: string | null;
   // 与整理时不一致的原因；null = 与整理时一致
   change: AdoptedChange | null;
+  // 客户在事实补件里提供的文件（第 13 项）：第几轮、专家是否已明确采用。已采用的不再算变化
+  supplement?: { round: number; adopted: boolean };
 }
 
 // added = 专家开始整理以后客户才上传的文件；newer = 企业资料库里这份已有更新的版本（任务仍用旧版）

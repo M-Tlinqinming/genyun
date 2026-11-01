@@ -14,6 +14,7 @@ import { gy, source, stage } from '../../../theme/tokens';
 import { CheckDrawer } from '../check/CheckDrawer';
 import { OnSiteDialog } from '../OnSiteVisit';
 import { ExpertRequests, useOpenRequests } from './ExpertRequests';
+import { SupplementCard, useOpenSupplement } from './SupplementCard';
 import { AnswerList, DocumentList } from './SubmitDialog';
 import { linkButton, Loading, Notice, panel } from '../../../components/ui';
 
@@ -27,6 +28,7 @@ const AFTER_SUBMIT = [
 export function SubmittedStatusBar({ task }: { task: Task }) {
   const { remaining } = useSupplements(task);
   const questions = useOpenRequests(task.id).reduce((n, r) => n + r.questions.length, 0);
+  const ask = useOpenSupplement(task.id);
   return (
     <div
       style={{
@@ -42,8 +44,17 @@ export function SubmittedStatusBar({ task }: { task: Task }) {
         lineHeight: '22px',
       }}
     >
-      <span style={{ padding: '1px 8px', borderRadius: 4, color: stage.done.color, background: stage.done.bg }}>资料已提交</span>
-      <span style={{ flex: 1, color: gy.text }}>下一步：耕云整理资料并生成初稿</span>
+      {ask ? (
+        <>
+          <span style={{ padding: '1px 8px', borderRadius: 4, color: stage.action.color, background: stage.action.bg }}>待您回应</span>
+          <span style={{ flex: 1, color: gy.text }}>下一步：请回应注安师的补充问题（第 {ask.round} 轮），见下方</span>
+        </>
+      ) : (
+        <>
+          <span style={{ padding: '1px 8px', borderRadius: 4, color: stage.done.color, background: stage.done.bg }}>资料已提交</span>
+          <span style={{ flex: 1, color: gy.text }}>下一步：耕云整理资料并生成初稿</span>
+        </>
+      )}
       {questions > 0 && <span style={{ color: stage.action.color }}>专家想向您确认 {questions} 项</span>}
       <span style={{ color: gy.secondary }}>
         {remaining.length > 0 ? `待补 ${remaining.length} 项 · 审核前补齐更好` : '生成完成后进入专家审核'}
@@ -70,7 +81,7 @@ function useSupplements(task: Task) {
   };
 }
 
-// 「处理记录」标签（13 页 F03、F03B）：提交成功提示、待补清单、处理记录；右栏负责专家与提交后流程
+// 「处理记录」标签（13 页 F03、F03B）：提交成功提示、待补清单、处理记录；右栏负责注安师与提交后流程
 export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShowMaterials: () => void }) {
   const navigate = useNavigate();
   const { submission, check, isPending, error, progress, remaining } = useSupplements(task);
@@ -104,6 +115,7 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <SupplementCard task={task} />
           <ExpertRequests task={task} />
           {groups.length > 0 && (
             <section aria-label="待补清单" style={panel}>
@@ -190,8 +202,8 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
         <aside style={{ width: 290, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {task.assignedExpertName && (
             <section style={{ ...panel, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <span style={{ fontSize: 13, color: gy.tertiary }}>负责专家</span>
-              <span style={{ fontSize: 14, fontWeight: 500, color: gy.text }}>{task.assignedExpertName} · 注册安全工程师</span>
+              <span style={{ fontSize: 13, color: gy.tertiary }}>负责注安师</span>
+              <span style={{ fontSize: 14, fontWeight: 500, color: gy.text }}>{task.assignedExpertName}</span>
               <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>
                 需要补充时{task.assignedExpertName}会直接联系您。有问题可以在待补项点「请专家电话联系」。
               </span>

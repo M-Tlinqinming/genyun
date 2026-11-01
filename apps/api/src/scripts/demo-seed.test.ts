@@ -78,12 +78,12 @@ describe('演示数据', () => {
       .select({ number: tasks.number, status: tasks.status, enterprise: enterprises.name, expert: users.email })
       .from(tasks)
       .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
-      .innerJoin(users, eq(users.id, tasks.assignedExpertId))
+      .leftJoin(users, eq(users.id, tasks.assignedExpertId))
       .orderBy(tasks.number);
     const year = Number(chinaToday().slice(0, 4));
     expect(rows).toEqual([
       { number: `GY-${year}-001`, status: 'submitted', enterprise: feiyuBasicInfo.companyName, expert: DEMO_EMAILS.expert },
-      { number: `GY-${year}-002`, status: 'submitted', enterprise: '示例五金制品有限公司', expert: DEMO_EMAILS.expert2 },
+      { number: `GY-${year}-002`, status: 'submitted', enterprise: '示例五金制品有限公司', expert: null },
     ]);
   }, 60_000);
 

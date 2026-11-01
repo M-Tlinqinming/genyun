@@ -18,6 +18,8 @@ import {
   type SectionEdit,
   type SubmittedAnswer,
   type SubmittedDocument,
+  type SupplementFact,
+  type SupplementStatus,
   type WorkupData,
   type WorkupSnapshot,
 } from '@genyun/shared';
@@ -167,8 +169,10 @@ export const tasks = pgTable(
     // 还没选开始方式时为空
     startMethod: startMethod('start_method'),
     status: taskStatus('status').notNull().default('preparing'),
-    // 负责专家，运营分派前为空
+    // 负责注安师，运营分派前为空
     assignedExpertId: uuid('assigned_expert_id').references(() => users.id),
+    // 现在这位负责注安师接手的时间；改派后「客户请电话联系」的期限从这里重新算
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
@@ -248,6 +252,37 @@ export const taskContacts = pgTable(
     answeredAt: timestamp('answered_at', { withTimezone: true }),
   },
   (t) => [index('task_contacts_task').on(t.taskId, t.createdAt)],
+);
+
+// 事实补件（M2 第 13 项，15 页 R00a–R00c）：每轮一行。专家发起时记下要核对的事实和本任务原来用的值；
+// 客户回应记文件和说明；专家明确采用时写下本轮采用的值，同时改专业整理里的企业事实。
+// 「仍需客户补充」把这一轮标为 returned，另起下一轮
+export const factSupplements = pgTable(
+  'fact_supplements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    round: integer('round').notNull(),
+    status: text('status').$type<SupplementStatus>().notNull(),
+    title: text('title').notNull(),
+    message: text('message').notNull(),
+    itemKey: text('item_key').$type<ChecklistItemKey>(),
+    needsFile: boolean('needs_file').notNull(),
+    facts: jsonb('facts').$type<SupplementFact[]>().notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    responseFileIds: jsonb('response_file_ids').$type<string[]>(),
+    responseNote: text('response_note'),
+    respondedBy: uuid('responded_by').references(() => users.id),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    adoptedBy: uuid('adopted_by').references(() => users.id),
+    adoptedAt: timestamp('adopted_at', { withTimezone: true }),
+  },
+  (t) => [uniqueIndex('fact_supplements_round').on(t.taskId, t.round)],
 );
 
 // 站内提醒（顶栏铃铛）：业务提醒只在站内，不发邮件、短信（2026-10-28 Martin 确认）
@@ -537,6 +572,57 @@ export const draftRevisions = pgTable(
   },
   (t) => [index('draft_revisions_draft').on(t.batchId, t.kind, t.createdAt)],
 );
+
+// Word 校对（M2 第 12 项，14 页 E18-05）：专家核对完一份记一行，记下核对时这份的 version（draft_edits.version，
+// 没改过为 0）。之后这份再保存修订，version 变了，这条核对就失效，要重新核对
+export const draftChecks = pgTable(
+  'draft_checks',
+  {
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => generationBatches.id, { onDelete: 'cascade' }),
+    kind: draftKind('kind').notNull(),
+    version: integer('version').notNull(),
+    checkedBy: uuid('checked_by')
+      .notNull()
+      .references(() => users.id),
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
+);
+
+// 当前稿的 PDF（校对页逐页显示）：改过正文后按新的 version 重新转一次，只留最近一份。
+// 没改过的直接用生成时转好的 PDF（generated_drafts.pdf_file_id）
+export const draftPreviews = pgTable(
+  'draft_previews',
+  {
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => generationBatches.id, { onDelete: 'cascade' }),
+    kind: draftKind('kind').notNull(),
+    version: integer('version').notNull(),
+    // converting = 正在转；done = 转好了（file_id）；failed = 转换失败（error）
+    status: text('status').$type<'converting' | 'done' | 'failed'>().notNull(),
+    fileId: uuid('file_id').references(() => files.id),
+    error: text('error'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
+);
+
+// 审核结论（14 页 E18-06）：三份都核对完后专家确认审核通过，记下当时三份的 version。
+// 之后任何一份再保存修订，结论就失效（要重新核对那一份、重新确认结论）
+export const draftReviews = pgTable('draft_reviews', {
+  batchId: uuid('batch_id')
+    .primaryKey()
+    .references(() => generationBatches.id, { onDelete: 'cascade' }),
+  note: text('note').notNull(),
+  versions: jsonb('versions').$type<Record<DraftKind, number>>().notNull(),
+  reviewedBy: uuid('reviewed_by')
+    .notNull()
+    .references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 // 客户图纸转成的图片（M2 第 10c 项，附件 7 与图件页缩略图）：每份文件记一次页数，每页只转一次，
 // 存高清图和缩略图。图片只放在文件存储里（路径同样是「组织 ID/随机 ID」），不登记成文件，

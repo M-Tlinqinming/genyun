@@ -54,6 +54,8 @@ import {
   users,
 } from '../db/schema.ts';
 
+export type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
 const NOT_FOUND = '找不到该任务';
 
 // 自填第 3、4 步拍的照片只存在企业资料里，不挂资料项（M1 第 7a 项说明），按所在位置归到资料项
@@ -280,22 +282,54 @@ export class WorkupService {
     contactId: string,
     answers: { key: string; value: FactOverride['value'] }[],
   ) {
+    return this.applyCustomer(user, task, answers, { via: 'phone', contactId });
+  }
+
+  // 事实补件经专家核实采用后回填企业事实，来源记为「客户确认 · 事实补件」。
+  // tx：和「这一轮改成已采用」放在同一个事务里，写回失败一起回滚
+  async applySupplement(
+    user: SessionUser,
+    task: { id: string; enterpriseId: string },
+    supplementId: string,
+    answers: { key: string; value: FactOverride['value'] }[],
+    tx: Tx,
+  ) {
+    return this.applyCustomer(user, task, answers, { via: 'supplement', supplementId }, tx);
+  }
+
+  // 快照与专业整理数据（补件发起时取本任务原来用的值、采用时校验类型）
+  async rowOf(task: { id: string; enterpriseId: string }) {
+    const row = await this.ensure(task);
+    return { snapshot: row.snapshot, data: row.data };
+  }
+
+  private async applyCustomer(
+    user: SessionUser,
+    task: { id: string; enterpriseId: string },
+    answers: { key: string; value: FactOverride['value'] }[],
+    origin: Pick<FactOverride, 'via' | 'contactId' | 'supplementId'>,
+    db: Database | Tx = this.db,
+  ) {
     if (answers.length === 0) return;
+    // 在事务里（事实补件采用）时调用方已经建好整理记录；查询都走同一个事务，不另开连接
+    if (db === this.db) await this.ensure(task);
     for (let attempt = 0; attempt < 3; attempt++) {
-      const row = await this.ensure(task);
+      const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).for('update').limit(1);
+      if (!row) throw new NotFoundException(NOT_FOUND);
       const overrides = { ...row.data.overrides };
       const at = new Date().toISOString();
       for (const a of answers) {
-        overrides[a.key] = { value: a.value, source: 'customer', via: 'phone', contactId, by: user.id, byName: user.name, at };
+        overrides[a.key] = { value: a.value, source: 'customer', ...origin, by: user.id, byName: user.name, at };
       }
-      const [saved] = await this.db
+      const [saved] = await db
         .update(taskWorkups)
         .set({ data: { ...row.data, overrides }, version: row.version + 1, updatedBy: user.id, updatedAt: new Date() })
         .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
         .returning({ version: taskWorkups.version });
       if (saved) return;
     }
-    throw this.stale((await this.row(task.id))!.version);
+    const [latest] = await db.select({ version: taskWorkups.version }).from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
+    throw this.stale(latest!.version);
   }
 
   async snapshotOf(task: { id: string; enterpriseId: string }) {

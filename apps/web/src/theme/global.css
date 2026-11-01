@@ -78,9 +78,27 @@ body {
   outline: 2px solid var(--gy-primary);
   border-radius: 4px;
 }
+/* 审核与修订各页（正文编辑、Word 预览、审核结论）的键盘焦点框统一为 3px #A3C8FF（14 页设计稿） */
 .gy-editor-box:focus-within {
-  outline: 2px solid var(--gy-primary);
-  outline-offset: -1px;
+  outline: 3px solid #a3c8ff;
+  outline-offset: 0;
+}
+.gy-edit-page :focus-visible,
+.gy-review-page :focus-visible,
+.gy-edit-page .ant-btn:focus-visible,
+.gy-review-page .ant-btn:focus-visible,
+.gy-edit-page .ant-checkbox-wrapper:has(:focus-visible) .ant-checkbox,
+.gy-review-page .ant-checkbox-wrapper:has(:focus-visible) .ant-checkbox {
+  outline: 3px solid #a3c8ff !important;
+  outline-offset: 1px;
+}
+.gy-edit-page .gy-section-editor:focus-visible {
+  outline: none !important;
+}
+/* 换页后把焦点放到标题上（读屏从这里开始读），标题本身不画框 */
+.gy-edit-page [data-page-title]:focus,
+.gy-review-page [data-page-title]:focus {
+  outline: none !important;
 }
 
 /* 系统设置了「减少动态效果」时，组件库的动效也一律不动 */

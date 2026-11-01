@@ -277,7 +277,15 @@ function EnterprisesCard({ org }: { org: OperatorOrgDetail }) {
               <Typography.Text ellipsis={{ tooltip: e.name }} style={{ ...body, flex: 1, minWidth: 0 }}>
                 {e.name}
               </Typography.Text>
-              <span style={{ ...body, color: gy.secondary, width: 120, flexShrink: 0 }}>{e.task?.number ?? '—'}</span>
+              <span style={{ ...body, color: gy.secondary, width: 120, flexShrink: 0 }}>
+                {e.task ? (
+                  <Link to={`/operator/tasks?task=${e.task.id}`} style={{ color: gy.primary }}>
+                    {e.task.number}
+                  </Link>
+                ) : (
+                  '—'
+                )}
+              </span>
               <span style={{ width: 110, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
                 {e.task ? (
                   <Pill tone={TASK_TONE[e.task.stage]}>{OPERATOR_TASK_STAGES[e.task.stage]}</Pill>
