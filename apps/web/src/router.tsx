@@ -21,6 +21,7 @@ import { TaskCenterPage } from './pages/expert/TaskCenterPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
 import { MailOutboxPage } from './pages/operator/MailOutboxPage';
 import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
+import { OperatorTaskCenterPage } from './pages/operator/OperatorTaskCenterPage';
 import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
@@ -52,9 +53,9 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { index: true, element: <OrganizationListPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },
   ],
-  // 运营任务中心的列表在 M3 做；任务正文先能从网址只读查看
+  // 任务中心（列表、分派，?task= 打开某个任务）；任务正文只读查看在 /operator/tasks/<任务>
   '/operator/tasks': [
-    { index: true, element: <PendingPage eyebrow={EYEBROW.operator} title="任务中心" /> },
+    { index: true, element: <OperatorTaskCenterPage /> },
     { path: ':taskId', element: <OperatorTaskPage /> },
   ],
   // 模拟发件箱只在预览环境有用，平时不在菜单里（navigation.tsx 的 onlyWhenActive）
