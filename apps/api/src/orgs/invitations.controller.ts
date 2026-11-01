@@ -136,7 +136,16 @@ export class InvitationsController {
       throw new ConflictException({ statusCode: 409, message, state });
     }
     const title = '邀请过期，请重新发送';
-    const body = `${inv.orgName}：发给 ${inv.email} 的邀请已过期，对方请您重新发送。`;
+    // 正文带上这封邀请的到期时间：重发后新邀请再过期，还能再提醒一次
+    const expired = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(inv.expiresAt);
+    const body = `${inv.orgName}：发给 ${inv.email} 的邀请已于 ${expired} 过期，对方请您重新发送。`;
     const link = (await this.byOperator(inv.invitedBy)) ? `/operator/organizations/${inv.orgId}` : '/customer/organization';
     // 同一封邀请只提醒一次
     const [already] = await this.db

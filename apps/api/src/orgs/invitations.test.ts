@@ -10,6 +10,7 @@ import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import { enterprises, memberships, organizationInvitations, organizations, tasks, users } from '../db/schema.ts';
 import { LocalDiskStorage } from '../files/storage.ts';
+import { hashInvitationToken } from './invitations.ts';
 import { MemoryMailer } from '../mail/mailer.ts';
 
 // M3 第 2 项：接受邀请（Paper 10 页 A02）与运营组织详情里的「开通与邀请」（16 页 I03）
@@ -192,6 +193,31 @@ describe('接受邀请', () => {
     );
     expect(mine).toHaveLength(1);
     expect(mine[0]).toMatchObject({ title: '邀请过期，请重新发送', link: `/operator/organizations/${orgId}` });
+  });
+
+  it('重发的新邀请再过期，还能再提醒一次', async () => {
+    const { orgId, token } = await openOrg('二次过期机构', 'expire-twice@test.cn');
+    // 两封邀请的到期时间不同（第一封两天前到期）
+    const expire = (msAgo: number) =>
+      handle.db
+        .update(organizationInvitations)
+        .set({ expiresAt: new Date(Date.now() - msAgo) })
+        .where(eq(organizationInvitations.orgId, orgId));
+    await expire(2 * 86_400_000);
+    expect((await request(app.getHttpServer()).post(`/api/invitations/${token}/request-resend`)).status).toBe(200);
+    const ops = await as('ops@test.cn');
+    await ops
+      .post(`/api/operator/organizations/${orgId}/admin-invitation`)
+      .send({ name: '孙经理', phone: '136 2254 1234', email: 'expire-twice@test.cn' });
+    const fresh = tokenOf(mailer.sent.at(-1)!.text);
+    await handle.db
+      .update(organizationInvitations)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(organizationInvitations.tokenHash, hashInvitationToken(fresh)));
+    expect((await request(app.getHttpServer()).post(`/api/invitations/${fresh}/request-resend`)).status).toBe(200);
+    const list = await ops.get('/api/notifications');
+    const mine = (list.body.items as { body: string }[]).filter((n) => n.body.includes('expire-twice@test.cn'));
+    expect(mine).toHaveLength(2);
   });
 
   it('发邀请后这个邮箱才有了耕云账号：接受时请对方先登录', async () => {
