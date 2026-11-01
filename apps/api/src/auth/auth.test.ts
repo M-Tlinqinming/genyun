@@ -60,7 +60,7 @@ describe('登录', () => {
     const agent = await loginAs('a-admin@test.cn');
     const me = await agent.get('/api/auth/me');
     expect(me.status).toBe(200);
-    expect(me.body.memberships).toEqual([{ orgId: orgs.a, orgName: 'A 安全咨询', role: 'customer_admin' }]);
+    expect(me.body.memberships).toEqual([{ orgId: orgs.a, orgName: 'A 安全咨询', role: 'customer_admin', enterpriseIds: [] }]);
   });
 
   it('邮箱大小写不影响登录', async () => {

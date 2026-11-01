@@ -15,6 +15,12 @@ export const AUDIT_ACTIONS = [
   'account_disable',
   'account_enable',
   'account_role_change',
+  'member_invite',
+  'member_invite_revoke',
+  'member_remove',
+  'member_role_change',
+  'enterprise_assign',
+  'org_profile_update',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -31,6 +37,12 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   account_disable: '停用账号',
   account_enable: '恢复账号',
   account_role_change: '变更角色',
+  member_invite: '邀请机构成员',
+  member_invite_revoke: '撤销成员邀请',
+  member_remove: '移除机构成员',
+  member_role_change: '变更成员角色',
+  enterprise_assign: '调整可访问企业',
+  org_profile_update: '修改组织资料',
 };
 
 export const AUDIT_PAGE_SIZE = 50;

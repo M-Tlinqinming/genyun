@@ -5,6 +5,7 @@ import { useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router';
 import { useEnterprises, type TaskSummary } from '../../../api/enterprises';
 import { useOrganization } from '../../../api/tasks';
+import { useWorkspace } from '../../../layouts/workspace';
 import { gy } from '../../../theme/tokens';
 
 export interface TaskRow extends TaskSummary {
@@ -92,6 +93,8 @@ export function CreateTaskButton({ orgId, canCreate, size = 'large' }: { orgId: 
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const list = enterprises.data ?? [];
+  // 成员不能新建企业，只能在分配给自己的企业下建任务
+  const canNewEnterprise = useWorkspace().role !== 'customer_member';
 
   return (
     <>
@@ -101,7 +104,7 @@ export function CreateTaskButton({ orgId, canCreate, size = 'large' }: { orgId: 
         icon={<PlusOutlined />}
         disabled={!canCreate}
         style={size === 'large' ? { fontSize: 16 } : undefined}
-        onClick={() => (list.length === 0 ? navigate('/customer/enterprises/new') : setOpen(true))}
+        onClick={() => (list.length === 0 && canNewEnterprise ? navigate('/customer/enterprises/new') : setOpen(true))}
       >
         创建编制任务
       </Button>
@@ -125,12 +128,16 @@ export function CreateTaskButton({ orgId, canCreate, size = 'large' }: { orgId: 
           onChange={setPicked}
           options={list.map((e) => ({ value: e.id, label: e.name }))}
         />
-        <span style={{ fontSize: 13, color: gy.secondary }}>
-          企业还没建档？
-          <button type="button" style={link} onClick={() => navigate('/customer/enterprises/new')}>
-            先新建企业
-          </button>
-        </span>
+        {canNewEnterprise ? (
+          <span style={{ fontSize: 13, color: gy.secondary }}>
+            企业还没建档？
+            <button type="button" style={link} onClick={() => navigate('/customer/enterprises/new')}>
+              先新建企业
+            </button>
+          </span>
+        ) : (
+          <span style={{ fontSize: 13, color: gy.secondary }}>只列出分配给您的企业。找不到企业，请联系机构管理员新建或分配。</span>
+        )}
       </Modal>
     </>
   );

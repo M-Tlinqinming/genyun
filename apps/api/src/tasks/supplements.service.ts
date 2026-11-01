@@ -31,7 +31,7 @@ import {
 } from '@nestjs/common';
 import { and, desc, eq, inArray, max } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { canEditOrganizationData } from '../auth/access.ts';
+import { canEditEnterpriseData } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -47,7 +47,7 @@ import {
   users,
 } from '../db/schema.ts';
 import { DocumentsService } from '../documents/documents.service.ts';
-import { NotificationsService } from '../notifications/notifications.service.ts';
+import { enterpriseCustomerIds, NotificationsService } from '../notifications/notifications.service.ts';
 import { PUBLISHING_MESSAGE, throwIfTaskPublishing } from './delivery-lock.ts';
 import { TasksService } from './tasks.service.ts';
 import { WorkupService } from './workup.service.ts';
@@ -208,7 +208,7 @@ export class SupplementsService {
 
   async customerList(user: SessionUser, taskId: string): Promise<CustomerSupplement[]> {
     const task = await this.tasks.load(user, taskId);
-    if (!canEditOrganizationData(user, task.orgId)) throw new NotFoundException('找不到该任务');
+    if (!canEditEnterpriseData(user, task)) throw new NotFoundException('找不到该任务');
     return (await this.rounds(task.id)).map((s) => ({
       id: s.id,
       round: s.round,
@@ -229,7 +229,7 @@ export class SupplementsService {
   // R00a「提交本轮补充」：文件进企业资料库并关联到任务（专家原件对照能看到）；企业事实要等专家明确采用才改
   async respond(user: SessionUser, taskId: string, supplementId: string, body: unknown) {
     const task = await this.tasks.load(user, taskId);
-    if (!canEditOrganizationData(user, task.orgId)) throw new NotFoundException('找不到该任务');
+    if (!canEditEnterpriseData(user, task)) throw new NotFoundException('找不到该任务');
     const row = await this.row(task.id, supplementId);
     if (row.status !== 'awaiting_customer') throw new ConflictException('这一轮补件已经提交过了');
     const parsed = supplementResponseSchema.safeParse(body);
@@ -343,12 +343,8 @@ export class SupplementsService {
   }
 
   private async notifyCustomer(user: SessionUser, task: { id: string; orgId: string; enterpriseId: string }, title: string) {
-    const customers = await this.db
-      .select({ userId: memberships.userId })
-      .from(memberships)
-      .where(and(eq(memberships.orgId, task.orgId), inArray(memberships.role, ['customer_admin', 'customer_member'])));
     await this.notifications.notify(
-      customers.map((c) => c.userId),
+      await enterpriseCustomerIds(this.db, task),
       { taskId: task.id, title: `${user.name}请您确认企业事实`, body: title, link: `/customer/tasks/${task.id}` },
     );
     await this.db.update(tasks).set({ updatedAt: new Date() }).where(eq(tasks.id, task.id));

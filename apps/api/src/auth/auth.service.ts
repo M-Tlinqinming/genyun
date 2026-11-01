@@ -4,7 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 import { DATABASE, type Database } from '../db/client.ts';
-import { memberships, organizations, sessions, users } from '../db/schema.ts';
+import { enterpriseAssignments, memberships, organizations, sessions, users } from '../db/schema.ts';
 
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -12,6 +12,8 @@ export interface Membership {
   orgId: string;
   orgName: string;
   role: Role;
+  // 客户账号在这个组织里被分配到的企业（成员只能看到这些；机构管理员不受限，这里只表示「负责」）
+  enterpriseIds?: string[];
 }
 
 export interface SessionUser {
@@ -81,6 +83,17 @@ export class AuthService {
       .innerJoin(organizations, eq(organizations.id, memberships.orgId))
       .where(eq(memberships.userId, userId))
       .orderBy(organizations.name);
-    return { id: user.id, email: user.email, name: user.name, memberships: rows };
+    const assigned = rows.some((m) => m.role === 'customer_admin' || m.role === 'customer_member')
+      ? await this.db
+          .select({ orgId: enterpriseAssignments.orgId, enterpriseId: enterpriseAssignments.enterpriseId })
+          .from(enterpriseAssignments)
+          .where(eq(enterpriseAssignments.userId, userId))
+      : [];
+    const result: Membership[] = rows.map((m) =>
+      m.role === 'customer_admin' || m.role === 'customer_member'
+        ? { ...m, enterpriseIds: assigned.filter((a) => a.orgId === m.orgId).map((a) => a.enterpriseId) }
+        : m,
+    );
+    return { id: user.id, email: user.email, name: user.name, memberships: result };
   }
 }

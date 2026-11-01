@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { deliveries, deliveryFiles, enterprises, generationBatches, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
+import { deliveries, deliveryFiles, enterpriseAssignments, enterprises, generationBatches, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
@@ -117,6 +117,8 @@ beforeAll(async () => {
     .returning();
   taskId = task!.id;
   emptyTaskId = empty!.id;
+  // 成员只看分配给自己的企业：分到第一家
+  await db.insert(enterpriseAssignments).values({ enterpriseId: ent!.id, userId: uid['member@test.cn']!, orgId: customer!.id });
 
   app = await createApp(db, { loginLimitPerMinute: 1000, storage, queue, renderer, drafter: null, pdf: converter });
   await app.init();
