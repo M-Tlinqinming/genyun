@@ -28,9 +28,14 @@ services:
       REDIS_URL: redis://redis:6379
       # 邮件里的链接（邀请、找回密码）指向这个地址
       APP_ORIGIN: https://${SITE_DOMAIN}
-      # 还没接阿里云邮件推送：模拟发信，邮件写进发件箱目录（数据卷），查看方法见 README「查看模拟发信」
-      MAIL_DRIVER: mock
+      # 预览环境默认模拟发信：邮件写进发件箱目录（数据卷），运营在 /operator/mail-outbox 查看，见 README「查看模拟发信」。
+      # 要真发时在 /opt/genyun/.env 设 MAIL_DRIVER=aliyun 和下面三项凭据（这时模拟发件箱关闭）
+      MAIL_DRIVER: ${MAIL_DRIVER:-mock}
       MAIL_OUTBOX_DIR: /data/mail-outbox
+      ALIYUN_DM_ACCESS_KEY_ID: ${ALIYUN_DM_ACCESS_KEY_ID:-}
+      ALIYUN_DM_ACCESS_KEY_SECRET: ${ALIYUN_DM_ACCESS_KEY_SECRET:-}
+      ALIYUN_DM_ACCOUNT_NAME: ${ALIYUN_DM_ACCOUNT_NAME:-}
+      ALIYUN_DM_FROM_ALIAS: ${ALIYUN_DM_FROM_ALIAS:-耕云}
     # 健康检查用镜像里的 HEALTHCHECK（Dockerfile，调 /api/health：数据库或 Redis 连不上时不健康）
     volumes:
       - files:/data/files

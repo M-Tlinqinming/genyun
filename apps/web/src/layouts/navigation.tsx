@@ -3,6 +3,7 @@ import {
   AuditOutlined,
   BankOutlined,
   BookOutlined,
+  MailOutlined,
   FileTextOutlined,
   MessageOutlined,
   ProfileOutlined,
@@ -18,6 +19,8 @@ export interface NavItem {
   icon: ReactNode;
   // 设计稿里专业人员可见但不可用的入口（置灰）
   disabled?: boolean;
+  // 平时不在菜单里，只有打开这个页面时才出现并高亮（模拟发件箱：只在预览环境有用）
+  onlyWhenActive?: boolean;
 }
 
 export interface NavGroup {
@@ -87,6 +90,7 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
           { path: '/operator/audit-logs', label: '操作日志', icon: <AuditOutlined /> },
           { path: '/operator/knowledge', label: '知识库', icon: <BookOutlined /> },
           { path: '/operator/feedback', label: '反馈受理', icon: <MessageOutlined /> },
+          { path: '/operator/mail-outbox', label: '模拟发件箱', icon: <MailOutlined />, onlyWhenActive: true },
         ],
       },
     ],

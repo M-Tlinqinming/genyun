@@ -30,7 +30,7 @@ export function AuditLogPage() {
       <PageHeader
         eyebrow="耕云运营 / 操作日志"
         title="操作日志"
-        description="登录、退出等关键操作的记录（登录失败时记的是输入的邮箱），只能查看，不能修改。时间为北京时间。"
+        description="登录、退出、修改和重设密码等关键操作的记录（登录失败时记的是输入的邮箱），只能查看，不能修改。时间为北京时间。"
         extra={
           <Button icon={<ReloadOutlined />} onClick={() => void logs.refetch()} loading={logs.isFetching}>
             刷新

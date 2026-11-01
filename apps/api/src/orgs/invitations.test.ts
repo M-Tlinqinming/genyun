@@ -346,14 +346,14 @@ describe('运营重发邀请、更换首位管理员', () => {
     expect(missing.status).toBe(404);
   });
 
-  it('重新发送的邮件写明以最新一封为准，身份是机构管理员，写出具体有效期和落款', async () => {
+  it('重新发送的邮件写明以最新一封为准，身份是机构管理员，写出具体有效期和统一落款', async () => {
     const { orgId } = await openOrg('邮件文字机构', 'mail-text@test.cn');
     const first = mailer.sent.at(-1)!;
     expect(first.subject).toBe('耕云运营邀请您加入「邮件文字机构」');
     expect(first.text).toContain('机构管理员身份');
     expect(first.text).toMatch(/链接有效期至 \d{4} 年 \d{1,2} 月 \d{1,2} 日 \d{2}:\d{2}（北京时间）/);
     expect(first.text).not.toContain('最新一封');
-    expect(first.text.trimEnd().endsWith('耕云团队')).toBe(true);
+    expect(first.text.trimEnd().endsWith('耕云 · 0752-5200831')).toBe(true);
     await (await as('ops@test.cn'))
       .post(`/api/operator/organizations/${orgId}/admin-invitation`)
       .send({ name: '孙经理', phone: '136 2254 1234', email: 'mail-text@test.cn' });

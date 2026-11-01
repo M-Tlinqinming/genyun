@@ -125,3 +125,9 @@ body {
 .gy-form-explain-gap .ant-form-item-explain {
   margin-bottom: 8px;
 }
+
+/* 登录、重设密码、修改密码表单：出错时错误提示会占掉表单项下方 20px 的间距，
+   提示行高 22px 时几乎贴着下一项。错误提示下方再留 4px，没出错时间距不变 */
+.gy-form-gap .ant-form-item-explain-connected {
+  padding-bottom: 4px;
+}

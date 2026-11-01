@@ -12,6 +12,8 @@ import { MemoryMailer } from '../mail/mailer.ts';
 const PASSWORD = 'correct horse battery staple';
 let handle: DatabaseHandle;
 let app: INestApplication;
+const mailer = new MemoryMailer();
+const NEW_PASSWORD = 'new-password-2';
 const ids: Record<string, string> = {};
 
 beforeAll(async () => {
@@ -31,12 +33,14 @@ beforeAll(async () => {
     { email: 'expert@test.cn', orgId: internal!.id, role: 'expert' as const },
     { email: 'ops@test.cn', orgId: internal!.id, role: 'operator' as const },
     { email: 'user@test.cn', orgId: customer!.id, role: 'customer_member' as const },
+    { email: 'pw@test.cn', orgId: customer!.id, role: 'customer_member' as const },
+    { email: 'reset@test.cn', orgId: customer!.id, role: 'customer_member' as const },
   ]) {
     const [u] = await db.insert(users).values({ email: p.email, name: p.email.split('@')[0]!, passwordHash }).returning();
     await db.insert(memberships).values({ userId: u!.id, orgId: p.orgId, role: p.role });
     ids[p.email] = u!.id;
   }
-  app = await createApp(db, { loginLimitPerMinute: 1000, mailer: new MemoryMailer() });
+  app = await createApp(db, { loginLimitPerMinute: 1000, recoverySendLimitPer10Min: 1000, recoveryResetLimitPer10Min: 1000, mailer });
   await app.init();
 });
 
@@ -76,6 +80,29 @@ describe('记操作日志', () => {
     const logs = await logsOf('member@test.cn');
     expect(logs.map((l) => l.action)).toEqual(['login_success', 'logout']);
     expect(logs[1]!.actorId).toBe(ids['member@test.cn']);
+  });
+
+  it('修改密码：只在改成功时记，不记密码', async () => {
+    const agent = await as('pw@test.cn');
+    await agent.post('/api/account/password').send({ currentPassword: 'wrong-current-pass', newPassword: NEW_PASSWORD }).expect(400);
+    await agent.post('/api/account/password').set('X-Forwarded-For', '198.51.100.7').send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD }).expect(204);
+    const logs = await logsOf('pw@test.cn');
+    expect(logs.map((l) => l.action)).toEqual(['login_success', 'password_change']);
+    expect(logs[1]).toMatchObject({ actorId: ids['pw@test.cn'], ip: '198.51.100.7' });
+    expect(JSON.stringify(logs)).not.toContain(NEW_PASSWORD);
+  });
+
+  it('找回密码并重设：验证码错误不记，重设成功记一条，不记验证码', async () => {
+    await http().post('/api/auth/recover/send').send({ email: 'reset@test.cn' }).expect(204);
+    const code = mailer.sent.filter((m) => m.to === 'reset@test.cn').at(-1)?.text.match(/验证码：(\d{6})/)?.[1];
+    expect(code).toBeTruthy();
+    const wrong = code === '000000' ? '111111' : '000000';
+    await http().post('/api/auth/recover/reset').send({ email: 'reset@test.cn', code: wrong, password: NEW_PASSWORD }).expect(400);
+    await http().post('/api/auth/recover/reset').send({ email: 'reset@test.cn', code, password: NEW_PASSWORD }).expect(200);
+    const logs = await logsOf('reset@test.cn');
+    expect(logs.map((l) => l.action)).toEqual(['password_reset']);
+    expect(logs[0]!.actorId).toBe(ids['reset@test.cn']);
+    expect(JSON.stringify(logs)).not.toContain(code!);
   });
 });
 

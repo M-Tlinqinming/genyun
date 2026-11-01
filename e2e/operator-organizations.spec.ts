@@ -106,7 +106,36 @@ test('开通：缺合同原件或到账时不能开通，填齐后变为服务�
   await page.setViewportSize({ width: 1440, height: 1000 });
 });
 
-test('客户账号进不了运营的客户组织接口', async ({ browser }) => {
+test('模拟发件箱：邀请邮件在这里，能看全文、能复制链接', async () => {
+  await page.goto('/operator/mail-outbox');
+  await expect(page.getByRole('heading', { name: '模拟发件箱' })).toBeVisible();
+  // 侧栏这时出现「模拟发件箱」并高亮，不高亮「运营概览」
+  await expect(page.getByRole('menuitem', { name: '模拟发件箱' })).toHaveClass(/ant-menu-item-selected/);
+  await expect(page.getByRole('menuitem', { name: '运营概览' })).not.toHaveClass(/ant-menu-item-selected/);
+  const mail = page.getByRole('row').filter({ hasText: 'sun@huadong-anping.cn' }).first();
+  await expect(mail).toContainText('邀请');
+  await expect(mail).toContainText('耕云运营邀请您加入「华东安评服务有限公司」');
+  await expect(mail.getByText('复制链接')).toBeVisible();
+  // 点开看纯文本：称呼、链接、有效期、落款
+  await mail.click();
+  await page.getByText('纯文本').click();
+  await expect(page.getByText('孙经理，您好：')).toBeVisible();
+  await expect(page.getByRole('link', { name: /\/invite\// })).toBeVisible();
+  await expect(page.getByText(/链接有效期至 \d{4} 年 \d{1,2} 月 \d{1,2} 日 \d{2}:\d{2}（北京时间），只能使用一次/)).toBeVisible();
+  await page.getByText('邮件样式').click();
+  const frame = page.frameLocator('iframe[title*="邮件样式"]');
+  await expect(frame.getByRole('link', { name: '接受邀请' })).toBeVisible();
+  await expect(frame.getByText('耕云 · 0752-5200831')).toBeVisible();
+  // 预览框高度跟着内容走：框里不用再滚动
+  const fits = await page.locator('iframe[title*="邮件样式"]').evaluate((f: HTMLIFrameElement) => {
+    const d = f.contentDocument!.documentElement;
+    return d.scrollHeight <= f.clientHeight + 2;
+  });
+  expect(fits).toBe(true);
+  await page.screenshot({ path: 'out/m4-4-mail-outbox.png', fullPage: true });
+});
+
+test('客户账号进不了运营的客户组织接口和模拟发件箱', async ({ browser }) => {
   const customer = await browser.newPage();
   await customer.goto('/login');
   await customer.getByPlaceholder('请输入邮箱').fill('admin@demo.genyun.net.cn');
@@ -114,5 +143,6 @@ test('客户账号进不了运营的客户组织接口', async ({ browser }) => 
   await customer.getByRole('button', { name: /登\s*录/ }).click();
   await expect(customer).toHaveURL(/\/customer$/);
   expect((await customer.request.get('/api/operator/organizations')).status()).toBe(403);
+  expect((await customer.request.get('/api/dev/outbox')).status()).toBe(403);
   await customer.close();
 });
