@@ -47,7 +47,7 @@ for (const p of people) {
 }
 console.log(`已创建 ${people.length} 个演示账号：${people.map((p) => p.email).join('、')}`);
 
-// 分派页面在 M3；先用演示数据把飞宇任务分派给周工，另一家分派给吴工（验证专家互相看不到）
+// 飞宇任务预置为已分派给周工，便于直接演示专家端；另一家（五金）待运营在任务中心分派
 const customer = uid['feiyu@demo.genyun.net.cn']!;
 // 飞宇自填的企业资料（专业整理用）；技术人员数故意不填，演示专家整理时补齐缺失项
 const { technicalManagementCount: _, ...feiyuBasic } = feiyuProfile.basicStep!.basic;
@@ -75,7 +75,7 @@ const [feiyuTask, otherTask] = await db
   .values(
     [
       { enterpriseId: feiyu!.id, expert: 'expert@demo.genyun.net.cn' },
-      { enterpriseId: other!.id, expert: 'expert2@demo.genyun.net.cn' },
+      { enterpriseId: other!.id, expert: null },
     ].map((t, i) => ({
       orgId: feiyuOrg!.id,
       enterpriseId: t.enterpriseId,
@@ -87,7 +87,7 @@ const [feiyuTask, otherTask] = await db
       submittedAt,
       createdAt: submittedAt,
       updatedAt: submittedAt,
-      assignedExpertId: uid[t.expert]!,
+      assignedExpertId: t.expert ? uid[t.expert]! : null,
       createdBy: customer,
     })),
   )
@@ -129,5 +129,5 @@ for (const [taskId, state] of [
     pendingKeys: taskId === feiyuTask!.id ? pendingKeys : ['fire_pool'],
   });
 }
-console.log(`已创建演示任务：${feiyuTask!.number}（飞宇，周工）、${otherTask!.number}（吴工）`);
+console.log(`已创建演示任务：${feiyuTask!.number}（飞宇，周工）、${otherTask!.number}（五金，待运营分派）`);
 await close();
