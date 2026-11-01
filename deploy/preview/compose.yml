@@ -2,11 +2,19 @@
 # 在服务器 /opt/genyun/src/deploy/preview 下运行，密钥在 /opt/genyun/.env（不进仓库）
 name: genyun-preview
 
+# 日志轮转：每个容器的日志单个文件最大 10 MB，最多留 5 个（docker logs 仍可查最近的）
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   app:
     build: ../..
     image: genyun:preview
     restart: unless-stopped
+    logging: *logging
     environment:
       DATABASE_URL: postgres://genyun:${POSTGRES_PASSWORD}@db:5432/genyun
       FILE_STORAGE_DIR: /data/files
@@ -23,6 +31,7 @@ services:
       # 还没接阿里云邮件推送：模拟发信，邮件写进发件箱目录（数据卷），查看方法见 README「查看模拟发信」
       MAIL_DRIVER: mock
       MAIL_OUTBOX_DIR: /data/mail-outbox
+    # 健康检查用镜像里的 HEALTHCHECK（Dockerfile，调 /api/health：数据库或 Redis 连不上时不健康）
     volumes:
       - files:/data/files
       - mail_outbox:/data/mail-outbox
@@ -35,6 +44,7 @@ services:
   redis:
     image: redis:8
     restart: unless-stopped
+    logging: *logging
     # BullMQ 要求不淘汰键；开 AOF，重启不丢队列
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     volumes:
@@ -48,6 +58,7 @@ services:
   db:
     image: postgres:17
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: genyun
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -69,6 +80,7 @@ services:
         SITE_URL: https://${SITE_DOMAIN}
     image: genyun-site:preview
     restart: unless-stopped
+    logging: *logging
     ports:
       - "80:80"
       - "443:443"
