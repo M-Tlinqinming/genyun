@@ -8,7 +8,7 @@ import { checkDraft, previewFileUrl, previewKey, retryPreview, reviewKey, usePre
 import { linkButton } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
 import { stamp, ViewSwitch } from './EditDialogs';
-import { PdfPages, type PdfPagesHandle } from './PdfPages';
+import { PdfPages, type PdfPagesHandle } from '../../../components/PdfPages';
 
 // Word 校对（14 页 E18-05）：当前稿的 Word 版式逐页看，核对后记下这一份，接着打开下一份；
 // 三份都核对过去确认审核结论（E18-06）

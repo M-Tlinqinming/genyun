@@ -15,13 +15,19 @@ export interface TaskRow extends TaskSummary {
 export function taskRows(tasks: TaskSummary[] | undefined): TaskRow[] {
   const order = { mine: 0, gengyun: 1, delivered: 2 };
   return (tasks ?? [])
-    .map((t) => ({ ...t, todo: taskTodo(t) }))
+    .map((t) => ({ ...t, todo: withDelivery(taskTodo(t), t) }))
     .sort((a, b) => order[a.todo.bucket] - order[b.todo.bucket] || b.activityAt.localeCompare(a.activityAt));
+}
+
+// 已交付的写明是第几个交付版本
+function withDelivery(todo: TaskTodo, t: TaskSummary): TaskTodo {
+  return todo.bucket === 'delivered' && t.delivery ? { ...todo, next: `已发布交付 V${t.delivery.version}，可查看和下载` } : todo;
 }
 
 // 点进去直达要做的那一步：没选开始方式先选；上传路线资料齐了直接到检查页提交；已提交看处理记录
 export function taskHref(t: TaskRow): string {
   const base = `/customer/tasks/${t.id}`;
+  if (t.todo.bucket === 'delivered') return `/customer/documents/${t.id}`;
   if (t.todo.bucket !== 'mine') return `${base}?tab=records`;
   if (t.startMethod === null) return `${base}/start`;
   if (t.startMethod === 'upload' && t.missing.length === 0) return `${base}?view=check`;

@@ -34,6 +34,7 @@ import { REASSIGNED_TITLE } from '../notifications/notifications.service.ts';
 import {
   checklistItemFiles,
   checklistItems,
+  deliveries,
   enterprises,
   factSupplements,
   files,
@@ -99,6 +100,12 @@ export class TasksService {
       .select({ taskId: factSupplements.taskId, title: factSupplements.title })
       .from(factSupplements)
       .where(and(inArray(factSupplements.taskId, ids), eq(factSupplements.status, 'awaiting_customer')));
+    // 已形成的交付版本（业务任务「已交付」、工作台「最近交付」显示最新一版）
+    const delivered = await this.db
+      .select({ taskId: deliveries.taskId, version: deliveries.version, publishedAt: deliveries.publishedAt })
+      .from(deliveries)
+      .where(and(inArray(deliveries.taskId, ids), eq(deliveries.status, 'done')))
+      .orderBy(desc(deliveries.version));
 
     return list.map((t) => {
       const mine = rows.filter((r) => r.taskId === t.id);
@@ -114,6 +121,7 @@ export class TasksService {
         missing: checkChecklist(items).blocking.map((b) => b.label),
         remaining: progress.total - progress.done,
         supplement: asks.find((a) => a.taskId === t.id)?.title ?? null,
+        delivery: latestDelivery(delivered.filter((d) => d.taskId === t.id)),
         activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
       };
     });
@@ -473,4 +481,10 @@ export class TasksService {
       existingTask: existing,
     });
   }
+}
+
+// 最新一个交付版本（版本号、发布时间）；还没交付为 null
+function latestDelivery(rows: { version: number; publishedAt: Date | null }[]): { version: number; publishedAt: string } | null {
+  const [last] = rows;
+  return last?.publishedAt ? { version: last.version, publishedAt: last.publishedAt.toISOString() } : null;
 }
