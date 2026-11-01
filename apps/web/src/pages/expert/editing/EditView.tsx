@@ -70,6 +70,8 @@ function ancestorsOf(nodes: OutlineNode[], id: string, path: string[] = []): str
 
 // 编辑器转过一遍的样子作为比较基准（空段落之类不算修改）
 const baselineOf = (blocks: EditBlock[]) => docToBlocks(blocksToDoc(blocks));
+// 后台明确拒绝（4xx）：没有保存，按后台的说明处理。断网时 request 记为状态 0，不算拒绝
+const refused = (err: unknown): err is ApiError => err instanceof ApiError && err.status >= 400 && err.status < 500;
 
 export function EditView({
   taskId,
@@ -221,7 +223,7 @@ export function EditView({
         setConflictOpen(true);
         return false;
       }
-      if (err instanceof ApiError && err.status < 500) {
+      if (refused(err)) {
         // 内容或说明不合要求、或草稿已重新生成：没有保存，按提示处理
         setState({ kind: 'idle' });
         if (err.message.includes('修订说明')) setNoteError(err.message);
@@ -229,7 +231,7 @@ export function EditView({
         return false;
       }
       // 服务出错或没连上：结果不明，记下这次的 saveId 和发出去的内容，重试前先查
-      setState({ kind: 'failed', saveId, checking: false, cause: err instanceof ApiError ? 'server' : 'network', blocks: sent, note: trimmed });
+      setState({ kind: 'failed', saveId, checking: false, cause: err instanceof ApiError && err.status >= 500 ? 'server' : 'network', blocks: sent, note: trimmed });
       return false;
     }
   };
@@ -244,7 +246,7 @@ export function EditView({
       check = await saveStatus(taskId, kind, state.saveId, doc.data.batchId);
     } catch (err) {
       setState({ ...state, checking: false });
-      message.error(err instanceof ApiError && err.status < 500 ? err.message : '还连不上服务器，请检查网络后再点「重试保存」');
+      message.error(refused(err) ? err.message : '还连不上耕云，请检查网络后再点「重试保存」');
       return;
     }
     const changed = !sameBlocks(current, state.blocks) || note.trim() !== state.note;
