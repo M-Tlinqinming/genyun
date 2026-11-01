@@ -164,6 +164,10 @@ describe('正文编辑', () => {
       locked: [{ index: 1, kind: 'table', header: [['姓名']], rows: [['陈某']] }],
     });
     await zhou.get(url('plan', '/sections/nope')).expect(404);
+    // 图的缩略图单独加载；表格、段落的位置不是图
+    await zhou.get(url('plan', '/sections/ch1.2/figures/1')).expect(404);
+    await zhou.get(url('plan', '/sections/ch1.2/figures/0')).expect(404);
+    await zhou.get(url('plan', '/sections/ch1.2/figures/x')).expect(400);
   });
 
   it('保存一节：记修订说明，刷新后还在，下载的 Word 用修订后的内容', async () => {
@@ -289,6 +293,7 @@ describe('正文编辑的权限', () => {
       await agent.put(url('plan', '/sections/ch1.1')).send(body()).expect(404);
       await agent.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '一段需要改写的文字。' }).expect(404);
       await agent.get(url('plan', `/saves/${randomUUID()}`)).expect(404);
+      await agent.get(url('plan', '/sections/ch1.2/figures/1')).expect(404);
     }
   });
 

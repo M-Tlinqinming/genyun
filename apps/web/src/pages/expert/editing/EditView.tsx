@@ -76,11 +76,14 @@ export function EditView({
   enterpriseName,
   taskNumber,
   generation,
+  links = { center: '/expert', task: `/expert/tasks/${taskId}` },
 }: {
   taskId: string;
   enterpriseName: string;
   taskNumber: string;
   generation: GenerationProgress;
+  // 面包屑和返回的去处：专家回任务中心和生成进度，运营回运营的任务中心
+  links?: { center: string; task: string };
 }) {
   const [params, setParams] = useSearchParams();
   const kind: DraftKind = DRAFT_KIND_KEYS.find((k) => k === params.get('doc')) ?? 'plan';
@@ -359,7 +362,7 @@ export function EditView({
         title="还不能编辑正文"
         subTitle={doc.error.message}
         extra={
-          <Link to={`/expert/tasks/${taskId}`}>
+          <Link to={links.task}>
             <Button>返回生成进度</Button>
           </Link>
         }
@@ -395,11 +398,11 @@ export function EditView({
     <div className="gy-edit-page gy-wide-workbench" style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '-16px 0 -48px' }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <nav aria-label="面包屑" style={{ ...text14, color: gy.secondary }}>
-          <Link to="/expert" style={{ color: gy.secondary }}>
+          <Link to={links.center} style={{ color: gy.secondary }}>
             任务中心
           </Link>
           {'　/　'}
-          <Link to={`/expert/tasks/${taskId}`} style={{ color: gy.secondary }}>
+          <Link to={links.task} style={{ color: gy.secondary }}>
             {enterpriseName}
           </Link>
           {'　/　审核与修订'}

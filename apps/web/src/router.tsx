@@ -15,6 +15,7 @@ import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
+import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
 import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
@@ -43,6 +44,11 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
   '/operator/organizations': [{ index: true, element: <OrganizationListPage /> }],
+  // 运营任务中心的列表在 M3 做；任务正文先能从网址只读查看
+  '/operator/tasks': [
+    { index: true, element: <PendingPage eyebrow={EYEBROW.operator} title="任务中心" /> },
+    { path: ':taskId', element: <OperatorTaskPage /> },
+  ],
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
