@@ -280,13 +280,38 @@ export class WorkupService {
     contactId: string,
     answers: { key: string; value: FactOverride['value'] }[],
   ) {
+    return this.applyCustomer(user, task, answers, { via: 'phone', contactId });
+  }
+
+  // 事实补件经专家核实采用后回填企业事实，来源记为「客户确认 · 事实补件」
+  async applySupplement(
+    user: SessionUser,
+    task: { id: string; enterpriseId: string },
+    supplementId: string,
+    answers: { key: string; value: FactOverride['value'] }[],
+  ) {
+    return this.applyCustomer(user, task, answers, { via: 'supplement', supplementId });
+  }
+
+  // 快照与专业整理数据（补件发起时取本任务原来用的值、采用时校验类型）
+  async rowOf(task: { id: string; enterpriseId: string }) {
+    const row = await this.ensure(task);
+    return { snapshot: row.snapshot, data: row.data };
+  }
+
+  private async applyCustomer(
+    user: SessionUser,
+    task: { id: string; enterpriseId: string },
+    answers: { key: string; value: FactOverride['value'] }[],
+    origin: Pick<FactOverride, 'via' | 'contactId' | 'supplementId'>,
+  ) {
     if (answers.length === 0) return;
     for (let attempt = 0; attempt < 3; attempt++) {
       const row = await this.ensure(task);
       const overrides = { ...row.data.overrides };
       const at = new Date().toISOString();
       for (const a of answers) {
-        overrides[a.key] = { value: a.value, source: 'customer', via: 'phone', contactId, by: user.id, byName: user.name, at };
+        overrides[a.key] = { value: a.value, source: 'customer', ...origin, by: user.id, byName: user.name, at };
       }
       const [saved] = await this.db
         .update(taskWorkups)

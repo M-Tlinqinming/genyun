@@ -34,6 +34,7 @@ import {
   checklistItemFiles,
   checklistItems,
   enterprises,
+  factSupplements,
   files,
   onSiteRequests,
   organizations,
@@ -91,6 +92,11 @@ export class TasksService {
       .select({ taskId: taskSubmissions.taskId, pendingKeys: taskSubmissions.pendingKeys })
       .from(taskSubmissions)
       .where(inArray(taskSubmissions.taskId, ids));
+    // 专家发起、正在等客户回应的事实补件（工作台「待我处理」：去回应）
+    const asks = await this.db
+      .select({ taskId: factSupplements.taskId, title: factSupplements.title })
+      .from(factSupplements)
+      .where(and(inArray(factSupplements.taskId, ids), eq(factSupplements.status, 'awaiting_customer')));
 
     return list.map((t) => {
       const mine = rows.filter((r) => r.taskId === t.id);
@@ -105,6 +111,7 @@ export class TasksService {
         ...t,
         missing: checkChecklist(items).blocking.map((b) => b.label),
         remaining: progress.total - progress.done,
+        supplement: asks.find((a) => a.taskId === t.id)?.title ?? null,
         activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
       };
     });
