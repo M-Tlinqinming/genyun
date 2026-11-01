@@ -44,6 +44,8 @@ export interface GenerationProgress {
   materials: LockedMaterial[];
   createdAt: string;
   createdByName: string;
+  /** 三份里专家保存过修订的节数（重新生成前提醒） */
+  editedSections: number;
   drafts: DraftProgress[];
 }
 

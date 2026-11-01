@@ -10,9 +10,11 @@ import {
   type ContactQuestion,
   type ContactTarget,
   type DraftKind,
+  type EditBlock,
   type EnterpriseProfile,
   type LockedMaterial,
   type PlanInput,
+  type SectionEdit,
   type SubmittedAnswer,
   type SubmittedDocument,
   type WorkupData,
@@ -478,6 +480,8 @@ export const generatedDrafts = pgTable(
     attempts: integer('attempts').notNull().default(0),
     wordFileId: uuid('word_file_id').references(() => files.id),
     pdfFileId: uuid('pdf_file_id').references(() => files.id),
+    // 生成时的文档结构（JSON，图片以 base64 存），正文编辑在它上面按节修订；第 11 项之前生成的没有
+    documentFileId: uuid('document_file_id').references(() => files.id),
     error: text('error'),
     // 每个空位、每段用的是 AI 还是系统的内容，给专家核对
     notes: jsonb('notes').$type<SlotNote[]>(),
@@ -485,6 +489,52 @@ export const generatedDrafts = pgTable(
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
+);
+
+// 正文编辑（M2 第 11 项）：一批里每份草稿一行，存专家改过的各节（节编号 → 修订后的内容）。
+// version 是整份的修订次数，任何一节保存都加 1；每节另记 rev，两人同时改同一节时后保存的被拒绝
+export const draftEdits = pgTable(
+  'draft_edits',
+  {
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => generationBatches.id, { onDelete: 'cascade' }),
+    kind: draftKind('kind').notNull(),
+    sections: jsonb('sections').$type<Record<string, SectionEdit>>().notNull().default({}),
+    version: integer('version').notNull().default(0),
+    updatedBy: uuid('updated_by').references(() => users.id),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
+);
+
+// 每次保存一节记一条修订：改前、改后、修订说明。save_id 由页面每次保存生成，
+// 同一次保存重试（结果不确定时）不会记两条；第 14 项新旧稿对照用这些记录
+export const draftRevisions = pgTable(
+  'draft_revisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    saveId: uuid('save_id').notNull().unique(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => generationBatches.id, { onDelete: 'cascade' }),
+    kind: draftKind('kind').notNull(),
+    sectionId: text('section_id').notNull(),
+    sectionTitle: text('section_title').notNull(),
+    note: text('note').notNull(),
+    before: jsonb('before').$type<EditBlock[]>().notNull(),
+    after: jsonb('after').$type<EditBlock[]>().notNull(),
+    // 这次修改采用了「帮我改写这段」的 AI 文字时，记下提示词版本；没用 AI 为 null
+    aiPromptVersion: text('ai_prompt_version'),
+    // 保存后这一节的 rev 和整份的 version
+    rev: integer('rev').notNull(),
+    version: integer('version').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('draft_revisions_draft').on(t.batchId, t.kind, t.createdAt)],
 );
 
 // 客户图纸转成的图片（M2 第 10c 项，附件 7 与图件页缩略图）：每份文件记一次页数，每页只转一次，
