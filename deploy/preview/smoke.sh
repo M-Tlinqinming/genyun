@@ -33,7 +33,10 @@ for p in /login /invite/abc /recover /reset-password /account /customer /custome
 done
 
 echo "接口"
-if body /api/health | grep -q '"ok":true'; then ok "/api/health"; else bad "/api/health 不通"; fi
+health=$(body /api/health)
+if echo "$health" | grep -q '"status":"ok"'; then ok "/api/health"
+elif echo "$health" | grep -q '"status":"degraded"'; then ok "/api/health（degraded：数据盘剩余不到 10%，该清理了）"
+else bad "/api/health 不通或有检查项失败：$health"; fi
 # 经过代理登录：错误密码应返回 401（说明 POST、请求体、cookie 路径都通到了应用）
 code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -H 'Content-Type: application/json' \
   -d '{"email":"smoke-nobody@example.com","password":"wrong-password"}' "$BASE/api/auth/login")

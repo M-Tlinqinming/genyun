@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# 本机演练用的假 docker：只认 backup.sh / restore.sh 用到的几种调用，其余报错。
+#   docker exec [-i] <db> pg_dump …          → fake-pg.mjs dump
+#   docker exec -i <db> psql … -d postgres … → fake-pg.mjs recreate（删库重建）
+#   docker exec -i <db> psql … -d genyun …   → fake-pg.mjs load（从标准输入导入）
+#   docker run --rm [-i] -v <卷>:/data[:ro] <镜像> <命令…> → 在本机跑，/data 换成 $REHEARSAL_ROOT/volumes/<卷>
+#   docker compose … stop|start app          → 只打印
+#   docker inspect -f … <app>                → healthy
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+: "${REHEARSAL_ROOT:?}"
+
+case "${1:-}" in
+  exec)
+    shift
+    [ "$1" = -i ] && shift
+    shift # 容器名
+    if [ "$1" = pg_dump ]; then exec node "$HERE/fake-pg.mjs" dump; fi
+    if [ "$1" = psql ]; then
+      if printf '%s\n' "$@" | grep -qx postgres; then exec node "$HERE/fake-pg.mjs" recreate; fi
+      exec node "$HERE/fake-pg.mjs" load
+    fi
+    ;;
+  run)
+    shift
+    vol=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --rm | -i) shift ;;
+        -v) vol=${2%%:*}; shift 2 ;;
+        *) break ;;
+      esac
+    done
+    shift # 镜像
+    data="$REHEARSAL_ROOT/volumes/$vol"
+    mkdir -p "$data"
+    args=()
+    for a in "$@"; do args+=("${a//\/data/$data}"); done
+    exec "${args[@]}"
+    ;;
+  compose)
+    echo "（演练）docker $*"
+    exit 0
+    ;;
+  inspect)
+    echo healthy
+    exit 0
+    ;;
+esac
+echo "假 docker 不支持：docker $*" >&2
+exit 1

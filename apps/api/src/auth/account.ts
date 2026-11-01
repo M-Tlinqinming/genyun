@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { and, count, eq, gt, ne } from 'drizzle-orm';
 import type { Request } from 'express';
+import { AuditService, clientIp } from '../audit/audit.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { sessions, users } from '../db/schema.ts';
 import { hashPassword, hashToken, type SessionUser } from './auth.service.ts';
@@ -75,7 +76,10 @@ function parse<T>(schema: { safeParse(v: unknown): { success: true; data: T } | 
 
 @Controller('account')
 export class AccountController {
-  constructor(@Inject(AccountService) private readonly account: AccountService) {}
+  constructor(
+    @Inject(AccountService) private readonly account: AccountService,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
 
   @Get()
   view(@CurrentUser() user: SessionUser, @Req() req: Request): Promise<AccountView> {
@@ -94,6 +98,7 @@ export class AccountController {
   async changePassword(@CurrentUser() user: SessionUser, @Req() req: Request, @Body() body: unknown): Promise<void> {
     const input = parse(changePasswordSchema, body);
     await this.account.changePassword(user.id, sessionToken(req), input.currentPassword, input.newPassword);
+    await this.audit.record({ action: 'password_change', actorId: user.id, actorEmail: user.email, ip: clientIp(req) });
   }
 
   @Post('sign-out-others')

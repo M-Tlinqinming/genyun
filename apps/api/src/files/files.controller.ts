@@ -21,7 +21,17 @@ import { canEditOrganizationData, canViewFile, canViewOrganization } from '../au
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser, Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { checklistItemFiles, enterpriseDocumentVersions, files, generatedDrafts, generationBatches, taskDocuments, tasks } from '../db/schema.ts';
+import {
+  checklistItemFiles,
+  deliveries,
+  deliveryFiles,
+  enterpriseDocumentVersions,
+  files,
+  generatedDrafts,
+  generationBatches,
+  taskDocuments,
+  tasks,
+} from '../db/schema.ts';
 import { DOWNLOAD_TTL_SECONDS, FILE_STORAGE, type FileStorage, LocalDiskStorage } from './storage.ts';
 
 const NOT_FOUND = '找不到该文件';
@@ -192,6 +202,15 @@ export class FilesController {
       .innerJoin(tasks, eq(tasks.id, generationBatches.taskId))
       .where(and(or(eq(generatedDrafts.wordFileId, fileId), eq(generatedDrafts.pdfFileId, fileId)), eq(tasks.assignedExpertId, user.id)))
       .limit(1);
-    return draft !== undefined;
+    if (draft) return true;
+    // 任务交付版本里的定稿 Word
+    const [delivered] = await this.db
+      .select({ taskId: deliveries.taskId })
+      .from(deliveryFiles)
+      .innerJoin(deliveries, eq(deliveries.id, deliveryFiles.deliveryId))
+      .innerJoin(tasks, eq(tasks.id, deliveries.taskId))
+      .where(and(eq(deliveryFiles.fileId, fileId), eq(tasks.assignedExpertId, user.id)))
+      .limit(1);
+    return delivered !== undefined;
   }
 }

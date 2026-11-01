@@ -45,6 +45,7 @@ import { ContactRecords } from './workup/ContactRecords';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { FiguresPanel, type FiguresSaveInput } from './workup/FiguresPanel';
 import { ConclusionView } from './editing/ConclusionView';
+import { PublishView } from './editing/PublishView';
 import { EditView } from './editing/EditView';
 import { GenerationView, phaseOf } from './workup/GenerationView';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
@@ -338,6 +339,20 @@ export function ExpertTaskPage() {
         enterpriseName={task.data.enterpriseName}
         taskNumber={task.data.number}
         onOpen={(k) => setParams({ view: 'edit', doc: k, tab: 'preview' })}
+        onPublish={() => setParams({ view: 'publish' })}
+      />
+    );
+  }
+
+  // 成果发布（R03–R04b）：审核结论有效时由负责注安师发布，形成交付版本
+  if (requested === 'publish' && current && phaseOf(current) === 'done') {
+    return (
+      <PublishView
+        taskId={taskId}
+        enterpriseName={task.data.enterpriseName}
+        taskNumber={task.data.number}
+        onOpen={(k) => setParams({ view: 'edit', doc: k, tab: 'preview' })}
+        onEdit={() => setParams({ view: 'review' })}
       />
     );
   }

@@ -12,6 +12,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { AuditService, clientIp } from '../audit/audit.ts';
 import { AuthService, SESSION_TTL_MS, type SessionUser } from './auth.service.ts';
 import { RecoveryService } from './recovery.service.ts';
 import { CurrentUser, Public, SESSION_COOKIE } from './session.guard.ts';
@@ -30,18 +31,25 @@ export function setSessionCookie(res: Response, token: string): void {
 export class AuthController {
   constructor(
     @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(AuditService) private readonly audit: AuditService,
     @Inject(RecoveryService) private readonly recovery: RecoveryService,
   ) {}
 
   @Public()
   @Post('login')
   @HttpCode(200)
-  async login(@Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
+  async login(@Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
 
     const result = await this.auth.login(parsed.data);
-    if (!result) throw new UnauthorizedException('邮箱或密码不正确');
+    // 操作日志：失败时记下输入的邮箱（可能不是任何账号），不记密码
+    const ip = clientIp(req);
+    if (!result) {
+      await this.audit.record({ action: 'login_failure', actorEmail: parsed.data.email.trim().toLowerCase(), ip });
+      throw new UnauthorizedException('邮箱或密码不正确');
+    }
+    await this.audit.record({ action: 'login_success', actorId: result.user.id, actorEmail: result.user.email, ip });
 
     setSessionCookie(res, result.token);
     return result.user;
@@ -61,11 +69,13 @@ export class AuthController {
   @Public()
   @Post('recover/reset')
   @HttpCode(200)
-  async resetPassword(@Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
+  async resetPassword(@Body() body: unknown, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
     const parsed = recoveryResetSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     const result = await this.recovery.reset(parsed.data);
     if (!result) throw new BadRequestException('验证码不正确或已失效，请检查或重新获取');
+    // 只记成功的重设；验证码错误不记（发送和校验已按邮箱、IP 限流）
+    await this.audit.record({ action: 'password_reset', actorId: result.user.id, actorEmail: result.user.email, ip: clientIp(req) });
     setSessionCookie(res, result.token);
     return result.user;
   }
@@ -77,9 +87,10 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(204)
-  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<void> {
+  async logout(@CurrentUser() user: SessionUser, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<void> {
     const token = req.cookies?.[SESSION_COOKIE] as string | undefined;
     if (token) await this.auth.logout(token);
+    await this.audit.record({ action: 'logout', actorId: user.id, actorEmail: user.email, ip: clientIp(req) });
     res.clearCookie(SESSION_COOKIE, { path: '/' });
   }
 }

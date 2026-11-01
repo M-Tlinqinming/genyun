@@ -53,7 +53,8 @@ import type { ParagraphPolisher } from '../generation/ai/drafter.ts';
 import { polishParagraph } from '../generation/ai/polish.ts';
 import { riskFacts } from '../generation/ai/risk.ts';
 import { parseDocument } from '../generation/document-json.ts';
-import { renderWord } from '../generation/word/render.ts';
+import { renderWord, type DeliveryMeta } from '../generation/word/render.ts';
+import { batchLock, throwIfLocked } from './delivery-lock.ts';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { THUMB_SIDE } from '../generation/drawings/renderer.ts';
 
@@ -85,13 +86,15 @@ export class EditingService {
 
   async document(user: SessionUser, taskId: string, kind: string): Promise<EditDocumentView> {
     const d = await this.draft(user, taskId, kind);
-    const edits = await this.edits(d.batch.id, d.kind);
+    const [edits, lock] = await Promise.all([this.edits(d.batch.id, d.kind), batchLock(this.db, d.batch.id)]);
     return {
       batchId: d.batch.id,
       kind: d.kind,
       version: edits?.version ?? 0,
       outline: outlineOf(d.doc, edits?.sections ?? {}),
-      editable: canEditTaskWork(user, d.task),
+      // 发布以后（和正在发布时）正文只读
+      editable: canEditTaskWork(user, d.task) && !lock,
+      published: lock?.status === 'done' ? { version: lock.version, at: lock.publishedAt! } : null,
       rewrite: this.drafter !== null,
       notes: d.notes,
     };
@@ -105,7 +108,7 @@ export class EditingService {
 
   async save(user: SessionUser, taskId: string, kind: string, sectionId: string, body: unknown): Promise<SectionView & { version: number }> {
     const d = await this.draft(user, taskId, kind);
-    if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责专家可以修改正文');
+    if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责这个任务的注安师可以修改正文');
     const parsed = sectionSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const { saveId, batchId, baseRev, blocks, note, aiPromptVersion } = parsed.data;
@@ -136,6 +139,8 @@ export class EditingService {
           .from(draftEdits)
           .where(and(eq(draftEdits.batchId, d.batch.id), eq(draftEdits.kind, d.kind)))
           .for('update');
+        // 已发布（或正在发布）的这批文稿不能再改：放在锁住修订记录之后查，和发布时的最后核对不会交错
+        throwIfLocked(await batchLock(tx, d.batch.id));
         const current = row!.sections[sectionId];
         const rev = current?.rev ?? 0;
         if (rev !== baseRev) {
@@ -192,7 +197,8 @@ export class EditingService {
 
   async rewrite(user: SessionUser, taskId: string, kind: string, sectionId: string, body: unknown): Promise<RewriteResult> {
     const d = await this.draft(user, taskId, kind);
-    if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责专家可以使用 AI 改写');
+    if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责这个任务的注安师可以使用 AI 改写');
+    throwIfLocked(await batchLock(this.db, d.batch.id));
     const parsed = rewriteRequestSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const found = findSection(d.doc, sectionId);
@@ -219,6 +225,15 @@ export class EditingService {
     const blocks = Object.fromEntries(Object.entries(edits?.sections ?? {}).map(([id, e]) => [id, e.blocks]));
     const data = await renderWord(applyEdits(d.doc, blocks));
     return { name: `${d.batch.input.basic.companyName}${DRAFT_KINDS[d.kind]}（修订稿）.docx`, data };
+  }
+
+  // 发布时的定稿：这批草稿的结构盖上各节修订，文件属性写上 AI 标识和审核人。权限由发布服务先查
+  async deliveryWord(batch: typeof generationBatches.$inferSelect, kind: DraftKind, meta: DeliveryMeta): Promise<{ name: string; data: Buffer }> {
+    const { doc } = await this.load(batch.id, kind);
+    const edits = await this.edits(batch.id, kind);
+    const blocks = Object.fromEntries(Object.entries(edits?.sections ?? {}).map(([id, e]) => [id, e.blocks]));
+    const data = await renderWord(applyEdits(doc, blocks), meta);
+    return { name: `${batch.input.basic.companyName}${DRAFT_KINDS[kind]}.docx`, data };
   }
 
   // 锁定的图的缩略图（编辑区只读显示）；同一张图只缩一次
@@ -313,11 +328,16 @@ export class EditingService {
       .orderBy(desc(generationBatches.createdAt))
       .limit(1);
     if (!batch) throw new BadRequestException('还没有生成草稿，请先确认采用资料并生成');
+    return { task, batch, ...(await this.load(batch.id, k)) };
+  }
+
+  // 这批草稿里一份的文档结构（生成时存下的 JSON）
+  private async load(batchId: string, k: DraftKind): Promise<Pick<Draft, 'kind' | 'notes' | 'doc'>> {
     const [row] = await this.db
       .select({ status: generatedDrafts.status, notes: generatedDrafts.notes, storageKey: files.storageKey, fileId: files.id })
       .from(generatedDrafts)
       .leftJoin(files, eq(files.id, generatedDrafts.documentFileId))
-      .where(and(eq(generatedDrafts.batchId, batch.id), eq(generatedDrafts.kind, k)))
+      .where(and(eq(generatedDrafts.batchId, batchId), eq(generatedDrafts.kind, k)))
       .limit(1);
     if (!row || row.status !== 'done') throw new BadRequestException(`${DRAFT_KINDS[k]}还没有生成完，生成完才能编辑正文`);
     if (!row.storageKey || !row.fileId) {
@@ -330,7 +350,7 @@ export class EditingService {
       if (this.cache.size > 6) this.cache.delete(this.cache.keys().next().value!);
     }
     const notes = (row.notes ?? []).map((n) => ({ plan: n.plan, label: n.label, source: n.source, note: n.note }));
-    return { task, batch, kind: k, notes, doc };
+    return { kind: k, notes, doc };
   }
 }
 

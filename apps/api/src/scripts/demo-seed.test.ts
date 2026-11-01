@@ -14,7 +14,7 @@ import { InProcessQueue } from '../generation/queue.ts';
 import { complete, testDocument } from '../tasks/test-workup.ts';
 import { DEMO_EMAILS, DEMO_ORGS, demoContractPdf, seedDemo } from './demo-seed.ts';
 
-const { enterprises, memberships, organizationContracts, organizations, taskNumberCounters, tasks, taskWorkups, users } = schema;
+const { enterprises, memberships, organizationContracts, organizations, taskContacts, taskNumberCounters, tasks, taskWorkups, users } = schema;
 
 const PASSWORD = 'demo-password-1';
 let handle: DatabaseHandle | undefined;
@@ -56,7 +56,7 @@ const hashOf = async (db: Database, email: string) =>
   (await db.select({ h: users.passwordHash }).from(users).where(eq(users.email, email)))[0]?.h;
 
 describe('演示数据', () => {
-  it('空库：写入五个演示账号、两家已开通且登记了合同的客户组织、两个已提交并分派的任务', async () => {
+  it('空库：写入五个演示账号、两家已开通且登记了合同的客户组织、三个已提交的任务（其中一个超时没联系上客户）', async () => {
     handle = await openDatabase('memory://');
     const { db } = handle;
     const { storage, stored } = memoryStorage();
@@ -84,7 +84,12 @@ describe('演示数据', () => {
     expect(rows).toEqual([
       { number: `GY-${year}-001`, status: 'submitted', enterprise: feiyuBasicInfo.companyName, expert: DEMO_EMAILS.expert },
       { number: `GY-${year}-002`, status: 'submitted', enterprise: '示例五金制品有限公司', expert: null },
+      { number: `GY-${year}-003`, status: 'submitted', enterprise: '示例塑胶制品有限公司', expert: DEMO_EMAILS.expert2 },
     ]);
+    // 塑胶：吴工打过一次没接通，任务两周前提交
+    const contacts = await db.select().from(taskContacts);
+    expect(contacts).toHaveLength(1);
+    expect(contacts[0]).toMatchObject({ method: 'phone', result: 'unreachable' });
   }, 60_000);
 
   it('在预览环境已有数据上连跑两次：只补缺的，条数不变，已有账号的密码不变，测试人员的数据都在', async () => {
@@ -134,12 +139,12 @@ describe('演示数据', () => {
       expect.arrayContaining([`组织「${DEMO_ORGS.internal}」`, `账号 ${DEMO_EMAILS.agencyAdmin}`, `账号 ${DEMO_EMAILS.expert}`, `账号 ${DEMO_EMAILS.operator}`]),
     );
     const afterFirst = await counts(db);
-    // 只多了缺的：飞宇组织、两个新账号、两份合同、两家企业、两个任务
+    // 只多了缺的：飞宇组织、两个新账号、两份合同、三家企业、三个任务
     expect(afterFirst.users! - before.users!).toBe(2);
     expect(afterFirst.organizations! - before.organizations!).toBe(1);
     expect(afterFirst.organization_contracts! - before.organization_contracts!).toBe(2);
-    expect(afterFirst.enterprises! - before.enterprises!).toBe(2);
-    expect(afterFirst.tasks! - before.tasks!).toBe(2);
+    expect(afterFirst.enterprises! - before.enterprises!).toBe(3);
+    expect(afterFirst.tasks! - before.tasks!).toBe(3);
 
     const second = await seedDemo(db, { passwordHash: await hashPassword('third-password'), storage });
     expect(second.created).toEqual([]);
@@ -166,7 +171,9 @@ describe('演示数据', () => {
     expect((await db.select().from(organizations).where(eq(organizations.id, testerOrg!.id)))[0]).toMatchObject({ name: '测试人员建的组织', activatedAt: null });
     expect((await db.select().from(enterprises).where(eq(enterprises.id, testerEnt!.id)))[0]!.profile).toEqual({ basicStep: { basic: { employeeCount: 12 }, later: [], sources: {} } });
     const numbers = (await db.select({ number: tasks.number, name: tasks.name }).from(tasks).orderBy(tasks.number)).map((t) => `${t.number} ${t.name}`);
-    expect(numbers).toEqual([`GY-${year}-001 测试人员的任务`, `GY-${year}-002 ${year} 年生产安全事故应急预案编制`, `GY-${year}-003 ${year} 年生产安全事故应急预案编制`]);
+    expect(numbers).toEqual([`GY-${year}-001 测试人员的任务`, `GY-${year}-002 ${year} 年生产安全事故应急预案编制`, `GY-${year}-003 ${year} 年生产安全事故应急预案编制`,
+      `GY-${year}-004 ${year} 年生产安全事故应急预案编制`,
+    ]);
     // 机构原来的开通时间不改，只补上空着的地区和联系人
     expect((await db.select().from(organizations).where(eq(organizations.id, agency!.id)))[0]).toMatchObject({
       activatedAt: new Date('2026-10-23'),

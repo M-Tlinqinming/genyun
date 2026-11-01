@@ -141,6 +141,27 @@
       "when": 1793515864536,
       "tag": "0019_fact_supplements",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793547684287,
+      "tag": "0020_m3_operator_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793551987069,
+      "tag": "0021_deliveries",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793554033140,
+      "tag": "0022_audit_logs",
+      "breakpoints": true
     }
   ]
 }

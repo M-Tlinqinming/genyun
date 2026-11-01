@@ -45,6 +45,8 @@ export default defineConfig({
       url: `${API_URL}/api/health`,
       env,
       reuseExistingServer: false,
+      // 机器忙时起服务慢（先清库、灌演示数据）
+      timeout: 240_000,
     },
     {
       command: `npm run dev -w @genyun/web -- --port ${WEB_PORT} --strictPort`,

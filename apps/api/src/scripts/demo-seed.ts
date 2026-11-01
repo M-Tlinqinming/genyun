@@ -15,6 +15,7 @@ import {
   memberships,
   organizationContracts,
   organizations,
+  taskContacts,
   taskNumberCounters,
   taskSubmissions,
   tasks,
@@ -32,6 +33,8 @@ export const DEMO_EMAILS = {
 
 export const DEMO_ORGS = { internal: '耕云', agency: '示例安全咨询机构', feiyu: '飞宇演示客户' } as const;
 export const DEMO_OTHER_ENTERPRISE = '示例五金制品有限公司';
+// 超时兜底演示：两周前提交、分派给吴工，吴工只打过一次未接通
+export const DEMO_OVERDUE_ENTERPRISE = '示例塑胶制品有限公司';
 
 export interface DemoSeedOptions {
   // 只给新建的账号用；已有账号的密码不动
@@ -83,7 +86,7 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
   // 合同登记：运营在组织详情里能看到合同编号、服务范围和合同原件
   const operator = uid[DEMO_EMAILS.operator]!;
   await ensureContract(db, opts.storage, report, { orgId: agencyId, number: 'GY-DEMO-2026-01', scopeEnterprises: 10, by: operator, now });
-  await ensureContract(db, opts.storage, report, { orgId: feiyuOrgId, number: 'GY-DEMO-2026-02', scopeEnterprises: 2, by: operator, now });
+  await ensureContract(db, opts.storage, report, { orgId: feiyuOrgId, number: 'GY-DEMO-2026-02', scopeEnterprises: 3, by: operator, now });
 
   // 飞宇自填的企业资料（各步都填了，可以直接提交、专业整理、生成）；
   // 技术人员数故意不填，演示专家整理时补齐缺失项（浏览器测试也按这一项走）
@@ -99,6 +102,7 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
     createdBy: customer,
   });
   const otherId = await ensureEnterprise(db, report, { orgId: feiyuOrgId, name: DEMO_OTHER_ENTERPRISE, createdBy: customer });
+  const plasticId = await ensureEnterprise(db, report, { orgId: feiyuOrgId, name: DEMO_OVERDUE_ENTERPRISE, createdBy: customer });
 
   // 已提交的两个任务：飞宇预置分派给周工（直接演示专家端）；另一家（五金）待运营在任务中心分派。
   // 飞宇的资料：样例里已备齐的照旧，另有两项请专家电话联系、一项拍照给耕云看
@@ -126,6 +130,22 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
     customerId: customer,
     items: { fire_pool: { status: 'later', fileIds: [], callRequested: true } },
     submittedAt,
+  });
+  // 塑胶：两周前提交、分派给吴工，客户请注安师电话联系两项，吴工第二天打过一次未接通 → 进运营的超时兜底。
+  // 两周前保证不论哪天跑都超过 2 个工作日（春节、国庆长假也够）
+  const overdueAt = new Date(now.getTime() - 14 * 86_400_000);
+  await ensureSubmittedTask(db, report, {
+    label: `${DEMO_OVERDUE_ENTERPRISE}（吴工，超时未联系上客户）`,
+    orgId: feiyuOrgId,
+    enterpriseId: plasticId,
+    expertId: uid[DEMO_EMAILS.expert2]!,
+    customerId: customer,
+    items: {
+      fire_pool: { status: 'later', fileIds: [], callRequested: true },
+      emergency_supplies: { status: 'later', fileIds: [], callRequested: true },
+    },
+    submittedAt: overdueAt,
+    unreachableCallAt: new Date(overdueAt.getTime() + 86_400_000),
   });
   return report;
 }
@@ -253,7 +273,17 @@ async function ensureEnterprise(
 async function ensureSubmittedTask(
   db: Database,
   report: DemoSeedReport,
-  t: { label: string; orgId: string; enterpriseId: string; expertId: string | null; customerId: string; items: ChecklistState; submittedAt: Date },
+  t: {
+    label: string;
+    orgId: string;
+    enterpriseId: string;
+    expertId: string | null;
+    customerId: string;
+    items: ChecklistState;
+    submittedAt: Date;
+    // 负责注安师打过一次电话没接通（未接通不停 2 个工作日的计算）
+    unreachableCallAt?: Date;
+  },
 ) {
   // 这家企业已有应急预案任务（不管进行到哪一步、有没有结束）就不再建，免得把测试人员的进度弄乱
   const [found] = await db
@@ -308,6 +338,17 @@ async function ensureSubmittedTask(
       answers: [],
       pendingKeys: entries.filter(([, s]) => s.status === 'later').map(([k]) => k),
     });
+    if (t.expertId && t.unreachableCallAt) {
+      await tx.insert(taskContacts).values({
+        taskId: task!.id,
+        method: 'phone',
+        questions: [{ id: 'q1', itemKey: 'fire_pool', label: '消防水池', question: '客户请注安师电话联系，问清「消防水池」的实际情况。' }],
+        target: { name: '陈志刚', role: '主要负责人', phone: '139 0000 3388' },
+        result: 'unreachable',
+        createdBy: t.expertId,
+        createdAt: t.unreachableCallAt,
+      });
+    }
     return number;
   });
   report.created.push(`任务 ${number} ${t.label}`);

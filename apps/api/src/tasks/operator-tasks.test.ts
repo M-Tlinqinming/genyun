@@ -207,6 +207,18 @@ describe('运营任务中心', () => {
     expect(res.body.message).toBe('这个任务刚被分派给吴工，请看最新情况再决定');
   });
 
+  it('分派、改派记进操作日志：谁、从哪个 IP、哪个任务交给了谁；被拒绝的不记', async () => {
+    const ops = await as('ops@test.cn');
+    const assigned = await ops.get('/api/operator/audit-logs?action=task_assign');
+    expect(assigned.status).toBe(200);
+    expect(assigned.body.entries).toHaveLength(1);
+    expect(assigned.body.entries[0]).toMatchObject({ actorEmail: 'ops@test.cn', actorName: '赵运营', target: 'GY-2026-001 · 周工' });
+    expect(assigned.body.entries[0].ip).toBeTruthy();
+    const reassigned = await ops.get('/api/operator/audit-logs?action=task_reassign');
+    expect(reassigned.body.entries).toHaveLength(1);
+    expect(reassigned.body.entries[0]).toMatchObject({ actorEmail: 'ops@test.cn', target: 'GY-2026-001 · 周工 → 吴工' });
+  });
+
   it('两位运营同时分派同一任务：只有一个成功', async () => {
     const [a, b] = await Promise.all([as('ops@test.cn'), as('ops@test.cn')]);
     const results = await Promise.all([
