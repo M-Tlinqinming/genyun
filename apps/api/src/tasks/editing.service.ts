@@ -33,6 +33,7 @@ import {
   Injectable,
   NotFoundException,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Post,
   Put,
@@ -53,6 +54,8 @@ import { polishParagraph } from '../generation/ai/polish.ts';
 import { riskFacts } from '../generation/ai/risk.ts';
 import { parseDocument } from '../generation/document-json.ts';
 import { renderWord } from '../generation/word/render.ts';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { THUMB_SIDE } from '../generation/drawings/renderer.ts';
 
 export const EDIT_DRAFTER = Symbol('EDIT_DRAFTER');
 
@@ -72,6 +75,7 @@ type Draft = {
 export class EditingService {
   // 文档结构几 MB（含图片），解析一次留着用；只留最近几份
   private readonly cache = new Map<string, DeliveryDocument>();
+  private readonly thumbs = new Map<string, Buffer>();
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -96,7 +100,7 @@ export class EditingService {
   async section(user: SessionUser, taskId: string, kind: string, sectionId: string): Promise<SectionView> {
     const d = await this.draft(user, taskId, kind);
     const edits = await this.edits(d.batch.id, d.kind);
-    return this.sectionView(d.doc, sectionId, edits?.sections[sectionId]);
+    return this.sectionView(d, sectionId, edits?.sections[sectionId]);
   }
 
   async save(user: SessionUser, taskId: string, kind: string, sectionId: string, body: unknown): Promise<SectionView & { version: number }> {
@@ -135,7 +139,7 @@ export class EditingService {
         const current = row!.sections[sectionId];
         const rev = current?.rev ?? 0;
         if (rev !== baseRev) {
-          throw new ConflictException({ statusCode: 409, message: STALE, reason: 'stale', latest: this.sectionView(d.doc, sectionId, current) });
+          throw new ConflictException({ statusCode: 409, message: STALE, reason: 'stale', latest: this.sectionView(d, sectionId, current) });
         }
         if (sameBlocks(current?.blocks ?? original, clean)) throw new BadRequestException('本节没有修改，不用保存');
         const entry: SectionEdit = { blocks: clean, rev: rev + 1, note, by: user.id, byName: user.name, at: new Date().toISOString() };
@@ -161,7 +165,7 @@ export class EditingService {
         return version;
       });
       const edits = await this.edits(d.batch.id, d.kind);
-      return { ...this.sectionView(d.doc, sectionId, edits?.sections[sectionId]), version };
+      return { ...this.sectionView(d, sectionId, edits?.sections[sectionId]), version };
     } catch (err) {
       // 同一次保存的两个请求同时到：后到的那个按已保存返回
       if (isUniqueViolation(err, 'draft_revisions_save_id_unique')) {
@@ -217,6 +221,21 @@ export class EditingService {
     return { name: `${d.batch.input.basic.companyName}${DRAFT_KINDS[d.kind]}（修订稿）.docx`, data };
   }
 
+  // 锁定的图的缩略图（编辑区只读显示）；同一张图只缩一次
+  async figure(user: SessionUser, taskId: string, kind: string, sectionId: string, index: number): Promise<Buffer> {
+    const d = await this.draft(user, taskId, kind);
+    const block = findSection(d.doc, sectionId)?.section.blocks[index];
+    if (!block || block.type !== 'figure') throw new NotFoundException('找不到这张图');
+    const key = `${d.batch.id}/${d.kind}/${sectionId}/${index}`;
+    let data = this.thumbs.get(key);
+    if (!data) {
+      data = await thumbnail(block.png);
+      this.thumbs.set(key, data);
+      if (this.thumbs.size > 200) this.thumbs.delete(this.thumbs.keys().next().value!);
+    }
+    return data;
+  }
+
   // 那一次保存记下的内容和修订次数（不是这一节现在的样子：之后可能又有人保存过）
   private async replayed(d: Draft, saveId: string): Promise<(SectionView & { version: number }) | null> {
     const [rev] = await this.db
@@ -243,7 +262,7 @@ export class EditingService {
       blocks: rev.after,
       rev: rev.rev,
       saved: { note: rev.note, byName: rev.byName, at: rev.at.toISOString() },
-      locked: lockedPreviews(found.section.blocks),
+      locked: lockedPreviews(found.section.blocks, figureBase(d, rev.sectionId)),
       version: rev.version,
     };
   }
@@ -254,8 +273,8 @@ export class EditingService {
     }
   }
 
-  private sectionView(doc: DeliveryDocument, sectionId: string, edit: SectionEdit | undefined): SectionView {
-    const found = findSection(doc, sectionId);
+  private sectionView(d: Draft, sectionId: string, edit: SectionEdit | undefined): SectionView {
+    const found = findSection(d.doc, sectionId);
     if (!found) throw new NotFoundException('找不到这一节');
     return {
       id: sectionId,
@@ -264,7 +283,7 @@ export class EditingService {
       blocks: edit?.blocks ?? editableOf(found.section.blocks),
       rev: edit?.rev ?? 0,
       saved: edit ? { note: edit.note, byName: edit.byName, at: edit.at } : null,
-      locked: lockedPreviews(found.section.blocks),
+      locked: lockedPreviews(found.section.blocks, figureBase(d, sectionId)),
     };
   }
 
@@ -315,16 +334,33 @@ export class EditingService {
   }
 }
 
-// 锁定的表格和图的只读内容；图直接给 data URL（一节里的图不多，生成时已压缩过）
-function lockedPreviews(blocks: DeliveryDocument['sections'][number]['blocks']): LockedPreview[] {
+// 图的缩略图地址：页面单独加载，不放进节的内容里（保存、冲突、重试查询的回应都只带地址）。
+// 带上批次，重新生成后地址就变
+function figureBase(d: Draft, sectionId: string) {
+  return { base: `/api/tasks/${d.task.id}/drafts/${d.kind}/sections/${encodeURIComponent(sectionId)}/figures`, batch: d.batch.id };
+}
+
+// 锁定的表格和图的只读内容：表格给表头和各行，图给缩略图地址
+function lockedPreviews(blocks: DeliveryDocument['sections'][number]['blocks'], fig: { base: string; batch: string }): LockedPreview[] {
   return blocks.flatMap((b, index): LockedPreview[] => {
     if (b.type === 'table') return [{ index, kind: 'table', header: b.header, rows: b.rows }];
-    if (b.type === 'figure') {
-      const mime = b.imageType === 'jpg' ? 'image/jpeg' : 'image/png';
-      return [{ index, kind: 'figure', src: `data:${mime};base64,${Buffer.from(b.png).toString('base64')}` }];
-    }
+    if (b.type === 'figure') return [{ index, kind: 'figure', src: `${fig.base}/${index}?b=${fig.batch}` }];
     return [];
   });
+}
+
+// 长边缩到 480 的 JPEG（同图纸缩略图）；比原图还小的不放大
+async function thumbnail(png: Uint8Array): Promise<Buffer> {
+  const image = await loadImage(Buffer.from(png));
+  const ratio = Math.min(1, THUMB_SIDE / Math.max(image.width, image.height));
+  const w = Math.max(1, Math.round(image.width * ratio));
+  const h = Math.max(1, Math.round(image.height * ratio));
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(image, 0, 0, w, h);
+  return canvas.encode('jpeg', 80);
 }
 
 // 资料里的人名，发给 AI 前遮掉：法定代表人、资料联系人、主要负责人，应急组织里的总指挥、副总指挥、
@@ -390,6 +426,21 @@ export class EditingController {
     @Query('batch') batch?: string,
   ) {
     return this.service.saveStatus(user, id, kind, saveId, batch || undefined);
+  }
+
+  @Get('sections/:sectionId/figures/:index')
+  async figure(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('kind') kind: string,
+    @Param('sectionId') sectionId: string,
+    @Param('index', ParseIntPipe) index: number,
+    @Res() res: Response,
+  ) {
+    const data = await this.service.figure(user, id, kind, sectionId, index);
+    res.setHeader('content-type', 'image/jpeg');
+    res.setHeader('cache-control', 'private, max-age=86400');
+    res.send(data);
   }
 
   @Get('word')

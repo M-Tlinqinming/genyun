@@ -33,14 +33,16 @@ async function firstSection(page: Page) {
   return { taskId, sectionId: n.id, batchId: doc.batchId, outline: doc.outline };
 }
 
-/** 找一节带锁定表格的（截图用） */
-async function sectionWithTable(page: Page, taskId: string, outline: Outline[]): Promise<string | null> {
+/** 找一节带锁定表格（或图）的 */
+async function sectionWith(page: Page, taskId: string, outline: Outline[], kind: 'table' | 'figure') {
   const ids: string[] = [];
   const walk = (list: Outline[]) => list.forEach((n) => (n.children.length ? walk(n.children) : ids.push(n.id)));
   walk(outline);
   for (const id of ids) {
-    const s = (await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${id}`)).json()) as { locked: { kind: string }[] };
-    if (s.locked.some((l) => l.kind === 'table')) return id;
+    const res = await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${id}`);
+    const s = (await res.json()) as { locked: { kind: string; src?: string }[] };
+    const found = s.locked.find((l) => l.kind === kind);
+    if (found) return { id, src: found.src, body: await res.text() };
   }
   return null;
 }
@@ -204,9 +206,9 @@ test('改一节、写修订说明保存；离开前提醒；别人刚保存过�
   await expect(page.getByRole('complementary', { name: '企业资料依据' })).not.toContainText('我的未保存输入');
 
   // 锁定的表格：只读显示内容，可收起，能去专业整理修改
-  const tableSection = await sectionWithTable(page, taskId, outline);
+  const tableSection = await sectionWith(page, taskId, outline, 'table');
   if (tableSection) {
-    await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan&section=${tableSection}`);
+    await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan&section=${tableSection.id}`);
     const lockedTable = editor(page).getByRole('table').first();
     await expect(lockedTable).toBeVisible();
     await expect(editor(page).getByRole('link', { name: '去专业整理修改' }).first()).toBeVisible();
@@ -222,4 +224,34 @@ test('改一节、写修订说明保存；离开前提醒；别人刚保存过�
   await expect(footer(page)).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/acceptance/m2-11-1366.png' });
+
+  // 锁定的图：节的内容里只带缩略图地址，图单独加载（长边 480 的 JPEG）
+  const figureSection = await sectionWith(page, taskId, outline, 'figure');
+  if (figureSection) {
+    expect(figureSection.body).not.toContain('base64');
+    const img = await page.request.get(figureSection.src!);
+    expect(img.status()).toBe(200);
+    expect(img.headers()['content-type']).toBe('image/jpeg');
+    await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan&section=${figureSection.id}`);
+    const figure = editor(page).getByRole('img').first();
+    await expect(figure).toBeVisible();
+    await expect.poll(() => figure.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  }
+  // 不是图的位置找不到
+  expect((await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${sectionId}/figures/0`)).status()).toBe(404);
+
+  // 运营只读：运营任务中心的列表在 M3 做，在那之前从网址 /operator/tasks/<任务> 进
+  const ops = await page.context().browser()!.newPage();
+  await ops.goto('/login');
+  await ops.getByPlaceholder('请输入邮箱').fill('ops@demo.genyun.net.cn');
+  await ops.getByPlaceholder('请输入密码').fill('e2e-password');
+  await ops.getByRole('button', { name: /登\s*录/ }).click();
+  await expect(ops).toHaveURL(/\/operator$/);
+  await ops.goto(`/operator/tasks/${taskId}?doc=plan&section=${sectionId}`);
+  await expect(editor(ops)).toBeVisible();
+  await expect(ops.getByText('只读 · 由负责专家修改')).toBeVisible();
+  await expect(editor(ops)).toHaveAttribute('contenteditable', 'false');
+  await expect(footer(ops)).toContainText('只有负责这个任务的专家可以修改正文');
+  await shots(ops, 'operator');
+  await ops.close();
 });

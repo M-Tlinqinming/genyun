@@ -20,8 +20,14 @@ git archive --format=tar HEAD | "${SSH[@]}" '
 "${SSH[@]}" "
   set -e
   cd /opt/genyun/src/deploy/preview
+  # 回退用：把正在运行的镜像标成 previous（见 README「回退」）；prune 只删没有标签的旧层，previous 会留下
+  docker image inspect genyun:preview >/dev/null 2>&1 && docker tag genyun:preview genyun:previous
+  docker image inspect genyun-site:preview >/dev/null 2>&1 && docker tag genyun-site:preview genyun-site:previous
+  # 服务器只有 3.5G 内存，两个镜像依次构建，不同时构建
+  docker compose --env-file /opt/genyun/.env build app
+  docker compose --env-file /opt/genyun/.env build caddy
+  docker compose --env-file /opt/genyun/.env up -d --no-build --remove-orphans
   echo $(git rev-parse --short HEAD) > /opt/genyun/DEPLOYED_COMMIT
-  docker compose --env-file /opt/genyun/.env up -d --build --remove-orphans
   docker image prune -f >/dev/null
   for i in \$(seq 1 60); do
     [ \"\$(docker inspect -f '{{.State.Health.Status}}' genyun-preview-app-1)\" = healthy ] && break
@@ -29,4 +35,5 @@ git archive --format=tar HEAD | "${SSH[@]}" '
   done
   docker compose --env-file /opt/genyun/.env ps
 "
-echo "已发布 $(git rev-parse --short HEAD)"
+echo "已发布 $(git rev-parse --short HEAD)，检查分流："
+bash "$(dirname "$0")/smoke.sh" "${PREVIEW_URL:-https://preview.gengyun.net.cn}"

@@ -12,7 +12,7 @@ COPY . .
 RUN npm run build -w @genyun/web && npm run build -w @genyun/api
 
 FROM node:24-slim
-ENV NODE_ENV=production PORT=3000 WEB_DIST=/app/apps/web/dist
+ENV NODE_ENV=production PORT=3000 WEB_DIST=/app/apps/web/dist MAIL_OUTBOX_DIR=/data/mail-outbox
 WORKDIR /app
 # 应急预案里的体系图、流程图转图片时要用中文字体（宋体在 Linux 上没有，用思源宋体）；
 # Word 校对页的 PDF 用 LibreOffice 转换，更新目录页码要用它的 Python 接口
@@ -32,8 +32,8 @@ COPY --from=build /app/apps/api/src/generation/word/soffice-pdf.py apps/api/dist
 COPY --from=build /app/apps/api/drizzle apps/api/drizzle
 COPY --from=build /app/apps/api/content apps/api/content
 COPY --from=build /app/apps/web/dist apps/web/dist
-# 上传文件目录（部署时挂持久化卷）：先建好并交给 node 用户，新建的卷会继承这个权限
-RUN mkdir -p /data/files && chown node:node /data/files
+# 上传文件、模拟发信的发件箱（部署时挂持久化卷）：先建好并交给 node 用户，新建的卷会继承这个权限
+RUN mkdir -p /data/files /data/mail-outbox && chown node:node /data/files /data/mail-outbox
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
