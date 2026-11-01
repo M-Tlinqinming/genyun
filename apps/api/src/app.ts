@@ -35,6 +35,7 @@ import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/d
 import { DrawingRenderer } from './generation/drawings/renderer.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
 import { EDIT_DRAFTER, EditingController, EditingService } from './tasks/editing.service.ts';
+import { DeliveriesController, DeliveriesService } from './tasks/deliveries.service.ts';
 import { PublishController, PublishService } from './tasks/publish.service.ts';
 import { ReviewController, ReviewService } from './tasks/review.service.ts';
 import { SupplementsController, SupplementsService } from './tasks/supplements.service.ts';
@@ -99,6 +100,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EditingController,
       ReviewController,
       PublishController,
+      DeliveriesController,
       DrawingsController,
       ContactsController,
       SupplementsController,
@@ -132,6 +134,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EditingService,
       ReviewService,
       PublishService,
+      DeliveriesService,
       DrawingsService,
       TasksService,
       ExpertTasksService,

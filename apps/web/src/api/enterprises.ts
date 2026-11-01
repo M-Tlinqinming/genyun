@@ -29,6 +29,8 @@ export interface TaskSummary {
   missing: string[];
   remaining: number;
   activityAt: string;
+  /** 最新的交付版本（已发布才有） */
+  delivery: { version: number; publishedAt: string } | null;
 }
 
 export const enterpriseKeys = {

@@ -137,7 +137,7 @@ test('审核通过后发布形成交付 V1；结果不确定时先查询，再�
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/acceptance/m2-15-readonly-1440.png' });
 
-  // 客户：站内提醒，任务显示已交付
+  // 客户：站内提醒，点开看到已交付的成果
   const ctx = await browser.newContext();
   const customer = await ctx.newPage();
   await login(customer, 'feiyu@demo.genyun.net.cn');
@@ -149,8 +149,9 @@ test('审核通过后发布形成交付 V1；结果不确定时先查询，再�
   await customer.waitForTimeout(300);
   await customer.screenshot({ path: 'test-results/acceptance/m2-15-customer-notice.png' });
   await note.click();
-  await expect(customer).toHaveURL(new RegExp(`/customer/tasks/${taskId}`));
-  await expect(customer.getByText('已交付').first()).toBeVisible();
+  // 提醒直接打开成果文档里这项任务的交付详情
+  await expect(customer).toHaveURL(new RegExp(`/customer/documents/${taskId}`));
+  await expect(customer.getByText('三份文档已交付 · V1 当前版本')).toBeVisible();
   await customer.waitForTimeout(300);
   await customer.screenshot({ path: 'test-results/acceptance/m2-15-customer-delivered.png' });
   await ctx.close();

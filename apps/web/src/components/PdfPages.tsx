@@ -1,12 +1,18 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { gy } from '../../../theme/tokens';
+import { gy } from '../theme/tokens';
 
-// 当前稿 PDF 逐页显示（Word 校对页）：先按每页尺寸放好空白页，滚到附近才画，一百多页也不卡。
-// pdf.js 按需加载，不进编辑页的首屏包
+// PDF 逐页显示（注安师 Word 校对页、客户成果在线阅读）：先按每页尺寸放好空白页，滚到附近才画，一百多页也不卡。
+// pdf.js 按需加载，不进首屏包
 
 export interface PdfPagesHandle {
   goTo: (page: number) => void;
+}
+
+/** PDF 自带的目录（Word 标题转出来的书签）：一级标题和它所在的页 */
+export interface PdfOutlineItem {
+  title: string;
+  page: number;
 }
 
 type Pdfjs = typeof import('pdfjs-dist');
@@ -32,15 +38,19 @@ export const PdfPages = forwardRef<
     onPage: (page: number) => void;
     onFitScale: (scale: number) => void;
     onError: () => void;
+    /** 需要目录时传：载入后给出一级书签和页码（没有书签为空） */
+    onOutline?: (items: PdfOutlineItem[]) => void;
+    /** 屏幕阅读器读到的区域名 */
+    label?: string;
   }
->(function PdfPages({ url, zoom, onLoaded, onPage, onFitScale, onError }, ref) {
+>(function PdfPages({ url, zoom, onLoaded, onPage, onFitScale, onError, onOutline, label = 'Word 版式预览' }, ref) {
   const box = useRef<HTMLDivElement>(null);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   // 每页按 100% 的尺寸（CSS 像素）
   const [sizes, setSizes] = useState<{ w: number; h: number }[]>([]);
   const [width, setWidth] = useState(0);
-  const callbacks = useRef({ onLoaded, onPage, onFitScale, onError });
-  callbacks.current = { onLoaded, onPage, onFitScale, onError };
+  const callbacks = useRef({ onLoaded, onPage, onFitScale, onError, onOutline });
+  callbacks.current = { onLoaded, onPage, onFitScale, onError, onOutline };
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +72,10 @@ export const PdfPages = forwardRef<
         setSizes(list);
         setDoc(loaded);
         callbacks.current.onLoaded(loaded.numPages);
+        if (callbacks.current.onOutline) {
+          const items = await outlineOf(loaded);
+          if (!cancelled) callbacks.current.onOutline?.(items);
+        }
       } catch {
         if (!cancelled) callbacks.current.onError();
       }
@@ -110,7 +124,7 @@ export const PdfPages = forwardRef<
     <div
       ref={box}
       onScroll={onScroll}
-      aria-label="Word 版式预览"
+      aria-label={label}
       style={{
         flex: 1,
         minHeight: 0,
@@ -123,6 +137,24 @@ export const PdfPages = forwardRef<
     </div>
   );
 });
+
+// 一级书签对应的页码；解析不了的跳过，整份没有书签返回空
+async function outlineOf(doc: PDFDocumentProxy): Promise<PdfOutlineItem[]> {
+  const outline = await doc.getOutline().catch(() => null);
+  const items: PdfOutlineItem[] = [];
+  for (const o of outline ?? []) {
+    try {
+      const dest = typeof o.dest === 'string' ? await doc.getDestination(o.dest) : o.dest;
+      const target: unknown = dest?.[0];
+      if (target === undefined || target === null) continue;
+      const index = typeof target === 'number' ? target : await doc.getPageIndex(target as Parameters<PDFDocumentProxy['getPageIndex']>[0]);
+      if (o.title.trim()) items.push({ title: o.title.trim(), page: index + 1 });
+    } catch {
+      // 这一条跳过
+    }
+  }
+  return items;
+}
 
 function PdfPage({
   doc,
