@@ -1,10 +1,4 @@
-import {
-  type ChecklistItemKey,
-  CONTACT_WORKING_DAYS,
-  addWorkingDays,
-  getItemDef,
-  reachedCustomer,
-} from '@genyun/shared';
+import { type ChecklistItemKey, getItemDef } from '@genyun/shared';
 import { Controller, ForbiddenException, Get, Inject, Injectable } from '@nestjs/common';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { isExpert } from '../auth/access.ts';
@@ -12,19 +6,14 @@ import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { checklistItems, enterprises, organizations, taskContacts, tasks, users } from '../db/schema.ts';
+import { type ContactRequest, pendingContactRequest } from './contact-request.ts';
+
+export type { ContactRequest } from './contact-request.ts';
 
 export interface VerifyItem {
   key: ChecklistItemKey;
   label: string;
   kind: 'photo' | 'call';
-}
-
-// 客户请专家电话联系：从提交（或提交后才点的那一刻）起算 2 个工作日；改派后从新注安师接手时重新算
-export interface ContactRequest {
-  requestedAt: Date;
-  requestedBy: string;
-  labels: string[];
-  deadline: Date;
 }
 
 export interface ExpertEvent {
@@ -107,25 +96,12 @@ export class ExpertTasksService {
         kind: p.callRequested ? 'call' : 'photo',
       }));
 
-      let contact: ContactRequest | null = null;
-      const calls = mine.filter((p) => p.callRequested);
-      // 提交以后才轮到专家打电话，期限从提交起算；改派过的从新注安师接手起算，原注安师的联系记录不算
-      if (t.submittedAt !== null && t.closedAt === null && calls.length > 0) {
-        const first = calls.reduce((a, b) => (a.updatedAt <= b.updatedAt ? a : b));
-        const requestedAt = new Date(
-          Math.max(first.updatedAt.getTime(), t.submittedAt.getTime(), t.assignedAt?.getTime() ?? 0),
-        );
-        const records = contacts.filter((c) => c.taskId === t.id).map((c) => ({ ...c, createdAt: c.createdAt.toISOString() }));
-        // 电话联系上客户以后不再进倒计时横幅（未接通不算）
-        if (!reachedCustomer(records, requestedAt)) {
-          contact = {
-            requestedAt,
-            requestedBy: first.updatedByName,
-            labels: calls.map((p) => getItemDef(p.itemKey as ChecklistItemKey).label),
-            deadline: addWorkingDays(requestedAt, CONTACT_WORKING_DAYS),
-          };
-        }
-      }
+      // 提交以后才轮到专家打电话；电话联系上客户以后不再进倒计时横幅（规则见 contact-request.ts）
+      const contact: ContactRequest | null = pendingContactRequest(
+        t,
+        mine.filter((p) => p.callRequested),
+        contacts.filter((c) => c.taskId === t.id),
+      );
 
       if (t.submittedAt) events.push({ at: t.submittedAt, taskId: t.id, kind: 'submitted', text: `${t.enterpriseName}提交生成申请` });
       if (contact) {

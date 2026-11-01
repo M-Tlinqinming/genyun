@@ -816,7 +816,9 @@ describe('企业自填第 5 步 · 核对与预约上门', () => {
       note: '厂里没人懂图纸，希望有人来现场看一下。',
     });
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ status: 'new', callTime: 'weekday_afternoon', helpItems: ['消防设施布置图', '消防水池容积'] });
+    expect(res.body).toMatchObject({ callTime: 'weekday_afternoon', helpItems: ['消防设施布置图', '消防水池容积'] });
+    // 客户只看到「已收到上门需求」，看不到运营的处理状态和内部备注
+    expect(res.body).not.toHaveProperty('status');
     expect(res.body).not.toHaveProperty('internalNote');
 
     const review = (await agent.get(`/api/tasks/${taskId}/review`)).body;

@@ -7,7 +7,6 @@ import type {
   ContractPeriod,
   DocumentVersionRef,
   OnSiteRequestInput,
-  OnSiteStatus,
   Review,
   StartMethod,
   SubmitRequest,
@@ -108,7 +107,6 @@ export interface OnSiteRequest {
   callTime: CallTime | null;
   helpItems: string[];
   note: string | null;
-  status: OnSiteStatus;
   createdAt: string;
 }
 
