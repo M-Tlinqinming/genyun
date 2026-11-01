@@ -50,7 +50,7 @@ import {
 } from '../db/schema.ts';
 import { receiveOne } from '../files/files.controller.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
-import { MAILER, type Mailer } from '../mail/mailer.ts';
+import { MAIL_OUTBOX, MAILER, type Mailer } from '../mail/mailer.ts';
 import { createInvitation, EMAIL_HAS_ACCOUNT } from './invitations.ts';
 
 const NOT_FOUND = '找不到该客户组织';
@@ -86,6 +86,7 @@ export class OperatorOrgsController {
     @Inject(DATABASE) private readonly db: Database,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
     @Inject(MAILER) private readonly mailer: Mailer,
+    @Inject(MAIL_OUTBOX) private readonly mailOutbox: boolean,
   ) {}
 
   @Get()
@@ -181,7 +182,7 @@ export class OperatorOrgsController {
       });
     });
     const mailSent = await this.sendMail(invitation.mail);
-    return { email: d.email, expiresAt: invitation.expiresAt, mailSent, mailSimulated: this.mailer.simulated === true };
+    return { email: d.email, expiresAt: invitation.expiresAt, mailSent, ...this.mailMode() };
   }
 
   @Post()
@@ -317,7 +318,7 @@ export class OperatorOrgsController {
     const mailSent = await this.sendMail(invitation.mail);
     return {
       ...withState(await this.load(id)),
-      invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, mailSimulated: this.mailer.simulated === true },
+      invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, ...this.mailMode() },
     };
   }
 
@@ -327,12 +328,18 @@ export class OperatorOrgsController {
     if (existing) throw new ConflictException({ statusCode: 409, message: EMAIL_HAS_ACCOUNT, field: 'email' });
   }
 
+  // 模拟发信时提示「预览环境未真实发送」；发件箱开放时才加「可在模拟发件箱查看」
+  private mailMode() {
+    const mailSimulated = this.mailer.simulated === true;
+    return { mailSimulated, mailInOutbox: mailSimulated && this.mailOutbox };
+  }
+
   private async sendMail(mail: Parameters<Mailer['send']>[0]): Promise<boolean> {
     try {
       await this.mailer.send(mail);
       return true;
     } catch (err) {
-      console.error('邀请邮件发送失败', err instanceof Error ? err.message : err);
+      console.error('邀请邮件发送失败', err instanceof Error ? err.message : 'unknown');
       return false;
     }
   }

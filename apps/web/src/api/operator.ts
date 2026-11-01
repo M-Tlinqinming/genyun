@@ -87,6 +87,8 @@ export interface SentInvitation {
   expiresAt: string;
   mailSent: boolean;
   mailSimulated: boolean;
+  // 模拟发件箱开放（预览环境）：提示里可以说「可在模拟发件箱查看」
+  mailInOutbox: boolean;
 }
 
 export const operatorOrgKeys = {

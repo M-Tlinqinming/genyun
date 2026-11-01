@@ -25,6 +25,8 @@ const ids: Record<string, string> = {};
 const EMAILS = [
   'reset@test.cn',
   'reuse@test.cn',
+  'notify@test.cn',
+  'notify-wrong@test.cn',
   'expired@test.cn',
   'wrong@test.cn',
   'resend@test.cn',
@@ -75,7 +77,7 @@ async function sendCode(email: string): Promise<string> {
   await http().post('/api/auth/recover/send').send({ email }).expect(204);
   await new Promise((r) => setImmediate(r));
   const mail = mailer.sent.slice(before).find((m) => m.to === email);
-  const code = mail?.text.match(/验证码是：(\d{6})/)?.[1];
+  const code = mail?.text.match(/验证码：(\d{6})/)?.[1];
   expect(code, '邮件里有 6 位验证码').toBeTruthy();
   // 主题会出现在日志和收件箱列表里：不放验证码
   expect(mail!.subject).not.toContain(code!);
@@ -106,6 +108,35 @@ describe('找回密码：邮箱验证码', () => {
     await before.get('/api/auth/me').expect(401);
     await http().post('/api/auth/login').send({ email, password: PASSWORD }).expect(401);
     await loginAs(email, NEW_PASSWORD);
+  });
+
+  it('验证码邮件和「密码已重设」通知都用统一模板：有称呼、落款，主题里没有验证码', async () => {
+    const email = 'notify@test.cn';
+    const sentBefore = mailer.sent.length;
+    const code = await sendCode(email);
+    const codeMail = mailer.sent.slice(sentBefore).find((m) => m.to === email)!;
+    expect(codeMail.kind).toBe('recovery_code');
+    expect(codeMail.html).toContain(code);
+    expect(codeMail.text.trimEnd().endsWith('耕云 · 0752-5200831')).toBe(true);
+
+    const before = mailer.sent.length;
+    await reset(email, code).expect(200);
+    await new Promise((r) => setImmediate(r));
+    const notice = mailer.sent.slice(before).filter((m) => m.to === email);
+    expect(notice).toHaveLength(1);
+    expect(notice[0]!.kind).toBe('password_reset');
+    expect(notice[0]!.subject).toBe('您的耕云登录密码已重设');
+    expect(notice[0]!.text).toContain('其他设备上的登录都已退出');
+    expect(`${notice[0]!.subject}${notice[0]!.text}`).not.toContain(code);
+  });
+
+  it('验证码不对时不发「密码已重设」通知', async () => {
+    const email = 'notify-wrong@test.cn';
+    const code = await sendCode(email);
+    const before = mailer.sent.length;
+    await reset(email, code === '000000' ? '111111' : '000000').expect(400);
+    await new Promise((r) => setImmediate(r));
+    expect(mailer.sent.length).toBe(before);
   });
 
   it('同一个验证码用过一次就作废', async () => {
@@ -261,9 +292,10 @@ describe('找回密码：验证码不进日志', () => {
         files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
       }
       const mail = JSON.parse(await readFile(join(dir, files[0]!), 'utf8')) as { text: string };
-      const code = mail.text.match(/验证码是：(\d{6})/)?.[1];
+      const code = mail.text.match(/验证码：(\d{6})/)?.[1];
       expect(code).toBeTruthy();
-      expect(logs.join('\n')).toContain('prodlog@test.cn');
+      // 日志里的收件人打码
+      expect(logs.join('\n')).toContain('pr****@test.cn');
       expect(logs.join('\n')).not.toContain(code!);
       expect(logs.join('\n')).not.toMatch(/\b\d{6}\b/);
     } finally {

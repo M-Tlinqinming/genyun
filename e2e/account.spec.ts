@@ -23,10 +23,11 @@ async function latestCode(to: string, since: number): Promise<string> {
       const path = join(OUTBOX, f);
       if ((await stat(path)).mtimeMs < since) continue;
       const mail = JSON.parse(await readFile(path, 'utf8')) as { to: string; text: string; at: string };
-      if (mail.to === to) mails.push({ at: Date.parse(mail.at), text: mail.text });
+      // 只看验证码邮件：重设成功后还会发一封「密码已重设」通知
+      if (mail.to === to && /验证码：\d{6}/.test(mail.text)) mails.push({ at: Date.parse(mail.at), text: mail.text });
     }
     const last = mails.sort((a, b) => b.at - a.at)[0];
-    const code = last?.text.match(/验证码是：(\d{6})/)?.[1];
+    const code = last?.text.match(/验证码：(\d{6})/)?.[1];
     if (code) return code;
     await new Promise((r) => setTimeout(r, 200));
   }

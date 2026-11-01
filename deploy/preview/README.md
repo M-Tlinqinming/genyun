@@ -71,11 +71,17 @@ docker compose --env-file /opt/genyun/.env up -d --no-build
 
 ## 查看模拟发信
 
-还没接阿里云邮件推送，邀请、找回密码的邮件都不真的发出，而是写成文件放进发件箱（数据卷 `mail_outbox`，容器里是 `/data/mail-outbox`），发布和重启都不会丢。在服务器上：
+预览环境默认模拟发信（`MAIL_DRIVER=mock`）：邀请、找回密码的邮件都不真的发出，而是写成文件放进发件箱（数据卷 `mail_outbox`，容器里是 `/data/mail-outbox`），发布和重启都不会丢。
+
+**最方便的看法**：用运营账号登录，打开 `https://<预览域名>/operator/mail-outbox`（「模拟发件箱」，不在侧栏菜单里）。列表里直接显示验证码、可复制邀请链接，点一行看邮件全文（邮件样式 / 纯文本）。只有运营能看；`MAIL_DRIVER` 不是 `mock` 时这个页面和接口都不存在（404）。
+
+改成真发：在 `/opt/genyun/.env` 加 `MAIL_DRIVER=aliyun`、`ALIYUN_DM_ACCESS_KEY_ID`、`ALIYUN_DM_ACCESS_KEY_SECRET`、`ALIYUN_DM_ACCOUNT_NAME`（邮件推送控制台配好的发信地址），重新发布。三项缺任何一项，服务启动时就报错退出（免得以为邮件发出去了其实没有）；`MAIL_DRIVER` 没设或写错也一样。发送失败会自动重试一次，失败记日志（只有邮件种类、打码的收件人和错误码，没有验证码和链接）。
+
+也可以在服务器上直接看文件：
 
 ```sh
 cd /opt/genyun/src/deploy/preview
-# 最近 10 封（文件名是「时间-收件人.json」）
+# 最近 10 封（文件名以时间开头）
 docker compose --env-file /opt/genyun/.env exec app ls -t /data/mail-outbox | head
 # 看最新一封的内容，里面有邀请链接
 docker compose --env-file /opt/genyun/.env exec app sh -c 'cat "$(ls -t /data/mail-outbox/* | head -1)"'
@@ -83,7 +89,7 @@ docker compose --env-file /opt/genyun/.env exec app sh -c 'cat "$(ls -t /data/ma
 docker compose --env-file /opt/genyun/.env logs app | grep 模拟发信
 ```
 
-日志不一定记正文（M3 第 2 项起正式环境不记），链接以发件箱文件为准。
+服务日志只记收件人（打码）和主题，不记正文；链接和验证码以发件箱为准。
 
 ## 服务器上的位置
 
@@ -98,18 +104,53 @@ docker compose --env-file /opt/genyun/.env logs app | grep 模拟发信
 ssh -F /dev/null -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts root@47.82.104.179 "grep DEMO_PASSWORD /opt/genyun/.env"
 ```
 
-演示账号只需写入一次（重复运行会因邮箱已存在而报错）：
+写入演示数据（每次发布后都可以跑，反复运行不出错、不重复），在本机仓库根目录：
 
 ```sh
-docker exec -e ALLOW_DEMO_SEED=1 -e DEMO_PASSWORD=<密码> genyun-preview-app-1 node apps/api/dist/scripts/seed-demo.js
+bash deploy/preview/seed.sh
 ```
+
+脚本通过 ssh 在服务器上执行写入，演示密码在服务器上从 `/opt/genyun/.env` 读，不经过本机、不进命令行历史。已经登录在服务器上时，也可以直接运行：
+
+```sh
+docker exec -e ALLOW_DEMO_SEED=1 -e DEMO_PASSWORD="$(grep ^DEMO_PASSWORD= /opt/genyun/.env | cut -d= -f2-)" genyun-preview-app-1 node apps/api/dist/scripts/seed-demo.js
+```
+
+脚本只补还没有的：账号按邮箱、组织按名称、企业按信用代码（没有代码的按名称）、任务按企业、合同按组织先查后插。已有的账号不改密码和姓名，已有组织只补空着的地区、联系人、合同有效期，测试人员在预览环境里录的数据一概不动、不删。演示任务的编号和客户新建任务用同一个流水，不会撞号。运行完会列出「新写入」和「已有、跳过」各哪几项。
+
+写入的内容（都是虚构的）：
+
+- 五个演示账号（见上）
+- 两家已开通的客户组织「示例安全咨询机构」「飞宇演示客户」，各登记一份演示合同（合同原件是一页英文样张 PDF），运营在「客户组织」列表里看到都是服务中
+- 飞宇演示客户名下两家企业：飞宇（各步资料都填了，技术人员数故意留空，演示专家整理时补齐）和示例五金
+- 两个已提交的任务：飞宇分派给周工（有两项请专家电话联系、一项拍照给耕云看），示例五金分派给吴工。周工补齐专家判断后就能确认生成三份草稿
+
+## 交给测试人员前检查
+
+发布、写入演示数据之后，在本机运行（只读，不改数据）：
+
+```sh
+DEMO_PASSWORD=$(ssh -F /dev/null -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts root@47.82.104.179 "grep ^DEMO_PASSWORD= /opt/genyun/.env | cut -d= -f2-") bash deploy/preview/check.sh https://preview.gengyun.net.cn
+```
+
+密码从服务器上取，不写进命令行历史。也可以手动输入（输入时不显示）：
+
+```sh
+read -rs DEMO_PASSWORD; export DEMO_PASSWORD
+bash deploy/preview/check.sh https://preview.gengyun.net.cn
+```
+
+逐项检查：`/api/health` 通；官网首页、`/login` 能打开；五个演示账号都能登录；周工、吴工各自看到自己的演示任务且互相看不到；飞宇客户在自己的组织里；运营的客户组织列表里两家演示组织都是服务中；运营能打开模拟发件箱。服务器上的版本还没有模拟发件箱入口（合并请求 #63 之前）时这一项显示「跳过」，不算失败。
+
+脚本一共登录 5 次，正式环境每分钟限 10 次，一分钟内别连跑两遍。
 
 ## 新服务器从零开始
 
 ```sh
 ssh ... root@<IP> 'bash -s preview.gengyun.net.cn' < deploy/preview/server-setup.sh
 bash deploy/preview/deploy.sh
-# 再写入演示账号（见上）
+bash deploy/preview/seed.sh
+# 再跑检查（见上）
 ```
 
 `server-setup.sh` 会加 2G 交换空间、安装 Docker、生成密钥文件。阿里云防火墙只需开 22 / 80 / 443。
