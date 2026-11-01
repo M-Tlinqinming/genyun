@@ -23,6 +23,8 @@ const env = {
   SOFFICE_PATH: '',
   // 邀请邮件里的链接指向测试用的前端
   APP_ORIGIN: WEB_URL,
+  // 模拟发信写到这里（相对 apps/api）；account、invitations、operator-org-detail 从这里读验证码和邀请链接
+  MAIL_OUTBOX_DIR: '.data/e2e-mail-outbox',
 };
 
 export default defineConfig({
@@ -36,7 +38,8 @@ export default defineConfig({
   webServer: [
     {
       timeout: 240_000,
-      command: `node -e "require('fs').rmSync('apps/api/${DB}',{recursive:true,force:true})" && npm run seed:demo -w @genyun/api && npm run dev -w @genyun/api`,
+      // 每次先清空临时数据库和模拟发件箱，读到的邮件都是这一轮发的
+      command: `node -e "for (const d of ['${DB}','${env.MAIL_OUTBOX_DIR}']) require('fs').rmSync('apps/api/'+d,{recursive:true,force:true})" && npm run seed:demo -w @genyun/api && npm run dev -w @genyun/api`,
       url: `${API_URL}/api/health`,
       env,
       reuseExistingServer: false,
