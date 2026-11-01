@@ -729,7 +729,13 @@ export const organizationInvitations = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('organization_invitations_org').on(t.orgId)],
+  (t) => [
+    index('organization_invitations_org').on(t.orgId),
+    // 同一组织同一邮箱只能有一封未接受、未作废的邀请：并发重发时只有一次能成功（M3 第 8 项）
+    uniqueIndex('organization_invitations_open_email')
+      .on(t.orgId, t.email)
+      .where(sql`${t.acceptedAt} is null and ${t.revokedAt} is null`),
+  ],
 );
 
 // 操作日志（M4 第 5 项，等保要求）：登录成功和失败、退出、改密码、找回重设、分派改派、发布。

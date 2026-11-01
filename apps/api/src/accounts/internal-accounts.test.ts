@@ -1,12 +1,14 @@
 import type { INestApplication } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import type { Request } from 'express';
+import { and, eq, isNull } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
-import { hashPassword } from '../auth/auth.service.ts';
+import { hashPassword, type SessionUser } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { auditLogs, enterprises, memberships, organizations, sessions, tasks, users } from '../db/schema.ts';
+import { auditLogs, enterprises, memberships, organizationInvitations, organizations, sessions, tasks, users } from '../db/schema.ts';
 import { MemoryMailer } from '../mail/mailer.ts';
+import { InternalAccountsController } from './internal-accounts.controller.ts';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -92,6 +94,25 @@ async function as(email: string, password = PASSWORD) {
   return agent;
 }
 
+const codeFor = async (email: string) => {
+  // 验证码邮件是事务后异步发的，等它进发件箱
+  for (let i = 0; i < 50; i++) {
+    const mail = mailer.sent.filter((m) => m.to === email).at(-1);
+    const code = mail && /\b(\d{6})\b/.exec(mail.text)?.[1];
+    if (code) return code;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error(`没有发给 ${email} 的验证码`);
+};
+const idOf = async (email: string) => (await handle.db.select({ id: users.id }).from(users).where(eq(users.email, email)))[0]!.id;
+const enabledOperators = async () =>
+  (
+    await handle.db
+      .select({ id: users.id })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(and(eq(memberships.role, 'operator'), isNull(users.disabledAt)))
+  ).length;
 const tokenOf = (text: string) => /\/invite\/([\w-]+)/.exec(text)![1]!;
 const actions = async (action: string) =>
   (await handle.db.select().from(auditLogs).where(eq(auditLogs.action, action as never))).map((r) => r.target);
@@ -152,6 +173,9 @@ describe('内部账号', () => {
   it('停用后：不能登录、已登录的会话失效、不在分派名单、分派给他被拒；记操作日志', async () => {
     const wu = await as('wu@test.cn');
     expect((await wu.get('/api/auth/me')).status).toBe(200);
+    // 停用前他刚申请过找回密码
+    await request(app.getHttpServer()).post('/api/auth/recover/send').send({ email: 'wu@test.cn' }).expect(204);
+    const code = await codeFor('wu@test.cn');
     const ops = await as('ops@test.cn');
     const res = await ops.post(`/api/operator/accounts/${uid['wu@test.cn']}/disable`).expect(200);
     expect((res.body.accounts as { name: string; disabledAt: string | null }[]).find((a) => a.name === '吴工')!.disabledAt).not.toBeNull();
@@ -173,14 +197,25 @@ describe('内部账号', () => {
     expect(experts.map((e) => e.name)).toEqual(['周工']);
     expect((await ops.post(`/api/operator/tasks/${taskId}/assign`).send({ expertId: uid['wu@test.cn'], currentExpertId: null })).status).toBe(400);
 
+    // 找回密码也走不通：停用前拿到的验证码不能用（和验证码错一样的说法，不透露账号状态），密码没被改掉
+    const reset = await request(app.getHttpServer())
+      .post('/api/auth/recover/reset')
+      .send({ email: 'wu@test.cn', code, password: 'brand new pass 2026' });
+    expect(reset.status).toBe(400);
+    expect(reset.body.message).toBe('验证码不正确或已失效，请检查或重新获取');
+    expect((await request(app.getHttpServer()).post('/api/auth/login').send({ email: 'wu@test.cn', password: 'brand new pass 2026' })).status).toBe(401);
+
     expect(await actions('account_disable')).toEqual(['吴工（wu@test.cn）· 注安师']);
-    // 停用过的不能再停用
+    // 停用过的不能再停用，也不重复记日志
     expect((await ops.post(`/api/operator/accounts/${uid['wu@test.cn']}/disable`)).status).toBe(409);
+    expect(await actions('account_disable')).toHaveLength(1);
   });
 
   it('恢复后可以登录、重新出现在分派名单', async () => {
     const ops = await as('ops@test.cn');
     await ops.post(`/api/operator/accounts/${uid['wu@test.cn']}/enable`).expect(200);
+    // 已经恢复的再点恢复：409，不重复记日志
+    expect((await ops.post(`/api/operator/accounts/${uid['wu@test.cn']}/enable`)).status).toBe(409);
     await as('wu@test.cn');
     const experts = (await ops.get(`/api/operator/tasks/${taskId}/experts`).expect(200)).body as { name: string }[];
     expect(experts.map((e) => e.name).sort()).toEqual(['吴工', '周工'].sort());
@@ -249,5 +284,73 @@ describe('内部账号', () => {
       .innerJoin(users, eq(users.id, memberships.userId))
       .where(and(eq(users.email, 'qian@test.cn'), eq(memberships.role, 'operator')));
     expect(m).toBeTruthy();
+  });
+  it('重新发送前查账号：对方已经有耕云账号时不再发', async () => {
+    const ops = await as('ops@test.cn');
+    await ops.post('/api/operator/accounts/invitations').send({ name: '郑工', email: 'zheng@test.cn', role: 'expert' }).expect(200);
+    const inv = (await ops.get('/api/operator/accounts').expect(200)).body.invitations.find((i: { email: string }) => i.email === 'zheng@test.cn');
+    // 对方在这期间通过别的途径有了账号
+    await handle.db.insert(users).values({ email: 'zheng@test.cn', name: '郑工', passwordHash: await hashPassword(PASSWORD) });
+    const sent = mailer.sent.length;
+    const res = await ops.post(`/api/operator/accounts/invitations/${inv.id}/resend`);
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain('已经有耕云账号');
+    expect(mailer.sent.length).toBe(sent);
+  });
+
+  it('两位运营同时重发同一封邀请：只有一封有效，另一位提示刷新', async () => {
+    const ops = await as('ops@test.cn');
+    const qian = await as('qian@test.cn', 'genyun2026');
+    await ops.post('/api/operator/accounts/invitations').send({ name: '冯工', email: 'feng@test.cn', role: 'expert' }).expect(200);
+    const inv = (await ops.get('/api/operator/accounts').expect(200)).body.invitations.find((i: { email: string }) => i.email === 'feng@test.cn');
+    const results = await Promise.all([ops, qian].map((a) => a.post(`/api/operator/accounts/invitations/${inv.id}/resend`)));
+    expect(results.map((r) => r.status)).toContain(200);
+    for (const r of results.filter((x) => x.status !== 200)) expect(r.status).toBe(409);
+    const open = await handle.db
+      .select()
+      .from(organizationInvitations)
+      .where(and(eq(organizationInvitations.email, 'feng@test.cn'), isNull(organizationInvitations.acceptedAt), isNull(organizationInvitations.revokedAt)));
+    expect(open).toHaveLength(1);
+    // 数据库也拦着：同一邮箱不能有第二封未接受、未作废的邀请
+    const { id: _id, ...row } = open[0]!;
+    await expect(handle.db.insert(organizationInvitations).values({ ...row, tokenHash: 'dup-token-hash' })).rejects.toThrow();
+  });
+
+  it('两位运营同时停用对方：只有一个成功，至少留一位能登录的运营', async () => {
+    const ops = await as('ops@test.cn');
+    const qian = await as('qian@test.cn', 'genyun2026');
+    const qianId = await idOf('qian@test.cn');
+    const before = (await actions('account_disable')).length;
+    const [a, b] = await Promise.all([
+      ops.post(`/api/operator/accounts/${qianId}/disable`),
+      qian.post(`/api/operator/accounts/${uid['ops@test.cn']}/disable`),
+    ]);
+    expect([a.status, b.status].filter((x) => x === 200)).toHaveLength(1);
+    for (const r of [a, b].filter((x) => x.status !== 200)) expect([401, 409]).toContain(r.status);
+    expect(await enabledOperators()).toBeGreaterThanOrEqual(1);
+    expect(await actions('account_disable')).toHaveLength(before + 1);
+    // 复原：两位都恢复
+    await handle.db.update(users).set({ disabledAt: null }).where(eq(users.email, 'ops@test.cn'));
+    await handle.db.update(users).set({ disabledAt: null }).where(eq(users.email, 'qian@test.cn'));
+  });
+
+  it('最后一位能登录的运营不能被停用或改成注安师（409）', async () => {
+    // 钱运营的请求已经过了登录校验，这时他自己被停用了：赵运营就是最后一位
+    const qianId = await idOf('qian@test.cn');
+    const controller = app.get(InternalAccountsController);
+    const [org] = await handle.db.select().from(organizations).where(eq(organizations.kind, 'internal'));
+    const qianUser: SessionUser = { id: qianId, email: 'qian@test.cn', name: '钱运营', memberships: [{ orgId: org!.id, orgName: '耕云', role: 'operator' }] };
+    const req = { ip: '127.0.0.1' } as Request;
+    await handle.db.update(users).set({ disabledAt: new Date() }).where(eq(users.id, qianId));
+    const logs = (await actions('account_disable')).length;
+    await expect(controller.disable(qianUser, uid['ops@test.cn']!, req)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining('最后一位能登录的运营管理员'),
+    });
+    await expect(controller.changeRole(qianUser, uid['ops@test.cn']!, { role: 'expert' }, req)).rejects.toMatchObject({ status: 409 });
+    const [zhao] = await handle.db.select().from(users).where(eq(users.id, uid['ops@test.cn']!));
+    expect(zhao!.disabledAt).toBeNull();
+    expect((await actions('account_disable')).length).toBe(logs);
+    await handle.db.update(users).set({ disabledAt: null }).where(eq(users.id, qianId));
   });
 });

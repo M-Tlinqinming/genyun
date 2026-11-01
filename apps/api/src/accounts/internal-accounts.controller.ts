@@ -25,18 +25,23 @@ import {
   Put,
   Req,
 } from '@nestjs/common';
-import { and, count, desc, eq, inArray, isNull, max } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull, max } from 'drizzle-orm';
 import type { Request } from 'express';
 import { AuditService, clientIp } from '../audit/audit.ts';
 import { canManageInternalAccounts } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
+import { isUniqueViolation } from '../db/errors.ts';
 import { auditLogs, memberships, organizationInvitations, organizations, sessions, tasks, users } from '../db/schema.ts';
 import { MAILER, type Mailer } from '../mail/mailer.ts';
 import { createInvitation, EMAIL_HAS_ACCOUNT } from '../orgs/invitations.ts';
 
 const NOT_FOUND = '找不到这个内部账号';
+const LAST_OPERATOR = '这是最后一位能登录的运营管理员，停用或改成注安师后就没人能管理客户组织和内部账号了。请先邀请或恢复另一位运营管理员';
+const RESENT_JUST_NOW = '这封邀请刚刚已经重新发送过了，请刷新页面查看最新的一封';
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+type Outcome = { busy: number } | 'last_operator' | 'unchanged' | 'ok';
 
 const isInternalRole = (r: string): r is InternalRole => (INTERNAL_ROLES as readonly string[]).includes(r);
 
@@ -129,6 +134,9 @@ export class InternalAccountsController {
     const state = invitationState(inv);
     if (state === 'accepted') throw new ConflictException('对方已经接受邀请，不用再发');
     if (state === 'revoked') throw new ConflictException('这封邀请已作废，请刷新页面查看最新的一封');
+    // 对方可能已经通过别的途径有了耕云账号，再发一封也接受不了
+    const [existing] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, inv.email)).limit(1);
+    if (existing) throw new ConflictException(EMAIL_HAS_ACCOUNT);
     const result = await this.send(user, orgId, { name: inv.name, email: inv.email, role: inv.role }, true);
     await this.audit.record({
       action: 'account_invite',
@@ -149,21 +157,29 @@ export class InternalAccountsController {
     const orgId = await this.internalOrg(user);
     const target = await this.load(orgId, id);
     if (target.disabledAt) throw new ConflictException(`${target.name}的账号已经停用了`);
-    const done = await this.db.transaction(async (tx) => {
+    const outcome = await this.db.transaction(async (tx): Promise<Outcome> => {
       // 锁住账号这一行，和分派排队：停用时不会有新任务刚好分到这个人
       await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for('update');
+      if (target.role === 'operator' && !(await this.operatorRemains(tx, orgId, id))) return 'last_operator';
       const [busy] = await tx
         .select({ n: count() })
         .from(tasks)
         .where(and(eq(tasks.assignedExpertId, id), isNull(tasks.closedAt)));
-      if ((busy?.n ?? 0) > 0) return busy!.n;
-      await tx.update(users).set({ disabledAt: new Date() }).where(and(eq(users.id, id), isNull(users.disabledAt)));
+      if ((busy?.n ?? 0) > 0) return { busy: busy!.n };
+      const [changed] = await tx
+        .update(users)
+        .set({ disabledAt: new Date() })
+        .where(and(eq(users.id, id), isNull(users.disabledAt)))
+        .returning({ id: users.id });
+      if (!changed) return 'unchanged';
       // 已登录的地方全部退出
       await tx.delete(sessions).where(eq(sessions.userId, id));
-      return 0;
+      return 'ok';
     });
-    if (done > 0) {
-      throw new ConflictException(`${target.name}还有 ${done} 个在办任务，请先在任务中心改派给其他注安师，再停用`);
+    if (outcome === 'last_operator') throw new ConflictException(LAST_OPERATOR);
+    if (outcome === 'unchanged') throw new ConflictException(`${target.name}的账号已经停用了`);
+    if (typeof outcome === 'object') {
+      throw new ConflictException(`${target.name}还有 ${outcome.busy} 个在办任务，请先在任务中心改派给其他注安师，再停用`);
     }
     await this.audit.record({
       action: 'account_disable',
@@ -183,7 +199,13 @@ export class InternalAccountsController {
     const orgId = await this.internalOrg(user);
     const target = await this.load(orgId, id);
     if (!target.disabledAt) throw new ConflictException(`${target.name}的账号没有停用`);
-    await this.db.update(users).set({ disabledAt: null }).where(eq(users.id, id));
+    const [changed] = await this.db
+      .update(users)
+      .set({ disabledAt: null })
+      .where(and(eq(users.id, id), isNotNull(users.disabledAt)))
+      .returning({ id: users.id });
+    // 别人刚恢复过：不重复记日志
+    if (!changed) throw new ConflictException(`${target.name}的账号没有停用`);
     await this.audit.record({
       action: 'account_enable',
       actorId: user.id,
@@ -205,18 +227,25 @@ export class InternalAccountsController {
     const orgId = await this.internalOrg(user);
     const target = await this.load(orgId, id);
     if (target.role === role) throw new ConflictException(`${target.name}已经是${INTERNAL_ROLE_LABELS[role]}`);
-    const busy = await this.db.transaction(async (tx) => {
+    const outcome = await this.db.transaction(async (tx): Promise<Outcome> => {
       await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for('update');
+      if (target.role === 'operator' && !(await this.operatorRemains(tx, orgId, id))) return 'last_operator';
       const [open] = await tx
         .select({ n: count() })
         .from(tasks)
         .where(and(eq(tasks.assignedExpertId, id), isNull(tasks.closedAt)));
-      if ((open?.n ?? 0) > 0) return open!.n;
-      await tx.update(memberships).set({ role }).where(and(eq(memberships.userId, id), eq(memberships.orgId, orgId)));
-      return 0;
+      if ((open?.n ?? 0) > 0) return { busy: open!.n };
+      const [changed] = await tx
+        .update(memberships)
+        .set({ role })
+        .where(and(eq(memberships.userId, id), eq(memberships.orgId, orgId), eq(memberships.role, target.role)))
+        .returning({ userId: memberships.userId });
+      return changed ? 'ok' : 'unchanged';
     });
-    if (busy > 0) {
-      throw new ConflictException(`${target.name}还有 ${busy} 个在办任务，请先在任务中心改派给其他注安师，再改角色`);
+    if (outcome === 'last_operator') throw new ConflictException(LAST_OPERATOR);
+    if (outcome === 'unchanged') throw new ConflictException(`${target.name}的角色刚刚被改过了，请刷新页面查看`);
+    if (typeof outcome === 'object') {
+      throw new ConflictException(`${target.name}还有 ${outcome.busy} 个在办任务，请先在任务中心改派给其他注安师，再改角色`);
     }
     await this.audit.record({
       action: 'account_role_change',
@@ -242,6 +271,19 @@ export class InternalAccountsController {
       .limit(1);
     if (!org) throw new ForbiddenException('只有耕云运营可以管理内部账号');
     return org.id;
+  }
+
+  // 停用或降级一位运营之前：锁住内部组织所有运营的成员行和账号行（两位运营互相停用时排队），
+  // 确认除了这位以外至少还有一位没停用的运营
+  private async operatorRemains(tx: Tx, orgId: string, exceptId: string): Promise<boolean> {
+    const ops = await tx
+      .select({ id: users.id, disabledAt: users.disabledAt })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(and(eq(memberships.orgId, orgId), eq(memberships.role, 'operator')))
+      .orderBy(users.id)
+      .for('update');
+    return ops.some((o) => o.id !== exceptId && !o.disabledAt);
   }
 
   private async load(orgId: string, id: string) {
@@ -281,6 +323,10 @@ export class InternalAccountsController {
         inviterName: user.name,
         resend,
       });
+    }).catch((err: unknown) => {
+      // 两位运营同时重发同一封：后到的一方撞「同一邮箱只有一封未接受的邀请」，提示刷新
+      if (isUniqueViolation(err, 'organization_invitations_open_email')) throw new ConflictException(RESENT_JUST_NOW);
+      throw err;
     });
     // 事务提交后再发信：邀请没记下来就不发
     await this.mailer.send(mail);

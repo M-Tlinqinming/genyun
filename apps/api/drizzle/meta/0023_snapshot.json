@@ -1,5 +1,5 @@
 {
-  "id": "971ee2c3-0c1e-47e2-945f-498326f8bb3a",
+  "id": "270e1636-fcde-4057-99ad-90d2622d3fbd",
   "prevId": "e29e9a22-5a7a-4e07-baf8-269d627ba6b0",
   "version": "7",
   "dialect": "postgresql",
@@ -2769,6 +2769,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "organization_invitations_open_email": {
+          "name": "organization_invitations_open_email",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"organization_invitations\".\"accepted_at\" is null and \"organization_invitations\".\"revoked_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}

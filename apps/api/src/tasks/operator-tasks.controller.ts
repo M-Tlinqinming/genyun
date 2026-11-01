@@ -240,13 +240,16 @@ export class OperatorTasksController {
     const said = note ? `运营说明：${note}` : null;
     // 改任务和发提醒在同一个事务里：不会出现分派生效、提醒却没发的情况
     const updated = await this.db.transaction(async (tx) => {
-      // 锁住接手人的账号行，和停用排队：刚被停用的注安师不会再分到任务（停用时也锁这一行）
+      // 锁住接手人的账号行，和停用、改角色排队（两者也锁这一行），锁住后再按分派名单的条件查一遍：
+      // 仍是耕云内部的注安师、没有停用
       const [active] = await tx
         .select({ id: users.id })
         .from(users)
-        .where(and(eq(users.id, expertId), isNull(users.disabledAt)))
-        .for('update');
-      if (!active) throw new BadRequestException(`${target.name}的账号已停用，请选择其他注安师`);
+        .innerJoin(memberships, eq(memberships.userId, users.id))
+        .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+        .where(and(eq(users.id, expertId), assignableExpert))
+        .for('update', { of: users });
+      if (!active) throw new BadRequestException(`${target.name}已停用或不再是注安师，请选择其他注安师`);
       // 只在负责注安师仍是运营打开弹窗时看到的那位时才改，别人刚分派过就提示刷新
       const [row] = await tx
         .update(tasks)

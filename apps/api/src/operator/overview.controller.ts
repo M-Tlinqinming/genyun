@@ -11,7 +11,7 @@ import {
   type OverviewTodo,
 } from '@genyun/shared';
 import { Controller, ForbiddenException, Get, Inject } from '@nestjs/common';
-import { and, desc, eq, gte, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import { canViewOperatorOverview } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
@@ -20,6 +20,7 @@ import {
   auditLogs,
   deliveries,
   enterprises,
+  memberships,
   onSiteRequests,
   organizationInvitations,
   organizations,
@@ -31,6 +32,8 @@ import { listOverdueTasks } from '../tasks/operator-tasks.controller.ts';
 // 「最近操作」只放业务动作；登录、退出、改密码在操作日志页里看
 const ACCOUNT_ACTIONS: AuditAction[] = ['login_success', 'login_failure', 'logout', 'password_change', 'password_reset'];
 const DAY_MS = 86_400_000;
+// 邀请过期超过 14 天就不再放进「今天先处理」（还在客户组织详情、内部账号里能看到）
+const EXPIRED_TODO_DAYS = 14;
 
 // 运营概览（Paper 16 页 I01）：四个统计、今天先处理、客户年度服务、最近操作。全部按真实数据算，
 // 复用客户组织（待开通）、邀请、任务中心（待分派、超时兜底、上门工单）、成果发布、操作日志。
@@ -104,7 +107,22 @@ export class OperatorOverviewController {
         })
         .from(organizationInvitations)
         .innerJoin(organizations, eq(organizations.id, organizationInvitations.orgId))
-        .where(and(isNull(organizationInvitations.acceptedAt), isNull(organizationInvitations.revokedAt)))
+        .where(
+          and(
+            isNull(organizationInvitations.acceptedAt),
+            isNull(organizationInvitations.revokedAt),
+            gt(organizationInvitations.expiresAt, new Date(now.getTime() - EXPIRED_TODO_DAYS * DAY_MS)),
+            // 只看耕云运营发出的邀请（开通首位管理员、内部成员）；客户管理员自己邀请的成员由客户跟进
+            inArray(
+              organizationInvitations.invitedBy,
+              this.db
+                .select({ id: memberships.userId })
+                .from(memberships)
+                .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+                .where(and(eq(memberships.role, 'operator'), eq(organizations.kind, 'internal'))),
+            ),
+          ),
+        )
         .orderBy(desc(organizationInvitations.createdAt)),
       // 本月（北京时间）发布成功的交付：同一任务本月发了 V1、V2 只算一次
       this.db
@@ -140,7 +158,7 @@ export class OperatorOverviewController {
         link: `/operator/organizations?open=${o.id}`,
       });
     }
-    // 邀请未接受：同一组织同一邮箱只看最新一封；当天刚发的不算待办（对方可能还没看邮件）
+    // 邀请未接受（只看运营发出的、过期 14 天内的）：同一组织同一邮箱只看最新一封；当天刚发的不算待办（对方可能还没看邮件）
     const seen = new Set<string>();
     for (const inv of invitations) {
       const key = `${inv.orgId}/${inv.email}`;

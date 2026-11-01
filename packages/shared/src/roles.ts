@@ -2,7 +2,7 @@
 export const ROLES = {
   customer_admin: { label: '机构管理员', workspace: 'customer' },
   customer_member: { label: '机构成员', workspace: 'customer' },
-  expert: { label: '专业人员', workspace: 'expert' },
+  expert: { label: '注安师', workspace: 'expert' },
   operator: { label: '运营管理员', workspace: 'operator' },
 } as const;
 

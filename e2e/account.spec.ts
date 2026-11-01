@@ -135,7 +135,7 @@ test('个人账户：从头像菜单进入，改姓名、改密码、退出其�
   await expect(page.getByRole('heading', { name: '个人账户', level: 1 })).toBeVisible();
   const profile = page.getByRole('region', { name: '基本资料' });
   await expect(profile.getByText(EMAIL)).toBeVisible();
-  await expect(profile.getByText('专业人员')).toBeVisible();
+  await expect(profile.getByText('注安师', { exact: true })).toBeVisible();
   // 耕云员工没有机构管理员可找
   await expect(page.getByText('身份由耕云调整')).toBeVisible();
   await expect(page.getByText('如需更换，请联系耕云')).toBeVisible();

@@ -126,6 +126,26 @@ beforeAll(async () => {
     .values([
       { ...invite, email: 'boss@pending.cn', name: '钱总', tokenHash: randomUUID(), createdAt: new Date(now.getTime() - 3 * DAY) },
       { ...invite, email: 'new@pending.cn', name: '孙总', tokenHash: randomUUID() },
+      // 过期超过 14 天的不再放进今天先处理
+      {
+        ...invite,
+        email: 'old@pending.cn',
+        name: '老邀请',
+        tokenHash: randomUUID(),
+        createdAt: new Date(now.getTime() - 30 * DAY),
+        expiresAt: new Date(now.getTime() - 23 * DAY),
+      },
+      // 客户管理员自己邀请的成员由客户跟进，不进运营待办
+      {
+        orgId: active!.id,
+        role: 'customer_member' as const,
+        invitedBy: by,
+        email: 'member@active.cn',
+        name: '客户成员',
+        tokenHash: randomUUID(),
+        createdAt: new Date(now.getTime() - 5 * DAY),
+        expiresAt: new Date(now.getTime() + 2 * DAY),
+      },
     ])
     .returning();
   id.invitation = inv!.id;
@@ -163,6 +183,8 @@ describe('运营概览', () => {
     const ops = await as('ops@test.cn');
     const { todos } = (await ops.get('/api/operator/overview').expect(200)).body as OperatorOverview;
     expect(todos.map((t) => t.kind).sort()).toEqual(['invitation', 'on_site', 'org_pending', 'overdue', 'unassigned']);
+    // 只有运营发的、过期 14 天内的邀请
+    expect(todos.filter((t) => t.kind === 'invitation').map((t) => t.title)).toEqual(['boss@pending.cn']);
     // 10.27 起等的超时在最前
     expect(todos[0]).toMatchObject({ kind: 'overdue', id: id.overdue, link: `/operator/tasks?tab=overdue&task=${id.overdue}` });
     const since = todos.map((t) => t.since);
