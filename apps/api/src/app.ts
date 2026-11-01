@@ -25,6 +25,7 @@ import { defaultMailer, MAIL_OUTBOX, MAILER, type Mailer, outboxEnabled } from '
 import { OutboxController } from './mail/outbox.controller.ts';
 import { InvitationsController } from './orgs/invitations.controller.ts';
 import { OperatorOrgsController } from './orgs/operator-orgs.controller.ts';
+import { OperatorOnSiteController } from './tasks/operator-on-site.controller.ts';
 import { OperatorTasksController } from './tasks/operator-tasks.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
@@ -86,6 +87,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       OrgsController,
       OperatorOrgsController,
       OperatorTasksController,
+      OperatorOnSiteController,
       InvitationsController,
       EnterprisesController,
       EnterpriseProfileController,

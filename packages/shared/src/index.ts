@@ -48,3 +48,4 @@ export * from './organization.ts';
 export * from './invitation.ts';
 export * from './assignment.ts';
 export * from './publish.ts';
+export * from './workdays.ts';

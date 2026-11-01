@@ -262,12 +262,13 @@ export function ConclusionView({
         </span>
         <Button onClick={() => onOpen(pending[0]?.kind ?? 'plan')}>返回检查文稿</Button>
         {passed ? (
-          <Button type="primary" onClick={onPublish}>
+          // 用不同的 key：确认成功后按钮换成这个，不能沿用上一个按钮的加载状态
+          <Button key="publish" type="primary" onClick={onPublish}>
             {r.published ? '查看发布结果' : '进入发布'}
           </Button>
         ) : (
           r.editable && (
-            <Button type="primary" disabled={!allChecked || !agreed || !!r.factsChangedAt} loading={saving} onClick={() => void submit()}>
+            <Button key="conclude" type="primary" disabled={!allChecked || !agreed || !!r.factsChangedAt} loading={saving} onClick={() => void submit()}>
               确认审核通过，进入发布
             </Button>
           )

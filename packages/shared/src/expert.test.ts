@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addWorkingDays, expertTodo, workingDaysLeft } from './expert.ts';
+import { expertTodo } from './expert.ts';
+import { addWorkingDays, workingDaysLeft } from './workdays.ts';
 
 // 北京时间写法，方便对照
 const bj = (s: string) => new Date(`${s}+08:00`);
@@ -38,5 +39,17 @@ describe('请求联系的期限（2 个工作日）', () => {
 
   it('中间隔着周末不算天数', () => {
     expect(workingDaysLeft(bj('2026-11-03T15:20'), bj('2026-10-30T16:00'))).toBe(2);
+  });
+
+  it('跳过法定节假日，调休上班的周末算工作日（2026 年国庆）', () => {
+    // 9.30 周三提出：10.1–10.7 放假，10.8、10.9 上班
+    expect(addWorkingDays(bj('2026-09-30T15:20'), 2)).toEqual(bj('2026-10-09T15:20'));
+    // 10.9 周五提出：10.10 周六调休上班，算 1 个工作日
+    expect(addWorkingDays(bj('2026-10-09T10:00'), 1)).toEqual(bj('2026-10-10T10:00'));
+  });
+
+  it('没有节假日表的年份只跳过周末', () => {
+    // 2027-01-01 是周五；表里没有 2027 年，照常算工作日
+    expect(addWorkingDays(bj('2026-12-31T09:00'), 1)).toEqual(bj('2027-01-01T09:00'));
   });
 });

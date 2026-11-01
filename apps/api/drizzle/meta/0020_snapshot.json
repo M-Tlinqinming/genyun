@@ -1,5 +1,5 @@
 {
-  "id": "fe0003dc-8efb-446e-84fc-b7eb6921a93d",
+  "id": "07922a5b-181f-470a-9418-6c977418a2db",
   "prevId": "83f0f543-ac79-4182-8e0e-8bd13fb65d91",
   "version": "7",
   "dialect": "postgresql",
@@ -246,289 +246,6 @@
           "columns": [
             "task_id",
             "item_key"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.deliveries": {
-      "name": "deliveries",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "publish_id": {
-          "name": "publish_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "task_id": {
-          "name": "task_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "batch_id": {
-          "name": "batch_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "error": {
-          "name": "error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reviewed_by": {
-          "name": "reviewed_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reviewed_at": {
-          "name": "reviewed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "versions": {
-          "name": "versions",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "published_by": {
-          "name": "published_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "published_at": {
-          "name": "published_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "deliveries_task_version": {
-          "name": "deliveries_task_version",
-          "columns": [
-            {
-              "expression": "task_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "version",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"deliveries\".\"status\" = 'done'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "deliveries_one_publishing": {
-          "name": "deliveries_one_publishing",
-          "columns": [
-            {
-              "expression": "task_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"deliveries\".\"status\" = 'publishing'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "deliveries_batch_once": {
-          "name": "deliveries_batch_once",
-          "columns": [
-            {
-              "expression": "batch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"deliveries\".\"status\" <> 'failed'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "deliveries_task_id_tasks_id_fk": {
-          "name": "deliveries_task_id_tasks_id_fk",
-          "tableFrom": "deliveries",
-          "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "deliveries_batch_id_generation_batches_id_fk": {
-          "name": "deliveries_batch_id_generation_batches_id_fk",
-          "tableFrom": "deliveries",
-          "tableTo": "generation_batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "deliveries_reviewed_by_users_id_fk": {
-          "name": "deliveries_reviewed_by_users_id_fk",
-          "tableFrom": "deliveries",
-          "tableTo": "users",
-          "columnsFrom": [
-            "reviewed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "deliveries_published_by_users_id_fk": {
-          "name": "deliveries_published_by_users_id_fk",
-          "tableFrom": "deliveries",
-          "tableTo": "users",
-          "columnsFrom": [
-            "published_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "deliveries_publish_id_unique": {
-          "name": "deliveries_publish_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "publish_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.delivery_files": {
-      "name": "delivery_files",
-      "schema": "",
-      "columns": {
-        "delivery_id": {
-          "name": "delivery_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "draft_kind",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "file_id": {
-          "name": "file_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "delivery_files_delivery_id_deliveries_id_fk": {
-          "name": "delivery_files_delivery_id_deliveries_id_fk",
-          "tableFrom": "delivery_files",
-          "tableTo": "deliveries",
-          "columnsFrom": [
-            "delivery_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "delivery_files_file_id_files_id_fk": {
-          "name": "delivery_files_file_id_files_id_fk",
-          "tableFrom": "delivery_files",
-          "tableTo": "files",
-          "columnsFrom": [
-            "file_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "delivery_files_delivery_id_kind_pk": {
-          "name": "delivery_files_delivery_id_kind_pk",
-          "columns": [
-            "delivery_id",
-            "kind"
           ]
         }
       },
@@ -2346,6 +2063,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "handed_over_at": {
+          "name": "handed_over_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -3224,6 +2953,108 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.task_operator_notes": {
+      "name": "task_operator_notes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "operator_note_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "task_operator_notes_task": {
+          "name": "task_operator_notes_task",
+          "columns": [
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "task_operator_notes_task_id_tasks_id_fk": {
+          "name": "task_operator_notes_task_id_tasks_id_fk",
+          "tableFrom": "task_operator_notes",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "task_operator_notes_created_by_users_id_fk": {
+          "name": "task_operator_notes_created_by_users_id_fk",
+          "tableFrom": "task_operator_notes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.task_submissions": {
       "name": "task_submissions",
       "schema": "",
@@ -3743,8 +3574,7 @@
       "values": [
         "customer_material",
         "contract",
-        "draft",
-        "delivery"
+        "draft"
       ]
     },
     "public.item_status": {
@@ -3764,6 +3594,16 @@
         "new",
         "handed_over",
         "closed"
+      ]
+    },
+    "public.operator_note_kind": {
+      "name": "operator_note_kind",
+      "schema": "public",
+      "values": [
+        "note",
+        "remind_expert",
+        "reassign",
+        "called_customer"
       ]
     },
     "public.org_kind": {

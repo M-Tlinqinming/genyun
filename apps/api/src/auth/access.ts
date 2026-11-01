@@ -55,6 +55,16 @@ export function canAssignTasks(user: SessionUser): boolean {
   return isOperator(user);
 }
 
+// 超时兜底（提醒注安师、致电客户、内部备注）：只有运营；内部备注和运营记录客户、注安师都看不到
+export function canHandleOverdue(user: SessionUser): boolean {
+  return isOperator(user);
+}
+
+// 上门工单（列表、转交、关闭、内部备注）：只有运营；客户只看到「已收到上门需求」
+export function canHandleOnSiteOrders(user: SessionUser): boolean {
+  return isOperator(user);
+}
+
 // 专家处理的内容（专业整理、生成的草稿、正文编辑）：负责专家和运营能看，客户和其他专家看不到
 export function canViewTaskWork(user: SessionUser, task: { assignedExpertId: string | null }): boolean {
   return isOperator(user) || (task.assignedExpertId === user.id && isExpert(user));
