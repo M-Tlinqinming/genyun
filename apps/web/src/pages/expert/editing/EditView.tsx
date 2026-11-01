@@ -587,8 +587,12 @@ export function EditView({
           alignItems: 'center',
           gap: 12,
           padding: failed ? '10px 20px' : '16px 20px',
-          ...panel,
-          ...(failed ? { borderColor: gy.error } : {}),
+          // border 简写不能和 borderColor 交替出现（React 会删掉 borderColor，框变成默认深色）：两种状态都写明颜色
+          background: gy.surface,
+          borderRadius: 6,
+          borderWidth: 1,
+          borderStyle: 'solid',
+          borderColor: failed ? gy.error : gy.split,
         }}
       >
         {!editable ? (
@@ -645,6 +649,7 @@ export function EditView({
         open={blocker.state === 'blocked'}
         where={where}
         saving={state.kind === 'saving'}
+        keptOnly={!dirty && kept !== null}
         onStay={() => blocker.reset?.()}
         onDiscard={() => {
           discard();

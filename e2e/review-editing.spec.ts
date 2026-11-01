@@ -145,6 +145,8 @@ test('改一节、写修订说明保存；离开前提醒；别人刚保存过�
   await failed.getByRole('button', { name: '重试保存' }).click();
   await expect(page.getByText(/✓ 已保存/)).toBeVisible();
   await expect(failed).toBeHidden();
+  // 恢复后底栏边框回到浅灰（不是默认深色）
+  await expect(footer(page)).toHaveCSS('border-top-color', 'rgb(229, 231, 235)');
 
   // 服务出错、其实已经存上了，之后又改了：重试先查到已存上，再以它为基准存新内容，新打的字不会丢
   await typeAtEnd(page, '回包丢了的修改');
@@ -192,6 +194,18 @@ test('改一节、写修订说明保存；离开前提醒；别人刚保存过�
   await expect(page.getByLabel('修订说明')).toHaveValue('冲突测试');
   await expect(page.getByRole('status').filter({ hasText: '你的修改待合并' })).toBeVisible();
   await expect(page.getByText(/✓ 已保存/)).toHaveCount(0);
+  // 编辑区没有改动、只有右栏没合并：没有可保存的，只给「继续合并」和「放弃并离开」
+  await page.getByRole('tab', { name: /风险评估报告/ }).click();
+  const unmerged = page.getByRole('dialog', { name: '还有内容没有合并' });
+  await expect(unmerged).toContainText('右栏还有你冲突前的输入没合并');
+  await expect(unmerged.getByRole('button', { name: '保存并离开' })).toHaveCount(0);
+  await expect(unmerged.getByRole('button', { name: '放弃并离开' })).toBeVisible();
+  await unmerged.getByRole('button', { name: '继续合并' }).click();
+  await expect(unmerged).toBeHidden();
+  await expect(page).not.toHaveURL(/doc=risk/);
+  await expect(page.getByRole('complementary', { name: '企业资料依据' })).toContainText('我的未保存输入');
+  // 编辑区一有改动，又回到「离开前保存修改？」
+  await typeAtEnd(page, '合并中');
   await page.getByRole('tab', { name: /风险评估报告/ }).click();
   await page.getByRole('dialog', { name: '离开前保存修改？' }).getByRole('button', { name: '继续编辑' }).click();
   // 手动收起要先确认
