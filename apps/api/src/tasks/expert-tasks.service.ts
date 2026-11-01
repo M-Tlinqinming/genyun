@@ -6,7 +6,7 @@ import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { checklistItems, enterprises, organizations, taskContacts, tasks, users } from '../db/schema.ts';
-import { type ContactRequest, pendingContactRequest } from './contact-request.ts';
+import { byChecklistOrder, type ContactRequest, pendingContactRequest } from './contact-request.ts';
 
 export type { ContactRequest } from './contact-request.ts';
 
@@ -89,7 +89,7 @@ export class ExpertTasksService {
 
     const events: ExpertEvent[] = [];
     const rows = list.map((t) => {
-      const mine = pending.filter((p) => p.taskId === t.id);
+      const mine = byChecklistOrder(pending.filter((p) => p.taskId === t.id));
       const verifyItems: VerifyItem[] = mine.map((p) => ({
         key: p.itemKey as ChecklistItemKey,
         label: getItemDef(p.itemKey as ChecklistItemKey).label,
