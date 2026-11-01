@@ -1,6 +1,6 @@
 // 生成一份草稿的 Word 和 PDF（M2 第 10 项后台队列里跑）。
 // 测试换成假的实现，可以模拟某一份失败；默认按环境变量选 AI 起草，配了 LibreOffice 才转 PDF。
-import type { DraftKind, PlanInput } from '@genyun/shared';
+import type { DeliveryDocument, DraftKind, PlanInput } from '@genyun/shared';
 import { defaultDrafter } from './ai/drafter.ts';
 import type { SlotNote } from './ai/slots.ts';
 import { generateDocument } from './documents.ts';
@@ -13,6 +13,8 @@ export interface RenderedDraft {
   // 没装转换工具（本机没配 SOFFICE_PATH）时为 null，只存 Word
   pdf: Buffer | null;
   notes: SlotNote[];
+  // 生成时的文档结构：正文编辑在它上面按节修订（第 11 项）
+  document: DeliveryDocument;
 }
 
 // drawings：应急预案附件 7 的客户图纸图片（按 input.drawings 锁定的页取好），另两份用不到
@@ -30,6 +32,6 @@ export function defaultRenderer(): DraftRenderer {
     if (failOnce.delete(kind)) throw new Error('模拟连接中断');
     const { document, notes } = await generateDocument(kind, input, { drafter, drawings });
     const word = await renderWord(document);
-    return { word, pdf: pdf ? await convertToPdf(word) : null, notes };
+    return { word, pdf: pdf ? await convertToPdf(word) : null, notes, document };
   };
 }

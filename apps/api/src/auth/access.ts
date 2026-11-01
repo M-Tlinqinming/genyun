@@ -49,6 +49,16 @@ export function canViewFile(
   return usedInMyAssignedTask && user.memberships.some((m) => m.role === 'expert');
 }
 
+// 专家处理的内容（专业整理、生成的草稿、正文编辑）：负责专家和运营能看，客户和其他专家看不到
+export function canViewTaskWork(user: SessionUser, task: { assignedExpertId: string | null }): boolean {
+  return isOperator(user) || (task.assignedExpertId === user.id && isExpert(user));
+}
+
+// 改正文、请 AI 改写：只有负责专家；运营只看（M3 改派后由新的负责专家接手）
+export function canEditTaskWork(user: SessionUser, task: { assignedExpertId: string | null }): boolean {
+  return task.assignedExpertId === user.id && isExpert(user);
+}
+
 // 客户组织的登记、开通、合同原件：只有运营。客户、专业人员一律不行
 export function canManageOrganizations(user: SessionUser): boolean {
   return isOperator(user);

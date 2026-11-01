@@ -41,4 +41,5 @@ export * from './workup-risk.ts';
 export * from './workup-scope.ts';
 export * from './workup-plan.ts';
 export * from './generation.ts';
+export * from './editing.ts';
 export * from './organization.ts';
