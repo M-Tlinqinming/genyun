@@ -12,15 +12,17 @@ test('客户的上门需求出现在上门工单；运营写内部备注、标�
   await page.getByRole('button', { name: /登\s*录/ }).click();
   await expect(page).toHaveURL(/\/operator$/);
 
-  // 客户（飞宇）在自己的任务里预约上门
-  const tasks = (await (await page.request.get('/api/operator/tasks')).json()) as { id: string; enterpriseName: string }[];
-  const feiyuTask = tasks.find((t) => t.enterpriseName === FEIYU)!;
+  // 客户（飞宇）在自己的任务里预约上门。任务从客户自己的组织取：enterprises.spec 会在别的组织再建一家同名企业
   const customer = await browser.newContext();
   expect((await customer.request.post('/api/auth/login', { data: { email: 'feiyu@demo.genyun.net.cn', password: 'e2e-password' } })).ok()).toBe(true);
+  const me = await (await customer.request.get('/api/auth/me')).json();
+  const orgId = me.memberships[0].orgId as string;
+  const tasks = (await (await customer.request.get(`/api/orgs/${orgId}/tasks`)).json()) as { id: string; enterpriseName: string }[];
+  const feiyuTask = tasks.find((t) => t.enterpriseName === FEIYU)!;
   const created = await customer.request.post(`/api/tasks/${feiyuTask.id}/on-site-requests`, {
     data: { contactName: '陈志刚', contactPhone: '0752-3456789', helpItems: ['消防水池'] },
   });
-  expect(created.ok()).toBe(true);
+  expect(created.ok(), await created.text()).toBe(true);
   await customer.close();
 
   await page.goto('/operator/tasks');
