@@ -41,14 +41,18 @@ export class AuthService {
     const [found] = await this.db.select().from(users).where(eq(users.email, email)).limit(1);
     const ok = await verify(found?.passwordHash ?? (await DUMMY_HASH), input.password);
     if (!found || !ok) return null;
+    return this.startSession(found.id);
+  }
 
+  // 登录成功、接受邀请设好密码后都从这里开会话
+  async startSession(userId: string): Promise<{ token: string; user: SessionUser }> {
     const token = randomBytes(32).toString('base64url');
     await this.db.insert(sessions).values({
       tokenHash: hashToken(token),
-      userId: found.id,
+      userId,
       expiresAt: new Date(Date.now() + SESSION_TTL_MS),
     });
-    return { token, user: await this.loadUser(found.id) };
+    return { token, user: await this.loadUser(userId) };
   }
 
   async userForToken(token: string): Promise<SessionUser | null> {

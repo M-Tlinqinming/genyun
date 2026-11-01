@@ -1,5 +1,8 @@
 import {
+  adminInvitationSchema,
   chinaToday,
+  invitationState,
+  operatorTaskStage,
   detectFileType,
   fileRejectionReason,
   FILE_TYPES,
@@ -35,11 +38,20 @@ import { canManageOrganizations } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { files, organizationContracts, organizations, users } from '../db/schema.ts';
+import {
+  enterprises,
+  files,
+  memberships,
+  organizationContracts,
+  organizationInvitations,
+  organizations,
+  tasks,
+  users,
+} from '../db/schema.ts';
 import { receiveOne } from '../files/files.controller.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { MAILER, type Mailer } from '../mail/mailer.ts';
-import { createInvitation } from './invitations.ts';
+import { createInvitation, EMAIL_HAS_ACCOUNT } from './invitations.ts';
 
 const NOT_FOUND = '找不到该客户组织';
 
@@ -57,6 +69,7 @@ const columns = {
   activatedAt: organizations.activatedAt,
   createdAt: organizations.createdAt,
   registeredByName: sql<string | null>`(select u.name from users u where u.id = "organizations"."registered_by")`,
+  activatedByName: sql<string | null>`(select u.name from users u where u.id = "organizations"."activated_by")`,
 };
 
 type OrgRow = { activatedAt: Date | null; contractStartsAt: string | null; contractEndsAt: string | null };
@@ -112,7 +125,63 @@ export class OperatorOrgsController {
       .where(and(eq(files.orgId, id), eq(files.kind, 'contract')))
       .orderBy(desc(files.createdAt))
       .limit(1);
-    return { ...withState(org), contract: contracts.get(id) ?? null, contractFile: contractFile ?? null };
+    return {
+      ...withState(org),
+      contract: contracts.get(id) ?? null,
+      contractFile: contractFile ?? null,
+      ...(await this.people(id)),
+      enterprises: await this.enterpriseTasks(id),
+    };
+  }
+
+  // 重发邀请或更换首位管理员：作废还没接受的管理员邀请，按填的人重新发一封。
+  // 首位管理员接受以后，成员由客户管理员自己邀请和管理，这里不再更换
+  @Post(':id/admin-invitation')
+  @HttpCode(200)
+  async inviteAdmin(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    this.guard(user);
+    const org = await this.load(id);
+    if (!org.activatedAt) throw new ConflictException('这个组织还没开通。请先在列表里点「开通」');
+    const parsed = adminInvitationSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+    const d = parsed.data;
+
+    await this.rejectExistingAccount(d.email);
+
+    const invitation = await this.db.transaction(async (tx) => {
+      // 锁住组织这一行：和并发的更换、接受邀请排队，避免作废旧邀请时对方刚好接受
+      await tx.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, id)).for('update');
+      const [admin] = await tx
+        .select({ id: memberships.userId })
+        .from(memberships)
+        .where(and(eq(memberships.orgId, id), eq(memberships.role, 'customer_admin')))
+        .limit(1);
+      if (admin) throw new ConflictException('首位管理员已经接受邀请。之后的成员由客户管理员在「组织管理」里邀请');
+      await tx
+        .update(organizationInvitations)
+        .set({ revokedAt: new Date() })
+        .where(
+          and(
+            eq(organizationInvitations.orgId, id),
+            eq(organizationInvitations.role, 'customer_admin'),
+            isNull(organizationInvitations.acceptedAt),
+            isNull(organizationInvitations.revokedAt),
+          ),
+        );
+      return createInvitation(tx, {
+        orgId: id,
+        orgName: org.name,
+        role: 'customer_admin',
+        email: d.email,
+        name: d.name,
+        phone: d.phone,
+        invitedBy: user.id,
+        inviterName: '耕云运营',
+        resend: true,
+      });
+    });
+    const mailSent = await this.sendMail(invitation.mail);
+    return { email: d.email, expiresAt: invitation.expiresAt, mailSent, mailSimulated: this.mailer.simulated === true };
   }
 
   @Post()
@@ -213,6 +282,7 @@ export class OperatorOrgsController {
       .where(and(eq(files.id, d.contractFileId), eq(files.orgId, id), eq(files.kind, 'contract')))
       .limit(1);
     if (!contractFile) throw new BadRequestException('合同原件找不到了，请重新上传');
+    await this.rejectExistingAccount(d.adminEmail);
 
     const invitation = await this.db.transaction(async (tx) => {
       // 并发开通时只有一次能成功
@@ -244,15 +314,81 @@ export class OperatorOrgsController {
       });
     });
     // 事务提交后再发信；发信失败不回滚开通，运营可在组织详情里重新发送
-    let mailSent = true;
-    try {
-      await this.mailer.send(invitation.mail);
-    } catch (err) {
-      mailSent = false;
-      console.error('邀请邮件发送失败', err);
-    }
-    return { ...withState(await this.load(id)), invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, mailSimulated: this.mailer.simulated === true },
+    const mailSent = await this.sendMail(invitation.mail);
+    return {
+      ...withState(await this.load(id)),
+      invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, mailSimulated: this.mailer.simulated === true },
     };
+  }
+
+  // 这一期首位管理员只能是新账号（已有账号加入其他组织留给第 7 项），发邀请时当场拦下，不等对方接受时才报错
+  private async rejectExistingAccount(email: string) {
+    const [existing] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    if (existing) throw new ConflictException({ statusCode: 409, message: EMAIL_HAS_ACCOUNT, field: 'email' });
+  }
+
+  private async sendMail(mail: Parameters<Mailer['send']>[0]): Promise<boolean> {
+    try {
+      await this.mailer.send(mail);
+      return true;
+    } catch (err) {
+      console.error('邀请邮件发送失败', err instanceof Error ? err.message : err);
+      return false;
+    }
+  }
+
+  // 组织详情「联系人与成员」「开通与邀请」
+  private async people(orgId: string) {
+    const members = await this.db
+      .select({ id: users.id, name: users.name, email: users.email, role: memberships.role, createdAt: users.createdAt })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(eq(memberships.orgId, orgId))
+      .orderBy(users.createdAt);
+    const invites = await this.db
+      .select({
+        id: organizationInvitations.id,
+        email: organizationInvitations.email,
+        name: organizationInvitations.name,
+        phone: organizationInvitations.phone,
+        role: organizationInvitations.role,
+        createdAt: organizationInvitations.createdAt,
+        expiresAt: organizationInvitations.expiresAt,
+        acceptedAt: organizationInvitations.acceptedAt,
+        revokedAt: organizationInvitations.revokedAt,
+        invitedByName: users.name,
+      })
+      .from(organizationInvitations)
+      .innerJoin(users, eq(users.id, organizationInvitations.invitedBy))
+      .where(eq(organizationInvitations.orgId, orgId))
+      .orderBy(desc(organizationInvitations.createdAt));
+    return { members, invitations: invites.map((i) => ({ ...i, state: invitationState(i) })) };
+  }
+
+  // 组织详情「企业与任务」（只读）：每家企业最近的一个任务
+  private async enterpriseTasks(orgId: string) {
+    const ents = await this.db
+      .select({ id: enterprises.id, name: enterprises.name })
+      .from(enterprises)
+      .where(eq(enterprises.orgId, orgId))
+      .orderBy(enterprises.createdAt);
+    const rows = await this.db
+      .select({
+        enterpriseId: tasks.enterpriseId,
+        id: tasks.id,
+        number: tasks.number,
+        status: tasks.status,
+        assignedExpertId: tasks.assignedExpertId,
+        closedAt: tasks.closedAt,
+      })
+      .from(tasks)
+      .where(eq(tasks.orgId, orgId))
+      .orderBy(desc(tasks.createdAt));
+    const latest = new Map<string, { id: string; number: string; stage: ReturnType<typeof operatorTaskStage> }>();
+    for (const t of rows) {
+      if (!latest.has(t.enterpriseId)) latest.set(t.enterpriseId, { id: t.id, number: t.number, stage: operatorTaskStage(t) });
+    }
+    return ents.map((e) => ({ ...e, task: latest.get(e.id) ?? null }));
   }
 
   private guard(user: SessionUser) {
