@@ -78,14 +78,9 @@ body {
   outline: 2px solid var(--gy-primary);
   border-radius: 4px;
 }
-/* 内容区宽 1152，屏幕窄于侧栏 + 1152 + 两边留白时（如 1366）两边留 24px（E18-08） */
-@media (max-width: 1423px) {
-  .gy-edit-page {
-    padding: 0 24px;
-  }
-}
 .gy-editor-box:focus-within {
-  outline: 2px solid var(--gy-selected);
+  outline: 2px solid var(--gy-primary);
+  outline-offset: -1px;
 }
 
 /* 系统设置了「减少动态效果」时，组件库的动效也一律不动 */

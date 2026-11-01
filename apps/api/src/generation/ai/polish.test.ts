@@ -75,6 +75,17 @@ describe('帮我改写这段', () => {
     expect(merged.note).toMatch(/没有的数字「12」/);
   });
 
+  it('400 / 800 电话也遮掉；原文里的国标编号不算新增的长数字', async () => {
+    const d = drafter((req) => req.text.replace('执行', '严格执行'));
+    const text = '按 GB/T 29639-2020 执行，客服电话 400-123-4567、800 123 4567、4001234567。';
+    const out = await polishParagraph(d, context, text);
+    expect(d.seen[0]!.text).not.toMatch(/123|4567/);
+    expect(d.seen[0]!.text).toContain('29639-2020');
+    expect(out).toMatchObject({ source: 'ai', text: text.replace('执行', '严格执行') });
+    const invented = await polishParagraph(drafter(() => '按 GB/T 29639-2020 执行，值班 13912345678 接警。'), context, '按 GB/T 29639-2020 执行，值班人员接警。');
+    expect(invented.note).toBe('AI 改写没有通过系统检查（写了原文里没有的电话或长串数字「13912345678」），保留原文');
+  });
+
   it('服务出错或没开启：用原文', async () => {
     const text = '压铸车间发生火灾时，现场人员立即报告。';
     const failed = await polishParagraph(drafter(() => Promise.reject(new Error('超时'))), context, text);

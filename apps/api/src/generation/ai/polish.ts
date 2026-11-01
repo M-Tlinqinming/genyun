@@ -18,8 +18,9 @@ export interface PolishContext {
   facts: PolishRequest['facts'];
 }
 
-// 手机（可带空格、短横线分段）、带区号的座机（区号可加括号）、不带区号的座机「xxxx-xxxx」
-const PHONE = /(?<!\d)(?:1\d{2}[ -]?\d{4}[ -]?\d{4}|[（(]?0\d{2,3}[）)]?[ -]?\d{7,8}|\d{3,4}-\d{7,8}|\d{4}-\d{4})(?!\d)/g;
+// 手机（可带空格、短横线分段）、400 / 800 客服电话（10 位，可分段）、带区号的座机（区号可加括号）、不带区号的座机「xxxx-xxxx」
+const PHONE =
+  /(?<!\d)(?:1\d{2}[ -]?\d{4}[ -]?\d{4}|[48]00[ -]?\d{3}[ -]?\d{4}|[（(]?0\d{2,3}[）)]?[ -]?\d{7,8}|\d{3,4}-\d{7,8}|\d{4}-\d{4})(?!\d)/g;
 
 // 强制性措辞：改写后每个词出现的次数不能比原文少
 const MANDATORY = ['立即', '严禁', '必须', '不得', '禁止', '应当', '务必'];
@@ -62,7 +63,9 @@ function problemOf(value: string, maskedOriginal: string, tokens: Map<string, st
   if (/〔[^〕]*〕/.test(v.replace(TOKEN, ''))) return '多出了不认识的占位';
   const plain = v.replace(TOKEN, '');
   if (v.length < maskedOriginal.length * 0.5 || v.length > Math.max(maskedOriginal.length * 1.6, maskedOriginal.length + 60)) return '篇幅与原文相差太大';
-  if (/\d{5,}/.test(plain)) return '写了电话或长串数字';
+  // 原文里有的长数字（如国标编号 GB/T 29639-2020 里的 29639）照常保留，只拒绝原文里没有的
+  const long = (plain.match(/\d{5,}/g) ?? []).find((x) => !maskedOriginal.replace(TOKEN, '').includes(x));
+  if (long) return `写了原文里没有的电话或长串数字「${long}」`;
   if (/有限公司|有限责任公司/.test(plain)) return '写了企业名称';
   const before = numbersOf(maskedOriginal);
   const after = numbersOf(v);
@@ -89,7 +92,7 @@ export async function polishParagraph(drafter: ParagraphPolisher | null, ctx: Po
     return { text, source: 'system', note: 'AI 服务出错，保留原文；可以稍后再试', promptVersion: POLISH_PROMPT_VERSION };
   }
   const problem = problemOf(answer, masked, tokens, ctx.facts);
-  if (problem) return { text, source: 'system', note: `AI 写的${problem}，没有通过系统检查，保留原文`, promptVersion: POLISH_PROMPT_VERSION };
+  if (problem) return { text, source: 'system', note: `AI 改写没有通过系统检查（${problem}），保留原文`, promptVersion: POLISH_PROMPT_VERSION };
   let restored = answer.trim();
   for (const [token, value] of tokens) restored = restored.split(token).join(value);
   if (restored === text) return { text, source: 'system', note: 'AI 认为原文已经通顺，没有改动', promptVersion: POLISH_PROMPT_VERSION };

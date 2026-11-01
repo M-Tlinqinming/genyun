@@ -42,6 +42,7 @@ export function ConfirmView({
   gaps,
   required,
   hasDrafts,
+  editedSections,
   onBackToWorkup,
   onNextMissing,
   onStarted,
@@ -52,6 +53,8 @@ export function ConfirmView({
   required: number;
   // 已经生成过一批：确认后重新生成
   hasDrafts: boolean;
+  // 上一批里专家保存过修订的节数：重新生成前先确认
+  editedSections: number;
   onBackToWorkup: () => void;
   onNextMissing: () => void;
   onStarted: () => void;
@@ -59,7 +62,7 @@ export function ConfirmView({
   const materials = useMaterials(taskId, true);
   const confirm = useConfirmGeneration(taskId);
   const client = useQueryClient();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   // 确认时发现变了的行（与专家看到的那一版比）
   const [changed, setChanged] = useState<Set<string>>(new Set());
 
@@ -83,6 +86,18 @@ export function ConfirmView({
       figures: figures.required - figures.pending.length,
     };
   }, [workup]);
+
+  // 已有人工修订时，重新生成前先提醒（11-01 通宵定的，待 Martin 决定，见 DESIGN-DIFF）
+  const start = () => {
+    if (editedSections === 0) return void submit();
+    modal.confirm({
+      title: '重新生成三份草稿？',
+      content: `已有 ${editedSections} 节人工修订。重新生成后，这些修订需要在新稿里重新对照。`,
+      okText: '确认重新生成',
+      cancelText: '先不生成',
+      onOk: () => submit(),
+    });
+  };
 
   const submit = async () => {
     if (!materials.data) return;
@@ -201,7 +216,7 @@ export function ConfirmView({
           )}
         </span>
         <Button onClick={onBackToWorkup}>返回专业整理</Button>
-        <Button type="primary" disabled={!ready || !materials.data} loading={confirm.isPending} onClick={() => void submit()}>
+        <Button type="primary" disabled={!ready || !materials.data} loading={confirm.isPending} onClick={start}>
           确认采用并生成三份草稿
         </Button>
       </section>

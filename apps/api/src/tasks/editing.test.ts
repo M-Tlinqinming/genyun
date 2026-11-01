@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createCanvas } from '@napi-rs/canvas';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
@@ -34,7 +35,28 @@ const storage: FileStorage = {
     return `/blob/${key}`;
   },
 };
-const renderer: DraftRenderer = async (kind) => ({ word: Buffer.from('word'), pdf: null, notes: [], document: testDocument(kind) });
+// 带图的一节（第 2 章）：测锁定的图单独加载缩略图
+const png = (() => {
+  const c = createCanvas(960, 640);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#336699';
+  ctx.fillRect(0, 0, 960, 640);
+  return new Uint8Array(c.toBuffer('image/png'));
+})();
+const withFigure = (kind: 'plan' | 'risk' | 'resource') => {
+  const doc = testDocument(kind);
+  doc.sections.push({
+    id: 'ch2',
+    title: '2 组织机构',
+    blocks: [
+      { type: 'paragraph', text: ['组织机构如下图。'] },
+      { type: 'figure', png, width: 960, height: 640, caption: '图 1 应急组织机构图' },
+    ],
+    sections: [],
+  });
+  return doc;
+};
+const renderer: DraftRenderer = async (kind) => ({ word: Buffer.from('word'), pdf: null, notes: [], document: withFigure(kind) });
 const polished: PolishRequest[] = [];
 const drafter: ParagraphPolisher = {
   polish: async (req) => {
@@ -164,6 +186,21 @@ describe('正文编辑', () => {
       locked: [{ index: 1, kind: 'table', header: [['姓名']], rows: [['陈某']] }],
     });
     await zhou.get(url('plan', '/sections/nope')).expect(404);
+    // 图的缩略图单独加载；表格、段落的位置不是图
+    await zhou.get(url('plan', '/sections/ch1.2/figures/1')).expect(404);
+    await zhou.get(url('plan', '/sections/ch1.2/figures/0')).expect(404);
+    await zhou.get(url('plan', '/sections/ch1.2/figures/x')).expect(400);
+  });
+
+  it('锁定的图：节内容只带缩略图地址，缩略图是长边 480 的 JPEG', async () => {
+    const zhou = await as('zhou@test.cn');
+    const section = (await zhou.get(url('plan', '/sections/ch2')).expect(200)).body;
+    expect(JSON.stringify(section)).not.toContain('base64');
+    expect(section.locked).toEqual([{ index: 1, kind: 'figure', src: expect.stringContaining('/sections/ch2/figures/1') }]);
+    const img = await zhou.get(url('plan', '/sections/ch2/figures/1')).expect(200);
+    expect(img.headers['content-type']).toBe('image/jpeg');
+    // 有这一节、但这个位置是段落不是图
+    await zhou.get(url('plan', '/sections/ch2/figures/0')).expect(404);
   });
 
   it('保存一节：记修订说明，刷新后还在，下载的 Word 用修订后的内容', async () => {
@@ -289,6 +326,8 @@ describe('正文编辑的权限', () => {
       await agent.put(url('plan', '/sections/ch1.1')).send(body()).expect(404);
       await agent.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '一段需要改写的文字。' }).expect(404);
       await agent.get(url('plan', `/saves/${randomUUID()}`)).expect(404);
+      // 真有这张图也一样 404（没有权限，不是「不是图」）
+      await agent.get(url('plan', '/sections/ch2/figures/1')).expect(404);
     }
   });
 
@@ -296,6 +335,8 @@ describe('正文编辑的权限', () => {
     const ops = await as('ops@test.cn');
     expect((await ops.get(url('plan', '/edit')).expect(200)).body.editable).toBe(false);
     await ops.get(url('plan', '/sections/ch1.1')).expect(200);
+    const img = await ops.get(url('plan', '/sections/ch2/figures/1')).expect(200);
+    expect(img.headers['content-type']).toBe('image/jpeg');
     await ops.put(url('plan', '/sections/ch1.1')).send(body()).expect(403);
     await ops.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '一段需要改写的文字。' }).expect(403);
   });
