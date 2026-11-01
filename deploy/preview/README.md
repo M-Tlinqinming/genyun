@@ -98,18 +98,39 @@ docker compose --env-file /opt/genyun/.env logs app | grep 模拟发信
 ssh -F /dev/null -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts root@47.82.104.179 "grep DEMO_PASSWORD /opt/genyun/.env"
 ```
 
-演示账号只需写入一次（重复运行会因邮箱已存在而报错）：
+写入演示数据（每次发布后都可以跑，反复运行不出错、不重复）：
 
 ```sh
 docker exec -e ALLOW_DEMO_SEED=1 -e DEMO_PASSWORD=<密码> genyun-preview-app-1 node apps/api/dist/scripts/seed-demo.js
 ```
+
+脚本只补还没有的：账号按邮箱、组织按名称、企业按信用代码（没有代码的按名称）、任务按企业、合同按组织先查后插。已有的账号不改密码和姓名，已有组织只补空着的地区、联系人、合同有效期，测试人员在预览环境里录的数据一概不动、不删。演示任务的编号和客户新建任务用同一个流水，不会撞号。运行完会列出「新写入」和「已有、跳过」各哪几项。
+
+写入的内容（都是虚构的）：
+
+- 五个演示账号（见上）
+- 两家已开通的客户组织「示例安全咨询机构」「飞宇演示客户」，各登记一份演示合同（合同原件是一页英文样张 PDF），运营在「客户组织」列表里看到都是服务中
+- 飞宇演示客户名下两家企业：飞宇（各步资料都填了，技术人员数故意留空，演示专家整理时补齐）和示例五金
+- 两个已提交的任务：飞宇分派给周工（有两项请专家电话联系、一项拍照给耕云看），示例五金分派给吴工。周工补齐专家判断后就能确认生成三份草稿
+
+## 交给测试人员前检查
+
+发布、写入演示数据之后，在本机运行（只读，不改数据）：
+
+```sh
+DEMO_PASSWORD=<密码> bash deploy/preview/check.sh https://preview.gengyun.net.cn
+```
+
+逐项检查：`/api/health` 通；官网首页、`/login` 能打开；五个演示账号都能登录；周工、吴工各自看到自己的演示任务且互相看不到；飞宇客户在自己的组织里；运营的客户组织列表里两家演示组织都是服务中；运营能打开模拟发件箱。服务器上的版本还没有模拟发件箱入口（合并请求 #63 之前）时这一项显示「跳过」，不算失败。
+
+脚本一共登录 5 次，正式环境每分钟限 10 次，一分钟内别连跑两遍。
 
 ## 新服务器从零开始
 
 ```sh
 ssh ... root@<IP> 'bash -s preview.gengyun.net.cn' < deploy/preview/server-setup.sh
 bash deploy/preview/deploy.sh
-# 再写入演示账号（见上）
+# 再写入演示数据、跑检查（见上）
 ```
 
 `server-setup.sh` 会加 2G 交换空间、安装 Docker、生成密钥文件。阿里云防火墙只需开 22 / 80 / 443。
