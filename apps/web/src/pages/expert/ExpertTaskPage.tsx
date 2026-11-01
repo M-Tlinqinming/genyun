@@ -43,6 +43,7 @@ import { ConfirmView } from './workup/ConfirmView';
 import { ContactRecords } from './workup/ContactRecords';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { FiguresPanel, type FiguresSaveInput } from './workup/FiguresPanel';
+import { ConclusionView } from './editing/ConclusionView';
 import { EditView } from './editing/EditView';
 import { GenerationView, phaseOf } from './workup/GenerationView';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
@@ -294,6 +295,18 @@ export function ExpertTaskPage() {
   const requested = params.get('view');
   const view = requested === 'confirm' ? 'confirm' : requested !== 'workup' && current ? 'generation' : 'workup';
   const phase = current ? phaseOf(current) : null;
+
+  // 审核结论（E18-06）：三份逐份核对后确认
+  if (requested === 'review' && current && phaseOf(current) === 'done') {
+    return (
+      <ConclusionView
+        taskId={taskId}
+        enterpriseName={task.data.enterpriseName}
+        taskNumber={task.data.number}
+        onOpen={(k) => setParams({ view: 'edit', doc: k, tab: 'preview' })}
+      />
+    );
+  }
 
   // 审核与修订 · 正文编辑（E18-03）：三份草稿都生成完才进得来
   if (requested === 'edit' && current && phaseOf(current) === 'done') {
