@@ -85,6 +85,8 @@ export interface TaskProgressFacts {
   closedAt: string | null;
   missing: string[];
   remaining: number;
+  // 专家发起、等客户回应的事实补件标题（M2 第 13 项）；没有为 null
+  supplement?: string | null;
 }
 
 // mine = 待我处理；gengyun = 耕云处理中；delivered = 已交付
@@ -107,6 +109,9 @@ export interface TaskTodo {
 export function taskTodo(t: TaskProgressFacts): TaskTodo {
   if (t.closedAt !== null) {
     return { bucket: 'delivered', stage: 3, stageText: '成果交付', next: '成果已发布，可查看和下载', action: '查看成果' };
+  }
+  if (t.status === 'submitted' && t.supplement) {
+    return { bucket: 'mine', stage: 2, stageText: '注安师审核 · 等待您回应', next: t.supplement, action: '去回应' };
   }
   if (t.status === 'submitted') {
     return {

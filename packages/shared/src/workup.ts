@@ -85,9 +85,10 @@ export interface FactOverride {
   value: FactValue;
   source: 'expert' | 'customer';
   fileId?: string;
-  // 来自联系客户：phone = 电话问清后回填，request = 采用客户在任务里的回答
-  via?: 'phone' | 'request';
+  // 来自联系客户：phone = 电话问清后回填，request = 采用客户在任务里的回答；supplement = 事实补件里专家明确采用（第 13 项）
+  via?: 'phone' | 'request' | 'supplement';
   contactId?: string;
+  supplementId?: string;
   by: string;
   byName: string;
   at: string;
@@ -341,7 +342,14 @@ export function workupFacts(snapshot: WorkupSnapshot, data: WorkupData): Fact[] 
       ? {
           value: override.value,
           source: override.source,
-          sourceNote: override.source === 'customer' ? (override.via === 'request' ? '任务内补充' : '电话确认') : undefined,
+          sourceNote:
+            override.source === 'customer'
+              ? override.via === 'request'
+                ? '任务内补充'
+                : override.via === 'supplement'
+                  ? '事实补件'
+                  : '电话确认'
+              : undefined,
           fileId: override.fileId,
         }
       : base;

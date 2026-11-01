@@ -6,6 +6,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { gy } from '../../theme/tokens';
 import { CheckView } from './check/CheckView';
 import { SubmittedMaterials, SubmittedRecords, SubmittedStatusBar } from './submit/SubmittedView';
+import { OpenSupplementCard, useOpenSupplement } from './submit/SupplementCard';
 import { TaskDocumentsSection } from './TaskDocumentsSection';
 import { Loading } from '../../components/ui';
 
@@ -17,6 +18,8 @@ export function TaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
   const [search, setSearch] = useSearchParams();
+  // 注安师发起、等客户回应的事实补件
+  const ask = useOpenSupplement(taskId, task.data !== undefined && task.data.status !== 'preparing');
 
   if (task.isPending) return <Loading rows={6} />;
   if (task.isError) {
@@ -62,7 +65,7 @@ export function TaskPage() {
       />
       <PageHeader
         title={t.name}
-        description={`${t.number} · ${submitted ? '申请已提交 · 当前由耕云处理' : '资料准备 · 申请尚未提交'}`}
+        description={`${t.number} · ${ask ? `等待您回应 · 第 ${ask.round} 轮` : submitted ? '申请已提交 · 当前由耕云处理' : '资料准备 · 申请尚未提交'}`}
         extra={
           <Link to={`/customer/enterprises/${t.enterpriseId}?tab=documents`}>
             <Button>查看企业资料</Button>
@@ -70,6 +73,7 @@ export function TaskPage() {
         }
       />
       {submitted ? <SubmittedStatusBar task={t} /> : <StageBar current={0} />}
+      {submitted && <OpenSupplementCard task={t} />}
       <Tabs
         style={{ marginTop: 8 }}
         activeKey={tab}

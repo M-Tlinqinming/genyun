@@ -17,6 +17,8 @@ import {
   type SectionEdit,
   type SubmittedAnswer,
   type SubmittedDocument,
+  type SupplementFact,
+  type SupplementStatus,
   type WorkupData,
   type WorkupSnapshot,
 } from '@genyun/shared';
@@ -249,6 +251,37 @@ export const taskContacts = pgTable(
     answeredAt: timestamp('answered_at', { withTimezone: true }),
   },
   (t) => [index('task_contacts_task').on(t.taskId, t.createdAt)],
+);
+
+// 事实补件（M2 第 13 项，15 页 R00a–R00c）：每轮一行。专家发起时记下要核对的事实和本任务原来用的值；
+// 客户回应记文件和说明；专家明确采用时写下本轮采用的值，同时改专业整理里的企业事实。
+// 「仍需客户补充」把这一轮标为 returned，另起下一轮
+export const factSupplements = pgTable(
+  'fact_supplements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    round: integer('round').notNull(),
+    status: text('status').$type<SupplementStatus>().notNull(),
+    title: text('title').notNull(),
+    message: text('message').notNull(),
+    itemKey: text('item_key').$type<ChecklistItemKey>(),
+    needsFile: boolean('needs_file').notNull(),
+    facts: jsonb('facts').$type<SupplementFact[]>().notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    responseFileIds: jsonb('response_file_ids').$type<string[]>(),
+    responseNote: text('response_note'),
+    respondedBy: uuid('responded_by').references(() => users.id),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    adoptedBy: uuid('adopted_by').references(() => users.id),
+    adoptedAt: timestamp('adopted_at', { withTimezone: true }),
+  },
+  (t) => [uniqueIndex('fact_supplements_round').on(t.taskId, t.round)],
 );
 
 // 站内提醒（顶栏铃铛）：业务提醒只在站内，不发邮件、短信（2026-10-28 Martin 确认）
