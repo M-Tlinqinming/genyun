@@ -202,8 +202,13 @@ export interface WorkupGap {
 
 // 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关、待采用的图在后。
 // 专家页底栏、「下一个缺失项」和确认生成的检查共用
-export function workupGaps(snapshot: WorkupSnapshot, data: WorkupData): { required: number; gaps: WorkupGap[] } {
-  const progress = workupProgress(workupFacts(snapshot, data));
+// districts：知识库里的属地应急机构（后台、专家页都传同一份；不传用内置数据）
+export function workupGaps(
+  snapshot: WorkupSnapshot,
+  data: WorkupData,
+  districts?: readonly AgencyDistrict[],
+): { required: number; gaps: WorkupGap[] } {
+  const progress = workupProgress(workupFacts(snapshot, data, districts));
   const production = productionView(snapshot, data);
   const scope = scopeView(snapshot, data);
   const figures = figuresView(snapshot, data);

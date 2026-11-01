@@ -1,7 +1,7 @@
 // 工作日：跳过周末和法定节假日，调休上班的周末算工作日。时间都按北京时间的日期算。
 //
 // 节假日由运营在知识库维护（M3 第 5 项），接口从数据库读来用 setHolidayCalendar 设置；
-// 数据库没有数据时用内置的 2026 年国务院放假安排（按国办发明电〔2025〕7 号整理，需对照原文核实）。
+// 接口启动时读库失败就先用内置的 2026 年国务院放假安排（按国办发明电〔2025〕7 号整理，需对照原文核实）。
 // 表里没有的年份只跳过周末。
 
 // 一天的安排：放假（含落在周末的）或调休上班的周末
@@ -47,10 +47,10 @@ const calendarOf = (entries: readonly HolidayEntry[]): Calendar => ({
 const BUILTIN = calendarOf(BUILTIN_HOLIDAYS);
 let current: Calendar = BUILTIN;
 
-// 换成运营在知识库维护的节假日（接口启动时和每次修改后从数据库读来设置）；传 null 或空表时回到内置表，
-// 免得数据库读不到时工作日计算出错
+// 换成运营在知识库维护的节假日（接口启动时和每次修改后从数据库读来设置）。
+// 只有读库失败（传 null）才回到内置表；读到空表就按空表算，只跳过周末
 export function setHolidayCalendar(entries: readonly HolidayEntry[] | null): void {
-  current = entries && entries.length > 0 ? calendarOf(entries) : BUILTIN;
+  current = entries ? calendarOf(entries) : BUILTIN;
 }
 
 const CHINA_OFFSET = 8 * 3_600_000;

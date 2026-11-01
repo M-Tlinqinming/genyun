@@ -226,10 +226,10 @@ export class EnterpriseProfileController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     if (parsed.data.version !== row.version) throw this.stale(row.version);
     const { step } = parsed.data;
-    // 选用的工艺模板要在知识库里（之前已选用、后来停用的照常保存）
+    // 新换的工艺模板必须已发布、没停用（之前已选用、后来停用的照常保存）
     const templateId = step.process.templateId;
-    if (templateId && templateId !== this.productionStep(row).process.templateId && !(await this.knowledge.templateExists(templateId))) {
-      throw new BadRequestException('没有这个行业模板');
+    if (templateId && templateId !== this.productionStep(row).process.templateId && !(await this.knowledge.templateSelectable(templateId))) {
+      throw new BadRequestException('这个行业模板现在不能选用，请换一个或按实际情况自己写');
     }
     await this.ownFiles(user, row, fileIdsOfProductionStep(step));
     return this.productionView(await this.write(user, row, row.version, { productionStep: { step } }));

@@ -105,6 +105,20 @@ export interface KnowledgeAgenciesView {
   regions: KnowledgeRegion[];
 }
 
+const stem = (s: string) => s.replace(/(省|市|自治区|特别行政区)$/, '');
+
+// 客户组织所在地区在知识库里有没有属地机构（开通弹窗据此提醒「编制前需要补齐」）：
+// 有一个区县，它的省（地区里写了省才比）和市出现在地区文字里，并且至少有一条没停用的机构
+export function regionHasLocalAgencies(region: string | null | undefined, regions: readonly KnowledgeRegion[]): boolean {
+  if (!region) return false;
+  return regions.some(
+    (r) =>
+      (!region.includes('省') || region.includes(stem(r.province))) &&
+      region.includes(stem(r.city)) &&
+      r.agencies.some((a) => !a.disabled),
+  );
+}
+
 // 知识库里的区县和机构 → 生成文档用的属地机构表（plan/agencies.ts 的 localAgenciesOf 用）。
 // 停用的机构不用；同一区县有几个应急管理局 / 消防大队时用排在最前的一个；没有区县时返回 null（调用方改用内置数据）
 export function agencyDistrictsOf(regions: readonly KnowledgeRegion[]): AgencyDistrict[] | null {

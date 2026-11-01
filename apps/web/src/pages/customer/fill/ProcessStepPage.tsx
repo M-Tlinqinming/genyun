@@ -101,13 +101,16 @@ export function ProcessStepPage({ task }: { task: Task }) {
           title="您的产品是怎么做出来的"
           description="选一个最接近的行业模板，再按实际情况增删工序。不用自己画图，系统会自动生成。"
         />
-        {!step || !process || !templates.data ? (
+        {!step || !process || templates.isPending ? (
           <div style={{ flex: 1 }}><Loading rows={8} /></div>
         ) : (
           <>
             <TemplateCard
               process={process}
-              templates={templates.data}
+              templates={templates.data ?? []}
+              templatesFailed={templates.isError}
+              onRetryTemplates={() => void templates.refetch()}
+              retrying={templates.isFetching}
               businessScope={saved.current?.businessScope ?? null}
               fileNames={fileNames}
               uploading={uploading === 'sketch'}
@@ -205,6 +208,9 @@ const chipOn: CSSProperties = { ...chip, background: gy.selected, borderColor: g
 function TemplateCard({
   process,
   templates,
+  templatesFailed,
+  onRetryTemplates,
+  retrying,
   businessScope,
   fileNames,
   uploading,
@@ -217,6 +223,9 @@ function TemplateCard({
 }: {
   process: ProcessDraft;
   templates: ProcessTemplate[];
+  templatesFailed: boolean;
+  onRetryTemplates: () => void;
+  retrying: boolean;
   businessScope: string | null;
   fileNames: Record<string, string>;
   uploading: boolean;
@@ -246,6 +255,14 @@ function TemplateCard({
             : '选一个最接近的。选中后工序和常用设备会一起预填。'
         }
       />
+      {templatesFailed && (
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, background: gy.warningBg, color: gy.warning, fontSize: 13, lineHeight: '20px' }}>
+          <span style={{ flex: 1 }}>行业模板暂时没加载出来。可以先写一句话描述或上传照片，也可以再试一次。</span>
+          <Button size="small" loading={retrying} onClick={onRetryTemplates}>
+            重新加载
+          </Button>
+        </div>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         {ordered.map((template) => {
           const tid = template.id;

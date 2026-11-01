@@ -18,10 +18,11 @@ import { agencyRegions, holidays, localAgencies, processTemplates, users } from 
 const HOLIDAY_REFRESH_MS = 5 * 60_000;
 
 // 知识库给业务用的读取（M3 第 5 项）：生成文档读属地应急机构、客户选工艺模板、工作日计算读节假日。
-// 数据库里没有数据或读不到时一律退回内置数据（packages/shared），业务照常进行
+// 属地机构、工艺模板在数据库没有数据或读不到时退回内置数据（packages/shared）；节假日见 reloadHolidays
 @Injectable()
 export class KnowledgeService implements OnModuleInit, OnModuleDestroy {
   private timer: ReturnType<typeof setInterval> | undefined;
+  private holidaysLoaded = false;
 
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
@@ -35,14 +36,21 @@ export class KnowledgeService implements OnModuleInit, OnModuleDestroy {
     if (this.timer) clearInterval(this.timer);
   }
 
-  // 节假日表读进内存（工作日计算是同步的，见 packages/shared/src/workdays.ts）
+  // 节假日表读进内存（工作日计算是同步的，见 packages/shared/src/workdays.ts）。
+  // 读到空表就按空表算（只跳过周末）；启动时第一次就读不到才用内置表，之后刷新失败保留上次读到的
   async reloadHolidays(): Promise<void> {
     try {
       const rows = await this.db.select({ date: holidays.date, kind: holidays.kind, name: holidays.name }).from(holidays);
       setHolidayCalendar(rows as HolidayEntry[]);
+      this.holidaysLoaded = true;
     } catch (err) {
-      console.error(`节假日读取失败，先用内置的节假日表：${err instanceof Error ? err.message : 'unknown'}`);
-      setHolidayCalendar(null);
+      const reason = err instanceof Error ? err.message : 'unknown';
+      if (this.holidaysLoaded) {
+        console.error(`节假日刷新失败，继续用上次读到的节假日表：${reason}`);
+      } else {
+        console.error(`节假日读取失败，先用内置的节假日表：${reason}`);
+        setHolidayCalendar(null);
+      }
     }
   }
 
@@ -114,10 +122,8 @@ export class KnowledgeService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // 客户保存时核对模板编号：知识库里有（停用的也算，已选用的企业不受影响），或是内置模板
-  async templateExists(id: string): Promise<boolean> {
-    if (BUILTIN_PROCESS_TEMPLATES.some((t) => t.id === id)) return true;
-    const [row] = await this.db.select({ id: processTemplates.id }).from(processTemplates).where(eq(processTemplates.id, id));
-    return Boolean(row);
+  // 客户新换模板时核对：必须是客户现在能选的（已发布、没停用）。没换模板的保存不查，已选用停用模板的企业不受影响
+  async templateSelectable(id: string): Promise<boolean> {
+    return (await this.publishedTemplates()).some((t) => t.id === id);
   }
 }

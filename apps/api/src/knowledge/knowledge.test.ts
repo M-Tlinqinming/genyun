@@ -5,11 +5,15 @@ import {
   BUILTIN_HOLIDAYS,
   BUILTIN_PROCESS_TEMPLATES,
   localAgenciesOf,
+  type Address,
   type KnowledgeAgenciesView,
+  type LocalAgencies,
+  productionStepSchema,
   type KnowledgeTemplatesView,
 } from '@genyun/shared';
 import { feiyuLocation } from '@genyun/shared/fixtures/feiyu';
 import type { INestApplication } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -20,6 +24,10 @@ import { auditLogs, enterprises, holidays, memberships, organizations, users } f
 import { KnowledgeService } from './knowledge.service.ts';
 
 const PASSWORD = 'correct horse battery staple';
+const BEFORE = JSON.parse(readFileSync(new URL('./fixtures/local-agencies-before.json', import.meta.url), 'utf8')) as {
+  address: Address | null;
+  expected: LocalAgencies;
+}[];
 
 let handle: DatabaseHandle;
 let app: INestApplication;
@@ -50,7 +58,7 @@ beforeAll(async () => {
     orgId: customer!.id,
     name: '示例五金有限公司',
     createdBy: uid['admin@test.cn']!,
-    profile: { productionStep: { step: { process: { source: 'template', templateId: 'metal_stamping', sketchFileIds: [], steps: [] } } } } as never,
+    profile: { productionStep: { step: productionStepSchema.parse({ process: { source: 'template', templateId: 'metal_stamping' } }) } } as never,
   });
   app = await createApp(db, { loginLimitPerMinute: 1000 });
   await app.init();
@@ -74,14 +82,14 @@ describe('知识库 · 初始数据', () => {
     const regions = await app.get(KnowledgeService).regions();
     const districts = agencyDistrictsOf(regions)!;
     expect(districts).toEqual(BUILTIN_AGENCY_DISTRICTS);
-    // 逐个地址核对（区县 + 每个镇街、别的叫法）
-    for (const d of BUILTIN_AGENCY_DISTRICTS) {
-      for (const t of d.towns) {
-        for (const word of [t.area, ...(t.aliases ?? [])]) {
-          const address = { province: '广东省', city: '惠州市', district: '', detail: `${d.aliases[0]}${word}某某路 1 号` };
-          expect(localAgenciesOf(address, districts)).toEqual(localAgenciesOf(address));
-        }
-      }
+    // 改造前后一致：fixtures/local-agencies-before.json 是 main（8c1f1f3）上原来写在代码里的 localAgenciesOf
+    // 对「区县 × 镇街 × 各种叫法」（含只写区县、只写镇街、外地、空地址）算出来的结果，现在读数据库逐条比对
+    expect(BEFORE.length).toBeGreaterThan(700);
+    const service = app.get(KnowledgeService);
+    const fromDb = await service.agencyDistricts();
+    for (const { address, expected } of BEFORE) {
+      expect(localAgenciesOf(address ?? undefined, fromDb), JSON.stringify(address)).toEqual(expected);
+      expect(localAgenciesOf(address ?? undefined), JSON.stringify(address)).toEqual(expected);
     }
     expect(localAgenciesOf(feiyuLocation.siteAddress, districts)).toEqual(localAgenciesOf(feiyuLocation.siteAddress));
     expect(localAgenciesOf(feiyuLocation.siteAddress, districts).emergencyBureau?.name).toBeTruthy();
@@ -211,6 +219,44 @@ describe('知识库 · 节假日', () => {
   });
 });
 
+describe('知识库 · 节假日读不到或为空', () => {
+  // 2026-10-01 国庆放假（内置表里有），往后 1 个工作日：按内置表是 10-08，只跳过周末是 10-02
+  const from = new Date('2026-09-30T02:00:00Z');
+  const next = () => addWorkingDays(from, 1).toISOString().slice(0, 10);
+  const broken = { select: () => { throw new Error('数据库连不上'); } } as never;
+
+  it('启动时第一次就读不到：先用内置表；之后刷新失败保留上次读到的', async () => {
+    const fresh = new KnowledgeService(broken);
+    await fresh.reloadHolidays();
+    expect(next()).toBe('2026-10-08');
+
+    const service = new KnowledgeService(handle.db);
+    await handle.db.insert(holidays).values({ date: '2026-10-01', kind: 'workday', name: '测试' }).onConflictDoUpdate({ target: holidays.date, set: { kind: 'workday' } });
+    await service.reloadHolidays();
+    const withTestRow = next();
+    expect(withTestRow).toBe('2026-10-01');
+    Object.assign(service, { db: broken });
+    await service.reloadHolidays();
+    expect(next()).toBe(withTestRow);
+    await handle.db.update(holidays).set({ kind: 'holiday', name: '国庆节' }).where(eq(holidays.date, '2026-10-01'));
+    await app.get(KnowledgeService).reloadHolidays();
+    expect(next()).toBe('2026-10-08');
+  });
+
+  it('读库成功但表是空的：按空表算，只跳过周末', async () => {
+    const saved = await handle.db.select().from(holidays);
+    await handle.db.delete(holidays);
+    try {
+      await app.get(KnowledgeService).reloadHolidays();
+      expect(next()).toBe('2026-10-01');
+    } finally {
+      await handle.db.insert(holidays).values(saved);
+      await app.get(KnowledgeService).reloadHolidays();
+    }
+    expect(next()).toBe('2026-10-08');
+  });
+});
+
 describe('知识库 · 工艺模板', () => {
   it('新增草稿客户看不到；发布后版本加 1；停用后客户看不到，已选用的企业照常保存', async () => {
     const ops = await as('ops@test.cn');
@@ -239,7 +285,22 @@ describe('知识库 · 工艺模板', () => {
 
     await ops.post('/api/operator/knowledge/templates/metal_stamping/disable').expect(200);
     expect(await ids()).not.toContain('metal_stamping');
+
+    // 客户保存工艺流程：已选用、后来停用的照常保存；新换的模板必须已发布、没停用
+    const [ent] = await handle.db.select({ id: enterprises.id }).from(enterprises);
+    const url = `/api/enterprises/${ent!.id}/production-step`;
+    const save = async (templateId: string) => {
+      const s = (await customer.get(url).expect(200)).body;
+      return customer.put(url).send({ version: s.version, step: { ...s.step, process: { ...s.step.process, templateId } } });
+    };
+    expect((await save('metal_stamping')).status).toBe(200);
+    const draftId = (await ops.post('/api/operator/knowledge/templates').send({ label: '草稿模板' }).expect(200)).body.id as string;
+    expect((await save(draftId)).status).toBe(400);
+    expect((await save(id)).status).toBe(200);
+    expect((await save('metal_stamping')).status).toBe(400);
+    expect((await save('no_such_template')).status).toBe(400);
     await ops.post('/api/operator/knowledge/templates/metal_stamping/enable').expect(200);
+    expect((await save('metal_stamping')).status).toBe(200);
     await ops.post('/api/operator/knowledge/templates/nope/disable').expect(404);
     expect(await logs('knowledge_template_change')).toEqual([
       '新增工艺模板（草稿）：PCB 线路板',
@@ -247,6 +308,7 @@ describe('知识库 · 工艺模板', () => {
       '发布工艺模板：PCB 线路板（第 1 版）',
       '发布工艺模板：PCB 线路板（第 2 版）',
       '停用工艺模板：五金冲压',
+      '新增工艺模板（草稿）：草稿模板',
       '恢复工艺模板：五金冲压',
     ]);
   });
