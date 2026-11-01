@@ -12,10 +12,15 @@ const { active, overlay = false } = Astro.props;
 ---
 
 <!-- 首页导航放在 Hero 的 section 里，header 默认就不算页眉了，这里显式标出 -->
-<header class:list={['nav', 'on-dark', { 'nav--overlay': overlay }]} role="banner">
+<header class:list={['nav', 'on-dark', { 'nav--overlay': overlay }]} role="banner" data-nav>
   <div class="wrap nav__inner">
     <a href="/" class="nav__home" aria-label="耕云 GENYUN 首页"><Logo /></a>
-    <nav aria-label="主导航" class="nav__menu">
+    <!-- 窄于 900px 时导航收进这个按钮；没有脚本时按钮不显示，各页入口在页脚 -->
+    <button type="button" class="nav__toggle" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
+      <span class="nav__toggle-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="nav__toggle-label">菜单</span>
+    </button>
+    <nav aria-label="主导航" class="nav__menu" id="site-nav">
       <ul>
         {
           NAV.map((item) => (
@@ -30,14 +35,47 @@ const { active, overlay = false } = Astro.props;
             </li>
           ))
         }
+        <li class="nav__menu-login"><a href={LOGIN_URL} class="nav__link">登录</a></li>
       </ul>
     </nav>
     <div class="nav__actions">
-      <a href={LOGIN_URL} class="nav__link">登录</a>
+      <a href={LOGIN_URL} class="nav__link nav__login">登录</a>
       <ContactTrigger class="btn-gold">预约演示</ContactTrigger>
     </div>
   </div>
 </header>
+
+<script>
+  // 窄屏菜单（展开 / 收起）：按 Esc 或焦点离开导航时收起，Esc 后焦点回到菜单按钮；点菜单里的链接也收起
+  for (const header of document.querySelectorAll<HTMLElement>('[data-nav]')) {
+    const toggle = header.querySelector<HTMLButtonElement>('[data-nav-toggle]');
+    const menu = header.querySelector<HTMLElement>('.nav__menu');
+    if (!toggle || !menu) continue;
+    header.classList.add('nav--js');
+    const setOpen = (open: boolean) => {
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.querySelector('.nav__toggle-label')!.textContent = open ? '收起' : '菜单';
+      header.classList.toggle('nav--open', open);
+    };
+    toggle.addEventListener('click', () => setOpen(toggle.getAttribute('aria-expanded') !== 'true'));
+    header.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && header.classList.contains('nav--open')) {
+        setOpen(false);
+        toggle.focus();
+      }
+    });
+    header.addEventListener('focusout', (e) => {
+      const next = e.relatedTarget as Node | null;
+      if (next && !header.contains(next)) setOpen(false);
+    });
+    document.addEventListener('click', (e) => {
+      if (!header.contains(e.target as Node)) setOpen(false);
+    });
+    for (const a of menu.querySelectorAll('a')) a.addEventListener('click', () => setOpen(false));
+    // 拉宽到 900px 以上时菜单是常显的，状态复位
+    matchMedia('(min-width: 901px)').addEventListener('change', (e) => e.matches && setOpen(false));
+  }
+</script>
 
 <style>
   .nav {
@@ -83,17 +121,97 @@ const { active, overlay = false } = Astro.props;
     align-items: center;
     gap: 24px;
   }
+  .nav__toggle,
+  .nav__menu-login {
+    display: none;
+  }
+
   @media (max-width: 900px) {
     .nav__menu {
       display: none;
+    }
+    /* 视觉顺序和 Tab 顺序一致：Logo → 菜单 →（展开的链接）→ 预约演示 */
+    .nav--js .nav__toggle {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 40px;
+      padding: 0 12px;
+      border: 1px solid #ffffff33;
+      border-radius: 8px;
+      background: transparent;
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      line-height: 22px;
+      cursor: pointer;
+    }
+    .nav__toggle-bars {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 4px;
+      width: 16px;
+    }
+    .nav__toggle-bars i {
+      height: 2px;
+      border-radius: 1px;
+      background: currentColor;
+    }
+    /* 有脚本时「登录」收进菜单里，留出按钮的位置 */
+    .nav--js .nav__login {
+      display: none;
+    }
+    .nav--js .nav__menu-login {
+      display: block;
+    }
+    .nav--open .nav__menu {
+      display: block;
+      position: absolute;
+      inset: 100% 0 auto 0;
+      padding: 8px var(--gutter) 16px;
+      background: var(--gy-brand-ink);
+      border-bottom: 1px solid #ffffff14;
+      box-shadow: 0 16px 32px #0000004d;
+    }
+    .nav--open .nav__menu ul {
+      flex-direction: column;
+      gap: 0;
+    }
+    .nav--open .nav__menu .nav__link {
+      display: block;
+      padding-block: 14px;
+      border-bottom: 1px solid #ffffff14;
+      font-size: 16px;
+      line-height: 24px;
+    }
+    .nav--open .nav__menu li:last-child .nav__link {
+      border-bottom: 0;
     }
   }
   @media (max-width: 480px) {
     .nav {
       height: 72px;
     }
+    .nav__inner {
+      gap: 12px;
+    }
     .nav__actions {
       gap: 16px;
+    }
+    /* 只剩图标；文字留给读屏软件，按钮的名称仍是「菜单 / 收起」 */
+    .nav--js .nav__toggle-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .nav--js .nav__toggle {
+      width: 40px;
+      justify-content: center;
+      padding: 0;
     }
   }
 </style>
