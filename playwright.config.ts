@@ -23,7 +23,7 @@ const env = {
   SOFFICE_PATH: '',
   // 邀请邮件里的链接指向测试用的前端
   APP_ORIGIN: WEB_URL,
-  // 模拟发信写到这里（相对 apps/api），account.spec 从这里读验证码
+  // 模拟发信写到这里（相对 apps/api）；account、invitations、operator-org-detail 从这里读验证码和邀请链接
   MAIL_OUTBOX_DIR: '.data/e2e-mail-outbox',
 };
 
