@@ -70,6 +70,9 @@ async function sendCode(email: string): Promise<string> {
   const mail = mailer.sent.slice(before).find((m) => m.to === email);
   const code = mail?.text.match(/验证码是：(\d{6})/)?.[1];
   expect(code, '邮件里有 6 位验证码').toBeTruthy();
+  // 主题会出现在日志和收件箱列表里：不放验证码
+  expect(mail!.subject).not.toContain(code!);
+  expect(mail!.subject).not.toMatch(/\d{6}/);
   return code!;
 }
 

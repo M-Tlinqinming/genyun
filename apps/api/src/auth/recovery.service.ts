@@ -65,7 +65,8 @@ export class RecoveryService {
     this.mailer
       .send({
         to: email,
-        subject: `耕云：重设密码的验证码 ${code}`,
+        // 主题会出现在服务日志和收件箱列表里，不放验证码
+        subject: '重设耕云登录密码的验证码',
         text: [
           '您好：',
           '',
@@ -75,7 +76,8 @@ export class RecoveryService {
           '如有疑问请致电耕云 0752-5200831。',
         ].join('\n'),
       })
-      .catch((err: unknown) => console.error('重设密码验证码邮件发送失败', err));
+      // 只记错误说明，不记邮件内容
+      .catch((err: unknown) => console.error(`重设密码验证码邮件发送失败：${err instanceof Error ? err.message : 'unknown'}`));
   }
 
   async reset(input: RecoveryResetInput): Promise<{ token: string; user: SessionUser } | null> {
