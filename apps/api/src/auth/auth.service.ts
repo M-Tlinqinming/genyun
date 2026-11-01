@@ -25,7 +25,7 @@ export function hashPassword(password: string): Promise<string> {
   return hash(password);
 }
 
-function hashToken(token: string): string {
+export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
@@ -44,7 +44,7 @@ export class AuthService {
     return this.startSession(found.id);
   }
 
-  // 登录成功、接受邀请设好密码后都从这里开会话
+  // 登录成功、接受邀请设好密码、重设密码后都从这里开会话
   async startSession(userId: string): Promise<{ token: string; user: SessionUser }> {
     const token = randomBytes(32).toString('base64url');
     await this.db.insert(sessions).values({
@@ -68,7 +68,7 @@ export class AuthService {
     await this.db.delete(sessions).where(eq(sessions.tokenHash, hashToken(token)));
   }
 
-  private async loadUser(userId: string): Promise<SessionUser> {
+  async loadUser(userId: string): Promise<SessionUser> {
     const [user] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user) throw new Error(`user ${userId} not found`);
     const rows = await this.db

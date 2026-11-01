@@ -6,7 +6,7 @@ import { join } from 'node:path';
 const ORG = '东江安评技术服务有限公司';
 const EMAIL = `li-${Date.now()}@dongjiang-anping.cn`;
 // 模拟发信把邮件写进后端的发件箱目录（后端在 apps/api 下运行）
-const OUTBOX = join('apps', 'api', '.data', 'mail-outbox');
+const OUTBOX = join('apps', 'api', '.data', 'e2e-mail-outbox');
 
 async function inviteLink(email: string): Promise<string> {
   const files = (await readdir(OUTBOX)).filter((f) => f.endsWith('.json')).sort().reverse();
