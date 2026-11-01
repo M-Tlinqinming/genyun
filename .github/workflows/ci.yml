@@ -39,7 +39,20 @@ jobs:
           # 正式环境必须有 Redis（草稿生成队列），与预览环境一样起一个
           docker network create smoke
           docker run -d --name redis --network smoke redis:8
-          docker run -d --name app --network smoke -e DATABASE_URL=/tmp/db -e FILE_STORAGE_DIR=/tmp/files -e FILE_URL_SECRET=ci-smoke-test -e REDIS_URL=redis://redis:6379 -e MAIL_DRIVER=mock -p 3000:3000 genyun:${{ github.sha }}
+          # 发件箱和预览环境一样挂一个新建的数据卷，检查 node 用户能不能写
+          docker run -d --name app --network smoke -e DATABASE_URL=/tmp/db -e FILE_STORAGE_DIR=/tmp/files -e FILE_URL_SECRET=ci-smoke-test -e REDIS_URL=redis://redis:6379 -e MAIL_DRIVER=mock -v mail_outbox:/data/mail-outbox -p 3000:3000 genyun:${{ github.sha }}
           for i in $(seq 1 30); do curl -sf localhost:3000/api/health && break; sleep 1; done
           curl -sf localhost:3000/api/health || (docker logs app; exit 1)
           curl -sf localhost:3000/login | grep -q '<div id="root">'
+      - name: 模拟发信写得进发件箱
+        run: |
+          # 用镜像里编译好的模拟发信发一封，确认邮件文件落进了数据卷（邀请链接靠它找回）
+          docker exec app node --input-type=module -e "const { SimulatedMailer } = await import('/app/apps/api/dist/mail/mailer.js'); await new SimulatedMailer().send({ to: 'smoke@example.com', subject: '冒烟测试', text: 'ok' });"
+          docker exec app sh -c 'ls /data/mail-outbox' | grep -q 'smoke@example.com' || (docker exec app ls -la /data; exit 1)
+      - run: docker build -f deploy/preview/site.Dockerfile -t genyun-site:${{ github.sha }} .
+      - name: 反向代理分流检查
+        run: |
+          # 与预览环境同一份 Caddyfile；SITE_DOMAIN=:80 只走 HTTP，不申请证书
+          docker run -d --name caddy --network smoke -e SITE_DOMAIN=:80 -p 8080:80 genyun-site:${{ github.sha }}
+          for i in $(seq 1 15); do curl -sf -o /dev/null localhost:8080/ && break; sleep 1; done
+          bash deploy/preview/smoke.sh http://localhost:8080 || (docker logs caddy; exit 1)

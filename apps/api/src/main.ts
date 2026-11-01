@@ -14,6 +14,8 @@ if (webDist) {
   const root = resolve(webDist);
   const server = app.getHttpAdapter().getInstance() as express.Express;
   server.use(express.static(root, { index: false, maxAge: '1h' }));
+  // 找不到的构建产物返回 404，不回退到 index.html：否则旧版本的脚本地址会拿到网页，代理还会把它当成可长期缓存的文件
+  server.use('/assets', (_req, res) => res.status(404).end());
   // 单页应用：非 /api 的路径都返回 index.html，由前端路由处理
   server.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(join(root, 'index.html')));
 }
