@@ -36,12 +36,15 @@ export default defineConfig({
       url: `${API_URL}/api/health`,
       env,
       reuseExistingServer: false,
+      // 机器忙时起服务慢（先清库、灌演示数据）
+      timeout: 240_000,
     },
     {
       command: `npm run dev -w @genyun/web -- --port ${WEB_PORT} --strictPort`,
       url: `${WEB_URL}/login`,
       env: { API_TARGET: API_URL },
       reuseExistingServer: false,
+      timeout: 240_000,
     },
     {
       // 官网是静态页面：测构建出来的结果（site.spec）。CI 只在这里构建一次官网

@@ -1,5 +1,6 @@
 import {
   AppstoreOutlined,
+  AuditOutlined,
   BankOutlined,
   BookOutlined,
   FileTextOutlined,
@@ -83,6 +84,7 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
           { path: '/operator/organizations', label: '客户组织', icon: <BankOutlined /> },
           { path: '/operator/tasks', label: '任务中心', icon: <ProfileOutlined /> },
           { path: '/operator/accounts', label: '内部账号', icon: <UserOutlined /> },
+          { path: '/operator/audit-logs', label: '操作日志', icon: <AuditOutlined /> },
           { path: '/operator/knowledge', label: '知识库', icon: <BookOutlined /> },
           { path: '/operator/feedback', label: '反馈受理', icon: <MessageOutlined /> },
         ],
