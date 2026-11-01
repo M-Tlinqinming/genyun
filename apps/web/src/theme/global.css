@@ -53,6 +53,41 @@ body {
   animation-name: gy-fade-out !important;
 }
 
+/* 正文编辑（E18-03）：编辑区的段落与列表，正文 14px / 行高 28px */
+.gy-section-editor {
+  outline: none;
+  min-height: 100%;
+  color: var(--gy-text);
+  font-size: 14px;
+  line-height: 28px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gy-section-editor p {
+  margin: 8px 0;
+}
+.gy-section-editor ol,
+.gy-section-editor ul {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+.gy-section-editor li p {
+  margin: 0;
+}
+.gy-section-editor .ProseMirror-selectednode {
+  outline: 2px solid var(--gy-primary);
+  border-radius: 4px;
+}
+/* 内容区宽 1152，屏幕窄于侧栏 + 1152 + 两边留白时（如 1366）两边留 24px（E18-08） */
+@media (max-width: 1423px) {
+  .gy-edit-page {
+    padding: 0 24px;
+  }
+}
+.gy-editor-box:focus-within {
+  outline: 2px solid var(--gy-selected);
+}
+
 /* 系统设置了「减少动态效果」时，组件库的动效也一律不动 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

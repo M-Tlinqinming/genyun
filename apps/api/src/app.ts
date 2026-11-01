@@ -12,6 +12,7 @@ import { DocumentsService } from './documents/documents.service.ts';
 import { EnterprisesController } from './enterprises/enterprises.controller.ts';
 import { EnterpriseProfileController } from './enterprises/profile.controller.ts';
 import { FilesController } from './files/files.controller.ts';
+import { defaultDrafter, type ParagraphPolisher } from './generation/ai/drafter.ts';
 import { defaultRenderer, DRAFT_RENDERER, type DraftRenderer } from './generation/drafts.ts';
 import { defaultQueue, DRAFT_QUEUE, type DraftQueue } from './generation/queue.ts';
 import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.ts';
@@ -26,6 +27,7 @@ import { ContactsController, ContactsService } from './tasks/contacts.service.ts
 import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/drawings.service.ts';
 import { DrawingRenderer } from './generation/drawings/renderer.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
+import { EDIT_DRAFTER, EditingController, EditingService } from './tasks/editing.service.ts';
 import { GenerationController, GenerationService } from './tasks/generation.service.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
@@ -53,6 +55,8 @@ export interface AppOptions {
   renderer?: DraftRenderer;
   // 客户图纸转图片（工作线程）；测试可以传超时更短的
   drawingRenderer?: DrawingRenderer;
+  // 正文编辑「帮我改写这段」用的 AI；不传时按环境变量 AI_DRAFTER，null 表示不开启
+  drafter?: ParagraphPolisher | null;
   // 发邀请邮件；不传时模拟发信（写进 .data/mail-outbox 和服务日志）
   mailer?: Mailer;
 }
@@ -71,6 +75,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       ExpertTasksController,
       WorkupController,
       GenerationController,
+      EditingController,
       DrawingsController,
       ContactsController,
       NotificationsController,
@@ -88,10 +93,12 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       },
       { provide: DRAFT_QUEUE, useFactory: () => options.queue ?? defaultQueue() },
       { provide: DRAFT_RENDERER, useFactory: () => options.renderer ?? defaultRenderer() },
+      { provide: EDIT_DRAFTER, useFactory: () => (options.drafter === undefined ? defaultDrafter() : options.drafter) },
       { provide: MAILER, useFactory: () => options.mailer ?? defaultMailer() },
       { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
       AuthService,
       GenerationService,
+      EditingService,
       DrawingsService,
       TasksService,
       ExpertTasksService,

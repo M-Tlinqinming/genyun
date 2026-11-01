@@ -5,7 +5,15 @@
 // 服务出错、没配置时同样回到系统推出的内容，所以有没有 AI 都能出完整的稿子。
 // 正式服务用阿里云百炼（TECH-PLAN 4.1）：AI_DRAFTER=bailian + DASHSCOPE_API_KEY，模型由 AI_MODEL 选（默认 qwen3.8-flash，Martin 10-29 定），非北京地域用 AI_BASE_URL。
 
-import { RISK_SYSTEM, SLOT_SYSTEM, riskUserPrompt, slotUserPrompt } from './prompts.ts';
+import { POLISH_SYSTEM, RISK_SYSTEM, SLOT_SYSTEM, polishUserPrompt, riskUserPrompt, slotUserPrompt } from './prompts.ts';
+
+/** 专家编辑页「帮我改写这段」：一段文字，企业名称、人名、电话已换成占位 */
+export interface PolishRequest {
+  plan: string;
+  section: string;
+  text: string;
+  facts: { sites: string[]; processes: string[]; equipment: string[]; materials: string[] };
+}
 
 export interface SlotRequest {
   /** 预案名称，如「机械致害事故现场处置方案」 */
@@ -35,17 +43,26 @@ export interface SlotDrafter {
   rewrite(req: RiskRequest): Promise<string[]>;
 }
 
+/** 专家编辑页「帮我改写这段」 */
+export interface ParagraphPolisher {
+  /** 返回改写后的一段；服务出错时抛异常 */
+  polish(req: PolishRequest): Promise<string>;
+}
+
 /**
  * 开发与自动测试用的模拟起草：按候选原样用「、」连起来，风险描述原样返回。
  * 只在明确设置 AI_DRAFTER=fake 时启用，正式环境拒绝启用。
  */
-export class FakeSlotDrafter implements SlotDrafter {
+export class FakeSlotDrafter implements SlotDrafter, ParagraphPolisher {
   readonly name = 'fake';
   async fill(req: SlotRequest): Promise<string> {
     return req.candidates.join('、');
   }
   async rewrite(req: RiskRequest): Promise<string[]> {
     return req.paragraphs;
+  }
+  async polish(req: PolishRequest): Promise<string> {
+    return req.text;
   }
 }
 
@@ -57,7 +74,7 @@ export const DEFAULT_MODEL = 'qwen3.8-flash';
  * 阿里云百炼（OpenAI 兼容接口）。密钥只从服务器配置读取，不进代码与日志。
  * 发送的只有预案名称、空位要求、候选词和安全要点句，不含企业名称、人员姓名与电话。
  */
-export class BailianDrafter implements SlotDrafter {
+export class BailianDrafter implements SlotDrafter, ParagraphPolisher {
   readonly name: string;
   constructor(
     private readonly apiKey: string,
@@ -79,6 +96,11 @@ export class BailianDrafter implements SlotDrafter {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
+  }
+
+  async polish(req: PolishRequest): Promise<string> {
+    const text = await this.chat(POLISH_SYSTEM, polishUserPrompt(req));
+    return text.replace(/^["“「]|["”」]$/g, '').trim();
   }
 
   private async chat(system: string, user: string): Promise<string> {
@@ -110,7 +132,7 @@ export class BailianDrafter implements SlotDrafter {
 }
 
 // 没配置时为 null：空位用系统推出的内容
-export function defaultDrafter(): SlotDrafter | null {
+export function defaultDrafter(): (SlotDrafter & ParagraphPolisher) | null {
   const kind = process.env.AI_DRAFTER;
   if (!kind) return null;
   if (kind === 'fake') {
