@@ -19,6 +19,8 @@ import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
 import { AuditLogPage } from './pages/operator/AuditLogPage';
+import { InternalAccountsPage } from './pages/operator/InternalAccountsPage';
+import { OperatorOverviewPage } from './pages/operator/OperatorOverviewPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
 import { MailOutboxPage } from './pages/operator/MailOutboxPage';
 import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
@@ -35,6 +37,7 @@ const EYEBROW: Record<Workspace, string> = {
 const HOME: Partial<Record<Workspace, RouteObject['element']>> = {
   customer: <WorkbenchPage />,
   expert: <TaskCenterPage />,
+  operator: <OperatorOverviewPage />,
 };
 
 // 不在菜单里的页面（从列表点进去）
@@ -51,6 +54,7 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
   '/operator/audit-logs': [{ index: true, element: <AuditLogPage /> }],
+  '/operator/accounts': [{ index: true, element: <InternalAccountsPage /> }],
   '/operator/organizations': [
     { index: true, element: <OrganizationListPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },

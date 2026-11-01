@@ -73,6 +73,8 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   // 本人最近一次改密码或重设密码的时间；邀请、运营建号时为空
   passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
+  // 运营停用账号的时间（M3 第 8 项）：停用后不能登录、已有会话全部退出、不出现在分派名单；为空 = 正常
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

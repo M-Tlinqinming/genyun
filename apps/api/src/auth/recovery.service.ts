@@ -48,7 +48,12 @@ export class RecoveryService {
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const codeHash = await hash(code);
-    const [user] = await this.db.select({ id: users.id, name: users.name }).from(users).where(eq(users.email, email)).limit(1);
+    // 停用的账号不能找回密码（和不存在一样处理，不暴露账号状态）
+    const [user] = await this.db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(and(eq(users.email, email), isNull(users.disabledAt)))
+      .limit(1);
     if (!user) return;
 
     await this.db.transaction(async (tx) => {
@@ -74,7 +79,12 @@ export class RecoveryService {
 
   async reset(input: RecoveryResetInput): Promise<{ token: string; user: SessionUser } | null> {
     const email = normalize(input.email);
-    const [user] = await this.db.select({ id: users.id, name: users.name }).from(users).where(eq(users.email, email)).limit(1);
+    // 停用的账号不能找回密码（和不存在一样处理，不暴露账号状态）
+    const [user] = await this.db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(and(eq(users.email, email), isNull(users.disabledAt)))
+      .limit(1);
     // 先占一次机会再比对：用一条条件更新把次数加 1，只有拿到机会的请求才比对散列。
     // 同时发很多个请求也最多比对 5 次。发新验证码时旧的都已作废，所以一个账号最多一条可用的
     const [claimed] = user

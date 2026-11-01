@@ -22,6 +22,14 @@ export interface NewInvitation {
   resend?: boolean;
 }
 
+// 邀请邮件里的身份（内部成员也走这套邀请，M3 第 8 项）
+const INVITE_ROLE_LABELS: Record<Role, string> = {
+  customer_admin: '机构管理员',
+  customer_member: '成员',
+  expert: '注安师',
+  operator: '运营管理员',
+};
+
 export const EMAIL_HAS_ACCOUNT = '这个邮箱已经有耕云账号，请换一个邮箱';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -48,7 +56,7 @@ export async function createInvitation(db: Database | Tx, inv: NewInvitation) {
     name: inv.name,
     inviterName: inv.inviterName,
     orgName: inv.orgName,
-    roleLabel: inv.role === 'customer_admin' ? '机构管理员' : '成员',
+    roleLabel: INVITE_ROLE_LABELS[inv.role],
     link: appLink(`/invite/${token}`),
     expiresAt,
     resend: inv.resend,

@@ -162,6 +162,13 @@
       "when": 1793554033140,
       "tag": "0022_audit_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793557819458,
+      "tag": "0023_user_disabled",
+      "breakpoints": true
     }
   ]
 }

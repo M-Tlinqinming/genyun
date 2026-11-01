@@ -4,6 +4,7 @@ import { Avatar, Button, Divider, Dropdown, Layout, Menu, Select, Spin, Typograp
 import type { ItemType } from 'antd/es/menu/interface';
 import { useState } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router';
+import { useOperatorOverview } from '../api/operatorOverview';
 import { ContactLink } from '../components/ContactLink';
 import { Logo } from '../components/Logo';
 import { membershipsIn, useLogout, useSession } from '../auth/session';
@@ -19,6 +20,9 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [orgId, setOrgId] = useState<string>();
+  // 运营侧栏的角标：客户组织 = 待开通，任务中心 = 待分派 + 超时兜底 + 新上门工单（Paper 16 页侧栏）
+  const isOperator = workspace === 'operator' && Boolean(session.data && membershipsIn(session.data, 'operator').length > 0);
+  const overview = useOperatorOverview(isOperator);
 
   if (session.isPending) return <Spin fullscreen />;
   if (!session.data) return <Navigate to="/login" replace />;
@@ -37,6 +41,14 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
     .filter((p) => pathname === p || pathname.startsWith(`${p}/`))
     .sort((a, b) => b.length - a.length)[0];
 
+  const badgeOf = (path: string): number => {
+    const o = overview.data;
+    if (!o) return 0;
+    if (path === '/operator/organizations') return o.orgs.pending;
+    if (path === '/operator/tasks') return o.tasks.unassigned + o.followUps.overdue + o.followUps.onSiteNew;
+    return 0;
+  };
+
   const menuItems: ItemType[] = nav.groups
     .filter((g) => !g.roles || g.roles.includes(current.role))
     .map((g) => ({
@@ -46,7 +58,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
       children: g.items.filter((item) => !item.onlyWhenActive || item.path === selectedKey).map((item) => ({
         key: item.path,
         icon: item.icon,
-        label: item.label,
+        label: <MenuLabel label={item.label} count={isOperator ? badgeOf(item.path) : 0} />,
         disabled: item.disabled,
       })),
     }));
@@ -164,5 +176,32 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
         </Layout.Content>
       </Layout>
     </Layout>
+  );
+}
+
+// 菜单文字 + 右侧待处理数（橙底小圆角；0 不显示）
+function MenuLabel({ label, count }: { label: string; count: number }) {
+  if (count <= 0) return <>{label}</>;
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <span>{label}</span>
+      <span
+        aria-label={`${count} 项待处理`}
+        style={{
+          minWidth: 18,
+          height: 18,
+          padding: '0 6px',
+          borderRadius: 9,
+          background: gy.warningBg,
+          color: gy.warning,
+          fontSize: 12,
+          lineHeight: '18px',
+          textAlign: 'center',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {count}
+      </span>
+    </span>
   );
 }
