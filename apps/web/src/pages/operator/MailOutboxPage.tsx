@@ -8,7 +8,7 @@ import { Loading, panel } from '../../components/ui';
 import { gy } from '../../theme/tokens';
 
 // 模拟发件箱：预览环境不真的发邮件，邀请链接、找回密码的验证码在这里看。只有运营能进；正式环境没有这个页面。
-// 地址 /operator/mail-outbox，不放进侧栏菜单（正式环境用不上）。
+// 地址 /operator/mail-outbox。平时不在侧栏菜单里（正式环境用不上），打开时侧栏才出现「模拟发件箱」并高亮。
 
 const KIND_LABEL: Record<NonNullable<OutboxMail['kind']>, string> = {
   invitation: '邀请',
@@ -51,6 +51,24 @@ function TextBody({ text }: { text: string }) {
   );
 }
 
+// 邮件样式预览：高度跟着内容走，不出现框内滚动条。
+// 不允许脚本（没有 allow-scripts），所以可以放开同源，好让外面量出内容高度；链接在新窗口打开
+function MailFrame({ mail }: { mail: OutboxMail }) {
+  const [height, setHeight] = useState(480);
+  return (
+    <iframe
+      title={`${mail.subject}（邮件样式）`}
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      srcDoc={mail.html!.replace('<head>', '<head><base target="_blank">')}
+      onLoad={(e) => {
+        const doc = e.currentTarget.contentDocument;
+        if (doc) setHeight(doc.documentElement.scrollHeight);
+      }}
+      style={{ width: '100%', maxWidth: 640, height, border: `1px solid ${gy.frameLine}`, borderRadius: 8, background: '#fff', display: 'block' }}
+    />
+  );
+}
+
 function MailDetail({ mail }: { mail: OutboxMail }) {
   const [view, setView] = useState<'html' | 'text'>(mail.html ? 'html' : 'text');
   return (
@@ -67,13 +85,7 @@ function MailDetail({ mail }: { mail: OutboxMail }) {
         />
       )}
       {view === 'html' && mail.html ? (
-        // 不允许脚本；链接在新窗口打开
-        <iframe
-          title={`${mail.subject}（邮件样式）`}
-          sandbox="allow-popups allow-popups-to-escape-sandbox"
-          srcDoc={mail.html.replace('<head>', '<head><base target="_blank">')}
-          style={{ width: '100%', maxWidth: 640, height: 480, border: `1px solid ${gy.frameLine}`, borderRadius: 8, background: '#fff' }}
-        />
+        <MailFrame mail={mail} />
       ) : (
         <TextBody text={mail.text} />
       )}
@@ -105,7 +117,8 @@ export function MailOutboxPage() {
         ) : closed ? (
           <Empty description="这里发的是真实邮件，不开放模拟发件箱" style={{ padding: '48px 0' }} />
         ) : outbox.isError ? (
-          <Empty description={`没有取到发件箱：${outbox.error.message}`} style={{ padding: '48px 0' }} />
+          // 不把服务端的英文报错原样给人看
+          <Empty description="发件箱暂时打不开，请点刷新重试" style={{ padding: '48px 0' }} />
         ) : (
           <Table<OutboxMail>
             rowKey="id"

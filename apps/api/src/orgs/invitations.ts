@@ -18,7 +18,11 @@ export interface NewInvitation {
   phone: string | null;
   invitedBy: string;
   inviterName: string;
+  // 重发或更换后发的新邮件：写明以最新一封为准
+  resend?: boolean;
 }
+
+export const EMAIL_HAS_ACCOUNT = '这个邮箱已经有耕云账号，请换一个邮箱';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -44,9 +48,10 @@ export async function createInvitation(db: Database | Tx, inv: NewInvitation) {
     name: inv.name,
     inviterName: inv.inviterName,
     orgName: inv.orgName,
-    roleLabel: inv.role === 'customer_admin' ? '管理员' : '成员',
+    roleLabel: inv.role === 'customer_admin' ? '机构管理员' : '成员',
     link: appLink(`/invite/${token}`),
-    validDays: INVITATION_TTL_DAYS,
+    expiresAt,
+    resend: inv.resend,
   });
   return { id: row!.id, expiresAt, mail };
 }

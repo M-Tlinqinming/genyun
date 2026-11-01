@@ -35,7 +35,7 @@ export interface AliyunMailConfig {
   regionId: string;
 }
 
-// 从环境变量读配置；缺任何一项凭据返回 null（调用方改用模拟发信，不报错）
+// 从环境变量读配置；缺任何一项凭据返回 null（正式环境由调用方报错，本机改用模拟发信）
 export function aliyunConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AliyunMailConfig | null {
   const accessKeyId = env.ALIYUN_DM_ACCESS_KEY_ID;
   const accessKeySecret = env.ALIYUN_DM_ACCESS_KEY_SECRET;

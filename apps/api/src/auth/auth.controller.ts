@@ -15,6 +15,16 @@ import type { Request, Response } from 'express';
 import { AuthService, SESSION_TTL_MS, type SessionUser } from './auth.service.ts';
 import { CurrentUser, Public, SESSION_COOKIE } from './session.guard.ts';
 
+export function setSessionCookie(res: Response, token: string): void {
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_TTL_MS,
+    path: '/',
+  });
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
@@ -29,13 +39,7 @@ export class AuthController {
     const result = await this.auth.login(parsed.data);
     if (!result) throw new UnauthorizedException('邮箱或密码不正确');
 
-    res.cookie(SESSION_COOKIE, result.token, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: SESSION_TTL_MS,
-      path: '/',
-    });
+    setSessionCookie(res, result.token);
     return result.user;
   }
 

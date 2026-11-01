@@ -31,25 +31,25 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
   const user = session.data;
   const initial = user.name.slice(0, 1);
 
+  // 当前路径落在哪个菜单项下（取最长匹配，避免「工作台」吞掉所有子路径）
+  const selectedKey = nav.groups
+    .flatMap((g) => g.items.map((i) => i.path))
+    .filter((p) => pathname === p || pathname.startsWith(`${p}/`))
+    .sort((a, b) => b.length - a.length)[0];
+
   const menuItems: ItemType[] = nav.groups
     .filter((g) => !g.roles || g.roles.includes(current.role))
     .map((g) => ({
       type: 'group',
       key: g.label,
       label: g.label,
-      children: g.items.map((item) => ({
+      children: g.items.filter((item) => !item.onlyWhenActive || item.path === selectedKey).map((item) => ({
         key: item.path,
         icon: item.icon,
         label: item.label,
         disabled: item.disabled,
       })),
     }));
-
-  // 当前路径落在哪个菜单项下（取最长匹配，避免「工作台」吞掉所有子路径）
-  const selectedKey = nav.groups
-    .flatMap((g) => g.items.map((i) => i.path))
-    .filter((p) => pathname === p || pathname.startsWith(`${p}/`))
-    .sort((a, b) => b.length - a.length)[0];
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

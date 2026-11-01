@@ -75,7 +75,7 @@ docker compose --env-file /opt/genyun/.env up -d --no-build
 
 **最方便的看法**：用运营账号登录，打开 `https://<预览域名>/operator/mail-outbox`（「模拟发件箱」，不在侧栏菜单里）。列表里直接显示验证码、可复制邀请链接，点一行看邮件全文（邮件样式 / 纯文本）。只有运营能看；`MAIL_DRIVER` 不是 `mock` 时这个页面和接口都不存在（404）。
 
-改成真发：在 `/opt/genyun/.env` 加 `MAIL_DRIVER=aliyun`、`ALIYUN_DM_ACCESS_KEY_ID`、`ALIYUN_DM_ACCESS_KEY_SECRET`、`ALIYUN_DM_ACCOUNT_NAME`（邮件推送控制台配好的发信地址），重新发布。三项没填齐时服务照常启动、仍模拟发信，日志里有一行提醒。发送失败会自动重试一次，失败记日志（只有邮件种类、打码的收件人和错误码，没有验证码和链接）。
+改成真发：在 `/opt/genyun/.env` 加 `MAIL_DRIVER=aliyun`、`ALIYUN_DM_ACCESS_KEY_ID`、`ALIYUN_DM_ACCESS_KEY_SECRET`、`ALIYUN_DM_ACCOUNT_NAME`（邮件推送控制台配好的发信地址），重新发布。三项缺任何一项，服务启动时就报错退出（免得以为邮件发出去了其实没有）；`MAIL_DRIVER` 没设或写错也一样。发送失败会自动重试一次，失败记日志（只有邮件种类、打码的收件人和错误码，没有验证码和链接）。
 
 也可以在服务器上直接看文件：
 

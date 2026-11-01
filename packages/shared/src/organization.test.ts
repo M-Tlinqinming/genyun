@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openingGaps, orgOpenSchema, orgRegisterSchema, orgServiceState, regionHasLocalAgencies, serviceScopeLabel } from './organization.ts';
+import { openingGaps, operatorTaskStage, orgOpenSchema, orgRegisterSchema, orgServiceState, regionHasLocalAgencies, serviceScopeLabel } from './organization.ts';
 
 const FILE = '11111111-1111-4111-8111-111111111111';
 const complete = {
@@ -15,25 +15,50 @@ const complete = {
   adminEmail: 'Sun@Huadong-Anping.cn',
 };
 
+const reg = {
+  name: ' 华东安评 ',
+  region: '上海市闵行区',
+  socialCreditCode: '91310112ma1xxxxxx3',
+  contactName: '孙经理',
+  contactPhone: '136 2254 1234',
+  contactEmail: 'Sun@Huadong-Anping.CN',
+};
+
 describe('登记客户组织', () => {
-  it('必填名称、地区、主联系人与手机号；选填项空着存为空', () => {
-    const r = orgRegisterSchema.parse({ name: ' 华东安评 ', region: '上海市闵行区', contactName: '孙经理', contactPhone: '13622541234', contactEmail: '' });
-    expect(r).toMatchObject({ name: '华东安评', socialCreditCode: null, contactEmail: null, note: null });
-    expect(orgRegisterSchema.safeParse({ name: '华东安评', region: '', contactName: '孙', contactPhone: '1' }).success).toBe(false);
+  it('名称、地区、统一社会信用代码、主联系人、手机号、邮箱都必填；备注空着存为空', () => {
+    const r = orgRegisterSchema.parse({ ...reg, note: '' });
+    expect(r).toMatchObject({ name: '华东安评', note: null });
+    for (const field of ['name', 'region', 'socialCreditCode', 'contactName', 'contactPhone', 'contactEmail'] as const) {
+      expect(orgRegisterSchema.safeParse({ ...reg, [field]: '' }).success, field).toBe(false);
+    }
+    expect(orgRegisterSchema.safeParse({ ...reg, socialCreditCode: undefined }).error?.issues[0]?.message).toBe('请填写统一社会信用代码');
+    expect(orgRegisterSchema.safeParse({ ...reg, contactEmail: undefined }).error?.issues[0]?.message).toBe('请填写邮箱');
   });
 
   it('信用代码转大写并校验 18 位，邮箱转小写', () => {
-    const r = orgRegisterSchema.parse({
-      name: 'x',
-      region: 'y',
-      contactName: 'z',
-      contactPhone: '1',
-      socialCreditCode: '91310112ma1xxxxxx3',
-      contactEmail: 'A@B.CN',
-    });
+    const r = orgRegisterSchema.parse(reg);
     expect(r.socialCreditCode).toBe('91310112MA1XXXXXX3');
-    expect(r.contactEmail).toBe('a@b.cn');
-    expect(orgRegisterSchema.safeParse({ name: 'x', region: 'y', contactName: 'z', contactPhone: '1', socialCreditCode: '123' }).success).toBe(false);
+    expect(r.contactEmail).toBe('sun@huadong-anping.cn');
+    expect(orgRegisterSchema.safeParse({ ...reg, socialCreditCode: '123' }).success).toBe(false);
+  });
+
+  it('手机号至少 7 位数字', () => {
+    expect(orgRegisterSchema.safeParse({ ...reg, contactPhone: '123 456' }).error?.issues[0]?.message).toBe('手机号至少 7 位数字');
+    expect(orgRegisterSchema.safeParse({ ...reg, contactPhone: '0752-520083' }).success).toBe(true);
+  });
+});
+
+describe('合同有效期', () => {
+  it('不存在的日期（如 2 月 30 日）说明怎么改', () => {
+    const r = orgOpenSchema.safeParse({ ...complete, startsAt: '2026-02-30' });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toBe('日期不存在，请按 年-月-日 重新选择');
+  });
+
+  it('到期日早于今天时拦下', () => {
+    const r = orgOpenSchema.safeParse({ ...complete, startsAt: '2020-01-01', endsAt: '2020-12-31' });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.map((i) => i.message)).toContain('合同有效期已过，请核对');
   });
 });
 
@@ -99,5 +124,14 @@ describe('属地机构是否齐备', () => {
     expect(regionHasLocalAgencies('广东省惠州市惠阳区')).toBe(true);
     expect(regionHasLocalAgencies('上海市闵行区')).toBe(false);
     expect(regionHasLocalAgencies(null)).toBe(false);
+  });
+});
+
+describe('运营看到的任务进展', () => {
+  it('资料准备、待分配、耕云编制、已交付', () => {
+    expect(operatorTaskStage({ status: 'preparing', assignedExpertId: null, closedAt: null })).toBe('preparing');
+    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: null, closedAt: null })).toBe('unassigned');
+    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: 'u', closedAt: null })).toBe('drafting');
+    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: 'u', closedAt: '2026-10-01' })).toBe('delivered');
   });
 });

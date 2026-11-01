@@ -109,6 +109,9 @@ test('开通：缺合同原件或到账时不能开通，填齐后变为服务�
 test('模拟发件箱：邀请邮件在这里，能看全文、能复制链接', async () => {
   await page.goto('/operator/mail-outbox');
   await expect(page.getByRole('heading', { name: '模拟发件箱' })).toBeVisible();
+  // 侧栏这时出现「模拟发件箱」并高亮，不高亮「运营概览」
+  await expect(page.getByRole('menuitem', { name: '模拟发件箱' })).toHaveClass(/ant-menu-item-selected/);
+  await expect(page.getByRole('menuitem', { name: '运营概览' })).not.toHaveClass(/ant-menu-item-selected/);
   const mail = page.getByRole('row').filter({ hasText: 'sun@huadong-anping.cn' }).first();
   await expect(mail).toContainText('邀请');
   await expect(mail).toContainText('耕云运营邀请您加入「华东安评服务有限公司」');
@@ -118,11 +121,17 @@ test('模拟发件箱：邀请邮件在这里，能看全文、能复制链接',
   await page.getByText('纯文本').click();
   await expect(page.getByText('孙经理，您好：')).toBeVisible();
   await expect(page.getByRole('link', { name: /\/invite\// })).toBeVisible();
-  await expect(page.getByText('链接 7 天内有效，只能使用一次', { exact: false })).toBeVisible();
+  await expect(page.getByText(/链接有效期至 \d{4} 年 \d{1,2} 月 \d{1,2} 日 \d{2}:\d{2}（北京时间），只能使用一次/)).toBeVisible();
   await page.getByText('邮件样式').click();
   const frame = page.frameLocator('iframe[title*="邮件样式"]');
   await expect(frame.getByRole('link', { name: '接受邀请' })).toBeVisible();
   await expect(frame.getByText('耕云 · 0752-5200831')).toBeVisible();
+  // 预览框高度跟着内容走：框里不用再滚动
+  const fits = await page.locator('iframe[title*="邮件样式"]').evaluate((f: HTMLIFrameElement) => {
+    const d = f.contentDocument!.documentElement;
+    return d.scrollHeight <= f.clientHeight + 2;
+  });
+  expect(fits).toBe(true);
   await page.screenshot({ path: 'out/m4-4-mail-outbox.png', fullPage: true });
 });
 
