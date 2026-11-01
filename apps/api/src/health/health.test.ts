@@ -4,7 +4,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { defaultProbes, diskFreeRatio, type HealthProbes, runHealthChecks } from './health.ts';
+import { defaultProbes, diskFreeRatio, type HealthProbes, pingRedis, runHealthChecks } from './health.ts';
 
 const ok = async () => {};
 const fail = async () => {
@@ -97,5 +97,13 @@ describe('GET /api/health', () => {
     const res = await get(defaultProbes(handle.db, { REDIS_URL: 'redis://127.0.0.1:1', FILE_STORAGE_DIR: tmpdir() }));
     expect(res.status).toBe(503);
     expect(res.body.checks).toMatchObject({ database: 'ok', redis: 'down' });
+  });
+
+  it('Redis 连不上：短连接查完就断开，不留下后台重连', async () => {
+    const sockets = () => process.getActiveResourcesInfo().filter((r) => /TCP/.test(r)).length;
+    const before = sockets();
+    await expect(pingRedis('redis://127.0.0.1:1')).rejects.toThrow();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(sockets()).toBeLessThanOrEqual(before);
   });
 });

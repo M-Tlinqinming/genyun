@@ -20,8 +20,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   logout: '退出登录',
   password_change: '修改密码',
   password_reset: '找回密码并重设',
-  task_assign: '分派专业人员',
-  task_reassign: '改派专业人员',
+  task_assign: '分派注安师',
+  task_reassign: '改派注安师',
   publish: '发布',
 };
 

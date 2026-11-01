@@ -2,7 +2,7 @@
 # 从备份恢复（在服务器上以 root 运行）：
 #   bash restore.sh 2026-11-01
 # 步骤：核对校验和 → 二次确认（要输入日期）→ 先备份一次当前状态 → 停应用 → 重建数据库并导入 →
-#       清空上传文件数据卷再解包 → 启动应用并等健康检查通过。
+#       清空上传文件数据卷再解包 → 启动应用并等健康检查通过。中途出错时应用保持停止，按提示人工回滚。
 # 恢复会覆盖当前的数据库和上传文件；恢复前的状态存在 backups/<今天>-before-restore-<时分秒>/，需要时可以再恢复回去。
 set -euo pipefail
 
@@ -42,7 +42,9 @@ restart_app() {
   log "启动应用"
   $COMPOSE start app
 }
-trap 'log "恢复出错。恢复前的状态在 $BACKUP_ROOT/$before，可再运行 bash restore.sh $before"; restart_app' ERR
+# 中途出错时不自动启动应用：数据库或上传文件可能只恢复了一半，带着这样的数据开服会写进更多不一致的数据。
+# 应用保持停止，请人工回滚到恢复前的状态（回滚完成后会自动启动应用）
+trap 'log "恢复出错，应用保持停止。请运行 bash restore.sh $before 回滚到恢复前的状态（备份在 $BACKUP_ROOT/$before）"' ERR
 
 log "重建数据库并导入 $name/db.sql.gz"
 docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U genyun -d postgres -q \

@@ -64,21 +64,34 @@ export async function diskFreeRatio(dir: string): Promise<number> {
   return s.blocks > 0 ? s.bavail / s.blocks : 1;
 }
 
-// 按环境变量组装：数据目录用上传文件目录（和数据库同一块盘）；Redis 用一条单独的短连接，不占用队列的连接
+// 按环境变量组装：数据目录用上传文件目录（和数据库同一块盘）。
+// Redis 每次检查开一条短连接，查完就断开：不占用队列的连接，不自动重连，连不上也不会留下后台重连的连接
 export function defaultProbes(db: Database, env: NodeJS.ProcessEnv = process.env): HealthProbes {
   const redisUrl = env.REDIS_URL?.trim();
-  let redis: Redis | undefined;
   return {
     database: async () => {
       await db.execute(sql`select 1`);
     },
-    redis: redisUrl
-      ? async () => {
-          redis ??= new Redis(redisUrl, { lazyConnect: true, maxRetriesPerRequest: 1, connectTimeout: CHECK_TIMEOUT_MS, enableOfflineQueue: false });
-          if (redis.status === 'wait' || redis.status === 'end') await redis.connect();
-          await redis.ping();
-        }
-      : null,
+    redis: redisUrl ? () => pingRedis(redisUrl) : null,
     diskFreeRatio: () => diskFreeRatio(env.FILE_STORAGE_DIR ?? '.data/files'),
   };
+}
+
+export async function pingRedis(url: string): Promise<void> {
+  const redis = new Redis(url, {
+    lazyConnect: true,
+    maxRetriesPerRequest: 0,
+    connectTimeout: CHECK_TIMEOUT_MS,
+    enableOfflineQueue: false,
+    // 不重连：失败就算这次检查失败
+    retryStrategy: () => null,
+  });
+  // 没有 error 监听时 ioredis 会打 Unhandled error event；失败已经由 connect / ping 的拒绝报出来了
+  redis.on('error', () => {});
+  try {
+    await redis.connect();
+    await redis.ping();
+  } finally {
+    redis.disconnect();
+  }
 }
