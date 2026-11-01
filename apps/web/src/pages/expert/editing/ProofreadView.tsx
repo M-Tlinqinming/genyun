@@ -48,15 +48,28 @@ export function ProofreadView({
   const [loadFailed, setLoadFailed] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [checking, setChecking] = useState(false);
-  // 底栏的实际高度（需重新核对时有三行）：预览区按它留出位置，和底栏隔 24
+  // 预览区按实际位置和底栏实际高度（需重新核对时有三行）定高，和底栏隔 24，
+  // 不让吸底的底栏盖住预览区下沿
   const footer = useRef<HTMLDivElement>(null);
-  const [footerHeight, setFooterHeight] = useState(70);
+  const row = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState({ top: 264, footer: 70 });
   useEffect(() => {
     const el = footer.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => setFooterHeight(el.offsetHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
+    const r = row.current;
+    if (!el || !r) return;
+    const measure = () => {
+      const top = Math.round(r.getBoundingClientRect().top + window.scrollY);
+      const height = el.offsetHeight;
+      setLayout((l) => (l.top === top && l.footer === height ? l : { top, footer: height }));
+    };
+    measure();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
 
   useEffect(() => {
@@ -163,12 +176,13 @@ export function ProofreadView({
   return (
     <>
       <div
+        ref={row}
         style={{
           display: 'flex',
           gap: 16,
-          // 页头、页签约 264；底栏按实际高度；和底栏之间留 24（外层间距 12 + 这里 12）
-          height: `calc(100vh - ${264 + footerHeight + 12}px)`,
-          minHeight: 420,
+          // 和底栏之间留 24（外层间距 12 + 这里 12）
+          height: `calc(100vh - ${layout.top + layout.footer + 24}px)`,
+          minHeight: 320,
           marginBottom: 12,
         }}
       >
