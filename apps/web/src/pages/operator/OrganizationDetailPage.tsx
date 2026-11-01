@@ -604,7 +604,7 @@ export function OrganizationDetailPage() {
   const org = detail.data;
 
   const sent = (r: SentInvitation) => {
-    const simulated = r.mailSimulated ? '（预览环境未真实发送邮件）' : '';
+    const simulated = r.mailSimulated ? `（预览环境未真实发送邮件${r.mailInOutbox ? '，可在「模拟发件箱」查看' : ''}）` : '';
     if (r.mailSent) message.success(`邀请已发到 ${r.email}，旧链接已作废${simulated}`);
     else message.warning('新邀请已记下，但邮件没发出去。请稍后再点「重新发送邀请」');
   };

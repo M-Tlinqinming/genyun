@@ -223,7 +223,7 @@ describe('开通', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ state: 'active', contractStartsAt: '2026-11-01', contractEndsAt: '2027-10-31' });
     // 测试用的发信记录是真实发出，不提示「未真实发送」
-    expect(res.body.invitation).toMatchObject({ mailSent: true, mailSimulated: false });
+    expect(res.body.invitation).toMatchObject({ mailSent: true, mailSimulated: false, mailInOutbox: false });
 
     const { db } = handle;
     const [o] = await db.select().from(organizations).where(eq(organizations.id, created.id));
