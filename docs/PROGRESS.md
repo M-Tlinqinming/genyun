@@ -153,6 +153,12 @@
 - 当前稿 PDF：没改过的直接用生成时转好的（`generated_drafts.pdf_file_id`）；改过的打开预览时在后台转（`EditingService.word` 出 Word → `convertToPdf`），同一份同一 version 只转一次，转换中断超过 5 分钟按失败可重试。转换工具 `PDF_CONVERTER`（`generation/word/preview-pdf.ts`）：正式环境和配了 `SOFFICE_PATH` 用 LibreOffice，都没有时为空（页面提示下载 Word 核对）；浏览器测试设 `PDF_CONVERTER=fake` 出几页英文的假 PDF。**还没做：服务多开几个实例时，同一份可能在两个实例上各转一次（结果一样，只是多转）；要避免就把转换放进第 10 项的生成队列。**
 - 页面：`apps/web/src/pages/expert/editing/ProofreadView.tsx`（`?view=edit&doc=…&tab=preview`，E18-05）、`PdfPages.tsx`（pdf.js 6.4.299，按需加载；先按页尺寸放空白页，滚到附近才画）、`ConclusionView.tsx`（`?view=review`，E18-06）。核对按页面上看到的那一版 PDF 的 version 提交。
 - 审核通过后「进入发布」不可点（写「即将开放」），第 15 项接上；发布时要检查 `reviewValid`。客户看不到任何核对信息。
+- 已经有效通过时再确认结论：原样返回，不改审核时间、审核人和结论（重复点击、两个窗口都点）。审核通过后再保存正文，页面先弹「保存后审核结论将失效」确认。
+- Word 转 PDF 超时（3 分钟）时结束整个进程树（Linux 杀进程组、Windows 用 `taskkill /T`），不留 soffice 孤儿进程；临时目录删不掉（Windows 上文件还被占用）只记日志。
+- **还没做：旧的当前稿 PDF 没有清理**——每份只在 `draft_previews` 里记最近一次，但之前转出来的 PDF 文件留在存储里，存储会一直增长；要清就在换新文件时删旧文件，或定期清掉没人引用的。
+- **还没做：运营只读打开 Word 预览也会触发转换**（和专家一样按当前稿转）；如果要省，就让运营只看已转好的、没转好的提示下载 Word。
+- 浏览器测试依赖 `playwright.config.ts` 里给后台设的 `PDF_CONVERTER: 'fake'`（不装 LibreOffice，出几页英文的假 PDF）。
+- 不做「退回」：现在负责专家自己核对、自己确认，没有第二人审核（11-01 产品决定，已记进待决定清单）。
 - 设计稿差异 11 条记在 `docs/DESIGN-DIFF.md`「M2 第 12 项」，都标「11-01 通宵 · 待 Martin 决定」；Paper 14 页加了实现对照画板。
 
 ### 第 10c 项留给后续的说明

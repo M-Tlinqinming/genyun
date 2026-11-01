@@ -227,3 +227,18 @@ export function RewriteDialog({
     </Modal>
   );
 }
+
+/** 正文 / Word 预览：两个普通按钮，当前的标为按下 */
+export function ViewSwitch({ preview, onText, onPreview }: { preview: boolean; onText: () => void; onPreview: () => void }) {
+  const style = (on: boolean): CSSProperties => ({ ...linkButton, ...text14, color: on ? gy.primary : gy.text, fontWeight: on ? 500 : 400 });
+  return (
+    <div role="group" aria-label="查看方式" style={{ display: 'flex', gap: 24 }}>
+      <button type="button" aria-pressed={!preview} style={style(!preview)} onClick={() => !preview || onText()}>
+        正文
+      </button>
+      <button type="button" aria-pressed={preview} style={style(preview)} onClick={() => preview || onPreview()}>
+        Word 预览
+      </button>
+    </div>
+  );
+}

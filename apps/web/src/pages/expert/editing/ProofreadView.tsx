@@ -1,4 +1,4 @@
-import { checkedCount, checkStale, checkValid, DRAFT_KINDS, nextToCheck, type DraftKind, type ReviewView } from '@genyun/shared';
+import { checkedCount, checkStale, checkValid, DRAFT_KINDS, nextToCheck, reviewValid, type DraftKind, type ReviewView } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Checkbox, Spin } from 'antd';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
@@ -7,7 +7,7 @@ import { ApiError } from '../../../api/request';
 import { checkDraft, previewFileUrl, previewKey, retryPreview, reviewKey, usePreview } from '../../../api/review';
 import { linkButton } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
-import { stamp } from './EditDialogs';
+import { stamp, ViewSwitch } from './EditDialogs';
 import { PdfPages, type PdfPagesHandle } from './PdfPages';
 
 // Word 校对（14 页 E18-05）：当前稿的 Word 版式逐页看，核对后记下这一份，接着打开下一份；
@@ -32,8 +32,8 @@ export function ProofreadView({
   kind: DraftKind;
   review: ReviewView;
   onBackToText: () => void;
-  /** 打开另一份的 Word 预览 */
-  onOpen: (kind: DraftKind) => void;
+  /** 打开另一份的 Word 预览；focus = 核对完自动打开的，焦点放到页面标题 */
+  onOpen: (kind: DraftKind, focus?: boolean) => void;
   onConclude: () => void;
 }) {
   const { message } = App.useApp();
@@ -48,6 +48,16 @@ export function ProofreadView({
   const [loadFailed, setLoadFailed] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [checking, setChecking] = useState(false);
+  // 底栏的实际高度（需重新核对时有三行）：预览区按它留出位置，和底栏隔 24
+  const footer = useRef<HTMLDivElement>(null);
+  const [footerHeight, setFooterHeight] = useState(70);
+  useEffect(() => {
+    const el = footer.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setFooterHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     setConfirmed(false);
@@ -61,6 +71,7 @@ export function ProofreadView({
   const stale = checkStale(doc);
   const count = checkedCount(review.docs);
   const next = nextToCheck(review.docs, kind);
+  const passed = reviewValid(review);
   // 核对本份后还剩哪份没核对（本份算核对过）
   const after = nextToCheck(
     review.docs.map((d) => (d.kind === kind ? { ...d, check: { byName: '', at: '', version: d.version } } : d)),
@@ -82,7 +93,7 @@ export function ProofreadView({
       client.setQueryData(reviewKey(taskId), view);
       const n = nextToCheck(view.docs, kind);
       message.success(`已记下${DRAFT_KINDS[kind]}的核对`);
-      if (n) onOpen(n);
+      if (n) onOpen(n, true);
       else onConclude();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -111,23 +122,24 @@ export function ProofreadView({
   if (preview.isLoading) {
     body = <Centered>正在打开当前稿…</Centered>;
   } else if (preview.isError || !p) {
-    body = <Centered>没有取到当前稿的 Word 版式，请刷新后重试；也可以先下载校对稿核对。</Centered>;
+    body = <Centered>没有取到当前稿的 Word 版式，请刷新后重试；也可以先下载校对稿，在 Word 里核对。</Centered>;
   } else if (p.status === 'converting') {
     body = (
       <Centered>
         <Spin size="small" />
-        <span>正在按当前稿排版 Word 页面，通常需要半分钟左右…</span>
+        <span>正在按当前稿排版 Word 页面，通常需要一分钟左右…</span>
       </Centered>
     );
   } else if (p.status === 'failed' || loadFailed) {
     body = (
       <Centered>
         <span style={{ color: gy.error }}>{p.error ?? '当前稿的 Word 页面没有显示出来'}</span>
+        <span>也可以先下载校对稿，在 Word 里核对。</span>
         <Button onClick={() => void retry()}>重新转换</Button>
       </Centered>
     );
   } else if (p.status === 'unavailable') {
-    body = <Centered>这台服务器暂时不能在页面里显示 Word 版式。请下载校对稿，在 Word 里逐页核对。</Centered>;
+    body = <Centered>暂时不能在页面里显示 Word 版式。请下载校对稿，在 Word 里逐页核对。</Centered>;
   } else {
     body = (
       <PdfPages
@@ -154,8 +166,10 @@ export function ProofreadView({
         style={{
           display: 'flex',
           gap: 16,
-          height: 'calc(100vh - 330px)',
+          // 页头、页签约 264；底栏按实际高度；和底栏之间留 24（外层间距 12 + 这里 12）
+          height: `calc(100vh - ${264 + footerHeight + 12}px)`,
           minHeight: 420,
+          marginBottom: 12,
         }}
       >
         <section
@@ -179,24 +193,7 @@ export function ProofreadView({
               ...text14,
             }}
           >
-            <div role="tablist" aria-label="查看方式" style={{ display: 'flex', gap: 24 }}>
-              <button type="button" role="tab" aria-selected={false} style={{ ...linkButton, ...text14, color: gy.text }} onClick={onBackToText}>
-                正文
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected
-                style={{
-                  ...linkButton,
-                  ...text14,
-                  color: gy.primary,
-                  fontWeight: 500,
-                }}
-              >
-                Word 预览
-              </button>
-            </div>
+            <ViewSwitch preview onText={onBackToText} onPreview={() => undefined} />
             <span style={{ marginLeft: 'auto', color: gy.secondary }}>
               {doc.version > 0 ? '已保存稿' : '生成稿'}
               {doc.savedAt ? ` · ${stamp(doc.savedAt)}` : ''}
@@ -209,7 +206,9 @@ export function ProofreadView({
               display: 'flex',
               alignItems: 'center',
               gap: 12,
-              padding: '8px 20px',
+              padding: '12px 20px',
+              background: gy.canvas,
+              borderBottom: `1px solid ${gy.split}`,
               ...text14,
             }}
           >
@@ -250,7 +249,7 @@ export function ProofreadView({
             alignSelf: 'flex-start',
             display: 'flex',
             flexDirection: 'column',
-            gap: 16,
+            gap: 18,
             padding: 20,
           }}
         >
@@ -287,6 +286,7 @@ export function ProofreadView({
       </div>
 
       <div
+        ref={footer}
         role="region"
         aria-label="核对本份"
         style={{
@@ -295,8 +295,8 @@ export function ProofreadView({
           zIndex: 2,
           display: 'flex',
           alignItems: 'center',
-          gap: 16,
-          padding: '16px 20px',
+          gap: 18,
+          padding: '18px 20px',
           ...panel,
         }}
       >
@@ -305,6 +305,15 @@ export function ProofreadView({
             {valid ? `本份已核对 · ${doc.check!.byName} ${stamp(doc.check!.at)}` : '本份待核对'}
             ；只有负责这个任务的专家可以核对。
           </span>
+        ) : passed ? (
+          <>
+            <span style={{ flex: 1, ...text14, color: gy.success }}>
+              ✓ 审核已通过 · {review.review!.byName} {stamp(review.review!.at)}
+            </span>
+            <Button type="primary" onClick={onConclude}>
+              查看审核结论
+            </Button>
+          </>
         ) : valid ? (
           <>
             <span style={{ flex: 1, ...text14, color: gy.success }}>

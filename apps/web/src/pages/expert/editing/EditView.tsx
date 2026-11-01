@@ -6,6 +6,7 @@ import {
   DRAFT_KIND_KEYS,
   DRAFT_KINDS,
   EDIT_LIMITS,
+  reviewValid,
   sameBlocks,
   type DraftCheckView,
   type DraftKind,
@@ -34,7 +35,7 @@ import { previewKey, reviewKey, useReview } from '../../../api/review';
 import { linkButton, Loading } from '../../../components/ui';
 import { gy, stage } from '../../../theme/tokens';
 import { ContactRecords } from '../workup/ContactRecords';
-import { ConflictDialog, copyText, LeaveDialog, RewriteDialog, stamp } from './EditDialogs';
+import { ConflictDialog, copyText, LeaveDialog, RewriteDialog, stamp, ViewSwitch } from './EditDialogs';
 import { blocksToDoc, docToBlocks } from './editorDoc';
 import type { Editor } from '@tiptap/react';
 import { retryStep } from './saveRetry';
@@ -120,6 +121,11 @@ export function EditView({
   const noteRef = useRef<InputRef>(null);
   const focusNoteAfterLeave = useRef(false);
   const outlineRef = useRef<HTMLDivElement>(null);
+  // 核对完一份打开下一份后，焦点放到页面标题上
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const focusTitle = useRef(false);
+  // 审核已通过：再保存正文会让结论失效，保存前先确认（E18-06）
+  const passed = review.data ? reviewValid(review.data) : false;
 
   const editable = doc.data?.editable ?? false;
   const dirty = baseline !== null && current !== null && !sameBlocks(current, baseline);
@@ -349,6 +355,25 @@ export function EditView({
     setParams(p);
   };
 
+  const confirmLapse = () =>
+    new Promise<boolean>((resolve) => {
+      modal.confirm({
+        title: '保存后审核结论将失效',
+        content: '本次审核已通过。保存修订后，需要重新核对并确认审核结论。',
+        okText: '仍然保存',
+        cancelText: '取消',
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+
+  // 点「保存本节修订」（或在修订说明里回车）：审核通过后先确认
+  const saveClicked = async () => {
+    if (!note.trim()) return askNote();
+    if (passed && !(await confirmLapse())) return;
+    await save();
+  };
+
   const leaveAndSave = async () => {
     // 还没写修订说明：留在本页，光标放到修订说明
     if (!note.trim()) {
@@ -358,9 +383,26 @@ export function EditView({
       blocker.reset?.();
       return;
     }
+    if (passed && !(await confirmLapse())) return void blocker.reset?.();
     if (await save()) blocker.proceed?.();
     else blocker.reset?.();
   };
+
+  // 新文档读完、标题出现后再放焦点（读的时候整页是加载中）
+  useEffect(() => {
+    if (!focusTitle.current || !titleRef.current) return;
+    focusTitle.current = false;
+    titleRef.current.focus();
+  });
+  // 方向键换了文档：新文档读完、页签重新出现后焦点还放在页签上
+  const focusDocTab = useRef<DraftKind | null>(null);
+  useEffect(() => {
+    if (!focusDocTab.current) return;
+    const el = document.getElementById(`doc-tab-${focusDocTab.current}`);
+    if (!el) return;
+    focusDocTab.current = null;
+    el.focus();
+  });
 
   const tooLong = useMemo(() => (current ? blocksText(current).length > EDIT_LIMITS.textChars * 4 : false), [current]);
   const locked = useMemo(
@@ -394,7 +436,9 @@ export function EditView({
       ? { text: '修订未保存', ...stage.action }
       : kept
         ? { text: '你的修改待合并', ...stage.action }
-        : checked === 3
+        : passed
+          ? { text: '审核已通过', ...stage.done }
+          : checked === 3
           ? { text: '三份已核对 · 待审核', color: gy.primary, bg: gy.selected }
           : checked > 0 || preview
             ? { text: '正在人工核对', color: gy.primary, bg: gy.selected }
@@ -429,7 +473,9 @@ export function EditView({
           {'　/　审核与修订'}
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 500, lineHeight: '32px', color: gy.text }}>{enterpriseName}</h1>
+          <h1 ref={titleRef} tabIndex={-1} data-page-title style={{ margin: 0, fontSize: 24, fontWeight: 500, lineHeight: '32px', color: gy.text }}>
+            {enterpriseName}
+          </h1>
           <span style={{ ...text14, color: gy.secondary }}>{taskNumber}</span>
           <span style={{ flex: 1 }} />
           <span role="status" style={{ ...text14, padding: '3px 10px', borderRadius: 4, background: chip.bg, color: chip.color }}>
@@ -451,13 +497,22 @@ export function EditView({
       </header>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 28, paddingBottom: 12, borderBottom: `1px solid ${gy.split}` }}>
-        <div role="tablist" aria-label="三份文档" style={{ display: 'flex', gap: 28 }}>
+        <div role="tablist" aria-label="三份文档" style={{ display: 'flex', gap: 28 }} onKeyDown={(e) =>
+            docTabKeys(e, kind, (k) => {
+              focusDocTab.current = k;
+              go({ doc: k });
+            })
+          }
+        >
           {DRAFT_KIND_KEYS.map((k) => (
             <button
               key={k}
+              id={`doc-tab-${k}`}
               type="button"
               role="tab"
               aria-selected={k === kind}
+              aria-controls="doc-panel"
+              tabIndex={k === kind ? 0 : -1}
               onClick={() => k !== kind && go({ doc: k })}
               style={{ ...linkButton, ...text14, color: k === kind ? gy.primary : gy.text, fontWeight: k === kind ? 500 : 400 }}
             >
@@ -468,13 +523,17 @@ export function EditView({
         <span style={{ marginLeft: 'auto', ...text14, color: gy.secondary }}>人工核对 {checked} / 3</span>
       </div>
 
+      <div role="tabpanel" id="doc-panel" aria-labelledby={`doc-tab-${kind}`} style={{ display: 'contents' }}>
       {preview && r ? (
         <ProofreadView
           taskId={taskId}
           kind={kind}
           review={r}
           onBackToText={() => go({ tab: 'text' })}
-          onOpen={(k) => go({ doc: k, tab: 'preview' })}
+          onOpen={(k, focus) => {
+            focusTitle.current = focus ?? false;
+            go({ doc: k, tab: 'preview' });
+          }}
           onConclude={() => setParams({ view: 'review' })}
         />
       ) : preview ? (
@@ -491,14 +550,7 @@ export function EditView({
 
         <section aria-label="本节正文" style={{ ...panel, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14, padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 24, ...text14 }}>
-            <div role="tablist" aria-label="查看方式" style={{ display: 'flex', gap: 24 }}>
-              <button type="button" role="tab" aria-selected style={{ ...linkButton, ...text14, color: gy.primary, fontWeight: 500 }}>
-                正文
-              </button>
-              <button type="button" role="tab" aria-selected={false} style={{ ...linkButton, ...text14, color: gy.text }} onClick={() => go({ tab: 'preview' })}>
-                Word 预览
-              </button>
-            </div>
+            <ViewSwitch preview={false} onText={() => undefined} onPreview={() => go({ tab: 'preview' })} />
             <span style={{ marginLeft: 'auto' }} aria-live="polite">
               {status}
             </span>
@@ -506,6 +558,11 @@ export function EditView({
           <h2 style={{ margin: 0, fontSize: 20, lineHeight: '28px', fontWeight: 500, color: gy.text }}>
             {section.data ? section.data.path.slice(1).join(' · ') || section.data.title : ' '}
           </h2>
+          {passed && editable && (
+            <div role="note" style={{ ...text14, padding: '8px 12px', borderRadius: 4, background: stage.done.bg, color: stage.done.color }}>
+              本次审核已通过，保存修订后需重新核对并确认审核结论。
+            </div>
+          )}
           {section.isError ? (
             <span style={{ ...text14, color: gy.error }}>{section.error.message}</span>
           ) : initial && !section.isLoading ? (
@@ -555,7 +612,7 @@ export function EditView({
                       setNote(e.target.value);
                       if (noteError) setNoteError(null);
                     }}
-                    onPressEnter={() => (failed ? void retry() : dirty && void save())}
+                    onPressEnter={() => (failed ? void retry() : dirty && void saveClicked())}
                     aria-describedby={noteError ? 'revision-note-error' : undefined}
                   />
                   {noteError && (
@@ -662,7 +719,7 @@ export function EditView({
             <Button disabled={state.kind === 'saving'} onClick={discard}>
               取消本次修改
             </Button>
-            <Button type="primary" loading={state.kind === 'saving'} disabled={!dirty} onClick={() => void save()}>
+            <Button type="primary" loading={state.kind === 'saving'} disabled={!dirty} onClick={() => void saveClicked()}>
               保存本节修订
             </Button>
           </>
@@ -692,6 +749,7 @@ export function EditView({
       </div>
         </>
       )}
+      </div>
 
       <LeaveDialog
         open={blocker.state === 'blocked'}
@@ -786,4 +844,22 @@ function DocCheckLabel({ doc, active }: { doc: DraftCheckView | undefined; activ
   if (checkValid(doc)) return <span style={{ color: gy.success }}>✓ 已核对</span>;
   if (checkStale(doc)) return <span style={{ color: gy.warning }}>需重新核对</span>;
   return <>{active ? '核对中' : '待核对'}</>;
+}
+
+const DOC_KEYS: readonly DraftKind[] = DRAFT_KIND_KEYS;
+
+// 三份文档页签的左右方向键（Home / End 到头尾）：切换并把焦点放到新页签
+function docTabKeys(e: React.KeyboardEvent, kind: DraftKind, open: (k: DraftKind) => void) {
+  // 从按键所在的页签算起：切换后组件可能还没按新文档重新渲染，kind 会是上一份
+  const tab = (e.target as HTMLElement).closest('[role="tab"]')?.id.replace(/^doc-tab-/, '');
+  const from = DOC_KEYS.find((k) => k === tab) ?? kind;
+  const i = DOC_KEYS.indexOf(from);
+  const n = DOC_KEYS.length;
+  const to =
+    e.key === 'ArrowRight' ? (i + 1) % n : e.key === 'ArrowLeft' ? (i - 1 + n) % n : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : -1;
+  if (to < 0) return;
+  e.preventDefault();
+  const k = DOC_KEYS[to]!;
+  open(k);
+  document.getElementById(`doc-tab-${k}`)?.focus();
 }

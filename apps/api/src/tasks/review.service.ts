@@ -7,6 +7,7 @@ import {
   DRAFT_KIND_KEYS,
   DRAFT_KINDS,
   reviewRequestSchema,
+  reviewValid,
   type DraftCheckView,
   type DraftKind,
   type PreviewView,
@@ -122,6 +123,8 @@ export class ReviewService {
     const parsed = reviewRequestSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请填写审核结论');
     const before = await this.build(user, ctx);
+    // 已经有效通过（重复点击、两个窗口都点了）：原样返回，不改审核时间和审核人
+    if (reviewValid(before)) return before;
     const pending = before.docs.filter((d) => !checkValid(d));
     if (pending.length) {
       throw new ConflictException({
