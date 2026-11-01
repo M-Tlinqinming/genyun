@@ -11,6 +11,10 @@ export const AUDIT_ACTIONS = [
   'task_assign',
   'task_reassign',
   'publish',
+  'account_invite',
+  'account_disable',
+  'account_enable',
+  'account_role_change',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -23,6 +27,10 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   task_assign: '分派注安师',
   task_reassign: '改派注安师',
   publish: '发布',
+  account_invite: '邀请内部成员',
+  account_disable: '停用账号',
+  account_enable: '恢复账号',
+  account_role_change: '变更角色',
 };
 
 export const AUDIT_PAGE_SIZE = 50;

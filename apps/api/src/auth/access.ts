@@ -90,3 +90,13 @@ export function canViewDeliveries(user: SessionUser, task: { orgId: string; assi
 export function canPublishTask(user: SessionUser, task: { assignedExpertId: string | null }): boolean {
   return task.assignedExpertId === user.id && isExpert(user);
 }
+
+// 运营概览（今天先处理、统计）：只有运营。客户、注安师一律不行
+export function canViewOperatorOverview(user: SessionUser): boolean {
+  return isOperator(user);
+}
+
+// 内部账号（邀请注安师 / 运营、停用、恢复、改角色）：只有运营；不能停用自己、不能改自己的角色
+export function canManageInternalAccounts(user: SessionUser): boolean {
+  return isOperator(user);
+}

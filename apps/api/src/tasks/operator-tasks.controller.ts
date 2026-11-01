@@ -77,9 +77,72 @@ const withStage = <T extends Row>(t: T) => ({
   assignBlockedReason: assignmentBlockedReason(t),
 });
 
-// 能被分派的注安师：耕云内部组织里有 expert 角色的人。客户组织里就算有人挂了 expert 角色也不算。
-// 第 5 项加账号停用时，这里和分派校验要一起排除已停用的账号
-const assignableExpert = and(eq(memberships.role, 'expert'), eq(organizations.kind, 'internal'));
+// 超时兜底的任务（运营任务中心页签、运营概览共用）：客户请电话联系后 2 个工作日还没联系上（按 reachedCustomer，未接通不算）
+export async function listOverdueTasks(db: Database, now: Date = new Date()) {
+  const open = await selectTasks(db)
+    .where(and(eq(tasks.status, 'submitted'), isNull(tasks.closedAt), ne(organizations.kind, 'internal')))
+    .orderBy(tasks.submittedAt);
+  if (open.length === 0) return [];
+  const ids = open.map((t) => t.id);
+  const calls = await db
+    .select({
+      taskId: checklistItems.taskId,
+      itemKey: checklistItems.itemKey,
+      updatedAt: checklistItems.updatedAt,
+      updatedByName: users.name,
+      expertResult: checklistItems.expertResult,
+    })
+    .from(checklistItems)
+    .innerJoin(users, eq(users.id, checklistItems.updatedBy))
+    .where(and(inArray(checklistItems.taskId, ids), eq(checklistItems.callRequested, true)));
+  const contacts = await db
+    .select({
+      taskId: taskContacts.taskId,
+      method: taskContacts.method,
+      result: taskContacts.result,
+      createdAt: taskContacts.createdAt,
+      createdByName: users.name,
+    })
+    .from(taskContacts)
+    .innerJoin(users, eq(users.id, taskContacts.createdBy))
+    .where(inArray(taskContacts.taskId, ids))
+    .orderBy(desc(taskContacts.createdAt));
+  return open.flatMap((t) => {
+    // 还没分派的在「待分派」里处理，不进超时兜底
+    if (!t.assignedExpertId) return [];
+    // 和专家任务中心同一套：专家已判定过的项不再等电话
+    const mine = calls.filter((c) => c.taskId === t.id && (c.expertResult === null || c.expertResult === 'pending'));
+    const records = contacts.filter((c) => c.taskId === t.id);
+    const request = pendingContactRequest(t, mine, records);
+    if (!request || request.deadline.getTime() > now.getTime()) return [];
+    const unreachable = records.filter((r) => r.method === 'phone' && r.result === 'unreachable' && r.createdAt >= request.requestedAt);
+    return [
+      {
+        ...withStage(t),
+        request,
+        // 原因：没打过电话 / 打了没接通
+        reason: unreachable.length > 0 ? `打过 ${unreachable.length} 次电话都没接通` : '还没有联系过客户',
+        // 客户已等了几个工作日、过了期限几个工作日（0 = 今天刚超时）
+        waitedDays: workingDaysBetween(request.requestedAt, now),
+        overdueDays: workingDaysBetween(request.deadline, now),
+        contacts: records.map(({ taskId: _, ...r }) => r),
+      },
+    ];
+  });
+}
+
+function selectTasks(db: Database) {
+  return db
+    .select(columns)
+    .from(tasks)
+    .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
+    .innerJoin(organizations, eq(organizations.id, tasks.orgId))
+    .leftJoin(expert, eq(expert.id, tasks.assignedExpertId));
+}
+
+// 能被分派的注安师：耕云内部组织里有 expert 角色、没有停用的人。客户组织里就算有人挂了 expert 角色也不算。
+// 名单和分派校验都用这一条，停用的账号两边都排除（第 8 项）
+const assignableExpert = and(eq(memberships.role, 'expert'), eq(organizations.kind, 'internal'), isNull(users.disabledAt));
 
 // 运营任务中心（Paper 16 页 I04「待分派」「全部任务」、分配注安师弹窗）。
 // 只有运营能看和分派；客户、注安师一律 403。超时兜底、上门工单在第 4 项
@@ -103,57 +166,7 @@ export class OperatorTasksController {
   @Get('overdue')
   async overdue(@CurrentUser() user: SessionUser) {
     this.overdueGuard(user);
-    const now = new Date();
-    const open = await this.select()
-      .where(and(eq(tasks.status, 'submitted'), isNull(tasks.closedAt), ne(organizations.kind, 'internal')))
-      .orderBy(tasks.submittedAt);
-    if (open.length === 0) return [];
-    const ids = open.map((t) => t.id);
-    const calls = await this.db
-      .select({
-        taskId: checklistItems.taskId,
-        itemKey: checklistItems.itemKey,
-        updatedAt: checklistItems.updatedAt,
-        updatedByName: users.name,
-        expertResult: checklistItems.expertResult,
-      })
-      .from(checklistItems)
-      .innerJoin(users, eq(users.id, checklistItems.updatedBy))
-      .where(and(inArray(checklistItems.taskId, ids), eq(checklistItems.callRequested, true)));
-    const contacts = await this.db
-      .select({
-        taskId: taskContacts.taskId,
-        method: taskContacts.method,
-        result: taskContacts.result,
-        createdAt: taskContacts.createdAt,
-        createdByName: users.name,
-      })
-      .from(taskContacts)
-      .innerJoin(users, eq(users.id, taskContacts.createdBy))
-      .where(inArray(taskContacts.taskId, ids))
-      .orderBy(desc(taskContacts.createdAt));
-    return open.flatMap((t) => {
-      // 还没分派的在「待分派」里处理，不进超时兜底
-      if (!t.assignedExpertId) return [];
-      // 和专家任务中心同一套：专家已判定过的项不再等电话
-      const mine = calls.filter((c) => c.taskId === t.id && (c.expertResult === null || c.expertResult === 'pending'));
-      const records = contacts.filter((c) => c.taskId === t.id);
-      const request = pendingContactRequest(t, mine, records);
-      if (!request || request.deadline.getTime() > now.getTime()) return [];
-      const unreachable = records.filter((r) => r.method === 'phone' && r.result === 'unreachable' && r.createdAt >= request.requestedAt);
-      return [
-        {
-          ...withStage(t),
-          request,
-          // 原因：没打过电话 / 打了没接通
-          reason: unreachable.length > 0 ? `打过 ${unreachable.length} 次电话都没接通` : '还没有联系过客户',
-          // 客户已等了几个工作日、过了期限几个工作日（0 = 今天刚超时）
-          waitedDays: workingDaysBetween(request.requestedAt, now),
-          overdueDays: workingDaysBetween(request.deadline, now),
-          contacts: records.map(({ taskId: _, ...r }) => r),
-        },
-      ];
-    });
+    return listOverdueTasks(this.db);
   }
 
   @Get(':id')
@@ -227,6 +240,16 @@ export class OperatorTasksController {
     const said = note ? `运营说明：${note}` : null;
     // 改任务和发提醒在同一个事务里：不会出现分派生效、提醒却没发的情况
     const updated = await this.db.transaction(async (tx) => {
+      // 锁住接手人的账号行，和停用、改角色排队（两者也锁这一行），锁住后再按分派名单的条件查一遍：
+      // 仍是耕云内部的注安师、没有停用
+      const [active] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .innerJoin(memberships, eq(memberships.userId, users.id))
+        .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+        .where(and(eq(users.id, expertId), assignableExpert))
+        .for('update', { of: users });
+      if (!active) throw new BadRequestException(`${target.name}已停用或不再是注安师，请选择其他注安师`);
       // 只在负责注安师仍是运营打开弹窗时看到的那位时才改，别人刚分派过就提示刷新
       const [row] = await tx
         .update(tasks)
@@ -368,12 +391,7 @@ export class OperatorTasksController {
   }
 
   private select() {
-    return this.db
-      .select(columns)
-      .from(tasks)
-      .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
-      .innerJoin(organizations, eq(organizations.id, tasks.orgId))
-      .leftJoin(expert, eq(expert.id, tasks.assignedExpertId));
+    return selectTasks(this.db);
   }
 
   private async load(id: string) {
