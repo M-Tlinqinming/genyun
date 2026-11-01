@@ -45,8 +45,11 @@ test('待分派里有已提交、没有负责专家的任务；分派给周工�
   const list = page.getByRole('tabpanel', { name: '待分派' });
   const row = list.getByRole('button', { name: new RegExp(HARDWARE) });
   await expect(row).toContainText('编制应急预案 · 新提交 · 未分派专家');
-  // 飞宇已有负责专家，不在待分派里
-  await expect(list.getByText('惠阳飞宇电器有限公司')).toHaveCount(0);
+  // 演示数据里飞宇已有负责专家，不在待分派里。enterprises.spec 在另一个客户组织（示例安全咨询机构）
+  // 也建了同名企业、前面的测试会提交它的任务，所以按客户组织区分
+  await expect(
+    list.getByRole('button', { name: /惠阳飞宇电器有限公司/ }).filter({ hasText: '飞宇演示客户' }),
+  ).toHaveCount(0);
   await row.click();
 
   const panel = page.getByRole('region', { name: '任务详情' });
@@ -134,6 +137,9 @@ test('全部任务可以按企业、任务编号、客户组织搜索', async ()
   await expect(page.getByText('没有符合条件的任务')).toBeVisible();
   await page.getByPlaceholder('企业 / 任务编号 / 客户组织').fill('飞宇');
   const list = page.getByRole('tabpanel', { name: '全部任务' });
-  await expect(list.getByRole('button', { name: /惠阳飞宇电器有限公司/ })).toContainText('负责专家 周工');
+  // 同名企业在两个客户组织都有（见第一个用例），按客户组织取演示数据里的那家
+  await expect(
+    list.getByRole('button', { name: /惠阳飞宇电器有限公司/ }).filter({ hasText: '飞宇演示客户' }),
+  ).toContainText('负责专家 周工');
   await page.screenshot({ path: 'out/m3-3-I04-all.png' });
 });
