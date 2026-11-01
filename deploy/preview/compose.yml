@@ -1,4 +1,4 @@
-# 预览环境：应用 + PostgreSQL + Redis（草稿生成队列）+ Caddy（自动 HTTPS）
+# 预览环境：应用 + PostgreSQL + Redis（草稿生成队列）+ Caddy（自动 HTTPS，同时托管官网）
 # 在服务器 /opt/genyun/src/deploy/preview 下运行，密钥在 /opt/genyun/.env（不进仓库）
 name: genyun-preview
 
@@ -18,8 +18,14 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       # 草稿生成队列（BullMQ），服务重启后没跑完的继续
       REDIS_URL: redis://redis:6379
+      # 邮件里的链接（邀请、找回密码）指向这个地址
+      APP_ORIGIN: https://${SITE_DOMAIN}
+      # 还没接阿里云邮件推送：模拟发信，邮件写进发件箱目录（数据卷），查看方法见 README「查看模拟发信」
+      MAIL_DRIVER: mock
+      MAIL_OUTBOX_DIR: /data/mail-outbox
     volumes:
       - files:/data/files
+      - mail_outbox:/data/mail-outbox
     depends_on:
       db:
         condition: service_healthy
@@ -54,8 +60,14 @@ services:
       timeout: 3s
       retries: 20
 
+  # 反向代理 + 官网静态页（site.Dockerfile）：业务路径转给 app，其余是官网，见 Caddyfile
   caddy:
-    image: caddy:2
+    build:
+      context: ../..
+      dockerfile: deploy/preview/site.Dockerfile
+      args:
+        SITE_URL: https://${SITE_DOMAIN}
+    image: genyun-site:preview
     restart: unless-stopped
     ports:
       - "80:80"
@@ -63,7 +75,6 @@ services:
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -72,6 +83,7 @@ services:
 volumes:
   db:
   files:
+  mail_outbox:
   redis:
   caddy_data:
   caddy_config:
