@@ -14,6 +14,7 @@ import { gy, source, stage } from '../../../theme/tokens';
 import { CheckDrawer } from '../check/CheckDrawer';
 import { OnSiteDialog } from '../OnSiteVisit';
 import { ExpertRequests, useOpenRequests } from './ExpertRequests';
+import { SupplementCard } from './SupplementCard';
 import { AnswerList, DocumentList } from './SubmitDialog';
 import { linkButton, Loading, Notice, panel } from '../../../components/ui';
 
@@ -104,6 +105,7 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <SupplementCard task={task} />
           <ExpertRequests task={task} />
           {groups.length > 0 && (
             <section aria-label="待补清单" style={panel}>

@@ -28,11 +28,12 @@ import {
 } from '@genyun/shared';
 import { App, Button, Result, Tooltip } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useContacts } from '../../api/contacts';
 import { useGeneration } from '../../api/generation';
 import { ApiError } from '../../api/request';
+import { useSupplements } from '../../api/supplements';
 import { useTask, useTaskCheck } from '../../api/tasks';
 import { useSaveFact, useSaveFigures, useSaveProduction, useSaveRisk, useSaveScope, useWorkup, workupKey } from '../../api/workup';
 import { linkButton, Loading } from '../../components/ui';
@@ -50,6 +51,7 @@ import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
 import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
 import { ScopePanel, ScopePreviewPanel } from './workup/ScopePanel';
+import { currentSupplement, SupplementDialog, SupplementView } from './workup/SupplementView';
 
 const STAGES = ['资料核实', '专业编制', '审核与修订', '成果发布'];
 
@@ -78,7 +80,17 @@ export function ExpertTaskPage() {
   const contacts = useContacts(taskId);
   const check = useTaskCheck(taskId);
   const generation = useGeneration(taskId);
+  const supplements = useSupplements(taskId);
+  // 发起事实补件对话框：带上预选的企业事实
+  const [supplementKeys, setSupplementKeys] = useState<string[] | null>(null);
   const [params, setParams] = useSearchParams();
+  // 从编辑页点「发起事实补件」进来（?view=supplement&start=1）：没有进行中的一轮就直接打开对话框
+  const startRequested = params.get('start') === '1';
+  useEffect(() => {
+    if (!startRequested || !supplements.data) return;
+    if (!supplements.data.some((s) => s.status === 'awaiting_customer' || s.status === 'awaiting_expert')) setSupplementKeys([]);
+    setParams({ view: 'supplement' }, { replace: true });
+  }, [startRequested, supplements.data, setParams]);
   const client = useQueryClient();
   const navigate = useNavigate();
   const { message } = App.useApp();
@@ -144,7 +156,7 @@ export function ExpertTaskPage() {
     setTimeout(() => sections.current.get(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
-  const showView = (view: 'workup' | 'confirm' | 'edit' | null) => {
+  const showView = (view: 'workup' | 'confirm' | 'edit' | 'supplement' | null) => {
     setParams(view ? { view } : {});
     window.scrollTo({ top: 0 });
   };
@@ -287,7 +299,29 @@ export function ExpertTaskPage() {
   const w = workup.data;
   const current = generation.data?.current ?? null;
   const requested = params.get('view');
-  const view = requested === 'confirm' ? 'confirm' : requested !== 'workup' && current ? 'generation' : 'workup';
+  const view =
+    requested === 'confirm' || requested === 'supplement'
+      ? requested
+      : requested !== 'workup' && current
+        ? 'generation'
+        : 'workup';
+  const round = currentSupplement(supplements.data ?? []);
+  const supplementOpen = round?.status === 'awaiting_customer' || round?.status === 'awaiting_expert';
+  // 发起事实补件：已有一轮在进行就去看那一轮
+  const startSupplement = (keys: string[] = []) => (supplementOpen ? showView('supplement') : setSupplementKeys(keys));
+  const supplementDialog = (
+    <SupplementDialog
+      taskId={taskId}
+      facts={facts}
+      initialKeys={supplementKeys ?? []}
+      open={supplementKeys !== null}
+      onClose={() => setSupplementKeys(null)}
+      onCreated={() => {
+        setSupplementKeys(null);
+        showView('supplement');
+      }}
+    />
+  );
   const phase = current ? phaseOf(current) : null;
 
   // 审核结论（E18-06）：三份逐份核对后确认
@@ -309,7 +343,15 @@ export function ExpertTaskPage() {
 
   if (view !== 'workup') {
     const chip =
-      view === 'confirm'
+      view === 'supplement'
+        ? round?.status === 'awaiting_expert'
+          ? { text: '补件待核实', ...stage.action }
+          : round?.status === 'awaiting_customer'
+            ? { text: '等待客户回应', ...stage.progress }
+            : round && !round.regenerated && round.status === 'adopted'
+              ? { text: '等待重新生成', ...stage.action }
+              : { text: '事实补件', ...stage.progress }
+        : view === 'confirm'
         ? gaps.length
           ? { text: `整理中 · 必需项 ${done} / ${required}`, ...stage.action }
           : { text: '整理完成 · 待采用', ...stage.action }
@@ -325,11 +367,14 @@ export function ExpertTaskPage() {
             <Link to="/expert" style={{ color: gy.secondary }}>
               任务中心
             </Link>
-            {`　/　${task.data.enterpriseName}　/　${view === 'confirm' ? '确认采用资料' : '生成草稿'}`}
+            {`　/　${task.data.enterpriseName}　/　${view === 'confirm' ? '确认采用资料' : view === 'supplement' ? '事实补件' : '生成草稿'}`}
           </nav>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 500, lineHeight: '32px', color: gy.text }}>{task.data.enterpriseName}</h1>
-            <span style={{ ...text14, color: gy.secondary }}>{task.data.number}</span>
+            <span style={{ ...text14, color: gy.secondary }}>
+              {task.data.number}
+              {view === 'supplement' && round ? `　·　第 ${round.round} 轮事实补件　·　处理专家：${round.createdByName}` : ''}
+            </span>
             <span style={{ flex: 1 }} />
             <span role="status" style={{ ...text14, padding: '2px 10px', borderRadius: 4, background: chip.bg, color: chip.color }}>
               {chip.text}
@@ -338,7 +383,7 @@ export function ExpertTaskPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '0 0 12px', borderBottom: `1px solid ${gy.split}` }}>
             <ol aria-label="处理阶段" style={{ display: 'flex', gap: 28, flex: 1, margin: 0, padding: 0, listStyle: 'none' }}>
               {STAGES.map((s, i) => {
-                const at = view === 'confirm' ? 0 : 1;
+                const at = view === 'confirm' || view === 'supplement' ? 0 : 1;
                 return (
                   <li key={s} aria-current={i === at ? 'step' : undefined} style={{ ...text14, color: i === at ? gy.primary : gy.secondary }}>
                     {i + 1}　{s}
@@ -351,7 +396,16 @@ export function ExpertTaskPage() {
             </button>
           </div>
         </header>
-        {view === 'confirm' ? (
+        {view === 'supplement' ? (
+          <SupplementView
+            taskId={taskId}
+            list={supplements.data}
+            isPending={supplements.isPending}
+            onStart={() => startSupplement()}
+            onRegenerate={() => showView('confirm')}
+            onBack={() => showView(current ? null : 'workup')}
+          />
+        ) : view === 'confirm' ? (
           <ConfirmView
             taskId={taskId}
             workup={w}
@@ -374,6 +428,7 @@ export function ExpertTaskPage() {
           />
         )}
         <ContactRecords taskId={taskId} open={showRecords} onClose={() => setShowRecords(false)} />
+        {supplementDialog}
       </div>
     );
   }
@@ -421,6 +476,9 @@ export function ExpertTaskPage() {
             onClick={() => setContact({ keys: progress.missing.map((f) => f.key), withCalls: true })}
           >
             联系客户
+          </button>
+          <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => startSupplement()}>
+            {supplementOpen ? '查看事实补件' : '发起事实补件'}
           </button>
           <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setShowRecords(true)}>
             处理记录{contacts.data?.length ? `（${contacts.data.length}）` : ''}
@@ -735,6 +793,7 @@ export function ExpertTaskPage() {
         askItems={contact?.ask ? [contact.ask] : []}
       />
       <ContactRecords taskId={taskId} open={showRecords} onClose={() => setShowRecords(false)} />
+      {supplementDialog}
     </div>
   );
 }

@@ -492,6 +492,9 @@ export function EditView({
               </li>
             ))}
           </ol>
+          <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setParams({ view: 'supplement', start: '1' })}>
+            发起事实补件
+          </button>
           <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setShowRecords(true)}>
             处理记录
           </button>
