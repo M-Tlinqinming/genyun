@@ -49,6 +49,11 @@ export function canViewFile(
   return usedInMyAssignedTask && user.memberships.some((m) => m.role === 'expert');
 }
 
+// 运营任务中心：看全部任务、分派和改派负责专家。只有运营；专业人员不能自己领任务或转给别人
+export function canAssignTasks(user: SessionUser): boolean {
+  return isOperator(user);
+}
+
 // 客户组织的登记、开通、合同原件：只有运营。客户、专业人员一律不行
 export function canManageOrganizations(user: SessionUser): boolean {
   return isOperator(user);
