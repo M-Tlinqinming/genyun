@@ -7,7 +7,8 @@ import { Logo, LogoMark } from './Logo';
 const SITE_URL = import.meta.env.VITE_SITE_URL ?? '/';
 
 // 登录、账号恢复共用的页面框架（A01 / A03）：顶栏 + 左侧品牌说明 + 右侧 456 宽卡片
-export function AuthShell({ children }: { children: ReactNode }) {
+// raise：卡片比 A01 往上提的距离。A03 的卡片更高，设计稿把它顶边放在页头下 60px（A01 是 108px）
+export function AuthShell({ children, raise = 0 }: { children: ReactNode; raise?: number }) {
   return (
     <div style={{ minHeight: '100vh', background: gy.canvas }}>
       <header
@@ -63,6 +64,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
             border: `1px solid ${gy.split}`,
             borderRadius: 12,
             padding: '35px 36px 35px',
+            marginTop: -raise,
           }}
         >
           {children}

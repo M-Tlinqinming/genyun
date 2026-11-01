@@ -65,7 +65,7 @@ export function RecoverPage() {
   const step = email ? 2 : 1;
 
   return (
-    <AuthShell>
+    <AuthShell raise={48}>
       <Link to="/login" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: gy.secondary, fontSize: 14 }}>
         <LeftOutlined style={{ fontSize: 12 }} />
         返回登录

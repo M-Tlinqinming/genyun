@@ -297,6 +297,29 @@ test.describe('官网内页', () => {
   });
 
   // 设计审查 #59：点第 3 节高亮落在第 2 节、后两节永远高亮不到、滚到页底停在第 4 节
+  test('法律页面：点目录的平滑滚动停下后，拖滚动条等任何滚动都重新按位置高亮；后退时高亮跟着锚点', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${SITE}/privacy/`);
+    const toc = page.getByRole('navigation', { name: '目录' });
+    const links = toc.getByRole('link');
+    const current = toc.locator('a[aria-current="true"]');
+
+    await links.nth(5).click();
+    await expect(current).toHaveText(await links.nth(5).innerText());
+    await page.waitForTimeout(800);
+    // 不经滚轮、键盘（如拖滚动条）滚到第 3 节
+    const top = await page.locator('.legal__body section').nth(2).evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    await page.evaluate((y) => window.scrollTo({ top: y - 40, behavior: 'instant' }), top);
+    await expect(current).toHaveText(await links.nth(2).innerText());
+
+    // 依次点第 4、6 项，后退回到第 4 项的锚点
+    await links.nth(3).click();
+    await links.nth(5).click();
+    await expect(current).toHaveText(await links.nth(5).innerText());
+    await page.goBack();
+    await expect(current).toHaveText(await links.nth(3).innerText());
+  });
+
   for (const width of [1366, 1440, 1920]) {
     for (const path of ['/terms/', '/privacy/']) {
       test(`${path} ${width} 宽：目录高亮跟着点击和滚动走`, async ({ page }) => {
@@ -407,7 +430,9 @@ test.describe('窄屏导航', () => {
       await toggle.focus();
       await page.keyboard.press('Enter');
       await expect(nav).toBeVisible();
-      await expect(banner.getByRole('button', { name: '收起' })).toHaveAttribute('aria-expanded', 'true');
+      // 名字始终是「菜单」，展开状态只由 aria-expanded 表达
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(banner.getByRole('button', { name: '收起' })).toHaveCount(0);
       await expect(nav.getByRole('link')).toHaveCount(5);
 
       // Tab 进入菜单里的第一个链接，Esc 收起，焦点回到按钮
@@ -430,6 +455,18 @@ test.describe('窄屏导航', () => {
     await expect(banner.getByRole('navigation', { name: '主导航' })).toBeVisible();
     await page.getByRole('main').locator('p').first().click();
     await expect(banner.getByRole('navigation', { name: '主导航' })).toBeHidden();
+  });
+
+  test('展开后滚动页面自动收起', async ({ page }) => {
+    await page.goto(`${SITE}/product/`);
+    const banner = page.getByRole('banner');
+    const toggle = banner.getByRole('button', { name: '菜单' });
+    await toggle.click();
+    await expect(banner.getByRole('navigation', { name: '主导航' })).toBeVisible();
+    await page.mouse.move(195, 600);
+    await page.mouse.wheel(0, 400);
+    await expect(banner.getByRole('navigation', { name: '主导航' })).toBeHidden();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('900 宽以上不显示菜单按钮，导航常显', async ({ page }) => {
