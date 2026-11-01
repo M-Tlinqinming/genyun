@@ -1,0 +1,165 @@
+---
+// 03 适合谁（Paper W01「适合谁」）
+import ContactTrigger from '../ContactTrigger.astro';
+import ArrowIcon from '../ArrowIcon.astro';
+
+const cards = [
+  {
+    dark: false,
+    tag: 'FOR 企业',
+    pill: '按次签约',
+    title: '中小制造企业',
+    body: '安全员不需要懂风险评分或耐火等级。照着问题填写，查不到的先选「稍后补」，其余交给耕云。',
+    points: ['5 步填报，随时保存', '注安师审核后下载整套 Word', '签约付款后开通，一次编制一家企业'],
+  },
+  {
+    dark: true,
+    tag: 'FOR 服务机构',
+    pill: '年度服务',
+    title: '安评、托管与园区服务机构',
+    body: '同时服务多家企业，资料统一归档，成员分工协作。重复的编制交给耕云，您专注客户关系与现场服务。',
+    points: ['多家企业集中管理，进度一目了然', '企业资料长期复用，换年更新不用重填', '管理员分配企业，成员各自负责'],
+  },
+];
+---
+
+<section class="aud" aria-labelledby="aud-title">
+  <div class="wrap aud__inner">
+    <div class="heading-stack">
+      <p class="eyebrow">03 — 适合谁</p>
+      <h2 id="aud-title" class="h2">企业与服务机构批量做</h2>
+    </div>
+    <div class="aud__cards">
+      {
+        cards.map((c) => (
+          <article class:list={['card', { 'card--dark on-dark': c.dark }]}>
+            <div class="card__top">
+              <span class="card__tag">{c.tag}</span>
+              <span class="card__pill">{c.pill}</span>
+            </div>
+            <div class="card__head">
+              <h3 class="card__title">{c.title}</h3>
+              <p class="card__body">{c.body}</p>
+            </div>
+            <ul class="card__points">
+              {c.points.map((p) => <li>· {p}</li>)}
+            </ul>
+            <ContactTrigger class:list={['text-link', { 'text-link--white': c.dark }]}>
+              预约演示
+              <ArrowIcon />
+            </ContactTrigger>
+          </article>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  .aud__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+    padding-top: 120px;
+    padding-bottom: 40px;
+  }
+  .aud__cards {
+    display: flex;
+    gap: 32px;
+  }
+  .card {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 40px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 2px #0b1b330d;
+  }
+  .card--dark {
+    background: var(--gy-brand-ink);
+    box-shadow: none;
+  }
+  .card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card__tag {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.14em;
+    color: var(--gy-brand-blue);
+  }
+  .card__pill {
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: #eff4ff;
+    color: var(--site-link);
+    font-size: 13px;
+    line-height: 20px;
+  }
+  .card__head {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card__title {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 28px;
+    line-height: 40px;
+    color: var(--site-heading);
+  }
+  .card__body {
+    font-size: 15px;
+    line-height: 27px;
+    color: var(--site-body);
+  }
+  .card__points {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 20px;
+    border-top: 1px solid var(--site-line);
+    font-size: 14px;
+    line-height: 22px;
+    color: var(--site-heading);
+  }
+  .card--dark .card__tag {
+    color: var(--gy-brand-gold);
+  }
+  .card--dark .card__pill {
+    background: #edc14724;
+    color: var(--gy-brand-gold);
+  }
+  .card--dark .card__title,
+  .card--dark .card__points {
+    color: #fff;
+  }
+  .card--dark .card__body {
+    color: #ffffffad;
+  }
+  .card--dark .card__points {
+    border-top-color: #ffffff1a;
+  }
+  .card :global(.text-link) {
+    align-self: flex-start;
+  }
+  @media (max-width: 900px) {
+    .aud__cards {
+      flex-direction: column;
+    }
+    .aud__inner {
+      padding-top: 80px;
+    }
+  }
+  @media (max-width: 520px) {
+    .card {
+      padding: 28px 24px;
+    }
+  }
+</style>

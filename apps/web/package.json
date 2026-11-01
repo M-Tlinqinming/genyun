@@ -23,6 +23,7 @@
     "@tiptap/react": "3.32.2",
     "@tiptap/starter-kit": "3.32.2",
     "antd": "6.6.7",
+    "dayjs": "1.11.23",
     "motion": "14.2.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",

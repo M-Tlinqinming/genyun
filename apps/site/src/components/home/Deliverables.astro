@@ -1,0 +1,180 @@
+---
+// 01 交付成果（Paper W01「交付成果」）
+const docs = [
+  {
+    no: 1,
+    color: '#0068BD',
+    title: '生产安全事故<br/>应急预案',
+    toc: [
+      ['1', '总则', '3'],
+      ['2', '风险描述', '7'],
+      ['3', '组织机构及职责', '12'],
+      ['4', '应急响应', '18'],
+      ['5', '专项与现场处置方案', '26'],
+      ['附件', '应急通讯录 · 平面图', '41'],
+    ],
+    summary: '综合、专项与现场处置方案，按企业实际风险组合。',
+  },
+  {
+    no: 2,
+    color: '#23A6AD',
+    title: '生产安全事故<br/>风险评估报告',
+    toc: [
+      ['1', '评估依据与范围', '3'],
+      ['2', '企业概况', '5'],
+      ['3', '危险源辨识', '9'],
+      ['4', '事故风险分析', '15'],
+      ['5', '风险等级与控制措施', '21'],
+      ['6', '评估结论', '28'],
+    ],
+    summary: '按设备、物料和作业场所辨识危险源，给出控制措施。',
+  },
+  {
+    no: 3,
+    color: '#D9AE3A',
+    title: '应急资源<br/>调查报告',
+    toc: [
+      ['1', '调查概述', '3'],
+      ['2', '企业内部应急资源', '5'],
+      ['3', '应急队伍与物资装备', '9'],
+      ['4', '外部救援力量', '14'],
+      ['5', '属地应急机构联络', '17'],
+      ['6', '调查结论', '20'],
+    ],
+    summary: '盘点企业内外部应急资源，属地机构由耕云知识库维护。',
+  },
+];
+---
+
+<section class="deliver" id="deliverables" aria-labelledby="deliver-title">
+  <div class="wrap deliver__inner">
+    <div class="heading-stack">
+      <p class="eyebrow">01 — 交付成果</p>
+      <h2 id="deliver-title" class="h2">一次填报，<br />迎检需要的一整套文件。</h2>
+    </div>
+    <ul class="docs">
+      {
+        docs.map((doc) => (
+          <li class="doc" style={`--bar:${doc.color}`}>
+            <div class="doc__meta">
+              <span>DOC {doc.no} / 3</span>
+              <span>V1 · WORD</span>
+            </div>
+            <div class="doc__head">
+              <p class="doc__company">惠州 ●● 制造有限公司</p>
+              <h3 class="doc__title" set:html={doc.title} />
+            </div>
+            <ol class="doc__toc" aria-label={`${doc.title.replace('<br/>', '')}目录`}>
+              {doc.toc.map(([no, name, page]) => (
+                <li>
+                  <span class="doc__name">{no}　{name}</span>
+                  <span class="doc__page">{page}</span>
+                </li>
+              ))}
+            </ol>
+            <p class="doc__summary">{doc.summary}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .deliver__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 64px;
+    padding-top: 140px;
+    padding-bottom: 120px;
+  }
+  .docs {
+    display: flex;
+    gap: 32px;
+  }
+  .doc {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+    position: relative;
+    overflow: clip;
+    padding: 40px 36px 32px;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: var(--shadow-doc);
+  }
+  .doc::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 4px;
+    background: var(--bar);
+  }
+  .doc__meta {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.12em;
+    color: var(--site-muted);
+  }
+  .doc__head {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .doc__company {
+    font-size: 12px;
+    line-height: 20px;
+    color: var(--site-muted);
+  }
+  .doc__title {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 26px;
+    line-height: 36px;
+    color: var(--site-heading);
+  }
+  .doc__toc {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .doc__toc li {
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--site-body);
+  }
+  .doc__name {
+    flex: 1;
+    min-width: 0;
+  }
+  .doc__page {
+    color: var(--site-muted);
+  }
+  .doc__summary {
+    margin-top: auto;
+    padding-top: 28px;
+    border-top: 1px solid var(--site-line);
+    font-size: 13px;
+    line-height: 22px;
+    color: var(--site-body);
+  }
+  @media (max-width: 1000px) {
+    .docs {
+      flex-direction: column;
+    }
+  }
+  @media (max-width: 720px) {
+    .deliver__inner {
+      padding-top: 80px;
+      padding-bottom: 72px;
+      gap: 40px;
+    }
+  }
+</style>

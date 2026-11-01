@@ -78,14 +78,9 @@ body {
   outline: 2px solid var(--gy-primary);
   border-radius: 4px;
 }
-/* 内容区宽 1152，屏幕窄于侧栏 + 1152 + 两边留白时（如 1366）两边留 24px（E18-08） */
-@media (max-width: 1423px) {
-  .gy-edit-page {
-    padding: 0 24px;
-  }
-}
 .gy-editor-box:focus-within {
-  outline: 2px solid var(--gy-selected);
+  outline: 2px solid var(--gy-primary);
+  outline-offset: -1px;
 }
 
 /* 系统设置了「减少动态效果」时，组件库的动效也一律不动 */
@@ -94,4 +89,34 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* 工作台内容区：上 36、左右 32、下 48，内容宽 1152 */
+.gy-content {
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 36px 32px 48px;
+}
+
+/* 专业整理右栏（原件对照、评价依据、生成结构预览）宽 360 */
+.gy-side-panel {
+  width: 360px;
+  flex-shrink: 0;
+}
+
+/* 屏幕不足 1440 时（如 1366×768），三栏全宽工作台按 14 页 E18-08：左右留白 24，右栏 272，
+   中栏多出来的宽度留给企业事实。表单类页面不受影响，仍留 32 */
+@media (max-width: 1439.98px) {
+  .gy-content:has(.gy-wide-workbench) {
+    padding-inline: 24px;
+  }
+  .gy-side-panel {
+    width: 272px;
+  }
+}
+
+/* 字段出错时，组件库会把字段的下外边距抵掉，出错提示直接贴着下一个字段的标题。
+   在出错提示下面补 8px，提示和下一个字段分得开 */
+.gy-form-explain-gap .ant-form-item-explain {
+  margin-bottom: 8px;
 }

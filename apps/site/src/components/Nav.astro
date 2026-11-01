@@ -1,0 +1,99 @@
+---
+import Logo from './Logo.astro';
+import ContactTrigger from './ContactTrigger.astro';
+import { LOGIN_URL, NAV, type NavKey } from '../site';
+
+interface Props {
+  active?: NavKey;
+  /** 首页 Hero 里导航压在深色背景上，绝对定位 */
+  overlay?: boolean;
+}
+const { active, overlay = false } = Astro.props;
+---
+
+<!-- 首页导航放在 Hero 的 section 里，header 默认就不算页眉了，这里显式标出 -->
+<header class:list={['nav', 'on-dark', { 'nav--overlay': overlay }]} role="banner">
+  <div class="wrap nav__inner">
+    <a href="/" class="nav__home" aria-label="耕云 GENYUN 首页"><Logo /></a>
+    <nav aria-label="主导航" class="nav__menu">
+      <ul>
+        {
+          NAV.map((item) => (
+            <li>
+              <a
+                href={item.href}
+                class:list={['nav__link', { 'is-active': item.key === active }]}
+                aria-current={item.key === active ? 'page' : undefined}
+              >
+                {item.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+    <div class="nav__actions">
+      <a href={LOGIN_URL} class="nav__link">登录</a>
+      <ContactTrigger class="btn-gold">预约演示</ContactTrigger>
+    </div>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: relative;
+    z-index: 5;
+    height: 88px;
+    border-bottom: 1px solid #ffffff14;
+  }
+  .nav--overlay {
+    position: absolute;
+    inset: 0 0 auto 0;
+  }
+  .nav__inner {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  .nav__home {
+    display: inline-flex;
+    border-radius: 6px;
+  }
+  .nav__menu ul {
+    display: flex;
+    gap: 40px;
+  }
+  .nav__link {
+    font-size: 14px;
+    line-height: 22px;
+    color: #ffffffc7;
+    transition: color 0.15s ease;
+  }
+  .nav__link:hover,
+  .nav__link.is-active {
+    color: #fff;
+  }
+  .nav__link.is-active {
+    font-weight: 500;
+  }
+  .nav__actions {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  @media (max-width: 900px) {
+    .nav__menu {
+      display: none;
+    }
+  }
+  @media (max-width: 480px) {
+    .nav {
+      height: 72px;
+    }
+    .nav__actions {
+      gap: 16px;
+    }
+  }
+</style>

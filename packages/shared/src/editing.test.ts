@@ -130,6 +130,7 @@ describe('正文编辑：整份文档', () => {
 describe('保存请求格式', () => {
   const ok = {
     saveId: '3f1c2b9e-1d2a-4c5b-8e7f-0a1b2c3d4e5f',
+    batchId: '6a1c2b9e-1d2a-4c5b-8e7f-0a1b2c3d4e5f',
     baseRev: 0,
     blocks: [{ type: 'paragraph', text: ['甲'] }],
     note: '按名册更正联系人',
@@ -140,5 +141,17 @@ describe('保存请求格式', () => {
   });
   it('块的类型只能是段落、列表或锁定块', () => {
     expect(sectionSaveSchema.safeParse({ ...ok, blocks: [{ type: 'table', header: [], rows: [] }] }).success).toBe(false);
+  });
+});
+
+describe('锁定块的名称', () => {
+  it('没有表题、图题时写「本节第 N 个表格 / 张图」', () => {
+    const bare: Block = { type: 'table', header: [['甲']], rows: [] };
+    const pic: Block = { type: 'figure', png: new Uint8Array([1]), width: 1, height: 1 };
+    expect(editableOf([table, bare, pic]).map((b) => (b.type === 'locked' ? b.label : ''))).toEqual([
+      '表格：表 1 应急通讯录',
+      '表格：本节第 2 个表格',
+      '图：本节第 1 张图',
+    ]);
   });
 });

@@ -25,11 +25,12 @@ if (!password) throw new Error('请用 DEMO_PASSWORD 环境变量指定演示密
 const { db, close } = await openDatabase(process.env.DATABASE_URL ?? '.data/dev-db');
 const passwordHash = await hashPassword(password);
 
-const contract = { contractStartsAt: '2026-01-01', contractEndsAt: '2027-12-31' };
+// 两家都按已开通处理（M3 运营开通前的演示数据）
+const contract = { contractStartsAt: '2026-01-01', contractEndsAt: '2027-12-31', activatedAt: new Date('2026-01-01T00:00:00+08:00') };
 const [internal] = await db.insert(organizations).values({ name: '耕云', kind: 'internal' }).returning();
-const [agency] = await db.insert(organizations).values({ name: '示例安全咨询机构', kind: 'customer', ...contract }).returning();
+const [agency] = await db.insert(organizations).values({ name: '示例安全咨询机构', kind: 'customer', region: '广东省惠州市', contactName: '林管理员', contactPhone: '138 0000 6201', ...contract }).returning();
 // 飞宇单独一个客户组织：专家处理（M2）用的演示任务放这里，不影响上面机构的演示与测试数据
-const [feiyuOrg] = await db.insert(organizations).values({ name: '飞宇演示客户', kind: 'customer', ...contract }).returning();
+const [feiyuOrg] = await db.insert(organizations).values({ name: '飞宇演示客户', kind: 'customer', region: '广东省惠州市', contactName: '陈志刚', contactPhone: '139 0000 3388', ...contract }).returning();
 
 const people = [
   { email: 'admin@demo.genyun.net.cn', name: '林管理员', orgId: agency!.id, role: 'customer_admin' as const },

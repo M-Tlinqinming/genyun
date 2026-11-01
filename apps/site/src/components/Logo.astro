@@ -1,0 +1,46 @@
+---
+// 正式 Logo 横版 · 反白（Paper 10 页「Logo 横版 · 反白」）。纹路从 Paper 导出为 public/images/logo-mark.svg。
+interface Props {
+  /** 页脚里 GENYUN 的透明度比导航低一档 */
+  variant?: 'nav' | 'footer';
+}
+const { variant = 'nav' } = Astro.props;
+---
+
+<span class:list={['logo', `logo--${variant}`]}>
+  <img src="/images/logo-mark.svg" width="76" height="31" alt="" />
+  <span class="logo__words">
+    <span class="logo__cn">耕云</span>
+    <span class="logo__en" aria-hidden="true">GENYUN</span>
+  </span>
+</span>
+
+<style>
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo__words {
+    display: flex;
+    flex-direction: column;
+  }
+  .logo__cn {
+    color: #fff;
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 24px;
+    letter-spacing: 0.2em;
+  }
+  .logo__en {
+    color: #ffffff8c;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    line-height: 12px;
+    letter-spacing: 0.42em;
+  }
+  .logo--footer .logo__en {
+    color: #ffffff80;
+  }
+</style>

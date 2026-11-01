@@ -58,3 +58,8 @@ export function canViewTaskWork(user: SessionUser, task: { assignedExpertId: str
 export function canEditTaskWork(user: SessionUser, task: { assignedExpertId: string | null }): boolean {
   return task.assignedExpertId === user.id && isExpert(user);
 }
+
+// 客户组织的登记、开通、合同原件：只有运营。客户、专业人员一律不行
+export function canManageOrganizations(user: SessionUser): boolean {
+  return isOperator(user);
+}

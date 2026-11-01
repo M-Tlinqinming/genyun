@@ -33,19 +33,25 @@ export interface SectionEdit {
 
 export const EDIT_LIMITS = { blocks: 400, textChars: 5000, note: 200 } as const;
 
-function lockedLabel(block: Block): string {
-  if (block.type === 'table') return `表格：${block.caption?.trim() || '（无表题）'}`;
-  if (block.type === 'figure') return `图：${block.caption?.trim() || '（无图题）'}`;
+function lockedLabel(block: Block, nth: number): string {
+  if (block.type === 'table') return `表格：${block.caption?.trim() || `本节第 ${nth} 个表格`}`;
+  if (block.type === 'figure') return `图：${block.caption?.trim() || `本节第 ${nth} 张图`}`;
   return '';
 }
 
 export function editableOf(blocks: Block[]): EditBlock[] {
+  const seen = { table: 0, figure: 0 };
   return blocks.map((b, index): EditBlock => {
     if (b.type === 'paragraph') return b.align ? { type: 'paragraph', text: b.text, align: b.align } : { type: 'paragraph', text: b.text };
     if (b.type === 'list') return b.ordered === undefined ? { type: 'list', items: b.items } : { type: 'list', items: b.items, ordered: b.ordered };
-    return { type: 'locked', index, label: lockedLabel(b) };
+    return { type: 'locked', index, label: lockedLabel(b, ++seen[b.type]) };
   });
 }
+
+/** 锁定的表格和图在编辑页里只读显示：表格给内容，图给缩略图（data URL） */
+export type LockedPreview =
+  | { index: number; kind: 'table'; header: string[][]; rows: string[][] }
+  | { index: number; kind: 'figure'; src: string };
 
 /** 把锁定块换回原来的表格和图 */
 export function resolveEdit(original: Block[], edit: EditBlock[]): Block[] {
@@ -149,8 +155,12 @@ export const editBlockSchema = z.discriminatedUnion('type', [
 
 // saveId：页面每次点保存生成一个；同一次保存重试时不变，后台据此不重复记修订（结果不确定时先查询）
 // baseRev：打开这一节时读到的修订次数（没改过为 0）
+// batchId：打开编辑页时的那一批草稿；之后重新生成过就拒绝，免得改动写进新生成的稿
+// aiPromptVersion：本节这次修改用过「帮我改写这段」并采用了 AI 的文字时，带上提示词版本
 export const sectionSaveSchema = z.object({
   saveId: z.uuid(),
+  batchId: z.uuid(),
+  aiPromptVersion: z.string().trim().min(1).max(40).optional(),
   baseRev: z.number().int().min(0),
   blocks: z.array(editBlockSchema).max(EDIT_LIMITS.blocks),
   note: z
@@ -174,6 +184,8 @@ export interface SectionView {
   rev: number;
   /** 最后一次保存；没改过为 null */
   saved: { note: string; byName: string; at: string } | null;
+  /** 这一节里锁定的表格和图的内容（只读显示） */
+  locked: LockedPreview[];
 }
 
 export interface EditDocumentView {
@@ -195,4 +207,6 @@ export interface RewriteResult {
   text: string;
   source: 'ai' | 'system';
   note: string;
+  /** 用的提示词版本；没开启 AI 时为 null。保存时带上，记进修订记录 */
+  promptVersion: string | null;
 }

@@ -48,6 +48,17 @@ export const organizations = pgTable('organizations', {
   // 合同有效期（北京时间日期，起止日都算在内）；有效期内才能新建任务。运营开通时登记，未登记为空
   contractStartsAt: date('contract_starts_at', { mode: 'string' }),
   contractEndsAt: date('contract_ends_at', { mode: 'string' }),
+  // 以下为运营登记的客户组织资料（M3）；内部组织和 M3 之前建的演示组织为空
+  region: text('region'),
+  socialCreditCode: text('social_credit_code'),
+  contactName: text('contact_name'),
+  contactPhone: text('contact_phone'),
+  contactEmail: text('contact_email'),
+  note: text('note'),
+  registeredBy: uuid('registered_by'),
+  // 运营开通的时间；为空 = 登记了还没开通（列表里的「待开通」）
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  activatedBy: uuid('activated_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -492,6 +503,8 @@ export const draftRevisions = pgTable(
     note: text('note').notNull(),
     before: jsonb('before').$type<EditBlock[]>().notNull(),
     after: jsonb('after').$type<EditBlock[]>().notNull(),
+    // 这次修改采用了「帮我改写这段」的 AI 文字时，记下提示词版本；没用 AI 为 null
+    aiPromptVersion: text('ai_prompt_version'),
     // 保存后这一节的 rev 和整份的 version
     rev: integer('rev').notNull(),
     version: integer('version').notNull(),
@@ -583,4 +596,54 @@ export const drawingPages = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.fileId, t.page] })],
+);
+
+// 合同登记（M3）：每次开通、续期各一行；组织表上的合同有效期取最新一行，其他地方的判断不用改。
+// 合同原件只存文件 ID（kind = contract，仅运营可见）。系统不记金额，「合同款已到账」只记谁在何时确认
+export const serviceScopeKind = pgEnum('service_scope_kind', ['single', 'annual']);
+export const organizationContracts = pgTable('organization_contracts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  number: text('number').notNull(),
+  scopeKind: serviceScopeKind('scope_kind').notNull(),
+  // 年度服务包含几家企业；编制 1 家时为空
+  scopeEnterprises: integer('scope_enterprises'),
+  startsAt: date('starts_at', { mode: 'string' }).notNull(),
+  endsAt: date('ends_at', { mode: 'string' }).notNull(),
+  fileId: uuid('file_id')
+    .notNull()
+    .references(() => files.id),
+  paymentConfirmedBy: uuid('payment_confirmed_by')
+    .notNull()
+    .references(() => users.id),
+  paymentConfirmedAt: timestamp('payment_confirmed_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// 邀请（M3）：开通时邀请首位管理员；以后客户管理员邀请成员也用这张表。
+// 链接里的令牌只存哈希；接受、撤销后链接失效
+export const organizationInvitations = pgTable(
+  'organization_invitations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    role: role('role').notNull(),
+    email: text('email').notNull(),
+    name: text('name').notNull(),
+    phone: text('phone'),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    invitedBy: uuid('invited_by')
+      .notNull()
+      .references(() => users.id),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    acceptedBy: uuid('accepted_by').references(() => users.id),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('organization_invitations_org').on(t.orgId)],
 );
