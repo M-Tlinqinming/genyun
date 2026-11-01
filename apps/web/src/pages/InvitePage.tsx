@@ -2,8 +2,10 @@ import { acceptInvitationSchema, passwordChecks, passwordProblem, ROLES, type Ac
 import { Alert, Button, Checkbox, Form, Input } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { useSession } from '../auth/session';
 import { useAcceptInvitation, useInvitation, useRequestResend, type InvitationView } from '../api/invitations';
 import { ApiError } from '../api/request';
+import type { SessionUser } from '../auth/api';
 import { AccountShell, accountCard } from '../components/AccountShell';
 import { Loading, requiredAfter } from '../components/ui';
 import { gy } from '../theme/tokens';
@@ -13,6 +15,13 @@ import { homeOf } from './LoginPage';
 const card: CSSProperties = { ...accountCard, borderRadius: 10, padding: 36, display: 'flex', flexDirection: 'column', gap: 20 };
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const text12: CSSProperties = { fontSize: 12, lineHeight: '20px' };
+// 邮箱不在连字符处折行
+const noWrap: CSSProperties = { whiteSpace: 'nowrap' };
+const PHONE = '0752-5200831';
+
+function Email({ value }: { value: string }) {
+  return <span style={noWrap}>{value}</span>;
+}
 
 // MM.DD HH:mm（北京时间）
 function shortTime(iso: string): string {
@@ -38,7 +47,7 @@ function Heading({ title, children }: { title: string; children: ReactNode }) {
 }
 
 // 两端对齐的信息行：有效期内是浅蓝底，失效后是浅灰底带边框
-function InfoBox({ rows, muted = false }: { rows: [string, string][]; muted?: boolean }) {
+function InfoBox({ rows, muted = false }: { rows: [string, ReactNode][]; muted?: boolean }) {
   return (
     <dl
       style={{
@@ -80,6 +89,8 @@ function ClockBadge() {
 export function InvitePage() {
   const { token = '' } = useParams();
   const invitation = useInvitation(token);
+  const session = useSession();
+  const me = session.data ?? null;
 
   let content: ReactNode;
   if (invitation.isPending) content = <Loading />;
@@ -88,26 +99,26 @@ export function InvitePage() {
     const inv = invitation.data;
     content =
       inv.state === 'valid' ? (
-        <AcceptForm token={token} inv={inv} />
+        <AcceptForm token={token} inv={inv} signedInAs={me && me.email !== inv.email ? me : null} />
       ) : inv.state === 'expired' ? (
         <Expired token={token} inv={inv} />
       ) : (
-        <Used inv={inv} />
+        <Used inv={inv} self={me?.email === inv.email ? me : null} />
       );
   }
   const form = invitation.data?.state === 'valid';
   return (
-    <AccountShell cardTop={form ? 60 : 108}>
+    <AccountShell cardTop={form ? 40 : 108}>
       <section style={card}>{content}</section>
     </AccountShell>
   );
 }
 
-function AcceptForm({ token, inv }: { token: string; inv: InvitationView }) {
+function AcceptForm({ token, inv, signedInAs }: { token: string; inv: InvitationView; signedInAs: SessionUser | null }) {
   const accept = useAcceptInvitation(token);
   const navigate = useNavigate();
   const [form] = Form.useForm<AcceptInvitationInput>();
-  const password = Form.useWatch('password', form) ?? '';
+  const password: string = Form.useWatch('password', form) ?? '';
 
   const onFinish = (values: AcceptInvitationInput) => {
     accept.mutate(values, { onSuccess: (user) => navigate(homeOf(user), { replace: true }) });
@@ -115,6 +126,18 @@ function AcceptForm({ token, inv }: { token: string; inv: InvitationView }) {
 
   return (
     <>
+      {signedInAs && (
+        // 已登录其他账号：接受后会换成受邀邮箱登录，同一浏览器的其他页面也会跟着换
+        <Alert
+          type="info"
+          showIcon
+          title={
+            <>
+              当前登录 {signedInAs.name}（<Email value={signedInAs.email} />），接受后改用 <Email value={inv.email} /> 登录
+            </>
+          }
+        />
+      )}
       <Heading title={`加入${inv.orgName}`}>{inv.inviterName}邀请您加入耕云工作空间。</Heading>
       <InfoBox
         rows={[
@@ -133,7 +156,13 @@ function AcceptForm({ token, inv }: { token: string; inv: InvitationView }) {
         style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
       >
         <Form.Item label="邮箱" htmlFor="invite-email" style={{ marginBottom: 0 }}>
-          <Input id="invite-email" size="large" value={inv.email} disabled />
+          <Input
+            id="invite-email"
+            size="large"
+            value={inv.email}
+            readOnly
+            style={{ color: gy.secondary, background: '#F5F5F5' }}
+          />
         </Form.Item>
         <Form.Item name="name" label="姓名" required rules={[{ validator: (_, v) => check('name', v) }]} style={{ marginBottom: 0 }}>
           <Input size="large" placeholder="请输入真实姓名" autoComplete="name" maxLength={50} />
@@ -147,11 +176,15 @@ function AcceptForm({ token, inv }: { token: string; inv: InvitationView }) {
             <Input.Password id="invite-password" size="large" placeholder="设置登录密码" autoComplete="new-password" />
           </Form.Item>
           <ul aria-label="密码要求" style={{ display: 'flex', gap: 16, margin: '8px 0 0', padding: 0, listStyle: 'none' }}>
-            {passwordChecks(password, inv.email).map((c) => (
-              <li key={c.label} style={{ ...text12, color: c.ok ? gy.success : gy.tertiary }}>
-                {c.ok ? `✓ ${c.label}` : c.label}
-              </li>
-            ))}
+            {passwordChecks(password, inv.email).map((c) => {
+              // 还没填密码时三条都显示未满足（「不与邮箱相同」对空密码也算满足，不能先打勾）
+              const ok = password !== '' && c.ok;
+              return (
+                <li key={c.label} style={{ ...text12, color: ok ? gy.success : gy.tertiary }}>
+                  {ok ? `✓ ${c.label}` : c.label}
+                </li>
+              );
+            })}
           </ul>
         </Form.Item>
         <Form.Item name="agreed" valuePropName="checked" rules={[{ validator: (_, v) => check('agreed', v) }]} style={{ marginBottom: 0 }}>
@@ -181,11 +214,19 @@ function Expired({ token, inv }: { token: string; inv: InvitationView }) {
         rows={[
           ['机构', inv.orgName],
           ['邀请人', inv.inviterName],
-          ['受邀邮箱', inv.email],
+          ['受邀邮箱', <Email value={inv.email} />],
         ]}
       />
       {resend.isSuccess ? (
-        <Alert type="success" showIcon title={`已通知${inv.inviterName}。重新发送后，新邀请会发到 ${inv.email}`} />
+        <Alert
+          type="success"
+          showIcon
+          title={
+            <>
+              已通知{inv.inviterName}。重新发送后，新邀请会发到 <Email value={inv.email} />
+            </>
+          }
+        />
       ) : (
         <>
           {resend.error && <Alert type="error" showIcon title={resend.error.message} />}
@@ -201,30 +242,53 @@ function Expired({ token, inv }: { token: string; inv: InvitationView }) {
   );
 }
 
-// 已使用、已作废（10 页 A02 设计注释）
-function Used({ inv }: { inv: InvitationView }) {
+// 已使用、已作废（10 页 A02 设计注释）。本人已登录时直接进工作台
+function Used({ inv, self }: { inv: InvitationView; self: SessionUser | null }) {
   const accepted = inv.state === 'accepted';
   return (
     <>
       <Heading title={accepted ? '邀请已使用' : '邀请已作废'}>
-        {accepted
-          ? `这封邀请已经用过了。请用 ${inv.email} 登录。`
-          : `这封邀请已被撤销，不能再用来注册。如需加入${inv.orgName}，请联系机构管理员。`}
+        {accepted ? (
+          <>
+            这封邀请已经用过了。请用 <Email value={inv.email} /> 登录。
+          </>
+        ) : (
+          `这封邀请已作废。耕云可能已重新发送，请打开邮箱里最新的一封；如有疑问请致电耕云 ${PHONE}。`
+        )}
       </Heading>
-      <Button type="primary" size="large" block href="/login">
-        去登录
-      </Button>
+      {accepted && self ? (
+        <Button type="primary" size="large" block href={homeOf(self)}>
+          进入工作台
+        </Button>
+      ) : (
+        <Button type="primary" size="large" block href="/login">
+          去登录
+        </Button>
+      )}
     </>
   );
 }
 
 function Unavailable({ notFound }: { notFound: boolean }) {
+  if (notFound) {
+    return (
+      <>
+        <Heading title="找不到这封邀请">
+          请检查链接是否完整复制。如果还是打不开，请联系邀请人重新发送，或致电耕云 {PHONE}。
+        </Heading>
+        <Button type="primary" size="large" block href="/login">
+          去登录
+        </Button>
+      </>
+    );
+  }
   return (
     <>
-      <Heading title={notFound ? '找不到这封邀请' : '暂时打不开这封邀请'}>
-        {notFound ? '请检查链接是否完整复制。如果还是打不开，请联系邀请人重新发送。' : '请刷新页面重试。'}
-      </Heading>
-      <Button type="primary" size="large" block href="/login">
+      <Heading title="暂时打不开这封邀请">请重新加载页面。还是不行请致电耕云 {PHONE}。</Heading>
+      <Button type="primary" size="large" block onClick={() => window.location.reload()}>
+        重新加载
+      </Button>
+      <Button size="large" block href="/login">
         去登录
       </Button>
     </>

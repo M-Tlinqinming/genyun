@@ -68,12 +68,17 @@ test('首位管理员设姓名和密码后直接进入客户工作台；同一�
   await expect(info).toContainText('可见企业全部企业');
   await expect(info).toContainText(/邀请有效期至 \d\d\.\d\d \d\d:\d\d/);
   await expect(page.getByLabel('邮箱')).toHaveValue(EMAIL);
-  await expect(page.getByLabel('邮箱')).toBeDisabled();
+  // 只读而不是禁用：文字看得清
+  await expect(page.getByLabel('邮箱')).toHaveAttribute('readonly', '');
+  await expect(page.getByLabel('邮箱')).toHaveCSS('color', 'rgb(89, 97, 112)');
   await expect(page.getByLabel('姓名')).toHaveValue('李经理');
+
+  // 还没填密码：三条规则都没打勾
+  const rules = page.getByRole('list', { name: '密码要求' });
+  await expect(rules).not.toContainText('✓');
 
   // 没同意协议、密码不合规：不能提交，说明怎么改
   await page.getByLabel('设置密码').fill('abc');
-  const rules = page.getByRole('list', { name: '密码要求' });
   await expect(rules).toContainText('至少 8 位');
   await expect(rules).not.toContainText('✓ 至少 8 位');
   await page.getByRole('button', { name: '接受邀请并进入' }).click();
@@ -91,6 +96,12 @@ test('首位管理员设姓名和密码后直接进入客户工作台；同一�
   await expect(page.getByText('请先阅读并同意服务协议和隐私政策')).toHaveCount(0);
   await page.screenshot({ path: 'out/m3-2-A02-valid.png' });
   await page.getByRole('button', { name: '接受邀请并进入' }).click();
+  await expect(page).toHaveURL(/\/customer$/);
+
+  // 本人还登录着时再点链接：已使用，直接进工作台
+  await page.goto(link);
+  await expect(page.getByRole('heading', { name: '邀请已使用' })).toBeVisible();
+  await page.getByRole('link', { name: '进入工作台' }).click();
   await expect(page).toHaveURL(/\/customer$/);
 
   // 退出后用设好的密码能登录；再点同一链接显示已使用
@@ -111,6 +122,71 @@ test('链接不完整时说明怎么办', async ({ page }) => {
   await page.goto('/invite/not-a-real-invitation-token-000000');
   await expect(page.getByRole('heading', { name: '找不到这封邀请' })).toBeVisible();
   await expect(page.getByText('请检查链接是否完整复制')).toBeVisible();
+  await expect(page.getByText(/致电耕云 0752-5200831/)).toBeVisible();
+});
+
+test('服务出错时说业务话、主按钮是重新加载；提交时出错也不显示英文', async ({ page }) => {
+  const token = 'broken-invitation-token-for-e2e-0001';
+  await page.route(`**/api/invitations/${token}`, (route) =>
+    route.fulfill({ status: 500, json: { statusCode: 500, message: 'Internal server error' } }),
+  );
+  await page.goto(`/invite/${token}`);
+  await expect(page.getByRole('heading', { name: '暂时打不开这封邀请' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重新加载' })).toBeVisible();
+  await expect(page.getByText('Internal server error')).toHaveCount(0);
+
+  // 能打开，但提交时服务出错 / 断网
+  await page.unroute(`**/api/invitations/${token}`);
+  await page.route(`**/api/invitations/${token}`, (route) =>
+    route.fulfill({
+      json: {
+        state: 'valid',
+        orgName: ORG,
+        inviterName: '耕云运营',
+        role: 'customer_admin',
+        email: 'err@example.cn',
+        name: '错经理',
+        expiresAt: '2099-10-27T02:20:00.000Z',
+      },
+    }),
+  );
+  await page.route(`**/api/invitations/${token}/accept`, (route) =>
+    route.fulfill({ status: 502, contentType: 'text/html', body: '<html>Bad Gateway</html>' }),
+  );
+  await page.getByRole('button', { name: '重新加载' }).click();
+  await page.getByLabel('设置密码').fill('genyun2026');
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: '接受邀请并进入' }).click();
+  await expect(page.getByText('耕云服务暂时出了问题，请稍后再试。着急的话请致电耕云 0752-5200831')).toBeVisible();
+  await page.unroute(`**/api/invitations/${token}/accept`);
+  await page.route(`**/api/invitations/${token}/accept`, (route) => route.abort('internetdisconnected'));
+  await page.getByRole('button', { name: '接受邀请并进入' }).click();
+  await expect(page.getByText(/网络连不上耕云/)).toBeVisible();
+  await expect(page.getByText('Failed to fetch')).toHaveCount(0);
+});
+
+test('已登录其他账号时打开邀请：提示接受后会换账号', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByPlaceholder('请输入邮箱').fill('admin@demo.genyun.net.cn');
+  await page.getByPlaceholder('请输入密码').fill('e2e-password');
+  await page.getByRole('button', { name: /登\s*录/ }).click();
+  await expect(page).toHaveURL(/\/customer$/);
+  const token = 'other-account-invitation-token-0001';
+  await page.route(`**/api/invitations/${token}`, (route) =>
+    route.fulfill({
+      json: {
+        state: 'valid',
+        orgName: ORG,
+        inviterName: '耕云运营',
+        role: 'customer_admin',
+        email: 'new-admin@example.cn',
+        name: '新经理',
+        expiresAt: '2099-10-27T02:20:00.000Z',
+      },
+    }),
+  );
+  await page.goto(`/invite/${token}`);
+  await expect(page.getByText(/当前登录 .+（admin@demo\.genyun\.net\.cn），接受后改用 new-admin@example\.cn 登录/)).toBeVisible();
 });
 
 test('邀请过期：可以请邀请人重新发送，不能注册', async ({ page }) => {

@@ -43,7 +43,8 @@ test('多页消防设施布置图：默认第 1 页；专家改成第 2、3 页�
   await customerUploadsFirePlan();
   await openFigures(page);
 
-  await expect(plan(page)).toContainText('消防设施布置图');
+  // 第一次读页数要先起转换线程（本机忙时 3–6 秒），放宽等待
+  await expect(plan(page)).toContainText('消防设施布置图', { timeout: 30_000 });
   await expect(plan(page)).toContainText('共 3 页 · 已选 1 页（默认）');
   await expect(card(page)).toContainText('总平面布置图、紧急疏散示意图：客户没有上传');
   // 三页缩略图都转出来了

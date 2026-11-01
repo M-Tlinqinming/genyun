@@ -10,7 +10,7 @@ const SITE_URL = import.meta.env.VITE_SITE_URL ?? '/';
 const SLOGAN_TOP = 140;
 
 // 账户页框架：登录、接受邀请共用（Paper 10 页 A01 / A02）。
-// cardTop 是右侧卡片距顶栏的距离：登录 108，接受邀请表单较高用 60
+// cardTop 是右侧卡片距顶栏的距离：登录 108，接受邀请表单较高用 40（1366×768 下按钮留在首屏）
 export function AccountShell({ children, cardTop = 108 }: { children: ReactNode; cardTop?: number }) {
   return (
     <div style={{ minHeight: '100vh', background: gy.canvas }}>

@@ -11,5 +11,5 @@ const TYPES = [
 export function FileTypeIcon({ contentType }: { contentType: string }) {
   const t = TYPES.find((x) => x.match.test(contentType));
   const Icon = t?.Icon ?? FileOutlined;
-  return <Icon aria-label={t?.label ?? '文件'} style={{ fontSize: 20, color: t?.color ?? '#697386', flexShrink: 0 }} />;
+  return <Icon aria-label={t?.label ?? '文件'} style={{ fontSize: 20, color: t?.color ?? '#6B7484', flexShrink: 0 }} />;
 }
