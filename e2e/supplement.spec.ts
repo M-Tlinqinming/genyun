@@ -52,7 +52,9 @@ test('飞宇换了应急联系人：专家发起补件，客户回应，专家�
   await card.getByRole('button', { name: '提交本轮补充' }).click();
   await expect(card.getByRole('alert')).toHaveText('请勾选确认');
   await card.getByRole('checkbox').check();
-  await customer.screenshot({ path: 'test-results/acceptance/m2-13-客户回应.png', fullPage: true });
+  // 客户页的顶栏和侧栏是 sticky，整页截图会错位，截当前视口
+  await customer.getByRole('region', { name: '请确认企业事实' }).scrollIntoViewIfNeeded();
+  await customer.screenshot({ path: 'test-results/acceptance/m2-13-客户回应.png' });
   await card.getByRole('button', { name: '提交本轮补充' }).click();
   await expect(customer.getByRole('region', { name: '已提交的事实补件' })).toContainText('等待耕云核实');
   await customer.close();
