@@ -53,7 +53,7 @@ export function EnterpriseDocumentsTab({ enterpriseId, orgId }: { enterpriseId: 
         client.setQueryData(enterpriseDocumentsKey(enterpriseId), await uploadEnterpriseDocument(enterpriseId, fileId));
       } catch (err) {
         failed++;
-        message.error(err instanceof ApiError ? err.message : `${file.name} 上传时连接中断，请重试`);
+        message.error(err instanceof ApiError && err.status > 0 ? err.message : `${file.name} 上传时连接中断，请重试`);
       }
     }
     setUploading(false);
@@ -250,7 +250,7 @@ function VersionsDrawer({
       onNewVersion(next);
       message.success(`已保存为 V${next.versions[0]!.version}`);
     } catch (err) {
-      message.error(err instanceof ApiError ? err.message : '上传时连接中断，请重试');
+      message.error(err instanceof ApiError && err.status > 0 ? err.message : '上传时连接中断，请重试');
     } finally {
       setUploading(false);
     }

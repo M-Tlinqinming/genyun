@@ -11,7 +11,7 @@ import type {
   ServiceScopeKind,
 } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ApiError, request } from './request';
+import { request } from './request';
 
 // 运营看到的客户组织（Paper 16 页 I02）
 export interface OperatorOrg {
@@ -156,16 +156,8 @@ export function useInviteAdmin(id: string) {
 export async function uploadContractFile(orgId: string, file: File): Promise<ContractFile> {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`/api/operator/organizations/${orgId}/contract-file`, {
-    method: 'POST',
-    credentials: 'include',
-    body: form,
-  });
-  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!res.ok) {
-    throw new ApiError(res.status, typeof body?.message === 'string' ? body.message : '上传失败，请重新上传', body);
-  }
-  return body as unknown as ContractFile;
+  // 走 request：服务出错、断网时提示和其他请求一样
+  return request<ContractFile>(`/operator/organizations/${orgId}/contract-file`, { method: 'POST', body: form });
 }
 
 // 运营任务中心（Paper 16 页 I04）：全部客户任务，待分派由 needsAssignment 筛出

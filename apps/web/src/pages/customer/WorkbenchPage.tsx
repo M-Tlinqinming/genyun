@@ -88,7 +88,7 @@ export function WorkbenchPage() {
               label="最近交付"
               task={delivered}
               tag={<><CheckCircleOutlined /> 已交付</>}
-              text={() => '专家已审核并发布，三份 Word 可直接查看和下载。'}
+              text={() => '注安师已审核并发布，三份 Word 可直接查看和下载。'}
               action="查看编制成果"
               empty="注安师审核发布后，成果会显示在这里。"
               onOpen={(t) => navigate(taskHref(t))}

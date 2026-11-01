@@ -57,7 +57,7 @@ export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: (
       patch(key, null);
     } catch (err) {
       // 后台拒绝时给出原因（格式、大小）；网络中断时浏览器的英文报错不给客户看
-      const reason = err instanceof ApiError ? err.message : '上传时连接中断，请检查网络后重试';
+      const reason = err instanceof ApiError && err.status > 0 ? err.message : '上传时连接中断，请检查网络后重试';
       patch(key, { status: 'failed', error: reason });
     }
   };

@@ -18,7 +18,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`/api${path}`, {
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      // 上传文件（FormData）时由浏览器自己写带分隔符的 Content-Type
+      headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' },
       ...init,
     });
   } catch {
