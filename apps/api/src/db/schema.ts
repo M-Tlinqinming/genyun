@@ -15,6 +15,9 @@ import {
   type DraftKind,
   type EditBlock,
   type EnterpriseProfile,
+  type FeedbackCategory,
+  type FeedbackSource,
+  type FeedbackStatus,
   type LockedMaterial,
   type PlanInput,
   type PublishStatus,
@@ -915,3 +918,42 @@ export const processTemplates = pgTable('process_templates', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- 反馈受理（M3 第 6 项，16 页「反馈受理」）：客户对平台或成果的意见，独立于编制交付 ----------
+
+// 客户提交的反馈。可关联任务和交付版本（从成果文档页提交时），附件是客户上传的文件 ID。
+// 运营受理（processing）、写回复并关闭（closed）；不改任务状态、不触发重新生成、不改已交付版本。
+// internal_note 只有运营看得到；reply 关闭时发给客户
+export const feedback = pgTable(
+  'feedback',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    enterpriseId: uuid('enterprise_id').references(() => enterprises.id, { onDelete: 'set null' }),
+    taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    deliveryVersion: integer('delivery_version'),
+    source: text('source').$type<FeedbackSource>().notNull(),
+    category: text('category').$type<FeedbackCategory>().notNull(),
+    content: text('content').notNull(),
+    fileIds: jsonb('file_ids').$type<string[]>().notNull().default([]),
+    status: text('status').$type<FeedbackStatus>().notNull().default('new'),
+    reply: text('reply'),
+    internalNote: text('internal_note'),
+    // 受理的运营（第一次受理或转给注安师时记下）
+    handledBy: uuid('handled_by').references(() => users.id, { onDelete: 'set null' }),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    // 转给了哪位注安师（站内提醒）
+    forwardedTo: uuid('forwarded_to').references(() => users.id, { onDelete: 'set null' }),
+    forwardedAt: timestamp('forwarded_at', { withTimezone: true }),
+    closedBy: uuid('closed_by').references(() => users.id, { onDelete: 'set null' }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('feedback_status_created').on(t.status, t.createdAt), index('feedback_org_created').on(t.orgId, t.createdAt)],
+);

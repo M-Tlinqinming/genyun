@@ -53,3 +53,4 @@ export * from './workdays.ts';
 export * from './operator.ts';
 export * from './members.ts';
 export * from './knowledge.ts';
+export * from './feedback.ts';

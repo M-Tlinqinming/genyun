@@ -24,6 +24,9 @@ export const AUDIT_ACTIONS = [
   'knowledge_agency_change',
   'knowledge_holiday_change',
   'knowledge_template_change',
+  'feedback_accept',
+  'feedback_forward',
+  'feedback_close',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -49,6 +52,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   knowledge_agency_change: '维护属地应急机构',
   knowledge_holiday_change: '维护节假日',
   knowledge_template_change: '维护工艺模板',
+  feedback_accept: '受理反馈',
+  feedback_forward: '反馈转给注安师',
+  feedback_close: '回复并关闭反馈',
 };
 
 export const AUDIT_PAGE_SIZE = 50;

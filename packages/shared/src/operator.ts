@@ -12,7 +12,7 @@ export const INTERNAL_ROLE_LABELS: Record<InternalRole, string> = { expert: '注
 // 每种角色能看到的范围（I06 表格「可见范围」列、角色说明卡片）
 export const INTERNAL_ROLE_SCOPES: Record<InternalRole, string> = { expert: '分配给本人的任务', operator: '全部客户组织' };
 export const INTERNAL_ROLE_DUTIES: Record<InternalRole, string> = {
-  operator: '开通客户组织、维护年度服务、分配任务、处理上门工单和超时兜底、管理内部账号。不参与文档编制和审核。',
+  operator: '开通客户组织、维护年度服务、分配任务、受理反馈、处理上门工单和超时兜底、管理内部账号。不参与文档编制和审核。',
   expert: '只处理分配给自己的任务：核实资料、联系客户、整理编制、审核并发布三份成果。',
 };
 
@@ -60,11 +60,12 @@ export interface InternalAccountsView {
 
 // ---------- 运营概览 ----------
 
-// 「今天先处理」的几类事（设计稿里的「反馈」「知识库待核实」等功能上线后再加）
+// 「今天先处理」的几类事（设计稿里的「知识库待核实」还没加）
 export const OVERVIEW_TODO_KINDS = {
   org_pending: '待开通',
   invitation: '邀请未接受',
   unassigned: '待分派',
+  feedback: '待受理反馈',
   overdue: '超时兜底',
   on_site: '上门工单',
 } as const;
@@ -106,6 +107,8 @@ export interface OperatorOverview {
   tasks: { open: number; preparing: number; unassigned: number; drafting: number };
   deliveries: { thisMonth: number };
   followUps: { overdue: number; onSiteNew: number };
+  // 反馈受理（M3 第 6 项）：待受理、处理中；「待跟进反馈」= 两者之和
+  feedback: { new: number; processing: number };
   todos: OverviewTodo[];
   services: OverviewService[];
   recent: OverviewActivity[];

@@ -13,6 +13,7 @@ import { EnterpriseDocumentsController, TaskDocumentsController } from './docume
 import { DocumentsService } from './documents/documents.service.ts';
 import { EnterprisesController } from './enterprises/enterprises.controller.ts';
 import { EnterpriseProfileController } from './enterprises/profile.controller.ts';
+import { FeedbackController, OperatorFeedbackController } from './feedback/feedback.controller.ts';
 import { FilesController } from './files/files.controller.ts';
 import { defaultDrafter, type ParagraphPolisher } from './generation/ai/drafter.ts';
 import { defaultRenderer, DRAFT_RENDERER, type DraftRenderer } from './generation/drafts.ts';
@@ -93,6 +94,8 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       OperatorTasksController,
       OperatorOnSiteController,
       OperatorOverviewController,
+      OperatorFeedbackController,
+      FeedbackController,
       InternalAccountsController,
       KnowledgeController,
       ProcessTemplatesController,

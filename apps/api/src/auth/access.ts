@@ -160,3 +160,27 @@ export function canManageInternalAccounts(user: SessionUser): boolean {
 export function canManageKnowledge(user: SessionUser): boolean {
   return isOperator(user);
 }
+
+// ---------- 反馈受理（M3 第 6 项） ----------
+
+// 提交反馈：本组织客户账号（机构管理员、成员）。运营、注安师不替客户提交
+export function canSubmitFeedback(user: SessionUser, orgId: string): boolean {
+  return isCustomerOf(user, orgId);
+}
+
+// 反馈关联到某个任务：只能是自己能处理的企业的任务（成员只限分配给自己的企业，规则同 canEditEnterpriseData）
+export function canFeedbackOnTask(user: SessionUser, task: { orgId: string; enterpriseId: string }): boolean {
+  return canEditEnterpriseData(user, task);
+}
+
+// 客户查看反馈：机构管理员看本组织全部，成员只看自己提交的（'own'）；别的人 null
+export function feedbackScope(user: SessionUser, orgId: string): 'all' | 'own' | null {
+  const m = customerMembership(user, orgId);
+  if (!m) return null;
+  return m.role === 'customer_admin' ? 'all' : 'own';
+}
+
+// 受理反馈（列表、受理、转给注安师、回复并关闭、内部备注）：只有运营。客户、注安师一律不行
+export function canHandleFeedback(user: SessionUser): boolean {
+  return isOperator(user);
+}
