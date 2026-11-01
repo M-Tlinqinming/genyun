@@ -33,6 +33,7 @@ import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
 import { TasksService } from './tasks/tasks.service.ts';
 import { HealthController } from './health/health.controller.ts';
+import { AuditLogsController, AuditService } from './audit/audit.ts';
 import { defaultProbes, HEALTH_PROBES, type HealthProbes } from './health/health.ts';
 import { WorkupController, WorkupService } from './tasks/workup.service.ts';
 
@@ -60,6 +61,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
   @Module({
     controllers: [
       HealthController,
+      AuditLogsController,
       AuthController,
       OrgsController,
       OperatorOrgsController,
@@ -93,6 +95,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       { provide: MAILER, useFactory: () => options.mailer ?? defaultMailer() },
       { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
       AuthService,
+      AuditService,
       GenerationService,
       EditingService,
       DrawingsService,

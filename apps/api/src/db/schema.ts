@@ -4,6 +4,7 @@ import {
   DRAFT_STATUSES,
   ITEM_STATUSES,
   ON_SITE_STATUSES,
+  type AuditAction,
   type CallTime,
   type ChecklistItemKey,
   type ChecklistState,
@@ -595,4 +596,20 @@ export const organizationInvitations = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('organization_invitations_org').on(t.orgId)],
+);
+
+// 操作日志（M4 第 5 项，等保要求）：登录成功和失败、退出、改密码、找回重设、分派改派、发布。
+// 只插入，不修改、不删除。操作人删号后保留记录（actor_id 置空，actor_email 留下当时的邮箱）
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    actorEmail: text('actor_email'),
+    ip: text('ip'),
+    action: text('action').$type<AuditAction>().notNull(),
+    target: text('target'),
+  },
+  (t) => [index('audit_logs_at').on(t.at), index('audit_logs_action_at').on(t.action, t.at)],
 );
