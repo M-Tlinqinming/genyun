@@ -48,7 +48,8 @@ jobs:
         run: |
           # 用镜像里编译好的模拟发信发一封，确认邮件文件落进了数据卷（邀请链接靠它找回）
           docker exec app node --input-type=module -e "const { SimulatedMailer } = await import('/app/apps/api/dist/mail/mailer.js'); await new SimulatedMailer().send({ to: 'smoke@example.com', subject: '冒烟测试', text: 'ok' });"
-          docker exec app sh -c 'ls /data/mail-outbox' | grep -q 'smoke@example.com' || (docker exec app ls -la /data; exit 1)
+          # 文件名只有时间（不放邮箱），收件人在文件内容里
+          docker exec app sh -c 'grep -l smoke@example.com /data/mail-outbox/*.json' | grep -q . || (docker exec app ls -la /data/mail-outbox; exit 1)
       - run: docker build -f deploy/preview/site.Dockerfile -t genyun-site:${{ github.sha }} .
       - name: 反向代理分流检查
         run: |

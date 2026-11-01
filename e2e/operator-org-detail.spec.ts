@@ -9,7 +9,7 @@ const ORG = '博罗安联安全咨询有限公司';
 const stamp = Date.now();
 const FIRST = `he-${stamp}@boluo-anlian.cn`;
 const SECOND = `xu-${stamp}@boluo-anlian.cn`;
-const OUTBOX = join('apps', 'api', '.data', 'mail-outbox');
+const OUTBOX = join('apps', 'api', '.data', 'e2e-mail-outbox');
 
 // 发件箱里给这个邮箱的邮件，新的在前
 async function links(email: string): Promise<string[]> {

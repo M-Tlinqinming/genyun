@@ -334,7 +334,7 @@ describe('当前稿 PDF', () => {
     const changed = (await zhou.get(url('resource', '/preview')).expect(200)).body;
     expect(changed).toMatchObject({ status: 'converting', version: 1 });
     const failed = await waitFor(zhou, 'resource', 'failed');
-    expect(failed.error).toBe('转换没有成功，请重试；也可以先下载 Word 核对');
+    expect(failed.error).toBe('转换没有成功，请重试');
     // 转好之前不给旧稿
     await zhou.get(url('resource', '/preview/file')).expect(404);
 

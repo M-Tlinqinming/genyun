@@ -277,7 +277,15 @@ function EnterprisesCard({ org }: { org: OperatorOrgDetail }) {
               <Typography.Text ellipsis={{ tooltip: e.name }} style={{ ...body, flex: 1, minWidth: 0 }}>
                 {e.name}
               </Typography.Text>
-              <span style={{ ...body, color: gy.secondary, width: 120, flexShrink: 0 }}>{e.task?.number ?? '—'}</span>
+              <span style={{ ...body, color: gy.secondary, width: 120, flexShrink: 0 }}>
+                {e.task ? (
+                  <Link to={`/operator/tasks?task=${e.task.id}`} style={{ color: gy.primary }}>
+                    {e.task.number}
+                  </Link>
+                ) : (
+                  '—'
+                )}
+              </span>
               <span style={{ width: 110, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
                 {e.task ? (
                   <Pill tone={TASK_TONE[e.task.stage]}>{OPERATOR_TASK_STAGES[e.task.stage]}</Pill>
@@ -604,7 +612,7 @@ export function OrganizationDetailPage() {
   const org = detail.data;
 
   const sent = (r: SentInvitation) => {
-    const simulated = r.mailSimulated ? '（预览环境未真实发送邮件）' : '';
+    const simulated = r.mailSimulated ? `（预览环境未真实发送邮件${r.mailInOutbox ? '，可在「模拟发件箱」查看' : ''}）` : '';
     if (r.mailSent) message.success(`邀请已发到 ${r.email}，旧链接已作废${simulated}`);
     else message.warning('新邀请已记下，但邮件没发出去。请稍后再点「重新发送邀请」');
   };

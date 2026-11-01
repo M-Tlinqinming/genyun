@@ -45,3 +45,4 @@ export * from './editing.ts';
 export * from './review.ts';
 export * from './organization.ts';
 export * from './invitation.ts';
+export * from './assignment.ts';

@@ -8,6 +8,9 @@ import { notifications } from '../db/schema.ts';
 
 const RECENT = 20;
 
+// 发给原注安师的改派提醒；原注安师再打开这个任务时，靠它说明「已改派给 X」
+export const REASSIGNED_TITLE = '任务已改派';
+
 export interface NotificationInput {
   taskId?: string;
   title: string;
@@ -22,9 +25,10 @@ const readSchema = z.object({ ids: z.array(z.uuid()).max(100).optional() });
 export class NotificationsService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  async notify(userIds: readonly string[], input: NotificationInput) {
+  // 传 tx 时和调用方的改动在同一个事务里写
+  async notify(userIds: readonly string[], input: NotificationInput, tx: Pick<Database, 'insert'> = this.db) {
     if (userIds.length === 0) return;
-    await this.db.insert(notifications).values(userIds.map((userId) => ({ userId, ...input })));
+    await tx.insert(notifications).values(userIds.map((userId) => ({ userId, ...input })));
   }
 
   async list(user: SessionUser) {

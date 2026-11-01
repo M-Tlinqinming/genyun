@@ -3,8 +3,10 @@ import { Controller, Get, type INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD, NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
+import { AccountController, AccountService } from './auth/account.ts';
 import { AuthController } from './auth/auth.controller.ts';
 import { AuthService } from './auth/auth.service.ts';
+import { RecoveryService } from './auth/recovery.service.ts';
 import { Public, SessionGuard } from './auth/session.guard.ts';
 import { DATABASE, type Database } from './db/client.ts';
 import { EnterpriseDocumentsController, TaskDocumentsController } from './documents/documents.controller.ts';
@@ -19,9 +21,11 @@ import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.
 import { LicenseReader, LicenseRecognitionController } from './license/license-reader.ts';
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
 import { NotificationsController, NotificationsService } from './notifications/notifications.service.ts';
-import { defaultMailer, MAILER, type Mailer } from './mail/mailer.ts';
+import { defaultMailer, MAIL_OUTBOX, MAILER, type Mailer, outboxEnabled } from './mail/mailer.ts';
+import { OutboxController } from './mail/outbox.controller.ts';
 import { InvitationsController } from './orgs/invitations.controller.ts';
 import { OperatorOrgsController } from './orgs/operator-orgs.controller.ts';
+import { OperatorTasksController } from './tasks/operator-tasks.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
 import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/drawings.service.ts';
@@ -47,6 +51,9 @@ class HealthController {
 
 export interface AppOptions {
   loginLimitPerMinute?: number;
+  // 找回密码按 IP 限流（10 分钟内的次数）；测试里调大或调小
+  recoverySendLimitPer10Min?: number;
+  recoveryResetLimitPer10Min?: number;
   // 文件存储；不传时按环境变量使用本机磁盘
   storage?: FileStorage;
   // 营业执照识别；不传时按环境变量 LICENSE_OCR 选用，null 表示未配置
@@ -61,17 +68,22 @@ export interface AppOptions {
   drafter?: ParagraphPolisher | null;
   // Word 校对页把当前稿转 PDF；不传时按环境变量（LibreOffice），null 表示没装转换工具
   pdf?: PdfConverter | null;
-  // 发邀请邮件；不传时模拟发信（写进 .data/mail-outbox 和服务日志）
+  // 发邮件；不传时按环境变量 MAIL_DRIVER 选用（mail/mailer.ts）
   mailer?: Mailer;
+  // 是否开放「模拟发件箱」接口；不传时只在 MAIL_DRIVER=mock 时开放，其他情况没有这个地址（404）
+  mailOutbox?: boolean;
 }
 
 export async function createApp(db: Database, options: AppOptions = {}): Promise<INestApplication> {
+  const mailOutbox = options.mailOutbox ?? outboxEnabled();
   @Module({
     controllers: [
       HealthController,
       AuthController,
+      AccountController,
       OrgsController,
       OperatorOrgsController,
+      OperatorTasksController,
       InvitationsController,
       EnterprisesController,
       EnterpriseProfileController,
@@ -88,6 +100,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EnterpriseDocumentsController,
       FilesController,
       LicenseRecognitionController,
+      ...(mailOutbox ? [OutboxController] : []),
     ],
     providers: [
       { provide: DATABASE, useValue: db },
@@ -101,8 +114,11 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       { provide: EDIT_DRAFTER, useFactory: () => (options.drafter === undefined ? defaultDrafter() : options.drafter) },
       { provide: PDF_CONVERTER, useFactory: () => (options.pdf === undefined ? defaultPdfConverter() : options.pdf) },
       { provide: MAILER, useFactory: () => options.mailer ?? defaultMailer() },
+      { provide: MAIL_OUTBOX, useValue: mailOutbox },
       { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
       AuthService,
+      RecoveryService,
+      AccountService,
       GenerationService,
       EditingService,
       ReviewService,
@@ -136,6 +152,22 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       message: { statusCode: 429, message: '尝试次数过多，请一分钟后再试' },
     }),
   );
+  // 找回密码按 IP 限流（按邮箱的限流在 RecoveryService 里）：同一 IP 10 分钟内最多发验证码、提交重设各若干次
+  for (const [path, limit] of [
+    ['/api/auth/recover/send', options.recoverySendLimitPer10Min ?? 10],
+    ['/api/auth/recover/reset', options.recoveryResetLimitPer10Min ?? 20],
+  ] as const) {
+    app.use(
+      path,
+      rateLimit({
+        windowMs: 10 * 60_000,
+        limit,
+        standardHeaders: 'draft-8',
+        legacyHeaders: false,
+        message: { statusCode: 429, message: '尝试次数过多，请 10 分钟后再试' },
+      }),
+    );
+  }
   // 接受邀请（设置密码）也限流，与登录相同
   app.use(
     '/api/invitations',

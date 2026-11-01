@@ -317,7 +317,7 @@ export function ProofreadView({
         {!review.editable ? (
           <span style={{ flex: 1, ...text14, color: gy.secondary }}>
             {valid ? `本份已核对 · ${doc.check!.byName} ${stamp(doc.check!.at)}` : '本份待核对'}
-            ；只有负责这个任务的专家可以核对。
+            ；只有负责这个任务的注安师可以核对。
           </span>
         ) : passed ? (
           <>
