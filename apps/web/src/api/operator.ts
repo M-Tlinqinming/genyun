@@ -2,7 +2,9 @@ import type {
   AdminInvitationInput,
   AssignExpertInput,
   BusinessType,
+  CallTime,
   InvitationState,
+  OnSiteStatus,
   OperatorNote,
   OperatorTaskStage,
   OrgOpenDraft,
@@ -213,6 +215,40 @@ export const operatorTaskKeys = {
   overdue: ['operator', 'tasks', 'overdue'] as const,
   notes: (id: string) => ['operator', 'tasks', id, 'notes'] as const,
 };
+
+// 上门工单（16 页 I04）：客户在任务里提交的上门需求；客户只看到「已收到上门需求」
+export interface OnSiteOrder {
+  id: string;
+  orgId: string;
+  orgName: string;
+  enterpriseName: string;
+  taskId: string | null;
+  taskNumber: string | null;
+  contactName: string;
+  contactPhone: string;
+  callTime: CallTime | null;
+  helpItems: string[];
+  note: string | null;
+  status: OnSiteStatus;
+  internalNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const onSiteKey = ['operator', 'on-site'] as const;
+
+export function useOnSiteOrders() {
+  return useQuery({ queryKey: onSiteKey, queryFn: () => request<OnSiteOrder[]>('/operator/on-site') });
+}
+
+export function useUpdateOnSiteOrder(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { status?: OnSiteStatus; internalNote?: string }) =>
+      request<OnSiteOrder>(`/operator/on-site/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: onSiteKey }),
+  });
+}
 
 export function useOverdueTasks() {
   return useQuery({ queryKey: operatorTaskKeys.overdue, queryFn: () => request<OverdueTask[]>('/operator/tasks/overdue') });

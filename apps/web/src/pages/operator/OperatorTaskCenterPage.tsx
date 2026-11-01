@@ -2,16 +2,17 @@ import { OPERATOR_TASK_STAGES, type OperatorTaskStage } from '@genyun/shared';
 import { Button, Empty, Input, Skeleton } from 'antd';
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { useOperatorTask, useOperatorTasks, useOverdueTasks, type OperatorTask, type OverdueTask } from '../../api/operator';
+import { useOnSiteOrders, useOperatorTask, useOperatorTasks, useOverdueTasks, type OperatorTask, type OverdueTask } from '../../api/operator';
 import { PageHeader } from '../../components/PageHeader';
 import { Loading, Notice, panel } from '../../components/ui';
 import { gy, stage } from '../../theme/tokens';
 import { AssignExpertModal } from './AssignExpertModal';
+import { OnSitePanel, OnSiteRow } from './OnSiteOrders';
 import { OperatorNotes, OverdueReason } from './OverdueSection';
 import { businessShort, monthDay, monthDayTime, submittedLine, taskTitle } from './taskCenterText';
 
-type Tab = 'unassigned' | 'overdue' | 'all';
-const TAB_LABEL: Record<Tab, string> = { unassigned: '待分派', overdue: '超时兜底', all: '全部任务' };
+type Tab = 'unassigned' | 'overdue' | 'onsite' | 'all';
+const TAB_LABEL: Record<Tab, string> = { unassigned: '待分派', overdue: '超时兜底', onsite: '上门工单', all: '全部任务' };
 
 const body = { fontSize: 14, lineHeight: '22px', color: gy.text } as const;
 const small = { fontSize: 12, lineHeight: '20px', color: gy.tertiary } as const;
@@ -235,6 +236,11 @@ export function OperatorTaskCenterPage() {
   const overdueQuery = useOverdueTasks();
   const unassigned = useMemo(() => (tasks.data ?? []).filter((t) => t.needsAssignment), [tasks.data]);
   const overdue = useMemo(() => overdueQuery.data ?? [], [overdueQuery.data]);
+  const onSite = useOnSiteOrders();
+  const orders = onSite.data ?? [];
+  const openOrders = orders.filter((o) => o.status !== 'closed').length;
+  const linkedOrder = params.get('order');
+  const selectedOrder = orders.find((o) => o.id === linkedOrder) ?? orders[0] ?? null;
   // 从组织详情点进来带着任务时，直接看全部任务；否则有待分派就先看待分派
   const [tabChoice, setTabChoice] = useState<Tab | null>(null);
   const tab: Tab = tabChoice ?? (linked && !unassigned.some((t) => t.id === linked) ? 'all' : unassigned.length > 0 || !tasks.data ? 'unassigned' : 'all');
@@ -282,6 +288,7 @@ export function OperatorTaskCenterPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'unassigned', label: `待分派 ${unassigned.length}` },
     { key: 'overdue', label: `超时兜底 ${overdue.length}` },
+    { key: 'onsite', label: `上门工单 ${openOrders}` },
     { key: 'all', label: '全部任务' },
   ];
 
@@ -322,7 +329,26 @@ export function OperatorTaskCenterPage() {
               <Input.Search allowClear placeholder="企业 / 任务编号 / 客户组织" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
             </div>
           )}
-          {shown.length === 0 ? (
+          {tab === 'onsite' ? (
+            orders.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                style={{ padding: '24px 20px' }}
+                description={onSite.isError ? `上门工单暂时读不出来：${onSite.error.message}` : '还没有上门需求。客户在任务里预约耕云上门后会出现在这里。'}
+              />
+            ) : (
+              <ul role="tabpanel" aria-label={TAB_LABEL.onsite} style={{ margin: 0, padding: 0, maxHeight: 640, overflowY: 'auto' }}>
+                {orders.map((o) => (
+                  <OnSiteRow
+                    key={o.id}
+                    order={o}
+                    selected={o.id === selectedOrder?.id}
+                    onSelect={() => setParams({ order: o.id }, { replace: true })}
+                  />
+                ))}
+              </ul>
+            )
+          ) : shown.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               style={{ padding: '24px 20px' }}
@@ -349,7 +375,13 @@ export function OperatorTaskCenterPage() {
             </p>
           )}
         </div>
-        {selectedId ? (
+        {tab === 'onsite' ? (
+          selectedOrder ? (
+            <OnSitePanel key={selectedOrder.id} order={selectedOrder} />
+          ) : (
+            <p style={{ ...caption, flex: 1, minWidth: 0, margin: 0, padding: '16px 0' }}>选中上门工单后，在这里写内部备注、标记转交或关闭。</p>
+          )
+        ) : selectedId ? (
           <TaskPanel
             key={selectedId}
             taskId={selectedId}
