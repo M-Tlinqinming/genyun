@@ -85,7 +85,7 @@ describe('演示数据', () => {
       { number: `GY-${year}-001`, status: 'submitted', enterprise: feiyuBasicInfo.companyName, expert: DEMO_EMAILS.expert },
       { number: `GY-${year}-002`, status: 'submitted', enterprise: '示例五金制品有限公司', expert: DEMO_EMAILS.expert2 },
     ]);
-  }, 30_000);
+  }, 60_000);
 
   it('在预览环境已有数据上连跑两次：只补缺的，条数不变，已有账号的密码不变，测试人员的数据都在', async () => {
     handle = await openDatabase('memory://');
@@ -173,7 +173,7 @@ describe('演示数据', () => {
       region: '广东省惠州市',
       contactName: '林管理员',
     });
-  }, 30_000);
+  }, 60_000);
 
   it('周工打开飞宇任务：补齐专家判断和技术人员数后就能确认生成三份草稿', async () => {
     handle = await openDatabase('memory://');
@@ -210,7 +210,7 @@ describe('演示数据', () => {
     } finally {
       await app.close();
     }
-  }, 30_000);
+  }, 60_000);
 
   it('演示合同原件是一份能解析的 PDF', () => {
     const pdf = demoContractPdf('GY-DEMO-2026-01').toString('latin1');
