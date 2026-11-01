@@ -17,7 +17,7 @@ import { and, eq, or } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
-import { canEditOrganizationData, canViewFile, canViewOrganization, needsFileEnterprises } from '../auth/access.ts';
+import { canEditOrganizationData, canViewFile, canViewOrganization, enterpriseScope, needsFileEnterprises } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser, Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -175,7 +175,11 @@ export class FilesController {
       .limit(1);
     if (!file) throw new NotFoundException(NOT_FOUND);
     // 成员只看挂在分配给自己的企业上的文件，才需要查文件挂在哪些企业上
-    const linked = needsFileEnterprises(user, file.orgId) ? ((await linkedEnterpriseIds(this.db, file.orgId, [id])).get(id) ?? []) : [];
+    const scope = enterpriseScope(user, file.orgId);
+    // 成员：企业档案只看分配给他的那几家
+    const linked = needsFileEnterprises(user, file.orgId)
+      ? ((await linkedEnterpriseIds(this.db, file.orgId, [id], Array.isArray(scope) ? scope : undefined)).get(id) ?? [])
+      : [];
     if (!canViewFile(user, file, { usedInMyAssignedTask: await this.usedInAssignedTask(user, id), linkedEnterpriseIds: linked })) {
       throw new NotFoundException(NOT_FOUND);
     }

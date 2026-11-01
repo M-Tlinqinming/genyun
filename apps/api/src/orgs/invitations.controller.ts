@@ -19,7 +19,7 @@ import { AuthService, hashPassword, type SessionUser } from '../auth/auth.servic
 import { Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { enterpriseAssignments, memberships, notifications, organizationInvitations, organizations, users } from '../db/schema.ts';
-import { NotificationsService } from '../notifications/notifications.service.ts';
+import { inviteExpiredKey, NotificationsService } from '../notifications/notifications.service.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { hashInvitationToken } from './invitations.ts';
 
@@ -199,7 +199,9 @@ export class InvitationsController {
       .where(and(eq(notifications.userId, inv.invitedBy), eq(notifications.title, title), eq(notifications.body, body)))
       .limit(1);
     // 邀请人已被移出组织、降为成员或停用：不再提醒他（他发出的未接受邀请那时已作废，这里防万一）
-    if (!already && (await this.inviterActive(inv))) await this.notifications.notify([inv.invitedBy], { title, body, link });
+    if (!already && (await this.inviterActive(inv))) {
+      await this.notifications.notify([inv.invitedBy], { title, body, link, dedupeKey: inviteExpiredKey(inv.orgId, inv.id, inv.expiresAt) });
+    }
     return { inviterName: await this.inviterName(inv) };
   }
 

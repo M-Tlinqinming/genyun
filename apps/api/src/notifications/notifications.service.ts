@@ -17,6 +17,7 @@ export interface NotificationInput {
   title: string;
   body: string;
   link: string;
+  dedupeKey?: string;
 }
 
 // 某家企业的事要提醒哪些客户账号：本组织机构管理员，加上分配到这家企业的成员（M3 第 7 项）。
@@ -42,9 +43,20 @@ export async function enterpriseCustomerIds(db: Pick<Database, 'select'>, task: 
   return rows.map((r) => r.userId);
 }
 
+// 发给机构管理员、和某个组织有关的通知（年度服务到期、邀请过期请重发）的去重键都以这个前缀开头，
+// 成员被移出组织或降为成员时按前缀删掉
+export function orgNoticePrefix(orgId: string): string {
+  return `org:${orgId}:`;
+}
+
 // 年度服务到期前 30 天提醒机构管理员（M3 第 7 项）：只在站内，同一组织同一到期日只提醒一次
 export function contractReminderKey(orgId: string, endsAt: string): string {
-  return `contract-expiring:${orgId}:${endsAt}`;
+  return `${orgNoticePrefix(orgId)}contract-expiring:${endsAt}`;
+}
+
+// 邀请过期、对方请求重发：同一封邀请的同一次过期只提醒一次
+export function inviteExpiredKey(orgId: string, invitationId: string, expiresAt: Date): string {
+  return `${orgNoticePrefix(orgId)}invite-expired:${invitationId}:${expiresAt.toISOString()}`;
 }
 
 const readSchema = z.object({ ids: z.array(z.uuid()).max(100).optional() });

@@ -22,7 +22,7 @@ import {
 } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import { MemoryMailer } from '../mail/mailer.ts';
-import { enterpriseCustomerIds } from '../notifications/notifications.service.ts';
+import { contractReminderKey, enterpriseCustomerIds, inviteExpiredKey } from '../notifications/notifications.service.ts';
 
 // 客户组织管理（M3 第 7 项）：成员只看分配给自己的企业（企业、任务、资料、成果都按这条），
 // 机构管理员邀请 / 重新发送 / 撤销 / 移除 / 改角色、分配企业；不能移除自己、至少保留一位机构管理员；
@@ -423,7 +423,19 @@ describe('邀请、移除、改角色', () => {
     const zhang = await as('zhang@test.cn');
     await zhang.post(`${base()}/invitations`).send({ name: '钱八', email: 'qian@test.cn', role: 'customer_member' }).expect(200);
     const token = tokenOf('qian@test.cn');
+    // 当管理员时收到的：两家企业的任务通知、年度服务到期提醒、邀请过期提醒。张伟只负责德赛电池
+    const zid = uid['zhang@test.cn']!;
+    await handle.db.insert(notifications).values([
+      { userId: zid, taskId: task.one, title: '补充请求', body: '立讯', link: '/customer' },
+      { userId: zid, taskId: task.two, title: '补充请求', body: '德赛', link: '/customer' },
+      { userId: zid, title: '年度服务即将到期', body: '到期', link: '/customer', dedupeKey: contractReminderKey(org.a, '2099-01-01') },
+      { userId: zid, title: '邀请过期，请重新发送', body: '过期', link: '/customer', dedupeKey: inviteExpiredKey(org.a, zid, new Date(0)) },
+    ]);
     await admin.put(`${base()}/members/${uid['zhang@test.cn']}/role`).send({ role: 'customer_member' }).expect(200);
+    // 降为成员：只留下分配给他的企业的任务通知
+    const kept = await handle.db.select({ body: notifications.body }).from(notifications).where(eq(notifications.userId, zid));
+    expect(kept.map((n) => n.body)).toEqual(['德赛']);
+    await handle.db.delete(notifications).where(eq(notifications.userId, zid));
     expect(((await admin.get(base())).body as OrgManagementView).invitations.map((i) => i.email)).not.toContain('qian@test.cn');
     const guest = request(app.getHttpServer());
     expect((await guest.get(`/api/invitations/${token}`).expect(200)).body.state).toBe('revoked');
@@ -437,6 +449,23 @@ describe('邀请、移除、改角色', () => {
     const toZhang = await handle.db.select().from(notifications).where(and(eq(notifications.userId, uid['zhang@test.cn']!), eq(notifications.title, '邀请过期，请重新发送')));
     expect(toZhang).toEqual([]);
     await handle.db.update(organizationInvitations).set({ revokedAt: new Date() }).where(eq(organizationInvitations.email, 'qian@test.cn'));
+  });
+
+  it('移出本组织但还在别的组织：只删本组织的通知（任务、年度服务、邀请过期），账号照常可用', async () => {
+    const admin = await as('admin@test.cn');
+    const zhou = uid['zhou@test.cn']!;
+    await handle.db.insert(memberships).values({ userId: zhou, orgId: org.b, role: 'customer_member' });
+    await handle.db.insert(notifications).values([
+      { userId: zhou, taskId: task.two, title: '补充请求', body: '本组织任务', link: '/customer' },
+      { userId: zhou, title: '邀请过期，请重新发送', body: '本组织邀请', link: '/customer', dedupeKey: inviteExpiredKey(org.a, zhou, new Date(0)) },
+      { userId: zhou, title: '年度服务即将到期', body: '本组织到期', link: '/customer', dedupeKey: contractReminderKey(org.a, '2099-01-01') },
+      { userId: zhou, title: '年度服务即将到期', body: '别家到期', link: '/customer', dedupeKey: contractReminderKey(org.b, '2099-01-01') },
+    ]);
+    await admin.post(`${base()}/members/${zhou}/remove`).expect(200);
+    const left = await handle.db.select({ body: notifications.body }).from(notifications).where(eq(notifications.userId, zhou));
+    expect(left.map((n) => n.body)).toEqual(['别家到期']);
+    const [row] = await handle.db.select({ at: users.disabledAt }).from(users).where(eq(users.id, zhou));
+    expect(row!.at).toBeNull();
   });
 
   it('组织资料：机构管理员改联系人、电话、邮箱', async () => {
@@ -470,6 +499,6 @@ describe('年度服务', () => {
     expect(memberItems.filter((n) => n.title === '年度服务即将到期')).toEqual([]);
     // 续约后到期日变了：不再是 30 天内，不提醒
     const rows = await handle.db.select().from(notifications).where(eq(notifications.userId, uid['admin@test.cn']!));
-    expect(rows.filter((n) => n.dedupeKey?.startsWith('contract-expiring:'))).toHaveLength(1);
+    expect(rows.filter((n) => n.dedupeKey?.includes(':contract-expiring:'))).toHaveLength(1);
   });
 });

@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { profileFileIdsOf } from '@genyun/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { canViewFile, needsFileEnterprises } from '../auth/access.ts';
+import { canViewFile, enterpriseScope, needsFileEnterprises } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import type { Database } from '../db/client.ts';
 import {
@@ -20,7 +20,13 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 // 文件挂在哪些企业上（M3 第 7 项）：资料项、企业资料库、补件回复、交付、企业档案（执照、照片、台账、图纸）里引用的。
 // 只在判断成员能不能看、能不能引用时用；机构管理员、运营不需要查
-export async function linkedEnterpriseIds(db: Database | Tx, orgId: string, fileIds: string[]): Promise<Map<string, string[]>> {
+// within：只关心这些企业（成员被分配的企业）时传入，企业档案只读这几家
+export async function linkedEnterpriseIds(
+  db: Database | Tx,
+  orgId: string,
+  fileIds: string[],
+  within?: readonly string[],
+): Promise<Map<string, string[]>> {
   if (fileIds.length === 0) return new Map();
   const out = new Map<string, Set<string>>(fileIds.map((id) => [id, new Set()]));
   const add = (rows: { fileId: string; enterpriseId: string }[]) => rows.forEach((r) => out.get(r.fileId)?.add(r.enterpriseId));
@@ -61,11 +67,14 @@ export async function linkedEnterpriseIds(db: Database | Tx, orgId: string, file
   }
   // 企业档案：按字段取出引用的文件（profileFileIdsOf），不在整段内容里搜文本——
   // 不然成员在可见企业的地址、说明里写上别家企业的文件 ID，就能把那个文件「挂」过来。
-  // 一个组织的企业不多（几十家），一次取出本组织的档案在内存里比对
-  const profiles = await db
-    .select({ enterpriseId: enterprises.id, profile: enterprises.profile })
-    .from(enterprises)
-    .where(eq(enterprises.orgId, orgId));
+  // 成员只需要看分配给自己的那几家企业的档案（within），不读全组织
+  const profiles =
+    within && within.length === 0
+      ? []
+      : await db
+          .select({ enterpriseId: enterprises.id, profile: enterprises.profile })
+          .from(enterprises)
+          .where(and(eq(enterprises.orgId, orgId), within ? inArray(enterprises.id, [...within]) : undefined));
   for (const r of profiles) {
     for (const fileId of profileFileIdsOf(r.profile)) out.get(fileId)?.add(r.enterpriseId);
   }
@@ -81,7 +90,8 @@ export async function assertFilesUsable(db: Database | Tx, user: SessionUser, or
     .select({ id: files.id, orgId: files.orgId, kind: files.kind, uploadedBy: files.uploadedBy })
     .from(files)
     .where(and(inArray(files.id, ids), eq(files.orgId, orgId)));
-  const linked = await linkedEnterpriseIds(db, orgId, ids);
+  const scope = enterpriseScope(user, orgId);
+  const linked = await linkedEnterpriseIds(db, orgId, ids, Array.isArray(scope) ? scope : undefined);
   for (const id of ids) {
     const f = rows.find((r) => r.id === id);
     if (!f || !canViewFile(user, f, { usedInMyAssignedTask: false, linkedEnterpriseIds: linked.get(id) ?? [] })) {

@@ -51,7 +51,7 @@ import {
   users,
 } from '../db/schema.ts';
 import { MAILER, type Mailer } from '../mail/mailer.ts';
-import { contractReminderKey } from '../notifications/notifications.service.ts';
+import { orgNoticePrefix } from '../notifications/notifications.service.ts';
 import { createInvitation, EMAIL_HAS_ACCOUNT } from './invitations.ts';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -61,21 +61,29 @@ const LAST_ADMIN = '组织里至少要保留一位机构管理员。请先把另
 const RESENT_JUST_NOW = '这封邀请刚刚已经重新发送过了，请刷新页面查看最新的一封';
 const isCustomerRole = (r: string): r is CustomerRole => (CUSTOMER_ROLES as readonly string[]).includes(r);
 
-// 删掉某人和本组织有关的站内通知：本组织任务的（传 enterpriseIds 时只删这些企业的），不传时连同年度服务到期提醒。
-// 移除成员、成员不再负责某家企业时用，避免通知里还能看到已经看不到的企业和任务
-async function dropOrgNotifications(tx: Tx, userId: string, orgId: string, enterpriseIds?: string[]) {
+// 删掉某人和本组织有关的站内通知，避免通知里还能看到已经看不到的企业和任务：
+// - { only }：只删这些企业的任务通知（成员不再负责某几家企业）
+// - { except }：本组织其余企业的任务通知，加上本组织的机构管理员类通知（年度服务到期、邀请过期请重发）——管理员降为成员时，except = 仍分配给他的企业
+// - {}：本组织全部任务通知和机构管理员类通知（移出本组织）
+async function dropOrgNotifications(tx: Tx, userId: string, orgId: string, which: { only?: string[]; except?: string[] } = {}) {
   const orgTasks = tx
     .select({ id: tasks.id })
     .from(tasks)
-    .where(and(eq(tasks.orgId, orgId), enterpriseIds ? inArray(tasks.enterpriseId, enterpriseIds) : undefined));
+    .where(
+      and(
+        eq(tasks.orgId, orgId),
+        which.only ? inArray(tasks.enterpriseId, which.only) : undefined,
+        which.except?.length ? notInArray(tasks.enterpriseId, which.except) : undefined,
+      ),
+    );
   await tx
     .delete(notifications)
     .where(
       and(
         eq(notifications.userId, userId),
-        enterpriseIds
+        which.only
           ? inArray(notifications.taskId, orgTasks)
-          : or(inArray(notifications.taskId, orgTasks), like(notifications.dedupeKey, `${contractReminderKey(orgId, '')}%`)),
+          : or(inArray(notifications.taskId, orgTasks), like(notifications.dedupeKey, `${orgNoticePrefix(orgId)}%`)),
       ),
     );
 }
@@ -315,8 +323,15 @@ export class OrgMembersController {
         .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId), eq(memberships.role, target.role)))
         .returning({ userId: memberships.userId });
       if (!changed) return 'unchanged' as const;
-      // 降为成员：他发出、还没接受的邀请作废
-      if (role === 'customer_member') await this.revokeSentBy(tx, orgId, userId);
+      // 降为成员：他发出、还没接受的邀请作废；没分配给他的企业的任务通知、年度服务到期和邀请过期提醒删掉
+      if (role === 'customer_member') {
+        await this.revokeSentBy(tx, orgId, userId);
+        const kept = await tx
+          .select({ enterpriseId: enterpriseAssignments.enterpriseId })
+          .from(enterpriseAssignments)
+          .where(and(eq(enterpriseAssignments.orgId, orgId), eq(enterpriseAssignments.userId, userId)));
+        await dropOrgNotifications(tx, userId, orgId, { except: kept.map((k) => k.enterpriseId) });
+      }
       return 'ok' as const;
     });
     if (outcome === 'last_admin') throw new ConflictException(LAST_ADMIN);
@@ -374,7 +389,7 @@ export class OrgMembersController {
       if (touched.length) await tx.update(enterprises).set({ membersChangedAt: new Date() }).where(inArray(enterprises.id, touched));
       // 成员不再负责的企业：这些企业任务的站内通知一并删掉（机构管理员本来就看全部企业，不删）
       if (still.role === 'customer_member' && removed.length) {
-        await dropOrgNotifications(tx, userId, orgId, removed.map((r) => r.enterpriseId));
+        await dropOrgNotifications(tx, userId, orgId, { only: removed.map((r) => r.enterpriseId) });
       }
       return touched.length;
     });
@@ -429,7 +444,7 @@ export class OrgMembersController {
           .select({ userId: memberships.userId })
           .from(memberships)
           .where(and(eq(memberships.orgId, orgId), inArray(memberships.userId, removed.map((r) => r.userId)), eq(memberships.role, 'customer_member')));
-        for (const m of members) await dropOrgNotifications(tx, m.userId, orgId, [enterpriseId]);
+        for (const m of members) await dropOrgNotifications(tx, m.userId, orgId, { only: [enterpriseId] });
       }
       const added = ids.length
         ? await tx
@@ -511,15 +526,17 @@ export class OrgMembersController {
     return { ...inv, role: inv.role };
   }
 
-  // 降级或移除一位机构管理员之前：锁住本组织所有管理员的成员行（两位管理员互相降级时排队），
-  // 确认除了这位以外还有别的管理员。移除成员（不是管理员）时也走这里，结果恒为真
+  // 降级或移除之前：一条查询锁住「本组织所有管理员 + 这位」的成员行，按 userId 排序（和保存企业负责成员的加锁顺序一致，
+  // 不会互相等成死锁；两位管理员互相降级时排队），再确认除了这位以外还有别的管理员。
+  // 这位不是管理员（移除普通成员）时结果恒为真
   private async adminRemains(tx: Tx, orgId: string, exceptId: string): Promise<boolean> {
-    const admins = await tx
+    const rows = await tx
       .select({ userId: memberships.userId, role: memberships.role })
       .from(memberships)
-      .where(and(eq(memberships.orgId, orgId), eq(memberships.role, 'customer_admin')))
+      .where(and(eq(memberships.orgId, orgId), or(eq(memberships.role, 'customer_admin'), eq(memberships.userId, exceptId))))
       .orderBy(memberships.userId)
       .for('update');
+    const admins = rows.filter((r) => r.role === 'customer_admin');
     if (!admins.some((a) => a.userId === exceptId)) return true;
     return admins.some((a) => a.userId !== exceptId);
   }
