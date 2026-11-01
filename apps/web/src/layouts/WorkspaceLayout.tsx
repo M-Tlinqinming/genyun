@@ -94,6 +94,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
                   { key: 'logout', icon: <LogoutOutlined />, label: '退出登录' },
                 ],
                 onClick: ({ key }) => {
+                  if (key === 'account') navigate('/account');
                   if (key === 'logout') logout.mutate(undefined, { onSuccess: () => navigate('/login') });
                 },
               }}
