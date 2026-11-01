@@ -51,7 +51,7 @@ import {
 import { receiveOne } from '../files/files.controller.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { MAILER, type Mailer } from '../mail/mailer.ts';
-import { createInvitation } from './invitations.ts';
+import { createInvitation, EMAIL_HAS_ACCOUNT } from './invitations.ts';
 
 const NOT_FOUND = '找不到该客户组织';
 
@@ -146,7 +146,11 @@ export class OperatorOrgsController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     const d = parsed.data;
 
+    await this.rejectExistingAccount(d.email);
+
     const invitation = await this.db.transaction(async (tx) => {
+      // 锁住组织这一行：和并发的更换、接受邀请排队，避免作废旧邀请时对方刚好接受
+      await tx.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, id)).for('update');
       const [admin] = await tx
         .select({ id: memberships.userId })
         .from(memberships)
@@ -173,6 +177,7 @@ export class OperatorOrgsController {
         phone: d.phone,
         invitedBy: user.id,
         inviterName: '耕云运营',
+        resend: true,
       });
     });
     const mailSent = await this.sendMail(invitation.mail);
@@ -277,6 +282,7 @@ export class OperatorOrgsController {
       .where(and(eq(files.id, d.contractFileId), eq(files.orgId, id), eq(files.kind, 'contract')))
       .limit(1);
     if (!contractFile) throw new BadRequestException('合同原件找不到了，请重新上传');
+    await this.rejectExistingAccount(d.adminEmail);
 
     const invitation = await this.db.transaction(async (tx) => {
       // 并发开通时只有一次能成功
@@ -313,6 +319,12 @@ export class OperatorOrgsController {
       ...withState(await this.load(id)),
       invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, mailSimulated: this.mailer.simulated === true },
     };
+  }
+
+  // 这一期首位管理员只能是新账号（已有账号加入其他组织留给第 7 项），发邀请时当场拦下，不等对方接受时才报错
+  private async rejectExistingAccount(email: string) {
+    const [existing] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    if (existing) throw new ConflictException({ statusCode: 409, message: EMAIL_HAS_ACCOUNT, field: 'email' });
   }
 
   private async sendMail(mail: Parameters<Mailer['send']>[0]): Promise<boolean> {
