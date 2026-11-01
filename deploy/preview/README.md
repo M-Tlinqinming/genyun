@@ -71,11 +71,17 @@ docker compose --env-file /opt/genyun/.env up -d --no-build
 
 ## 查看模拟发信
 
-还没接阿里云邮件推送，邀请、找回密码的邮件都不真的发出，而是写成文件放进发件箱（数据卷 `mail_outbox`，容器里是 `/data/mail-outbox`），发布和重启都不会丢。在服务器上：
+预览环境默认模拟发信（`MAIL_DRIVER=mock`）：邀请、找回密码的邮件都不真的发出，而是写成文件放进发件箱（数据卷 `mail_outbox`，容器里是 `/data/mail-outbox`），发布和重启都不会丢。
+
+**最方便的看法**：用运营账号登录，打开 `https://<预览域名>/operator/mail-outbox`（「模拟发件箱」，不在侧栏菜单里）。列表里直接显示验证码、可复制邀请链接，点一行看邮件全文（邮件样式 / 纯文本）。只有运营能看；`MAIL_DRIVER` 不是 `mock` 时这个页面和接口都不存在（404）。
+
+改成真发：在 `/opt/genyun/.env` 加 `MAIL_DRIVER=aliyun`、`ALIYUN_DM_ACCESS_KEY_ID`、`ALIYUN_DM_ACCESS_KEY_SECRET`、`ALIYUN_DM_ACCOUNT_NAME`（邮件推送控制台配好的发信地址），重新发布。三项缺任何一项，服务启动时就报错退出（免得以为邮件发出去了其实没有）；`MAIL_DRIVER` 没设或写错也一样。发送失败会自动重试一次，失败记日志（只有邮件种类、打码的收件人和错误码，没有验证码和链接）。
+
+也可以在服务器上直接看文件：
 
 ```sh
 cd /opt/genyun/src/deploy/preview
-# 最近 10 封（文件名是「时间-收件人.json」）
+# 最近 10 封（文件名以时间开头）
 docker compose --env-file /opt/genyun/.env exec app ls -t /data/mail-outbox | head
 # 看最新一封的内容，里面有邀请链接
 docker compose --env-file /opt/genyun/.env exec app sh -c 'cat "$(ls -t /data/mail-outbox/* | head -1)"'
@@ -83,7 +89,7 @@ docker compose --env-file /opt/genyun/.env exec app sh -c 'cat "$(ls -t /data/ma
 docker compose --env-file /opt/genyun/.env logs app | grep 模拟发信
 ```
 
-日志不一定记正文（M3 第 2 项起正式环境不记），链接以发件箱文件为准。
+服务日志只记收件人（打码）和主题，不记正文；链接和验证码以发件箱为准。
 
 ## 服务器上的位置
 

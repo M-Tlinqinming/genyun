@@ -19,6 +19,7 @@ import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
+import { MailOutboxPage } from './pages/operator/MailOutboxPage';
 import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
 import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
@@ -56,6 +57,8 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { index: true, element: <PendingPage eyebrow={EYEBROW.operator} title="任务中心" /> },
     { path: ':taskId', element: <OperatorTaskPage /> },
   ],
+  // 模拟发件箱只在预览环境有用，平时不在菜单里（navigation.tsx 的 onlyWhenActive）
+  '/operator/mail-outbox': [{ index: true, element: <MailOutboxPage /> }],
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },

@@ -10,7 +10,8 @@ import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { randomInt } from 'node:crypto';
 import { DATABASE, type Database } from '../db/client.ts';
 import { passwordRecoveryCodes, sessions, users } from '../db/schema.ts';
-import { MAILER, type Mailer } from '../mail/mailer.ts';
+import { MAILER, type Mailer, type MailMessage } from '../mail/mailer.ts';
+import { passwordResetMail, recoveryCodeMail } from '../mail/templates.ts';
 import { AuthService, hashPassword, type SessionUser } from './auth.service.ts';
 
 // 同一邮箱一小时内最多发几次（不论邮箱是否注册都一样计数，免得通过限流判断是否注册）
@@ -47,7 +48,7 @@ export class RecoveryService {
 
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const codeHash = await hash(code);
-    const [user] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    const [user] = await this.db.select({ id: users.id, name: users.name }).from(users).where(eq(users.email, email)).limit(1);
     if (!user) return;
 
     await this.db.transaction(async (tx) => {
@@ -62,28 +63,18 @@ export class RecoveryService {
       });
     });
 
-    // 不等发信结果：发信慢会让「已注册」的响应明显变慢
-    this.mailer
-      .send({
-        to: email,
-        // 主题会出现在服务日志和收件箱列表里，不放验证码
-        subject: '重设耕云登录密码的验证码',
-        text: [
-          '您好：',
-          '',
-          `您正在重设耕云账号的登录密码，验证码是：${code}`,
-          '',
-          `验证码 ${RECOVERY_CODE_TTL_MINUTES} 分钟内有效，只能用一次。如果不是您本人操作，请忽略这封邮件，您的密码不会改变。`,
-          '如有疑问请致电耕云 0752-5200831。',
-        ].join('\n'),
-      })
-      // 只记错误说明，不记邮件内容
-      .catch((err: unknown) => console.error(`重设密码验证码邮件发送失败：${err instanceof Error ? err.message : 'unknown'}`));
+    // 不等发信结果：发信慢会让「已注册」的响应明显变慢。主题里没有验证码（见 templates.ts）
+    this.sendLater(recoveryCodeMail({ to: email, name: user.name, code, validMinutes: RECOVERY_CODE_TTL_MINUTES }), '重设密码验证码');
+  }
+
+  // 发信失败只记错误说明，不记邮件内容
+  private sendLater(mail: MailMessage, what: string): void {
+    this.mailer.send(mail).catch((err: unknown) => console.error(`${what}邮件发送失败：${err instanceof Error ? err.message : 'unknown'}`));
   }
 
   async reset(input: RecoveryResetInput): Promise<{ token: string; user: SessionUser } | null> {
     const email = normalize(input.email);
-    const [user] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    const [user] = await this.db.select({ id: users.id, name: users.name }).from(users).where(eq(users.email, email)).limit(1);
     // 先占一次机会再比对：用一条条件更新把次数加 1，只有拿到机会的请求才比对散列。
     // 同时发很多个请求也最多比对 5 次。发新验证码时旧的都已作废，所以一个账号最多一条可用的
     const [claimed] = user
@@ -125,7 +116,10 @@ export class RecoveryService {
       await tx.delete(sessions).where(eq(sessions.userId, user.id));
       return true;
     });
-    return done ? this.auth.startSession(user.id) : null;
+    if (!done) return null;
+    // 通知本人密码已重设：不是本人操作时能及时发现
+    this.sendLater(passwordResetMail({ to: email, name: user.name, at: new Date() }), '密码已重设通知');
+    return this.auth.startSession(user.id);
   }
 
   private throttle(email: string) {
