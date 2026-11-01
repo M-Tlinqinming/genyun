@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
 
 // 官网页面固定，手写列表比引入 sitemap 插件更直接。新增页面时在这里加一行。
-export const PAGES = ['/'];
+// 法律页面是草案（noindex），正式发布后再加进来
+export const PAGES = ['/', '/product/', '/expertise/'];
 
 export const GET: APIRoute = ({ site }) => {
   const urls = PAGES.map((path) => `  <url><loc>${new URL(path, site)}</loc></url>`).join('\n');
