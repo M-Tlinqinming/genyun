@@ -97,7 +97,8 @@ body {
 }
 /* 换页后把焦点放到标题上（读屏从这里开始读），标题本身不画框 */
 .gy-edit-page [data-page-title]:focus,
-.gy-review-page [data-page-title]:focus {
+.gy-review-page [data-page-title]:focus,
+.gy-publish-page [data-page-title]:focus {
   outline: none !important;
 }
 

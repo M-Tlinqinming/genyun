@@ -14,6 +14,7 @@ import {
   type EnterpriseProfile,
   type LockedMaterial,
   type PlanInput,
+  type PublishStatus,
   type SectionEdit,
   type SubmittedAnswer,
   type SubmittedDocument,
@@ -341,8 +342,9 @@ export const checklistItems = pgTable(
 );
 
 // customer_material = 客户上传的资料，本组织与相关人员可见；contract = 已签合同原件，仅运营可见（M3）；
-// draft = 系统生成的草稿（Word、PDF），只有负责专家和运营看得到，发布前客户看不到
-export const fileKind = pgEnum('file_kind', ['customer_material', 'contract', 'draft']);
+// draft = 系统生成的草稿（Word、PDF），只有负责专家和运营看得到，发布前客户看不到；
+// delivery = 发布时定下的三份交付 Word（M2 第 15 项），本组织客户、负责专家和运营能看
+export const fileKind = pgEnum('file_kind', ['customer_material', 'contract', 'draft', 'delivery']);
 
 // 上传的文件。内容在文件存储里（本机磁盘 / 对象存储），这里只存登记信息
 export const files = pgTable('files', {
@@ -702,4 +704,58 @@ export const organizationInvitations = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('organization_invitations_org').on(t.orgId)],
+);
+
+// 成果发布（M2 第 15 项，15 页 R03–R04b）：负责注安师每点一次「发布」记一行，publish_id 由页面生成，
+// 同一次发布重发（超时、断网后）只记一次。成功时把三份当前稿定稿存成文件（delivery_files），形成交付版本：
+// 同一任务第一次是 V1，以后再发布是 V2、V3。失败的不占版本（重试时用同一个版本号）。
+// 同一批草稿只能形成一个交付版本；同一任务同一时间只有一次发布在进行
+export const deliveries = pgTable(
+  'deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    publishId: uuid('publish_id').notNull().unique(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => generationBatches.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    // publishing = 正在发布；done = 已形成交付版本；failed = 没有形成交付（error 写原因）
+    status: text('status').$type<PublishStatus>().notNull(),
+    error: text('error'),
+    // 发布时的审核结论和三份修订次数（draft_edits.version），交付版本对应的就是这一份
+    reviewedBy: uuid('reviewed_by')
+      .notNull()
+      .references(() => users.id),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull(),
+    versions: jsonb('versions').$type<Record<DraftKind, number>>().notNull(),
+    publishedBy: uuid('published_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('deliveries_task_version').on(t.taskId, t.version).where(sql`${t.status} = 'done'`),
+    uniqueIndex('deliveries_one_publishing').on(t.taskId).where(sql`${t.status} = 'publishing'`),
+    uniqueIndex('deliveries_batch_once').on(t.batchId).where(sql`${t.status} <> 'failed'`),
+  ],
+);
+
+// 交付版本里的三份 Word（定稿文件，kind = delivery）
+export const deliveryFiles = pgTable(
+  'delivery_files',
+  {
+    deliveryId: uuid('delivery_id')
+      .notNull()
+      .references(() => deliveries.id, { onDelete: 'cascade' }),
+    kind: draftKind('kind').notNull(),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id),
+  },
+  (t) => [primaryKey({ columns: [t.deliveryId, t.kind] })],
 );

@@ -24,12 +24,15 @@ export function ConclusionView({
   enterpriseName,
   taskNumber,
   onOpen,
+  onPublish,
 }: {
   taskId: string;
   enterpriseName: string;
   taskNumber: string;
   /** 回到某一份的 Word 预览 */
   onOpen: (kind: DraftKind) => void;
+  /** 进入成果发布 */
+  onPublish: () => void;
 }) {
   const review = useReview(taskId);
   const session = useSession();
@@ -156,6 +159,7 @@ export function ConclusionView({
       {passed ? (
         <Banner tone="done">
           ✓ 审核已通过 · {r.review!.byName} {stamp(r.review!.at)} · 结论对应三份当前保存稿
+          {r.published ? ` · 已发布为交付 V${r.published.version}，这批文稿只读` : ''}
         </Banner>
       ) : r.factsChangedAt ? (
         <Banner tone="action">审核结论已失效：事实已更新，草稿还没有重新生成。请先按新事实重新生成三份草稿，再核对和确认审核结论。</Banner>
@@ -258,8 +262,8 @@ export function ConclusionView({
         </span>
         <Button onClick={() => onOpen(pending[0]?.kind ?? 'plan')}>返回检查文稿</Button>
         {passed ? (
-          <Button type="primary" disabled title="成果发布即将开放">
-            进入发布（即将开放）
+          <Button type="primary" onClick={onPublish}>
+            {r.published ? '查看发布结果' : '进入发布'}
           </Button>
         ) : (
           r.editable && (

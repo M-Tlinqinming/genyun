@@ -32,6 +32,7 @@ import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/d
 import { DrawingRenderer } from './generation/drawings/renderer.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
 import { EDIT_DRAFTER, EditingController, EditingService } from './tasks/editing.service.ts';
+import { PublishController, PublishService } from './tasks/publish.service.ts';
 import { ReviewController, ReviewService } from './tasks/review.service.ts';
 import { SupplementsController, SupplementsService } from './tasks/supplements.service.ts';
 import { defaultPdfConverter, PDF_CONVERTER, type PdfConverter } from './generation/word/preview-pdf.ts';
@@ -94,6 +95,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       GenerationController,
       EditingController,
       ReviewController,
+      PublishController,
       DrawingsController,
       ContactsController,
       SupplementsController,
@@ -124,6 +126,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       GenerationService,
       EditingService,
       ReviewService,
+      PublishService,
       DrawingsService,
       TasksService,
       ExpertTasksService,

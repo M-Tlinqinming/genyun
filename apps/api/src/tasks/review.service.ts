@@ -51,6 +51,7 @@ import {
 } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { PDF_CONVERTER, type PdfConverter } from '../generation/word/preview-pdf.ts';
+import { batchLock, throwIfLocked } from './delivery-lock.ts';
 import { EditingService } from './editing.service.ts';
 
 const NOT_FOUND = '找不到该任务';
@@ -100,6 +101,8 @@ export class ReviewService {
         .where(and(eq(draftEdits.batchId, ctx.batch.id), eq(draftEdits.kind, k)))
         .for('update');
       if ((edits?.version ?? 0) !== parsed.data.version) return false;
+      // 已发布（或正在发布）的这批文稿不再核对
+      throwIfLocked(await batchLock(tx, ctx.batch.id));
       await tx
         .insert(draftChecks)
         .values({
@@ -137,6 +140,7 @@ export class ReviewService {
     const before = await this.build(user, ctx);
     // 已经有效通过（重复点击、两个窗口都点了）：原样返回，不改审核时间和审核人
     if (reviewValid(before)) return before;
+    throwIfLocked(await batchLock(this.db, ctx.batch.id));
     // 这批草稿生成以后采用过事实补件：草稿用的还是旧事实，不能确认结论
     if (before.factsChangedAt) {
       throw new ConflictException({ statusCode: 409, message: FACTS_CHANGED, reason: 'facts_changed', view: before });
@@ -319,7 +323,7 @@ export class ReviewService {
 
   private async build(user: SessionUser, ctx: Ctx): Promise<ReviewView> {
     const batchId = ctx.batch.id;
-    const [drafts, edits, checks, [review], [changed]] = await Promise.all([
+    const [drafts, edits, checks, [review], [changed], lock] = await Promise.all([
       this.db
         .select({
           kind: generatedDrafts.kind,
@@ -363,6 +367,7 @@ export class ReviewService {
         .where(and(eq(factSupplements.taskId, ctx.task.id), eq(factSupplements.status, 'adopted'), gt(factSupplements.adoptedAt, ctx.batch.createdAt)))
         .orderBy(desc(factSupplements.adoptedAt))
         .limit(1),
+      batchLock(this.db, batchId),
     ]);
     const docs: DraftCheckView[] = DRAFT_KIND_KEYS.map((kind) => {
       const e = edits.find((x) => x.kind === kind);
@@ -387,8 +392,9 @@ export class ReviewService {
             versions: review.versions,
           }
         : null,
-      editable: canEditTaskWork(user, ctx.task),
+      editable: canEditTaskWork(user, ctx.task) && !lock,
       factsChangedAt: changed?.at?.toISOString() ?? null,
+      published: lock?.status === 'done' ? { version: lock.version, at: lock.publishedAt! } : null,
     };
   }
 

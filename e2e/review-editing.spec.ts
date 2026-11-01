@@ -263,9 +263,9 @@ test('改一节、写修订说明保存；离开前提醒；别人刚保存过�
   await expect(ops).toHaveURL(/\/operator$/);
   await ops.goto(`/operator/tasks/${taskId}?doc=plan&section=${sectionId}`);
   await expect(editor(ops)).toBeVisible();
-  await expect(ops.getByText('只读 · 由负责专家修改')).toBeVisible();
+  await expect(ops.getByText('只读 · 由负责注安师修改')).toBeVisible();
   await expect(editor(ops)).toHaveAttribute('contenteditable', 'false');
-  await expect(footer(ops)).toContainText('只有负责这个任务的专家可以修改正文');
+  await expect(footer(ops)).toContainText('只有负责这个任务的注安师可以修改正文');
   await shots(ops, 'operator');
   await ops.close();
 });
