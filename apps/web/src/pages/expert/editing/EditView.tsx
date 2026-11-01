@@ -35,6 +35,7 @@ import { previewKey, reviewKey, useReview } from '../../../api/review';
 import { linkButton, Loading } from '../../../components/ui';
 import { gy, stage } from '../../../theme/tokens';
 import { ContactRecords } from '../workup/ContactRecords';
+import { FactsChangedNotice } from '../workup/SupplementView';
 import { ConflictDialog, copyText, LeaveDialog, RewriteDialog, stamp, ViewSwitch } from './EditDialogs';
 import { blocksToDoc, docToBlocks } from './editorDoc';
 import type { Editor } from '@tiptap/react';
@@ -492,11 +493,15 @@ export function EditView({
               </li>
             ))}
           </ol>
+          <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setParams({ view: 'supplement', start: '1' })}>
+            发起事实补件
+          </button>
           <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setShowRecords(true)}>
             处理记录
           </button>
         </div>
       </header>
+      <FactsChangedNotice taskId={taskId} onRegenerate={editable ? () => setParams({ view: 'confirm' }) : undefined} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 28, paddingBottom: 12, borderBottom: `1px solid ${gy.split}` }}>
         <div role="tablist" aria-label="三份文档" style={{ display: 'flex', gap: 28 }} onKeyDown={(e) =>

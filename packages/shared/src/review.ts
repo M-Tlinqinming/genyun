@@ -33,6 +33,11 @@ export interface ReviewView {
   review: ReviewConclusion | null;
   /** 负责专家能核对、能确认结论；运营只能看 */
   editable: boolean;
+  /**
+   * 这批草稿生成以后又采用了事实补件（第 13 项）：事实已更新、草稿还没有重新生成。
+   * 这时原来的审核结论作废，也不能再确认结论，要先按新事实重新生成。没有为 null
+   */
+  factsChangedAt?: string | null;
 }
 
 /** 这份的核对还对应当前稿 */
@@ -43,10 +48,10 @@ export const checkStale = (d: Pick<DraftCheckView, 'version' | 'check'>) => d.ch
 
 export const checkedCount = (docs: Pick<DraftCheckView, 'version' | 'check'>[]) => docs.filter(checkValid).length;
 
-/** 审核结论还对应三份当前稿 */
-export function reviewValid(view: Pick<ReviewView, 'docs' | 'review'>): boolean {
+/** 审核结论还对应三份当前稿，且之后没有采用过事实补件 */
+export function reviewValid(view: Pick<ReviewView, 'docs' | 'review' | 'factsChangedAt'>): boolean {
   const r = view.review;
-  return r !== null && view.docs.every((d) => checkValid(d) && r.versions[d.kind] === d.version);
+  return r !== null && !view.factsChangedAt && view.docs.every((d) => checkValid(d) && r.versions[d.kind] === d.version);
 }
 
 /** 核对完一份后接着打开哪一份：按顺序找下一份还没核对的，都核对过了返回 null */

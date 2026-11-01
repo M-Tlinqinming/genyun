@@ -30,14 +30,25 @@ import {
   Put,
   Res,
 } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 import type { Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { canEditTaskWork, canViewTaskWork } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { draftChecks, draftEdits, draftPreviews, draftReviews, files, generatedDrafts, generationBatches, tasks, users } from '../db/schema.ts';
+import {
+  draftChecks,
+  draftEdits,
+  draftPreviews,
+  draftReviews,
+  factSupplements,
+  files,
+  generatedDrafts,
+  generationBatches,
+  tasks,
+  users,
+} from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { PDF_CONVERTER, type PdfConverter } from '../generation/word/preview-pdf.ts';
 import { EditingService } from './editing.service.ts';
@@ -46,6 +57,7 @@ const NOT_FOUND = '找不到该任务';
 const ONLY_EXPERT = '只有负责这个任务的注安师可以核对和确认审核结论';
 const STALE_CHECK = '这份刚保存了新的修订，请看最新稿后再核对';
 const STALE_REVIEW = '有文稿在核对后又保存了修订，请重新核对后再确认审核结论';
+const FACTS_CHANGED = '事实已更新，草稿还没有重新生成。请先按新事实重新生成，再核对和确认审核结论';
 const CONVERT_FAILED = '转换没有成功，请重试';
 // 转换中途服务重启，记录会一直停在「正在转」：超过这么久按失败处理，可以重试
 const CONVERT_STALE_MS = 5 * 60_000;
@@ -125,6 +137,10 @@ export class ReviewService {
     const before = await this.build(user, ctx);
     // 已经有效通过（重复点击、两个窗口都点了）：原样返回，不改审核时间和审核人
     if (reviewValid(before)) return before;
+    // 这批草稿生成以后采用过事实补件：草稿用的还是旧事实，不能确认结论
+    if (before.factsChangedAt) {
+      throw new ConflictException({ statusCode: 409, message: FACTS_CHANGED, reason: 'facts_changed', view: before });
+    }
     const pending = before.docs.filter((d) => !checkValid(d));
     if (pending.length) {
       throw new ConflictException({
@@ -303,7 +319,7 @@ export class ReviewService {
 
   private async build(user: SessionUser, ctx: Ctx): Promise<ReviewView> {
     const batchId = ctx.batch.id;
-    const [drafts, edits, checks, [review]] = await Promise.all([
+    const [drafts, edits, checks, [review], [changed]] = await Promise.all([
       this.db
         .select({
           kind: generatedDrafts.kind,
@@ -340,6 +356,13 @@ export class ReviewService {
         .innerJoin(users, eq(users.id, draftReviews.reviewedBy))
         .where(eq(draftReviews.batchId, batchId))
         .limit(1),
+      // 这批草稿生成以后采用的事实补件（与补件页「已按新事实重新生成」同一个判断）
+      this.db
+        .select({ at: factSupplements.adoptedAt })
+        .from(factSupplements)
+        .where(and(eq(factSupplements.taskId, ctx.task.id), eq(factSupplements.status, 'adopted'), gt(factSupplements.adoptedAt, ctx.batch.createdAt)))
+        .orderBy(desc(factSupplements.adoptedAt))
+        .limit(1),
     ]);
     const docs: DraftCheckView[] = DRAFT_KIND_KEYS.map((kind) => {
       const e = edits.find((x) => x.kind === kind);
@@ -365,6 +388,7 @@ export class ReviewService {
           }
         : null,
       editable: canEditTaskWork(user, ctx.task),
+      factsChangedAt: changed?.at?.toISOString() ?? null,
     };
   }
 

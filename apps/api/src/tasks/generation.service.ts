@@ -40,6 +40,7 @@ import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import {
   enterpriseDocumentVersions,
+  factSupplements,
   files,
   generatedDrafts,
   draftEdits,
@@ -179,12 +180,23 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
       return versions.filter((v) => v.documentId === doc).sort((a, b) => b.version - a.version)[0];
     };
 
+    // 事实补件里客户提供的文件：第几轮、专家是否已采用（已采用的不再算变化）
+    const supplementRows = await this.db
+      .select({ round: factSupplements.round, status: factSupplements.status, fileIds: factSupplements.responseFileIds })
+      .from(factSupplements)
+      .where(eq(factSupplements.taskId, taskId));
+    const supplementOf = (fileId: string) => {
+      const r = supplementRows.filter((s) => (s.fileIds ?? []).includes(fileId)).sort((a, b) => b.round - a.round)[0];
+      return r ? { round: r.round, adopted: r.status === 'adopted' } : undefined;
+    };
+
     const rows: AdoptedMaterial[] = originals.map((o) => {
       const top = o.version !== null ? newest(o.fileId) : undefined;
+      const supplement = supplementOf(o.fileId);
       const change =
         top && top.version > o.version!
           ? ({ kind: 'newer', version: top.version, uploadedAt: top.createdAt.toISOString() } as const)
-          : o.uploadedAt > snapshotAt
+          : o.uploadedAt > snapshotAt && !supplement?.adopted
             ? ({ kind: 'added' } as const)
             : null;
       return {
@@ -195,6 +207,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
         step: null,
         uploadedAt: o.uploadedAt.toISOString(),
         change,
+        ...(supplement ? { supplement } : {}),
       };
     });
     const p = snapshot.profile;

@@ -1,5 +1,5 @@
 {
-  "id": "999cbda2-8e4b-43b6-bd94-6eab10d63fa8",
+  "id": "83f0f543-ac79-4182-8e0e-8bd13fb65d91",
   "prevId": "e12b5084-d0e0-421e-af95-21302b0e4923",
   "version": "7",
   "dialect": "postgresql",
@@ -1236,6 +1236,198 @@
           "tableTo": "users",
           "columnsFrom": [
             "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.fact_supplements": {
+      "name": "fact_supplements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "round": {
+          "name": "round",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_key": {
+          "name": "item_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "needs_file": {
+          "name": "needs_file",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "facts": {
+          "name": "facts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "response_file_ids": {
+          "name": "response_file_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "response_note": {
+          "name": "response_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "responded_by": {
+          "name": "responded_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "responded_at": {
+          "name": "responded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adopted_by": {
+          "name": "adopted_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adopted_at": {
+          "name": "adopted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "fact_supplements_round": {
+          "name": "fact_supplements_round",
+          "columns": [
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "round",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fact_supplements_task_id_tasks_id_fk": {
+          "name": "fact_supplements_task_id_tasks_id_fk",
+          "tableFrom": "fact_supplements",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "fact_supplements_created_by_users_id_fk": {
+          "name": "fact_supplements_created_by_users_id_fk",
+          "tableFrom": "fact_supplements",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "fact_supplements_responded_by_users_id_fk": {
+          "name": "fact_supplements_responded_by_users_id_fk",
+          "tableFrom": "fact_supplements",
+          "tableTo": "users",
+          "columnsFrom": [
+            "responded_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "fact_supplements_adopted_by_users_id_fk": {
+          "name": "fact_supplements_adopted_by_users_id_fk",
+          "tableFrom": "fact_supplements",
+          "tableTo": "users",
+          "columnsFrom": [
+            "adopted_by"
           ],
           "columnsTo": [
             "id"
@@ -2749,108 +2941,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.task_operator_notes": {
-      "name": "task_operator_notes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "task_id": {
-          "name": "task_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "operator_note_kind",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "body": {
-          "name": "body",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "task_operator_notes_task": {
-          "name": "task_operator_notes_task",
-          "columns": [
-            {
-              "expression": "task_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "task_operator_notes_task_id_tasks_id_fk": {
-          "name": "task_operator_notes_task_id_tasks_id_fk",
-          "tableFrom": "task_operator_notes",
-          "tableTo": "tasks",
-          "columnsFrom": [
-            "task_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "task_operator_notes_created_by_users_id_fk": {
-          "name": "task_operator_notes_created_by_users_id_fk",
-          "tableFrom": "task_operator_notes",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.task_submissions": {
       "name": "task_submissions",
       "schema": "",
@@ -3390,15 +3480,6 @@
         "new",
         "handed_over",
         "closed"
-      ]
-    },
-    "public.operator_note_kind": {
-      "name": "operator_note_kind",
-      "schema": "public",
-      "values": [
-        "note",
-        "remind_expert",
-        "reassign"
       ]
     },
     "public.org_kind": {

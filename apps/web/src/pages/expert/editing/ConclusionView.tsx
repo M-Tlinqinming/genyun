@@ -157,6 +157,8 @@ export function ConclusionView({
         <Banner tone="done">
           ✓ 审核已通过 · {r.review!.byName} {stamp(r.review!.at)} · 结论对应三份当前保存稿
         </Banner>
+      ) : r.factsChangedAt ? (
+        <Banner tone="action">审核结论已失效：事实已更新，草稿还没有重新生成。请先按新事实重新生成三份草稿，再核对和确认审核结论。</Banner>
       ) : lapsed ? (
         <Banner tone="action">
           审核结论已失效：{changedSince.join('、')}在审核后又保存了修订。{pending.length ? '请重新核对后再确认审核结论。' : '请重新确认审核结论。'}
@@ -261,7 +263,7 @@ export function ConclusionView({
           </Button>
         ) : (
           r.editable && (
-            <Button type="primary" disabled={!allChecked || !agreed} loading={saving} onClick={() => void submit()}>
+            <Button type="primary" disabled={!allChecked || !agreed || !!r.factsChangedAt} loading={saving} onClick={() => void submit()}>
               确认审核通过，进入发布
             </Button>
           )
