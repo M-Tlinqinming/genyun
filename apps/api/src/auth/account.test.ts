@@ -1,11 +1,15 @@
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import { memberships, organizations, passwordRecoveryCodes, users } from '../db/schema.ts';
-import { MemoryMailer } from '../mail/mailer.ts';
+import { LocalDiskStorage } from '../files/storage.ts';
+import { MemoryMailer, SimulatedMailer } from '../mail/mailer.ts';
 import { hashPassword } from './auth.service.ts';
 import { RecoveryService } from './recovery.service.ts';
 
@@ -32,6 +36,9 @@ const EMAILS = [
   'pw@test.cn',
   'other@test.cn',
   'devices@test.cn',
+  'burst@test.cn',
+  'pwcode@test.cn',
+  'prodlog@test.cn',
 ];
 
 beforeAll(async () => {
@@ -191,14 +198,80 @@ describe('找回密码：邮箱验证码', () => {
     for (const email of ['time1@test.cn', 'ghost1@test.cn']) {
       const res = await http().post('/api/auth/recover/send').send({ email });
       expect(res.status, email).toBe(429);
-      expect(res.body.message).toMatch(/秒后再试/);
+      // 前端照常进入第 2 步，按剩余秒数倒计时
+      expect(res.body).toMatchObject({ reason: 'resend', message: '验证码刚刚发过，请使用邮箱里最新的一封' });
+      expect(res.body.retryAfter).toBeGreaterThan(0);
+      expect(res.body.retryAfter).toBeLessThanOrEqual(60);
     }
+  });
+
+  it('一小时内超过 5 次：429，reason 为 hourly', async () => {
+    const email = 'hourly@test.cn';
+    const recovery = app.get(RecoveryService) as unknown as { sends: Map<string, number[]> };
+    recovery.sends.set(email, [1, 2, 3, 4, 5].map((m) => Date.now() - m * 61_000));
+    const res = await http().post('/api/auth/recover/send').send({ email });
+    expect(res.status).toBe(429);
+    expect(res.body).toMatchObject({ reason: 'hourly', message: '这个邮箱发送次数过多，请一小时后再试' });
+  });
+
+  it('同时提交很多个错误验证码，最多比对 5 次，之后正确的也不能用', async () => {
+    const email = 'burst@test.cn';
+    const code = await sendCode(email);
+    const wrong = code === '000000' ? '111111' : '000000';
+    const results = await Promise.all(Array.from({ length: 12 }, () => reset(email, wrong)));
+    expect(results.every((r) => r.status === 400)).toBe(true);
+    const [row] = await handle.db.select().from(passwordRecoveryCodes).where(eq(passwordRecoveryCodes.userId, ids[email]!));
+    expect(row!.attempts).toBe(5);
+    expect(row!.voidedAt).not.toBeNull();
+    await reset(email, code).expect(400);
+  });
+
+  it('在个人账户改了密码后，之前发的验证码作废', async () => {
+    const email = 'pwcode@test.cn';
+    const code = await sendCode(email);
+    const agent = await loginAs(email);
+    await agent.post('/api/account/password').send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD }).expect(204);
+    await reset(email, code, 'another-pass-3').expect(400);
+    await loginAs(email, NEW_PASSWORD);
   });
 
   it('新密码不符合规则时不重设', async () => {
     const res = await reset('reset@test.cn', '123456', 'short');
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('至少 8 位，含字母和数字');
+  });
+});
+
+describe('找回密码：验证码不进日志', () => {
+  it('正式环境模拟发信时，服务日志里没有验证码；发件箱文件里有', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'gy-recover-outbox-'));
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => void logs.push(a.join(' ')));
+    const env = process.env.NODE_ENV;
+    const prod = await createApp(handle.db, { mailer: new SimulatedMailer(dir), storage: new LocalDiskStorage(dir, 'test-secret') });
+    await prod.init();
+    // 模拟发信按 NODE_ENV 决定日志写多少；只在发送这一下设成 production
+    process.env.NODE_ENV = 'production';
+    try {
+      await request(prod.getHttpServer()).post('/api/auth/recover/send').send({ email: 'prodlog@test.cn' }).expect(204);
+      let files: string[] = [];
+      // 发信不等结果：等文件出现
+      for (let i = 0; i < 50 && files.length === 0; i++) {
+        await new Promise((r) => setTimeout(r, 20));
+        files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
+      }
+      const mail = JSON.parse(await readFile(join(dir, files[0]!), 'utf8')) as { text: string };
+      const code = mail.text.match(/验证码是：(\d{6})/)?.[1];
+      expect(code).toBeTruthy();
+      expect(logs.join('\n')).toContain('prodlog@test.cn');
+      expect(logs.join('\n')).not.toContain(code!);
+      expect(logs.join('\n')).not.toMatch(/\b\d{6}\b/);
+    } finally {
+      process.env.NODE_ENV = env;
+      spy.mockRestore();
+      await prod.close();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

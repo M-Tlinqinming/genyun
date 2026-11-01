@@ -17,6 +17,7 @@ import type { Request } from 'express';
 import { DATABASE, type Database } from '../db/client.ts';
 import { sessions, users } from '../db/schema.ts';
 import { hashPassword, hashToken, type SessionUser } from './auth.service.ts';
+import { voidRecoveryCodes } from './recovery.service.ts';
 import { CurrentUser, SESSION_COOKIE } from './session.guard.ts';
 
 // A04 个人账户：只改登录人自己的账号。接口里没有用户 id 参数，改谁只看会话，所以改不了别人的账号。
@@ -51,6 +52,8 @@ export class AccountService {
     const passwordHash = await hashPassword(next);
     await this.db.transaction(async (tx) => {
       await tx.update(users).set({ passwordHash, passwordChangedAt: new Date() }).where(eq(users.id, userId));
+      // 改过密码，之前发的找回密码验证码不能再用
+      await voidRecoveryCodes(tx, userId);
       await tx.delete(sessions).where(and(eq(sessions.userId, userId), ne(sessions.tokenHash, hashToken(token))));
     });
   }

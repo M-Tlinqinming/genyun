@@ -1,15 +1,17 @@
 import { LeftOutlined, MailOutlined } from '@ant-design/icons';
 import {
   newPasswordSchema,
+  RECOVERY_CODE_MAX_ATTEMPTS,
   RECOVERY_CODE_TTL_MINUTES,
   RECOVERY_RESEND_SECONDS,
   recoverySendSchema,
 } from '@genyun/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Divider, Form, Input, Typography } from 'antd';
-import { useEffect, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router';
-import { authApi } from '../auth/api';
+import { Alert, App, Button, Divider, Form, Input, Typography } from 'antd';
+import type { OTPRef } from 'antd/es/input/OTP';
+import { useEffect, useRef, useState } from 'react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router';
+import { ApiError, authApi } from '../auth/api';
 import { useSession } from '../auth/session';
 import { AuthShell } from '../components/AuthShell';
 import { gy } from '../theme/tokens';
@@ -27,42 +29,110 @@ function maskEmail(email: string): string {
   return `${name.slice(0, 2)}****@${domain}`;
 }
 
+// 发送接口返回的 429 分两种：resend = 60 秒内重复发送，上一封仍然有效，照常进入第 2 步并按剩余秒数倒计时；
+// hourly = 一小时内发太多次，留在第 1 步提示。返回 null 表示不是 resend
+function resendWait(err: unknown): number | null {
+  if (err instanceof ApiError && err.status === 429 && err.body?.reason === 'resend') {
+    const s = Number(err.body.retryAfter);
+    return Number.isFinite(s) && s > 0 ? Math.ceil(s) : RECOVERY_RESEND_SECONDS;
+  }
+  return null;
+}
+
 // A03 账号恢复｜邮箱验证码重设密码。两步：确认邮箱 → 验证并设置新密码
 export function RecoverPage() {
   const session = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
   const client = useQueryClient();
+  const { message } = App.useApp();
+  const [form] = Form.useForm<ResetForm>();
+  const otp = useRef<OTPRef>(null);
+  // 登录页已经填好的邮箱带过来
+  const initialEmail = (location.state as { email?: string } | null)?.email;
   const [email, setEmail] = useState<string>();
-  const [sentAt, setSentAt] = useState(0);
+  // 什么时候可以重新发送
+  const [resendAt, setResendAt] = useState(0);
   const [now, setNow] = useState(Date.now());
+  // 第 2 步说明文字的替换（如「验证码刚刚发过…」），以及读屏播报
+  const [notice, setNotice] = useState<string>();
+  const [announce, setAnnounce] = useState('');
+  // 当前这个验证码错了几次（前端计数，和服务端的上限一致）
+  const [failures, setFailures] = useState(0);
+  const remaining = RECOVERY_CODE_MAX_ATTEMPTS - failures;
+
+  // 清空验证码格子、清掉错误，焦点回到第 1 格
+  const clearCode = () => {
+    form.setFields([{ name: 'code', value: '', errors: [] }]);
+    setTimeout(() => otp.current?.nativeElement.querySelector('input')?.focus(), 0);
+  };
+
+  const enterStep2 = (to: string, waitSeconds: number, note?: string) => {
+    const again = !!email;
+    setEmail(to);
+    setResendAt(Date.now() + waitSeconds * 1000);
+    setNow(Date.now());
+    setNotice(note);
+    setFailures(0);
+    reset.reset();
+    if (again) {
+      clearCode();
+      setAnnounce(note ?? '新验证码已发送，旧的已作废');
+    }
+  };
 
   const send = useMutation({
     mutationFn: (to: string) => authApi.sendRecoveryCode({ email: to }),
-    onSuccess: (_, to) => {
-      setEmail(to);
-      setSentAt(Date.now());
-      setNow(Date.now());
+    onSuccess: (_, to) => enterStep2(to, RECOVERY_RESEND_SECONDS),
+    onError: (err, to) => {
+      const wait = resendWait(err);
+      if (wait !== null) enterStep2(to, wait, err.message);
     },
   });
   const reset = useMutation({
     mutationFn: (values: ResetForm) => authApi.resetPassword({ email: email!, code: values.code, password: values.password }),
     onSuccess: (user) => {
       client.setQueryData(['session'], user);
+      message.success('密码已重设');
       navigate(homeOf(user), { replace: true });
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 400) {
+        setFailures((n) => n + 1);
+        clearCode();
+      }
     },
   });
 
   // 重新发送的倒计时
-  const wait = Math.max(0, RECOVERY_RESEND_SECONDS - Math.floor((now - sentAt) / 1000));
+  const wait = Math.max(0, Math.ceil((resendAt - now) / 1000));
   useEffect(() => {
     if (!email || wait === 0) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [email, wait]);
 
+  // 组件库给每个验证码格子的读屏名称是英文，换成「验证码第 N 位」
+  useEffect(() => {
+    otp.current?.nativeElement
+      .querySelectorAll('input')
+      .forEach((el, i) => el.setAttribute('aria-label', `验证码第 ${i + 1} 位`));
+  });
+
   if (session.data && !reset.isSuccess) return <Navigate to={homeOf(session.data)} replace />;
 
   const step = email ? 2 : 1;
+  // 每小时上限的 429 等其他发送错误（resend 已经进了第 2 步，不算错误）
+  const sendError = send.error && resendWait(send.error) === null ? send.error.message : null;
+  const exhausted = remaining <= 0;
+  const codeFailed = reset.error instanceof ApiError && reset.error.status === 400;
+  const resetError = !reset.error
+    ? null
+    : !codeFailed
+      ? reset.error.message
+      : exhausted
+        ? '这个验证码已失效，请点「重新发送」获取新的验证码'
+        : `${reset.error.message}。还可以再试 ${remaining} 次`;
 
   return (
     <AuthShell raise={48}>
@@ -74,18 +144,44 @@ export function RecoverPage() {
       <Typography.Title level={2} style={{ fontSize: 22, lineHeight: '34px', fontWeight: 500, margin: '20px 0 0' }}>
         重设密码
       </Typography.Title>
-      <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }} aria-live="polite">
-        {email
-          ? `如果 ${maskEmail(email)} 是耕云账号，验证码已发到这个邮箱，${RECOVERY_CODE_TTL_MINUTES} 分钟内有效。`
-          : '输入登录邮箱，我们会发一个 6 位验证码。'}
+      <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
+        {email ? (
+          <>
+            {notice
+              ? `${notice}。`
+              : `如果 ${maskEmail(email)} 是耕云账号，验证码已发到这个邮箱，${RECOVERY_CODE_TTL_MINUTES} 分钟内有效。`}
+            <Button
+              type="link"
+              style={{ padding: 0, height: 'auto', marginLeft: 4, verticalAlign: 'baseline' }}
+              onClick={() => {
+                setEmail(undefined);
+                setNotice(undefined);
+                setAnnounce('');
+                send.reset();
+                reset.reset();
+                form.resetFields();
+              }}
+            >
+              换个邮箱
+            </Button>
+          </>
+        ) : (
+          '输入登录邮箱，我们会发一个 6 位验证码。'
+        )}
       </Typography.Text>
+      {/* 读屏播报：重新发送成功等 */}
+      <span aria-live="polite" style={srOnly}>
+        {announce}
+      </span>
 
       <Steps step={step} />
 
       {step === 1 ? (
         <Form<{ email: string }>
+          className="gy-form-gap"
           layout="vertical"
           requiredMark={false}
+          initialValues={{ email: email ?? initialEmail }}
           onFinish={(v) => send.mutate(v.email.trim())}
         >
           <Form.Item
@@ -96,13 +192,15 @@ export function RecoverPage() {
           >
             <Input size="large" prefix={<MailOutlined />} placeholder="请输入登录邮箱" autoComplete="email" autoFocus />
           </Form.Item>
-          {send.error && <Alert type="error" showIcon title={send.error.message} style={{ marginBottom: 16 }} />}
+          {sendError && <Alert type="error" showIcon title={sendError} style={{ marginBottom: 16 }} />}
           <Button type="primary" size="large" htmlType="submit" block loading={send.isPending}>
             发送验证码
           </Button>
         </Form>
       ) : (
         <Form<ResetForm>
+          form={form}
+          className="gy-form-gap"
           layout="vertical"
           requiredMark={(label, { required }) => (
             <>
@@ -132,12 +230,15 @@ export function RecoverPage() {
             style={{ marginBottom: 20 }}
           >
             <Input.OTP
+              ref={otp}
               length={6}
               size="large"
               autoFocus
               autoComplete="one-time-code"
+              inputMode="numeric"
               formatter={(v) => v.replace(/\D/g, '')}
-              aria-label="6 位验证码"
+              role="group"
+              aria-label="验证码"
               styles={{ root: { width: '100%', gap: 8 }, input: { flex: 1, height: 44, fontSize: 20 } }}
             />
           </Form.Item>
@@ -169,10 +270,9 @@ export function RecoverPage() {
           >
             <Input.Password size="large" placeholder="再次输入新密码" autoComplete="new-password" />
           </Form.Item>
-          {(reset.error || send.error) && (
-            <Alert type="error" showIcon title={(reset.error ?? send.error)!.message} style={{ marginBottom: 16 }} />
-          )}
-          <Button type="primary" size="large" htmlType="submit" block loading={reset.isPending}>
+          {(resetError || sendError) && <Alert type="error" showIcon title={resetError ?? sendError} style={{ marginBottom: 16 }} />}
+          {/* 平时一直可点，空着点会逐项提示；这个验证码错满 5 次后才禁用，先重新获取 */}
+          <Button type="primary" size="large" htmlType="submit" block loading={reset.isPending} disabled={exhausted}>
             重设并登录
           </Button>
         </Form>
@@ -180,11 +280,21 @@ export function RecoverPage() {
 
       <Divider style={{ margin: '20px 0' }} />
       <Typography.Text type="secondary" style={{ fontSize: 12, lineHeight: '20px', display: 'block' }}>
-        邮箱已无法使用？客户请联系本机构管理员，耕云员工请联系运营管理员更换登录邮箱。
+        邮箱已无法使用？请联系机构管理员或耕云更换登录邮箱。
       </Typography.Text>
     </AuthShell>
   );
 }
+
+// 只给读屏软件看的文字
+const srOnly = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap',
+} as const;
 
 function Steps({ step }: { step: 1 | 2 }) {
   const dot = (n: number, label: string) => {

@@ -29,11 +29,12 @@ export function AuthShell({ children, raise = 0 }: { children: ReactNode; raise?
         </a>
       </header>
 
+      {/* 上边距见 global.css 的 .gy-auth-main：视口不高于 800 时收小到 48px */}
       <main
+        className="gy-auth-main"
         style={{
           maxWidth: 1056,
           margin: '0 auto',
-          padding: '108px 0 64px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
@@ -57,6 +58,7 @@ export function AuthShell({ children, raise = 0 }: { children: ReactNode; raise?
         </section>
 
         <section
+          className="gy-auth-card"
           style={{
             width: 456,
             boxSizing: 'border-box',

@@ -110,11 +110,14 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
                   width: '100%',
                 }}
               >
-                <Avatar size={32} style={{ background: gy.selected, color: gy.primary }}>
+                <Avatar size={32} style={{ background: gy.selected, color: gy.primary, flexShrink: 0 }}>
                   {initial}
                 </Avatar>
-                <span style={{ display: 'flex', flexDirection: 'column' }}>
-                  <Typography.Text>{user.name}</Typography.Text>
+                {/* 姓名很长时单行省略，悬停看全名 */}
+                <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <Typography.Text ellipsis title={user.name}>
+                    {user.name}
+                  </Typography.Text>
                   <Typography.Text style={{ fontSize: 12, color: gy.tertiary }}>
                     {ROLES[current.role].label}
                   </Typography.Text>

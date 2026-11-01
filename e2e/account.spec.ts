@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, request, test, type Page } from '@playwright/test';
 
 // 用吴工（expert2@）测：别的测试文件很少用他；改过的密码、姓名在最后改回去
 const EMAIL = 'expert2@demo.genyun.net.cn';
@@ -33,10 +33,26 @@ async function latestCode(to: string, since: number): Promise<string> {
   throw new Error(`发件箱里没有发给 ${to} 的验证码`);
 }
 
+// 逐格填，不依赖焦点自动后移
 async function fillCode(page: Page, code: string) {
-  await page.getByRole('textbox').first().click();
-  await page.keyboard.type(code);
+  for (const [i, d] of [...code].entries()) await page.getByLabel(`验证码第 ${i + 1} 位`).fill(d);
 }
+
+// 不管中途哪一步失败，都把吴工的密码、姓名改回去，别的测试文件还要用
+test.afterAll(async () => {
+  const api = await request.newContext({ baseURL: test.info().project.use.baseURL });
+  try {
+    for (const pw of [PASSWORD, 'newpass123', 'changed123']) {
+      const res = await api.post('/api/auth/login', { data: { email: EMAIL, password: pw } });
+      if (!res.ok()) continue;
+      if (pw !== PASSWORD) await api.post('/api/account/password', { data: { currentPassword: pw, newPassword: PASSWORD } });
+      await api.patch('/api/account', { data: { name: '吴工' } });
+      break;
+    }
+  } finally {
+    await api.dispose();
+  }
+});
 
 test('忘记密码：邮箱验证码重设后直接登录，旧密码失效，验证码用过即作废', async ({ page, browser }) => {
   // 另一台设备先登录着，重设后应被退出
@@ -44,13 +60,15 @@ test('忘记密码：邮箱验证码重设后直接登录，旧密码失效，�
   await login(other, EMAIL);
   await expect(other).toHaveURL(/\/expert$/);
 
+  // 登录页填好的邮箱带到重设密码页
   await page.goto('/login');
+  await page.getByPlaceholder('请输入邮箱').fill(EMAIL);
   await page.getByRole('link', { name: '忘记密码' }).click();
   await expect(page).toHaveURL(/\/recover$/);
   await expect(page.getByRole('heading', { name: '重设密码' })).toBeVisible();
+  await expect(page.getByLabel('登录邮箱')).toHaveValue(EMAIL);
 
   const since = Date.now() - 1000;
-  await page.getByLabel('登录邮箱').fill(EMAIL);
   await page.getByRole('button', { name: '发送验证码' }).click();
   // 不说邮箱是否注册
   await expect(page.getByText('如果 ex****@demo.genyun.net.cn 是耕云账号，验证码已发到这个邮箱，10 分钟内有效。')).toBeVisible();
@@ -63,14 +81,15 @@ test('忘记密码：邮箱验证码重设后直接登录，旧密码失效，�
   await page.getByPlaceholder('至少 8 位，含字母和数字').fill('newpass123');
   await page.getByPlaceholder('再次输入新密码').fill('newpass123');
   await page.getByRole('button', { name: '重设并登录' }).click();
-  await expect(page.getByText('验证码不正确或已失效，请检查或重新获取')).toBeVisible();
+  await expect(page.getByText('验证码不正确或已失效，请检查或重新获取。还可以再试 4 次')).toBeVisible();
+  // 输错后格子清空，焦点回到第 1 格
+  await expect(page.getByLabel('验证码第 1 位')).toBeFocused();
+  await expect(page.getByLabel('验证码第 6 位')).toHaveValue('');
 
-  // 清空后输入正确的验证码
-  for (let i = 0; i < 6; i++) await page.keyboard.press('Backspace');
-  await page.getByRole('textbox').first().click();
-  await page.keyboard.type(code);
+  await fillCode(page, code);
   await page.getByRole('button', { name: '重设并登录' }).click();
   await expect(page).toHaveURL(/\/expert$/);
+  await expect(page.getByText('密码已重设')).toBeVisible();
 
   // 另一台设备被退出
   await other.reload();
@@ -84,10 +103,19 @@ test('忘记密码：邮箱验证码重设后直接登录，旧密码失效，�
   const reuse = await page.request.post('/api/auth/recover/reset', { data: { email: EMAIL, code, password: 'another123' } });
   expect(reuse.status()).toBe(400);
 
-  // 改回原密码，别的测试文件还要用
-  const back = await page.request.post('/api/account/password', { data: { currentPassword: 'newpass123', newPassword: PASSWORD } });
-  expect(back.status()).toBe(204);
   await other.close();
+});
+
+test('60 秒内再发：照常进入第 2 步，按剩余秒数倒计时；可以换个邮箱', async ({ page }) => {
+  await page.goto('/recover');
+  await page.getByLabel('登录邮箱').fill('again@example.com');
+  await page.getByRole('button', { name: '发送验证码' }).click();
+  await expect(page.getByText(/\d+ 秒后可重新发送/)).toBeVisible();
+  await page.getByRole('button', { name: '换个邮箱' }).click();
+  await expect(page.getByLabel('登录邮箱')).toHaveValue('again@example.com');
+  await page.getByRole('button', { name: '发送验证码' }).click();
+  await expect(page.getByText('验证码刚刚发过，请使用邮箱里最新的一封。')).toBeVisible();
+  await expect(page.getByText(/\d+ 秒后可重新发送/)).toBeVisible();
 });
 
 test('未注册的邮箱：提示和已注册时一样', async ({ page }) => {
@@ -107,7 +135,9 @@ test('个人账户：从头像菜单进入，改姓名、改密码、退出其�
   const profile = page.getByRole('region', { name: '基本资料' });
   await expect(profile.getByText(EMAIL)).toBeVisible();
   await expect(profile.getByText('专业人员')).toBeVisible();
-  await expect(page.getByText('身份由机构管理员调整')).toBeVisible();
+  // 耕云员工没有机构管理员可找
+  await expect(page.getByText('身份由耕云调整')).toBeVisible();
+  await expect(page.getByText('如需更换，请联系耕云')).toBeVisible();
   // 手机号不在个人账户里
   await expect(page.getByText('手机号')).toHaveCount(0);
 
@@ -124,7 +154,15 @@ test('个人账户：从头像菜单进入，改姓名、改密码、退出其�
   await expect(other).toHaveURL(/\/expert$/);
   await page.reload();
   await expect(page.getByText(/^除这台设备外，还有 \d+ 处登录中$/)).toBeVisible();
+  // 先确认；取消时什么都不变
   await page.getByRole('button', { name: '退出其他设备' }).click();
+  const confirm = page.getByRole('dialog', { name: '退出其他设备上的登录？' });
+  await expect(confirm.getByText('其他设备需要重新登录，这台设备不受影响。')).toBeVisible();
+  await confirm.getByRole('button', { name: '取消' }).click();
+  await expect(confirm).toBeHidden();
+  await expect(page.getByText(/^除这台设备外，还有 \d+ 处登录中$/)).toBeVisible();
+  await page.getByRole('button', { name: '退出其他设备' }).click();
+  await confirm.getByRole('button', { name: '退出其他设备' }).click();
   await expect(page.getByText('只有这台设备登录中')).toBeVisible();
   await other.reload();
   await expect(other).toHaveURL(/\/login$/);
@@ -135,10 +173,13 @@ test('个人账户：从头像菜单进入，改姓名、改密码、退出其�
   await dialog.getByLabel('当前密码').fill('wrong-pass1');
   await dialog.getByLabel('新密码').fill('changed123');
   await dialog.getByLabel('再次输入').fill('changed123');
-  await dialog.getByRole('button', { name: '保存' }).click();
+  await dialog.getByRole('button', { name: '确认修改' }).click();
+  // 提示挂在「当前密码」下面，焦点回到这个框
   await expect(dialog.getByText('当前密码不正确')).toBeVisible();
+  await expect(dialog.getByLabel('当前密码')).toBeFocused();
   await dialog.getByLabel('当前密码').fill(PASSWORD);
-  await dialog.getByRole('button', { name: '保存' }).click();
+  // 回车提交
+  await dialog.getByLabel('再次输入').press('Enter');
   await expect(page.getByText('密码已修改，其他设备上的登录已退出')).toBeVisible();
   await expect(page.getByText(/^上次修改 \d{4}\.\d{2}\.\d{2}$/)).toBeVisible();
 
@@ -148,8 +189,5 @@ test('个人账户：从头像菜单进入，改姓名、改密码、退出其�
   await login(other, EMAIL, 'changed123');
   await expect(other).toHaveURL(/\/expert$/);
 
-  // 改回原样
-  expect((await page.request.post('/api/account/password', { data: { currentPassword: 'changed123', newPassword: PASSWORD } })).status()).toBe(204);
-  expect((await page.request.patch('/api/account', { data: { name: '吴工' } })).status()).toBe(200);
   await other.close();
 });

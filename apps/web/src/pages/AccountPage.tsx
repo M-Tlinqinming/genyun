@@ -142,6 +142,8 @@ function ProfileCard({ name, email, user }: { name: string; email: string; user:
   const { message } = App.useApp();
   const [editing, setEditing] = useState(false);
   const [form] = Form.useForm<{ name: string }>();
+  // 耕云员工（专业人员、运营管理员）没有机构管理员可找
+  const isStaff = user.memberships.every((m) => !m.role.startsWith('customer'));
   const rename = useMutation({
     mutationFn: accountApi.rename,
     onSuccess: (view) => {
@@ -194,10 +196,10 @@ function ProfileCard({ name, email, user }: { name: string; email: string; user:
           name
         )}
       </Row>
-      <Row label="登录邮箱" aside={<span style={hint}>如需更换，请联系机构管理员或耕云</span>}>
+      <Row label="登录邮箱" aside={<span style={hint}>{isStaff ? '如需更换，请联系耕云' : '如需更换，请联系机构管理员或耕云'}</span>}>
         {email}
       </Row>
-      <Row label="所属机构与身份" last top={user.memberships.length > 1} aside={<span style={hint}>身份由机构管理员调整</span>}>
+      <Row label="所属机构与身份" last top={user.memberships.length > 1} aside={<span style={hint}>{isStaff ? '身份由耕云调整' : '身份由机构管理员调整'}</span>}>
         <span style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {user.memberships.map((m) => (
             <span key={m.orgId} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -215,7 +217,7 @@ function ProfileCard({ name, email, user }: { name: string; email: string; user:
 
 function SecurityCard({ passwordChangedAt, otherSessions }: { passwordChangedAt: string | null; otherSessions: number }) {
   const client = useQueryClient();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [changing, setChanging] = useState(false);
   const signOut = useMutation({
     mutationFn: accountApi.signOutOthers,
@@ -241,7 +243,21 @@ function SecurityCard({ passwordChangedAt, otherSessions }: { passwordChangedAt:
         <span style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
           <span>{otherSessions > 0 ? `除这台设备外，还有 ${otherSessions} 处登录中` : '只有这台设备登录中'}</span>
           {otherSessions > 0 && (
-            <Button type="link" style={{ padding: 0, height: 22 }} loading={signOut.isPending} onClick={() => signOut.mutate()}>
+            <Button
+              type="link"
+              style={{ padding: 0, height: 22 }}
+              loading={signOut.isPending}
+              onClick={() =>
+                modal.confirm({
+                  title: '退出其他设备上的登录？',
+                  content: '其他设备需要重新登录，这台设备不受影响。',
+                  okText: '退出其他设备',
+                  cancelText: '取消',
+                  // 失败时关掉确认框，错误显示在下面
+                  onOk: () => signOut.mutateAsync().catch(() => undefined),
+                })
+              }
+            >
               退出其他设备
             </Button>
           )}
@@ -269,7 +285,18 @@ interface PasswordForm {
 
 function ChangePasswordModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
   const [form] = Form.useForm<PasswordForm>();
-  const change = useMutation({ mutationFn: accountApi.changePassword, onSuccess: onDone });
+  const change = useMutation({
+    mutationFn: accountApi.changePassword,
+    onSuccess: onDone,
+    onError: (err) => {
+      // 当前密码不对：提示挂在「当前密码」下面，焦点回到这个框
+      if (err.message === '当前密码不正确') {
+        form.setFields([{ name: 'currentPassword', errors: [err.message] }]);
+        form.focusField('currentPassword');
+      }
+    },
+  });
+  const otherError = change.error && change.error.message !== '当前密码不正确' ? change.error.message : null;
 
   return (
     <Modal
@@ -277,7 +304,7 @@ function ChangePasswordModal({ open, onClose, onDone }: { open: boolean; onClose
       open={open}
       onCancel={onClose}
       onOk={() => form.submit()}
-      okText="保存"
+      okText="确认修改"
       confirmLoading={change.isPending}
       destroyOnHidden
       afterOpenChange={(o) => {
@@ -289,6 +316,7 @@ function ChangePasswordModal({ open, onClose, onDone }: { open: boolean; onClose
     >
       <Form<PasswordForm>
         form={form}
+        className="gy-form-gap"
         layout="vertical"
         requiredMark={false}
         onFinish={(v) => change.mutate({ currentPassword: v.currentPassword, newPassword: v.newPassword })}
@@ -318,7 +346,9 @@ function ChangePasswordModal({ open, onClose, onDone }: { open: boolean; onClose
           <Input.Password autoComplete="new-password" placeholder="再次输入新密码" />
         </Form.Item>
         <p style={{ color: gy.secondary, fontSize: 12, lineHeight: '20px', margin: 0 }}>修改后，其他设备上的登录会退出，这台设备保持登录。</p>
-        {change.error && <Alert type="error" showIcon title={change.error.message} style={{ marginTop: 16 }} />}
+        {otherError && <Alert type="error" showIcon title={otherError} style={{ marginTop: 16 }} />}
+        {/* 弹窗按钮在表单外面，放一个隐藏的提交按钮，输入框里按回车就能提交 */}
+        <button type="submit" hidden aria-hidden tabIndex={-1} />
       </Form>
     </Modal>
   );

@@ -6,7 +6,7 @@ import {
   type RecoveryResetInput,
 } from '@genyun/shared';
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { randomInt } from 'node:crypto';
 import { DATABASE, type Database } from '../db/client.ts';
 import { passwordRecoveryCodes, sessions, users } from '../db/schema.ts';
@@ -20,8 +20,9 @@ const SENDS_PER_HOUR = 5;
 const DUMMY_CODE_HASH = hash('000000');
 
 export class TooManyRequests extends HttpException {
-  constructor(message: string) {
-    super({ statusCode: 429, message }, HttpStatus.TOO_MANY_REQUESTS);
+  // reason：resend = 60 秒内重复发送（前端照常进入第 2 步，按 retryAfter 倒计时）；hourly = 一小时内发太多次
+  constructor(message: string, extra: { reason: 'resend'; retryAfter: number } | { reason: 'hourly' }) {
+    super({ statusCode: 429, message, ...extra }, HttpStatus.TOO_MANY_REQUESTS);
   }
 }
 
@@ -83,44 +84,44 @@ export class RecoveryService {
   async reset(input: RecoveryResetInput): Promise<{ token: string; user: SessionUser } | null> {
     const email = normalize(input.email);
     const [user] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
-    const [row] = user
+    // 先占一次机会再比对：用一条条件更新把次数加 1，只有拿到机会的请求才比对散列。
+    // 同时发很多个请求也最多比对 5 次。发新验证码时旧的都已作废，所以一个账号最多一条可用的
+    const [claimed] = user
       ? await this.db
-          .select()
-          .from(passwordRecoveryCodes)
-          .where(and(eq(passwordRecoveryCodes.userId, user.id), isNull(passwordRecoveryCodes.voidedAt)))
-          .orderBy(sql`${passwordRecoveryCodes.createdAt} desc`)
-          .limit(1)
+          .update(passwordRecoveryCodes)
+          .set({ attempts: sql`${passwordRecoveryCodes.attempts} + 1` })
+          .where(
+            and(
+              eq(passwordRecoveryCodes.userId, user.id),
+              isNull(passwordRecoveryCodes.voidedAt),
+              lt(passwordRecoveryCodes.attempts, RECOVERY_CODE_MAX_ATTEMPTS),
+              gt(passwordRecoveryCodes.expiresAt, new Date()),
+            ),
+          )
+          .returning({ id: passwordRecoveryCodes.id, codeHash: passwordRecoveryCodes.codeHash, attempts: passwordRecoveryCodes.attempts })
       : [];
-    const usable = !!row && row.expiresAt > new Date() && row.attempts < RECOVERY_CODE_MAX_ATTEMPTS;
-    const ok = await verify(usable ? row.codeHash : await DUMMY_CODE_HASH, input.code);
-
-    if (!user || !row) return null;
-    if (!usable) {
-      await this.db.update(passwordRecoveryCodes).set({ voidedAt: new Date() }).where(eq(passwordRecoveryCodes.id, row.id));
-      return null;
-    }
+    // 没拿到机会（账号不存在、没有可用的验证码）也做一次同样耗时的比对
+    const ok = await verify(claimed ? claimed.codeHash : await DUMMY_CODE_HASH, input.code);
+    if (!user || !claimed) return null;
     if (!ok) {
-      // 错一次记一次，到 5 次作废；用条件更新，并发的错误请求也不会多算或少算
-      await this.db
-        .update(passwordRecoveryCodes)
-        .set({
-          attempts: sql`${passwordRecoveryCodes.attempts} + 1`,
-          voidedAt: sql`case when ${passwordRecoveryCodes.attempts} + 1 >= ${RECOVERY_CODE_MAX_ATTEMPTS} then now() else null end`,
-        })
-        .where(and(eq(passwordRecoveryCodes.id, row.id), isNull(passwordRecoveryCodes.voidedAt)));
+      // 第 5 次也错了：作废
+      if (claimed.attempts >= RECOVERY_CODE_MAX_ATTEMPTS) {
+        await this.db.update(passwordRecoveryCodes).set({ voidedAt: new Date() }).where(eq(passwordRecoveryCodes.id, claimed.id));
+      }
       return null;
     }
 
     const passwordHash = await hashPassword(input.password);
     const done = await this.db.transaction(async (tx) => {
-      // 先占用验证码：同一个验证码同时提交两次，只有一次能成功
+      // 用掉这个验证码：同一个验证码同时提交两次，只有一次能成功
       const used = await tx
         .update(passwordRecoveryCodes)
         .set({ voidedAt: new Date() })
-        .where(and(eq(passwordRecoveryCodes.id, row.id), isNull(passwordRecoveryCodes.voidedAt)))
+        .where(and(eq(passwordRecoveryCodes.id, claimed.id), isNull(passwordRecoveryCodes.voidedAt)))
         .returning({ id: passwordRecoveryCodes.id });
       if (used.length === 0) return false;
       await tx.update(users).set({ passwordHash, passwordChangedAt: new Date() }).where(eq(users.id, user.id));
+      await voidRecoveryCodes(tx, user.id);
       await tx.delete(sessions).where(eq(sessions.userId, user.id));
       return true;
     });
@@ -133,9 +134,9 @@ export class RecoveryService {
     const last = recent.at(-1);
     if (last !== undefined && now - last < RECOVERY_RESEND_SECONDS * 1000) {
       const wait = Math.ceil((RECOVERY_RESEND_SECONDS * 1000 - (now - last)) / 1000);
-      throw new TooManyRequests(`发送太频繁，请 ${wait} 秒后再试`);
+      throw new TooManyRequests('验证码刚刚发过，请使用邮箱里最新的一封', { reason: 'resend', retryAfter: wait });
     }
-    if (recent.length >= SENDS_PER_HOUR) throw new TooManyRequests('这个邮箱发送次数过多，请一小时后再试');
+    if (recent.length >= SENDS_PER_HOUR) throw new TooManyRequests('这个邮箱发送次数过多，请一小时后再试', { reason: 'hourly' });
     recent.push(now);
     this.sends.set(email, recent);
     // 顺手清掉一小时前的记录，Map 不会一直变大
@@ -143,6 +144,16 @@ export class RecoveryService {
       for (const [k, v] of this.sends) if (v.every((t) => now - t >= 3_600_000)) this.sends.delete(k);
     }
   }
+}
+
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+// 密码改过之后（找回重设、个人账户改密码），这个账号还没用过的验证码全部作废
+export async function voidRecoveryCodes(db: Database | Tx, userId: string): Promise<void> {
+  await db
+    .update(passwordRecoveryCodes)
+    .set({ voidedAt: new Date() })
+    .where(and(eq(passwordRecoveryCodes.userId, userId), isNull(passwordRecoveryCodes.voidedAt)));
 }
 
 function normalize(email: string): string {
