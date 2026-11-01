@@ -182,11 +182,16 @@ export class FeedbackController {
       }
     }
 
-    // 附件：本组织的文件；成员只能附自己上传的或挂在自己企业上的（不能借反馈看别家企业的文件）
+    // 附件：本组织客户上传的资料类文件（合同、文稿、交付文件不能附）；
+    // 成员只能附自己上传的或挂在自己企业上的（不能借反馈看别家企业的文件）
     const fileIds = [...new Set(input.fileIds)];
     if (fileIds.length > 0) {
-      const own = await this.db.select({ id: files.id }).from(files).where(and(inArray(files.id, fileIds), eq(files.orgId, orgId)));
+      const own = await this.db
+        .select({ id: files.id, kind: files.kind })
+        .from(files)
+        .where(and(inArray(files.id, fileIds), eq(files.orgId, orgId)));
       if (own.length !== fileIds.length) throw new NotFoundException('找不到该文件');
+      if (own.some((f) => f.kind !== 'customer_material')) throw new BadRequestException('只能附您上传的截图或资料文件');
       await assertFilesUsable(this.db, user, orgId, fileIds);
     }
 
@@ -245,31 +250,45 @@ export class OperatorFeedbackController {
       if (nextCategory !== 'content') throw new BadRequestException('只有「成果内容」类的反馈可以转给注安师');
       if (!current.taskId || !current.taskExpertId) throw new BadRequestException('这条反馈没有关联已分派注安师的任务，不能转给注安师');
     }
-    const firstAccept = current.status === 'new' && action !== 'save';
+    // 第一次受理（待受理的受理、转给注安师、直接回复并关闭）：同时记受理人和受理时间
+    const wantAccept = current.status === 'new' && action !== 'save';
     const set = {
       category: nextCategory,
       ...(reply !== undefined && { reply: reply || null }),
       ...(internalNote !== undefined && { internalNote: internalNote || null }),
       updatedAt: now,
-      ...(firstAccept && { status: 'processing' as const, handledBy: user.id, acceptedAt: now }),
       ...(action === 'forward' && { forwardedTo: current.taskExpertId, forwardedAt: now }),
-      ...(action === 'close' && { status: 'closed' as const, closedBy: user.id, closedAt: now, ...(!current.acceptedAt && { handledBy: user.id, acceptedAt: now }) }),
+      ...(action === 'close' && { status: 'closed' as const, closedBy: user.id, closedAt: now }),
     };
+    const acceptSet = { status: 'processing' as const, handledBy: user.id, acceptedAt: now, ...set };
 
     const title = feedbackTitle(current.content);
     const customerLink = `/customer/feedback?id=${id}`;
-    await this.db.transaction(async (tx) => {
-      // 两位运营同时处理：已经被别人关闭的不再改
-      const updated = await tx
-        .update(feedback)
-        .set(set)
-        .where(and(eq(feedback.id, id), ne(feedback.status, 'closed')))
-        .returning({ id: feedback.id });
-      if (updated.length === 0) throw new ConflictException('这条反馈已经关闭，请刷新后查看处理结果');
+    const firstAccept = await this.db.transaction(async (tx) => {
+      // 两位运营同时受理同一条：只有状态还是「待受理」时才算第一次受理，另一位按已受理处理
+      // （不再发受理提醒、不重复记受理日志、不覆盖受理人）
+      let accepted = false;
+      if (wantAccept) {
+        const won = await tx
+          .update(feedback)
+          .set(acceptSet)
+          .where(and(eq(feedback.id, id), eq(feedback.status, 'new')))
+          .returning({ id: feedback.id });
+        accepted = won.length > 0;
+      }
+      if (!accepted) {
+        // 已经被别人关闭的不再改
+        const updated = await tx
+          .update(feedback)
+          .set(set)
+          .where(and(eq(feedback.id, id), ne(feedback.status, 'closed')))
+          .returning({ id: feedback.id });
+        if (updated.length === 0) throw new ConflictException('这条反馈已经关闭，请刷新后查看处理结果');
+      }
       // 站内提醒提交人（不发邮件）：第一次受理时一条，关闭时一条（带回复）
       if (action === 'close') {
         await this.notifications.notify([current.createdBy], { title: '您的反馈已处理', body: `「${title}」：${reply}`, link: customerLink }, tx);
-      } else if (firstAccept) {
+      } else if (accepted) {
         await this.notifications.notify(
           [current.createdBy],
           { title: '耕云已受理您的反馈', body: `「${title}」已由耕云运营受理，处理结果会在这里通知您。`, link: customerLink },
@@ -278,17 +297,20 @@ export class OperatorFeedbackController {
       }
       if (action === 'forward') {
         const note = internalNote ?? current.internalNote;
+        // 注安师现在看不到反馈附件（附件只给运营和提交方看），提醒里说明有几个、找运营要
+        const attached = current.fileIds.length > 0 ? `客户附了 ${current.fileIds.length} 个文件，需要查看请联系运营。` : '';
         await this.notifications.notify(
           [current.taskExpertId!],
           {
             taskId: current.taskId!,
             title: '客户反馈了成果内容',
-            body: `${current.enterpriseName ?? ''} ${current.taskNumber ?? ''}${current.deliveryVersion ? ` 交付 V${current.deliveryVersion}` : ''}：「${current.content}」${note ? `运营说明：${note}` : ''}。是否另建修订任务由您决定，请与运营沟通；已交付版本保持不变。`,
+            body: `${current.enterpriseName ?? ''} ${current.taskNumber ?? ''}${current.deliveryVersion ? ` 交付 V${current.deliveryVersion}` : ''}：「${current.content}」${note ? `运营说明：${note}` : ''}。${attached}是否另建修订任务由您决定，请与运营沟通；已交付版本保持不变。`,
             link: `/expert/tasks/${current.taskId}`,
           },
           tx,
         );
       }
+      return accepted;
     });
 
     const target = `${current.orgName} · ${title}`;

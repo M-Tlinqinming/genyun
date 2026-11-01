@@ -6,7 +6,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
-import { openDatabase, type DatabaseHandle } from '../db/client.ts';
+import { openDatabase, type Database, type DatabaseHandle } from '../db/client.ts';
 import {
   auditLogs,
   deliveries,
@@ -28,12 +28,12 @@ let app: INestApplication;
 const uid: Record<string, string> = {};
 const id: Record<string, string> = {};
 
-async function addFile(orgId: string, uploadedBy: string, name: string) {
+async function addFile(orgId: string, uploadedBy: string, name: string, kind: 'customer_material' | 'contract' | 'draft' | 'delivery' = 'customer_material') {
   const fileId = randomUUID();
   await handle.db.insert(files).values({
     id: fileId,
     orgId,
-    kind: 'customer_material',
+    kind,
     originalName: name,
     contentType: 'image/png',
     sizeBytes: 10,
@@ -65,6 +65,7 @@ beforeAll(async () => {
     { email: 'admin@b.cn', name: '吴主任', orgId: orgB!.id, role: 'customer_admin' as const },
     { email: 'zhou@test.cn', name: '周工', orgId: internal!.id, role: 'expert' as const },
     { email: 'ops@test.cn', name: '赵运营', orgId: internal!.id, role: 'operator' as const },
+    { email: 'ops2@test.cn', name: '钱运营', orgId: internal!.id, role: 'operator' as const },
   ]) {
     const [u] = await db.insert(users).values({ email: p.email, name: p.name, passwordHash }).returning();
     await db.insert(memberships).values({ userId: u!.id, orgId: p.orgId, role: p.role });
@@ -111,6 +112,9 @@ beforeAll(async () => {
   // 机构管理员上传的、没挂到成员企业上的文件：成员不能借反馈附上
   id.adminFile = await addFile(orgA!.id, admin, '电子厂平面图.png');
   id.otherOrgFile = await addFile(orgB!.id, uid['admin@b.cn']!, '别家.png');
+  // 本组织的合同原件、文稿：不是客户上传的资料，不能当反馈附件
+  id.contractFile = await addFile(orgA!.id, admin, '服务合同.pdf', 'contract');
+  id.draftFile = await addFile(orgA!.id, zhou, '应急预案草稿.docx', 'draft');
 
   app = await createApp(db, { loginLimitPerMinute: 1000 });
   await app.init();
@@ -180,6 +184,16 @@ describe('客户提交反馈', () => {
     expect((await request(app.getHttpServer()).get(`/api/orgs/${id.orgA}/feedback`)).status).toBe(401);
   });
 
+  it('附件只能是客户上传的资料：机构管理员附本组织的合同、文稿也拒绝', async () => {
+    const admin = await as('admin@a.cn');
+    for (const fileId of [id.contractFile, id.draftFile]) {
+      const res = await admin.post(`/api/orgs/${id.orgA}/feedback`).send({ content: '附件', fileIds: [fileId] });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('只能附您上传的截图或资料文件');
+    }
+    expect((await admin.post(`/api/orgs/${id.orgA}/feedback`).send({ content: '附件', fileIds: [id.adminFile, id.contractFile] })).status).toBe(400);
+  });
+
   it('成员只看到自己提交的，机构管理员看到本组织全部', async () => {
     const mine = (await (await as('member@a.cn')).get(`/api/orgs/${id.orgA}/feedback`).expect(200)).body as CustomerFeedback[];
     expect(mine.map((f) => f.id)).toEqual([id.fb]);
@@ -243,6 +257,8 @@ describe('运营受理反馈', () => {
     expect(notes).toHaveLength(1);
     expect(notes[0]).toMatchObject({ title: '客户反馈了成果内容', link: `/expert/tasks/${id.task}` });
     expect(notes[0]!.body).toContain('已交付版本保持不变');
+    // 注安师看不到附件，提醒里说明有几个、找运营要
+    expect(notes[0]!.body).toContain('客户附了 1 个文件，需要查看请联系运营。');
     expect(await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'feedback_forward'))).toHaveLength(1);
   });
 
@@ -273,5 +289,65 @@ describe('运营受理反馈', () => {
     expect(batches).toHaveLength(1);
     const o = (await ops.get('/api/operator/overview').expect(200)).body as OperatorOverview;
     expect(o.feedback).toEqual({ new: 0, processing: 0 });
+  });
+});
+
+describe('两位运营同时受理', () => {
+  it('同一条待受理反馈只算一次受理：客户只收到一条受理提醒，受理日志一条，受理人不被覆盖', async () => {
+    const member = await as('member@a.cn');
+    const fb = (await member
+      .post(`/api/orgs/${id.orgA}/feedback`)
+      .send({ content: '应急物资表少了灭火器', taskId: id.task, deliveryVersion: 1, source: 'delivery' })
+      .expect(201)).body as CustomerFeedback;
+    const before = (await notesOf('member@a.cn')).length;
+    const logsBefore = (await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'feedback_accept'))).length;
+    const [a, b] = await Promise.all([as('ops@test.cn'), as('ops2@test.cn')]);
+    // 让两次请求都先读到「待受理」再写：两边的事务都到了才一起放行
+    const db = handle.db as { transaction: Database['transaction'] };
+    const original = db.transaction;
+    let arrived = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    db.transaction = (async (...args: Parameters<Database['transaction']>) => {
+      if (++arrived === 2) release();
+      await gate;
+      return original.apply(handle.db, args);
+    }) as Database['transaction'];
+    let results: request.Response[];
+    try {
+      results = await Promise.all([
+        a.patch(`/api/operator/feedback/${fb.id}`).send({ action: 'accept' }),
+        b.patch(`/api/operator/feedback/${fb.id}`).send({ action: 'accept' }),
+      ]);
+    } finally {
+      db.transaction = original;
+    }
+    expect(arrived).toBe(2);
+    expect(results.map((r) => r.status)).toEqual([200, 200]);
+    const handlers = new Set(results.map((r) => (r.body as OperatorFeedback).handlerName));
+    expect(handlers.size).toBe(1);
+    const notes = (await notesOf('member@a.cn')).slice(before);
+    expect(notes.filter((n) => n.title === '耕云已受理您的反馈')).toHaveLength(1);
+    const logs = await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'feedback_accept'));
+    expect(logs).toHaveLength(logsBefore + 1);
+    const after = (await (await as('ops@test.cn')).get('/api/operator/feedback').expect(200)).body as OperatorFeedbackView;
+    expect(after.items.find((f) => f.id === fb.id)).toMatchObject({ status: 'processing', handlerName: [...handlers][0] });
+
+    // 没附文件的转给注安师：提醒里不提附件
+    const zhouBefore = (await notesOf('zhou@test.cn')).length;
+    await a.patch(`/api/operator/feedback/${fb.id}`).send({ action: 'forward', category: 'content' }).expect(200);
+    const zhouNotes = (await notesOf('zhou@test.cn')).slice(zhouBefore);
+    expect(zhouNotes).toHaveLength(1);
+    expect(zhouNotes[0]!.body).not.toContain('客户附了');
+  });
+
+  it('已关闭的再受理返回 409，不发受理提醒', async () => {
+    const admin = await as('admin@a.cn');
+    const fb = (await admin.post(`/api/orgs/${id.orgA}/feedback`).send({ content: '登录页加载慢' }).expect(201)).body as CustomerFeedback;
+    const ops = await as('ops@test.cn');
+    await ops.patch(`/api/operator/feedback/${fb.id}`).send({ action: 'close', reply: '已优化' }).expect(200);
+    const before = (await notesOf('admin@a.cn')).length;
+    expect((await ops.patch(`/api/operator/feedback/${fb.id}`).send({ action: 'accept' })).status).toBe(409);
+    expect(await notesOf('admin@a.cn')).toHaveLength(before);
   });
 });

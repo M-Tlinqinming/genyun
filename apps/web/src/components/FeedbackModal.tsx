@@ -1,7 +1,7 @@
 import { CheckCircleFilled, CloseOutlined, PaperClipOutlined, PlusOutlined } from '@ant-design/icons';
 import { FEEDBACK_CONTENT_MAX, FEEDBACK_FILES_MAX, type FeedbackSource } from '@genyun/shared';
 import { App, Button, Input, Modal, Upload } from 'antd';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useSubmitFeedback } from '../api/feedback';
 import { uploadFile } from '../api/profile';
@@ -65,24 +65,33 @@ function FeedbackDialog({
   const submit = useSubmitFeedback(orgId);
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<{ id: string; name: string }[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [pending, setPending] = useState(0);
+  const uploading = pending > 0;
+  // 已占的名额（已附上 + 正在上传）。Upload 一次选多个文件时 beforeUpload 会连着调用，
+  // 这时 files 还是旧值，所以用 ref 同步记数，按剩余名额截断
+  const taken = useRef(0);
+  const warnedBatch = useRef<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  const add = async (file: File) => {
-    if (files.length >= FEEDBACK_FILES_MAX) {
-      message.warning(`最多附 ${FEEDBACK_FILES_MAX} 个文件`);
+  const add = (file: File, batch: unknown) => {
+    if (taken.current >= FEEDBACK_FILES_MAX) {
+      // 同一批只提示一次
+      if (warnedBatch.current !== batch) {
+        warnedBatch.current = batch;
+        message.warning(`最多附 ${FEEDBACK_FILES_MAX} 个文件，超出的没有上传`);
+      }
       return;
     }
-    setUploading(true);
-    try {
-      const id = await uploadFile(orgId, file, 'material');
-      setFiles((list) => [...list, { id, name: file.name }]);
-    } catch (err) {
-      message.error(`附件没能上传：${err instanceof ApiError ? err.message : '请稍后重试'}`);
-    } finally {
-      setUploading(false);
-    }
+    taken.current += 1;
+    setPending((n) => n + 1);
+    void uploadFile(orgId, file, 'material')
+      .then((id) => setFiles((list) => [...list, { id, name: file.name }]))
+      .catch((err: unknown) => {
+        taken.current -= 1;
+        message.error(`附件没能上传：${err instanceof ApiError ? err.message : '请稍后重试'}`);
+      })
+      .finally(() => setPending((n) => n - 1));
   };
 
   const send = () => {
@@ -192,7 +201,10 @@ function FeedbackDialog({
                     size="small"
                     icon={<CloseOutlined />}
                     aria-label={`移除 ${f.name}`}
-                    onClick={() => setFiles((list) => list.filter((x) => x.id !== f.id))}
+                    onClick={() => {
+                      taken.current -= 1;
+                      setFiles((list) => list.filter((x) => x.id !== f.id));
+                    }}
                   />
                 </li>
               ))}
@@ -204,8 +216,8 @@ function FeedbackDialog({
               showUploadList={false}
               multiple
               disabled={uploading}
-              beforeUpload={(file) => {
-                void add(file);
+              beforeUpload={(file, batch) => {
+                add(file, batch);
                 return false;
               }}
             >
