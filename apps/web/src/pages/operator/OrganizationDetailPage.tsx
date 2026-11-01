@@ -527,7 +527,11 @@ function ReplaceAdminModal({
         onSent(r);
         onClose();
       },
-      onError: (err) => message.error(err.message),
+      // 邮箱已有耕云账号：显示在邮箱字段下面
+      onError: (err) => {
+        if (err instanceof ApiError && err.body?.field === 'email') form.setFields([{ name: 'email', errors: [err.message] }]);
+        else message.error(err.message);
+      },
     });
   return (
     <Modal
