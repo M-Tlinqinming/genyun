@@ -249,7 +249,8 @@ export class OperatorOrgsController {
       await this.mailer.send(invitation.mail);
     } catch (err) {
       mailSent = false;
-      console.error('邀请邮件发送失败', err);
+      // 只记错误说明，不记邮件内容（里面有邀请链接）
+      console.error(`邀请邮件发送失败：${err instanceof Error ? err.message : 'unknown'}`);
     }
     return { ...withState(await this.load(id)), invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, mailSimulated: this.mailer.simulated === true },
     };

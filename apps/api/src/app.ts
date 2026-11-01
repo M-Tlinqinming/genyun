@@ -19,7 +19,8 @@ import { defaultStorage, FILE_STORAGE, type FileStorage } from './files/storage.
 import { LicenseReader, LicenseRecognitionController } from './license/license-reader.ts';
 import { defaultRecognizer, LICENSE_RECOGNIZER, type LicenseRecognizer } from './license/recognizer.ts';
 import { NotificationsController, NotificationsService } from './notifications/notifications.service.ts';
-import { defaultMailer, MAILER, type Mailer } from './mail/mailer.ts';
+import { defaultMailer, MAILER, type Mailer, outboxEnabled } from './mail/mailer.ts';
+import { OutboxController } from './mail/outbox.controller.ts';
 import { OperatorOrgsController } from './orgs/operator-orgs.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
@@ -56,8 +57,10 @@ export interface AppOptions {
   drawingRenderer?: DrawingRenderer;
   // 正文编辑「帮我改写这段」用的 AI；不传时按环境变量 AI_DRAFTER，null 表示不开启
   drafter?: ParagraphPolisher | null;
-  // 发邀请邮件；不传时模拟发信（写进 .data/mail-outbox 和服务日志）
+  // 发邮件；不传时按环境变量 MAIL_DRIVER 选用（mail/mailer.ts）
   mailer?: Mailer;
+  // 是否开放「模拟发件箱」接口；不传时只在 MAIL_DRIVER=mock 时开放，其他情况没有这个地址（404）
+  mailOutbox?: boolean;
 }
 
 export async function createApp(db: Database, options: AppOptions = {}): Promise<INestApplication> {
@@ -81,6 +84,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EnterpriseDocumentsController,
       FilesController,
       LicenseRecognitionController,
+      ...((options.mailOutbox ?? outboxEnabled()) ? [OutboxController] : []),
     ],
     providers: [
       { provide: DATABASE, useValue: db },

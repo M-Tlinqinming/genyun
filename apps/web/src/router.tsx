@@ -15,6 +15,7 @@ import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
+import { MailOutboxPage } from './pages/operator/MailOutboxPage';
 import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
@@ -32,6 +33,8 @@ const HOME: Partial<Record<Workspace, RouteObject['element']>> = {
 // 不在菜单里的页面（从列表点进去）
 const EXTRA: Partial<Record<Workspace, RouteObject[]>> = {
   expert: [{ path: 'tasks/:taskId', element: <ExpertTaskPage /> }],
+  // 模拟发件箱只在预览环境有用，不放进菜单
+  operator: [{ path: 'mail-outbox', element: <MailOutboxPage /> }],
 };
 
 // 已做好的页面；菜单项下可以有子页面

@@ -141,7 +141,7 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
     openOrg.mutate(draft, {
       onSuccess: (r) => {
         // 模拟发信（本机、预览环境）时说明邮件没有真的发出
-        const simulated = r.invitation.mailSimulated ? '（预览环境未真实发送邮件）' : '';
+        const simulated = r.invitation.mailSimulated ? '（预览环境未真实发送，可在「模拟发件箱」查看）' : '';
         if (r.invitation.mailSent) message.success(`已开通，邀请已发到 ${r.invitation.email}${simulated}`);
         else message.warning('已开通，但邀请邮件没发出去。请稍后在组织详情里重新发送');
         onClose();
