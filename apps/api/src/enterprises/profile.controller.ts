@@ -63,6 +63,7 @@ import { checklistItemFiles, checklistItems, enterprises, files, tasks } from '.
 import { registerFile } from '../documents/documents.service.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { assertFilesUsable } from '../files/file-links.ts';
+import { KnowledgeService } from '../knowledge/knowledge.service.ts';
 import { LicenseReader, type RecognitionStatus } from '../license/license-reader.ts';
 
 const NOT_FOUND = '找不到该企业';
@@ -94,6 +95,7 @@ export class EnterpriseProfileController {
     @Inject(DATABASE) private readonly db: Database,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
     @Inject(LicenseReader) private readonly licenseReader: LicenseReader,
+    @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
   ) {}
 
   @Get('basic-step')
@@ -224,6 +226,11 @@ export class EnterpriseProfileController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     if (parsed.data.version !== row.version) throw this.stale(row.version);
     const { step } = parsed.data;
+    // 新换的工艺模板必须已发布、没停用（之前已选用、后来停用的照常保存）
+    const templateId = step.process.templateId;
+    if (templateId && templateId !== this.productionStep(row).process.templateId && !(await this.knowledge.templateSelectable(templateId))) {
+      throw new BadRequestException('这个行业模板现在不能选用，请换一个或按实际情况自己写');
+    }
     await this.ownFiles(user, row, fileIdsOfProductionStep(step));
     return this.productionView(await this.write(user, row, row.version, { productionStep: { step } }));
   }

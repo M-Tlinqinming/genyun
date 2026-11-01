@@ -149,3 +149,20 @@ test('下一步进入第 4 步，第 4 步的上一步回到工艺流程，上�
   await page.getByRole('button', { name: '上一页' }).click();
   await expect(page.getByRole('heading', { name: '您的工厂里有哪些场所和东西' })).toBeVisible();
 });
+
+test('行业模板加载失败：提示可重试，一句话描述、上传照片照常可用', async () => {
+  let fail = true;
+  await page.route('**/api/process-templates', (route) => (fail ? route.fulfill({ status: 500, body: '{}' }) : route.continue()));
+  await page.goto(`/customer/tasks/${taskId}/fill/3?page=process`);
+  const alert = page.getByRole('alert').filter({ hasText: '行业模板暂时没加载出来' });
+  await expect(alert).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByLabel('一句话描述生产过程')).toHaveValue('熔融、压铸、攻牙→喷砂，组装、包装出货');
+  await expect(page.getByRole('button', { name: '拍照上传已有流程图' })).toBeEnabled();
+  await expect(stepChips()).toHaveCount(6);
+
+  fail = false;
+  await alert.getByRole('button', { name: '重新加载' }).click();
+  await expect(alert).toHaveCount(0);
+  await expect(template('锂电池组装（电芯封装）')).toBeVisible();
+  await page.unroute('**/api/process-templates');
+});

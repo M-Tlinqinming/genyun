@@ -7,7 +7,7 @@ import type { FlowBranch } from './document/figures.ts';
 import { addressOptions, groupDisplayNames } from './profile/addresses.ts';
 import { PRESET_GROUPS } from './profile/organization.ts';
 import { CHART_ORDER } from './profile/organization-step.ts';
-import { PROCESS_TEMPLATES } from './profile/process-flow.ts';
+import { processTemplateLabel } from './profile/process-flow.ts';
 import { drawingsSaveSchema, type DrawingSelection } from './workup-drawings.ts';
 import type { Stamp } from './workup-production.ts';
 import { organizationOf, type WorkupData, type WorkupSnapshot } from './workup.ts';
@@ -186,8 +186,8 @@ export function figuresView(snapshot: WorkupSnapshot, data: Pick<WorkupData, 'ov
     .filter((b) => b.valid)
     .map((b) => ({ from: steps.indexOf(b.from), to: steps.indexOf(b.to), label: BRANCH_KINDS[b.kind] }));
   const source =
-    draft?.source === 'template' && draft.templateId
-      ? `来自「${PROCESS_TEMPLATES[draft.templateId].label}」模板`
+    draft?.source === 'template' && draft.templateId && processTemplateLabel(draft)
+      ? `来自「${processTemplateLabel(draft)}」模板`
       : draft?.source === 'text'
         ? '由客户的一句话描述拆出'
         : draft?.source === 'sketch'

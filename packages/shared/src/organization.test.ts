@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openingGaps, operatorTaskStage, orgOpenSchema, orgRegisterSchema, orgServiceState, regionHasLocalAgencies, serviceScopeLabel } from './organization.ts';
+import { openingGaps, operatorTaskStage, orgOpenSchema, orgRegisterSchema, orgServiceState, serviceScopeLabel } from './organization.ts';
 
 const FILE = '11111111-1111-4111-8111-111111111111';
 const complete = {
@@ -116,14 +116,6 @@ describe('组织状态', () => {
   it('服务范围文字', () => {
     expect(serviceScopeLabel('single', null)).toBe('编制 1 家企业');
     expect(serviceScopeLabel('annual', 5)).toBe('年度服务 · 5 家企业');
-  });
-});
-
-describe('属地机构是否齐备', () => {
-  it('知识库目前只有惠州的属地机构，其他地区开通时提醒补齐', () => {
-    expect(regionHasLocalAgencies('广东省惠州市惠阳区')).toBe(true);
-    expect(regionHasLocalAgencies('上海市闵行区')).toBe(false);
-    expect(regionHasLocalAgencies(null)).toBe(false);
   });
 });
 

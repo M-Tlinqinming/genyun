@@ -49,6 +49,8 @@ import { HealthController } from './health/health.controller.ts';
 import { AuditLogsController, AuditService } from './audit/audit.ts';
 import { defaultProbes, HEALTH_PROBES, type HealthProbes } from './health/health.ts';
 import { WorkupController, WorkupService } from './tasks/workup.service.ts';
+import { KnowledgeController, ProcessTemplatesController } from './knowledge/knowledge.controller.ts';
+import { KnowledgeService } from './knowledge/knowledge.service.ts';
 
 export interface AppOptions {
   loginLimitPerMinute?: number;
@@ -92,6 +94,8 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       OperatorOnSiteController,
       OperatorOverviewController,
       InternalAccountsController,
+      KnowledgeController,
+      ProcessTemplatesController,
       InvitationsController,
       EnterprisesController,
       EnterpriseProfileController,
@@ -130,6 +134,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
       AuthService,
       AuditService,
+      KnowledgeService,
       RecoveryService,
       AccountService,
       GenerationService,

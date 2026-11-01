@@ -1,6 +1,6 @@
 // 第 10 项「生成三份草稿」的输入：按锁定的快照与专家整理结果拼出 PlanInput。
 // 客户资料取快照；专家改过的事实（data.overrides）盖在上面；设备物料、危险源、适用范围、图件用各模块给生成的转换。
-import { localAgenciesOf, type LocalAgencies } from './plan/agencies.ts';
+import { type AgencyDistrict, localAgenciesOf, type LocalAgencies } from './plan/agencies.ts';
 import type { ExpertFacts, PlanInput } from './plan/input.ts';
 import type { Address, BasicInfo, YesNoUnknown } from './profile/basic.ts';
 import { YES_NO_UNKNOWN_LABELS } from './profile/basic.ts';
@@ -166,8 +166,8 @@ function organizationFrom(step: OrganizationStep): Organization {
   };
 }
 
-function agenciesOf(location: Location, data: WorkupData): LocalAgencies {
-  const agencies = localAgenciesOf(location.siteAddress);
+function agenciesOf(location: Location, data: WorkupData, districts?: readonly AgencyDistrict[]): LocalAgencies {
+  const agencies = localAgenciesOf(location.siteAddress, districts);
   const o = (key: string) => agencyOf(data.overrides[key]?.value);
   return {
     ...agencies,
@@ -202,8 +202,13 @@ export interface WorkupGap {
 
 // 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关、待采用的图在后。
 // 专家页底栏、「下一个缺失项」和确认生成的检查共用
-export function workupGaps(snapshot: WorkupSnapshot, data: WorkupData): { required: number; gaps: WorkupGap[] } {
-  const progress = workupProgress(workupFacts(snapshot, data));
+// districts：知识库里的属地应急机构（后台、专家页都传同一份；不传用内置数据）
+export function workupGaps(
+  snapshot: WorkupSnapshot,
+  data: WorkupData,
+  districts?: readonly AgencyDistrict[],
+): { required: number; gaps: WorkupGap[] } {
+  const progress = workupProgress(workupFacts(snapshot, data, districts));
   const production = productionView(snapshot, data);
   const scope = scopeView(snapshot, data);
   const figures = figuresView(snapshot, data);
@@ -218,7 +223,8 @@ export function workupGaps(snapshot: WorkupSnapshot, data: WorkupData): { requir
 
 const compact =<T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
-export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn: string): PlanInput {
+// districts：知识库里的属地机构（生成时从数据库取）；不传时用内置数据
+export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn: string, districts?: readonly AgencyDistrict[]): PlanInput {
   const production = productionView(snapshot, data);
   const { hazardousMaterials, ...plan } = planProductionOf(snapshot, production);
   const location = locationOf(snapshot, data);
@@ -227,7 +233,7 @@ export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn
     location,
     organization: organizationFrom(organizationStepOf(snapshot, data)),
     ...plan,
-    agencies: agenciesOf(location, data),
+    agencies: agenciesOf(location, data, districts),
     issuedOn,
     expert: {
       hazardousMaterials,

@@ -4,7 +4,9 @@ import {
   DRAFT_STATUSES,
   ITEM_STATUSES,
   ON_SITE_STATUSES,
+  type AgencyCategory,
   type AuditAction,
+  type HolidayKind,
   type CallTime,
   type ChecklistItemKey,
   type ChecklistState,
@@ -21,6 +23,8 @@ import {
   type SubmittedDocument,
   type SupplementFact,
   type SupplementStatus,
+  type TemplateContent,
+  type TemplateStep,
   type WorkupData,
   type WorkupSnapshot,
 } from '@genyun/shared';
@@ -838,3 +842,76 @@ export const deliveryFiles = pgTable(
   },
   (t) => [primaryKey({ columns: [t.deliveryId, t.kind] })],
 );
+
+// ---------- 知识库（M3 第 5 项，16 页 I07 / I07B）：只有运营维护，改动只影响之后生成的文档 ----------
+
+// 属地应急机构所在的区县：地址里出现 aliases 任一个词就算这个区县；plan 是区县级上级预案名称。
+// 迁移 0025 把原来写死在 packages/shared/src/plan/agencies.ts 的惠州数据原样写进来，sort_order 保持原来的顺序（先认的区县在前）
+export const agencyRegions = pgTable(
+  'agency_regions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    province: text('province').notNull(),
+    city: text('city').notNull(),
+    name: text('name').notNull(),
+    aliases: text('aliases').array().notNull().default(sql`'{}'::text[]`),
+    plan: text('plan'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('agency_regions_name').on(t.province, t.city, t.name)],
+);
+
+// 区县下的机构：应急管理局（emergency）、镇街应急办（street，area 是地址里认的镇街名）、消防救援大队（fire）。
+// 停用的不再用于生成；同一区县同一类别的应急管理局、消防大队只用排在最前、没停用的一个
+export const localAgencies = pgTable(
+  'local_agencies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    regionId: uuid('region_id')
+      .notNull()
+      .references(() => agencyRegions.id, { onDelete: 'cascade' }),
+    category: text('category').$type<AgencyCategory>().notNull(),
+    name: text('name').notNull(),
+    phone: text('phone'),
+    area: text('area'),
+    aliases: text('aliases').array().notNull().default(sql`'{}'::text[]`),
+    plan: text('plan'),
+    note: text('note'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    disabledAt: timestamp('disabled_at', { withTimezone: true }),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    verifiedBy: uuid('verified_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('local_agencies_region').on(t.regionId)],
+);
+
+// 节假日与调休：一天一行。数据库里一行都没有时工作日计算用内置的 2026 年表（packages/shared/src/workdays.ts）
+export const holidays = pgTable('holidays', {
+  date: date('date').primaryKey(),
+  kind: text('kind').$type<HolidayKind>().notNull(),
+  name: text('name').notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// 工艺模板：已发布的内容（label、keywords、steps）客户选用；draft 是还没发布的修改。
+// version 是已发布的版本号（0 = 从未发布）；停用后客户看不到，已选用的企业不受影响
+export const processTemplates = pgTable('process_templates', {
+  id: text('id').primaryKey(),
+  label: text('label').notNull(),
+  industry: text('industry'),
+  keywords: text('keywords').array().notNull().default(sql`'{}'::text[]`),
+  steps: jsonb('steps').$type<TemplateStep[]>().notNull().default([]),
+  draft: jsonb('draft').$type<TemplateContent>(),
+  version: integer('version').notNull().default(0),
+  sortOrder: integer('sort_order').notNull().default(0),
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

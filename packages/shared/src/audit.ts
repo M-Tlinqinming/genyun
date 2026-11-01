@@ -21,6 +21,9 @@ export const AUDIT_ACTIONS = [
   'member_role_change',
   'enterprise_assign',
   'org_profile_update',
+  'knowledge_agency_change',
+  'knowledge_holiday_change',
+  'knowledge_template_change',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -43,6 +46,9 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   member_role_change: '变更成员角色',
   enterprise_assign: '调整可访问企业',
   org_profile_update: '修改组织资料',
+  knowledge_agency_change: '维护属地应急机构',
+  knowledge_holiday_change: '维护节假日',
+  knowledge_template_change: '维护工艺模板',
 };
 
 export const AUDIT_PAGE_SIZE = 50;

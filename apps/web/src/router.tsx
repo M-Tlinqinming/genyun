@@ -24,6 +24,7 @@ import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
 import { AuditLogPage } from './pages/operator/AuditLogPage';
 import { InternalAccountsPage } from './pages/operator/InternalAccountsPage';
+import { KnowledgePage } from './pages/operator/knowledge/KnowledgePage';
 import { OperatorOverviewPage } from './pages/operator/OperatorOverviewPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
 import { MailOutboxPage } from './pages/operator/MailOutboxPage';
@@ -61,6 +62,8 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
   '/customer/organization': [{ index: true, element: <OrganizationPage /> }],
   '/operator/audit-logs': [{ index: true, element: <AuditLogPage /> }],
   '/operator/accounts': [{ index: true, element: <InternalAccountsPage /> }],
+  // 知识库：?tab= 切换属地应急机构、工艺模板、节假日
+  '/operator/knowledge': [{ index: true, element: <KnowledgePage /> }],
   '/operator/organizations': [
     { index: true, element: <OrganizationListPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },

@@ -54,6 +54,7 @@ import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { serializeDocument } from '../generation/document-json.ts';
 import { DRAFT_RENDERER, type DraftRenderer } from '../generation/drafts.ts';
 import { DRAFT_QUEUE, type DraftJob, type DraftQueue } from '../generation/queue.ts';
+import { KnowledgeService } from '../knowledge/knowledge.service.ts';
 import { DrawingsService } from './drawings.service.ts';
 import { WorkupService } from './workup.service.ts';
 
@@ -69,6 +70,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     @Inject(DRAFT_RENDERER) private readonly render: DraftRenderer,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
     @Inject(DrawingsService) private readonly drawings: DrawingsService,
+    @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
   ) {}
 
   async onModuleInit() {
@@ -101,7 +103,9 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     if (row.version !== parsed.data.version) {
       throw new ConflictException({ statusCode: 409, message: '这份整理刚被修改过，已为您显示最新内容，请看过后再确认生成', reason: 'stale', version: row.version });
     }
-    const { gaps } = workupGaps(row.snapshot, row.data);
+    // 属地应急机构按知识库现在的内容检查、写进这一批（之后运营再改，已生成的这批不变）
+    const districts = await this.knowledge.agencyDistricts();
+    const { gaps } = workupGaps(row.snapshot, row.data, districts);
     if (gaps.length > 0) {
       throw new BadRequestException({ statusCode: 400, message: `还差 ${gaps.length} 项没有整理完，补齐后才能生成`, reason: 'gaps', gaps });
     }
@@ -137,7 +141,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
           taskId: task.id,
           workupVersion: row.version,
           snapshotAt: row.snapshotAt,
-          input: { ...planInputOf(row.snapshot, row.data, chinaToday()), drawings },
+          input: { ...planInputOf(row.snapshot, row.data, chinaToday(), districts), drawings },
           materials,
           createdBy: user.id,
         })

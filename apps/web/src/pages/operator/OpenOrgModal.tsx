@@ -14,6 +14,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode 
 import { Link } from 'react-router';
 import { uploadContractFile, useOpenOrg, useOperatorOrg, type ContractFile } from '../../api/operator';
 import { ApiError } from '../../api/request';
+import { useKnowledgeAgencies } from '../../api/knowledge';
 import { inlineUrl } from '../../api/workup';
 import { linkButton, linkButtonSmall, Loading } from '../../components/ui';
 import { gy } from '../../theme/tokens';
@@ -42,6 +43,8 @@ const monthDay = (iso: string) => chinaToday(new Date(iso)).slice(5).replace('-'
 // 开通后系统给首位管理员发邀请邮件。缺任一项都不能开通
 export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () => void }) {
   const detail = useOperatorOrg(orgId);
+  // 属地机构按知识库现在的数据判断；知识库读不到时不提醒（不影响开通）
+  const knowledge = useKnowledgeAgencies();
   const openOrg = useOpenOrg(orgId);
   const { message, modal } = App.useApp();
   const id = useId();
@@ -391,7 +394,7 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
             <div style={{ ...box, background: gy.selected, color: gy.text }}>
               管理员接受邀请后，自行邀请成员、建档企业和分配负责人；耕云不代为添加客户成员。
             </div>
-            {!regionHasLocalAgencies(org.region) && (
+            {knowledge.data && !regionHasLocalAgencies(org.region, knowledge.data.regions) && (
               <div style={{ ...box, background: gy.warningBg, color: gy.warning, display: 'flex', gap: 12 }}>
                 <span style={{ flex: 1 }}>
                   知识库还没有{org.region ?? '该地区'}的属地机构，不影响开通，但编制前需要补齐。
