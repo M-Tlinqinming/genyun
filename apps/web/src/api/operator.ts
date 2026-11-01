@@ -1,5 +1,7 @@
 import type {
   AdminInvitationInput,
+  AssignExpertInput,
+  BusinessType,
   InvitationState,
   OperatorTaskStage,
   OrgOpenDraft,
@@ -164,4 +166,81 @@ export async function uploadContractFile(orgId: string, file: File): Promise<Con
     throw new ApiError(res.status, typeof body?.message === 'string' ? body.message : '上传失败，请重新上传', body);
   }
   return body as unknown as ContractFile;
+}
+
+// 运营任务中心（Paper 16 页 I04）：全部客户任务，待分派由 needsAssignment 筛出
+export interface OperatorTask {
+  id: string;
+  number: string;
+  name: string;
+  businessType: BusinessType;
+  orgId: string;
+  orgName: string;
+  orgRegion: string | null;
+  enterpriseId: string;
+  enterpriseName: string;
+  status: 'preparing' | 'submitted';
+  createdAt: string;
+  submittedAt: string | null;
+  closedAt: string | null;
+  assignedExpertId: string | null;
+  assignedExpertName: string | null;
+  stage: OperatorTaskStage;
+  needsAssignment: boolean;
+  assignBlockedReason: string | null;
+}
+
+export interface OperatorTaskDetail extends OperatorTask {
+  contactCount: number;
+  workupStartedAt: string | null;
+}
+
+export interface AssignableExpert {
+  id: string;
+  name: string;
+  email: string;
+  openTasks: number;
+  sameOrgEnterprises: number;
+  current: boolean;
+}
+
+export const operatorTaskKeys = {
+  list: ['operator', 'tasks'] as const,
+  detail: (id: string) => ['operator', 'tasks', id] as const,
+  experts: (id: string) => ['operator', 'tasks', id, 'experts'] as const,
+};
+
+export function useOperatorTasks() {
+  return useQuery({ queryKey: operatorTaskKeys.list, queryFn: () => request<OperatorTask[]>('/operator/tasks') });
+}
+
+export function useOperatorTask(id: string | null) {
+  return useQuery({
+    queryKey: operatorTaskKeys.detail(id ?? ''),
+    queryFn: () => request<OperatorTaskDetail>(`/operator/tasks/${id}`),
+    enabled: id !== null,
+  });
+}
+
+export function useAssignableExperts(taskId: string) {
+  return useQuery({
+    queryKey: operatorTaskKeys.experts(taskId),
+    queryFn: () => request<AssignableExpert[]>(`/operator/tasks/${taskId}/experts`),
+  });
+}
+
+// 分派或改派；别人刚改过时后台返回 409，列表和详情都重新取，让运营看到最新情况再决定
+export function useAssignExpert(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AssignExpertInput) =>
+      request<OperatorTask>(`/operator/tasks/${taskId}/assign`, { method: 'POST', body: JSON.stringify(input) }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: operatorTaskKeys.list });
+      void client.invalidateQueries({ queryKey: operatorTaskKeys.detail(taskId) });
+      void client.invalidateQueries({ queryKey: operatorTaskKeys.experts(taskId) });
+      // 组织详情「企业与任务」里的阶段跟着变
+      void client.invalidateQueries({ queryKey: ['operator', 'organizations'] });
+    },
+  });
 }
