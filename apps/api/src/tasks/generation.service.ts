@@ -54,6 +54,7 @@ import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { serializeDocument } from '../generation/document-json.ts';
 import { DRAFT_RENDERER, type DraftRenderer } from '../generation/drafts.ts';
 import { DRAFT_QUEUE, type DraftJob, type DraftQueue } from '../generation/queue.ts';
+import { KnowledgeService } from '../knowledge/knowledge.service.ts';
 import { DrawingsService } from './drawings.service.ts';
 import { WorkupService } from './workup.service.ts';
 
@@ -69,6 +70,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     @Inject(DRAFT_RENDERER) private readonly render: DraftRenderer,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
     @Inject(DrawingsService) private readonly drawings: DrawingsService,
+    @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
   ) {}
 
   async onModuleInit() {
@@ -130,6 +132,8 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
       version: o.version,
       itemKeys: o.itemKeys,
     }));
+    // 属地应急机构按知识库现在的内容写进这一批（之后运营再改，已生成的这批不变）
+    const districts = await this.knowledge.agencyDistricts();
     const batch = await this.db.transaction(async (tx) => {
       const [b] = await tx
         .insert(generationBatches)
@@ -137,7 +141,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
           taskId: task.id,
           workupVersion: row.version,
           snapshotAt: row.snapshotAt,
-          input: { ...planInputOf(row.snapshot, row.data, chinaToday()), drawings },
+          input: { ...planInputOf(row.snapshot, row.data, chinaToday(), districts), drawings },
           materials,
           createdBy: user.id,
         })

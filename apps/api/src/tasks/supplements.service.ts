@@ -32,6 +32,7 @@ import {
 import { and, desc, eq, inArray, max } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { canEditEnterpriseData } from '../auth/access.ts';
+import { KnowledgeService } from '../knowledge/knowledge.service.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -71,6 +72,7 @@ export class SupplementsService {
     @Inject(TasksService) private readonly tasks: TasksService,
     @Inject(DocumentsService) private readonly documents: DocumentsService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
   ) {}
 
   // ---- 专家 ----
@@ -90,7 +92,7 @@ export class SupplementsService {
     if (input.needsFile && !input.itemKey) throw new BadRequestException('请选择要客户提供哪一项资料');
 
     const { snapshot, data } = await this.workup.rowOf(task);
-    const all = workupFacts(snapshot, data);
+    const all = workupFacts(snapshot, data, await this.knowledge.agencyDistricts());
     const facts: SupplementFact[] = [];
     for (const key of new Set(input.factKeys)) {
       const f = all.find((x) => x.key === key);

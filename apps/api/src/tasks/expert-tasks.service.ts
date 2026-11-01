@@ -1,4 +1,4 @@
-import { type ChecklistItemKey, getItemDef } from '@genyun/shared';
+import { type ChecklistItemKey, getItemDef, workingDaysLeft } from '@genyun/shared';
 import { Controller, ForbiddenException, Get, Inject, Injectable } from '@nestjs/common';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { isExpert } from '../auth/access.ts';
@@ -120,7 +120,8 @@ export class ExpertTasksService {
       return {
         ...t,
         verifyItems,
-        contact,
+        // 剩几个工作日按接口这边的节假日表算（运营在知识库维护），前端直接显示
+        contact: contact ? { ...contact, daysLeft: workingDaysLeft(contact.deadline) } : null,
         activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
       };
     });

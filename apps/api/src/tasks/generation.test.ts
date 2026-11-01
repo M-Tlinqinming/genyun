@@ -1,4 +1,4 @@
-import type { DraftKind } from '@genyun/shared';
+import { type DraftKind, planInputOf } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
@@ -13,6 +13,7 @@ import {
   enterpriseDocumentVersions,
   enterprises,
   files,
+  generationBatches,
   memberships,
   organizations,
   taskDocuments,
@@ -241,5 +242,13 @@ describe('确认采用资料并生成三份草稿', () => {
 
     const [row] = await handle.db.select().from(files).where(eq(files.id, plan.wordFileId));
     expect(stored.get(row!.storageKey)!.toString()).toBe('plan:惠阳飞宇电器有限公司:word');
+  });
+
+  it('属地应急机构改从知识库读：飞宇生成出来的和原来写在代码里的一字不差', async () => {
+    const [batch] = await handle.db.select().from(generationBatches).where(eq(generationBatches.taskId, feiyuTask));
+    const [w] = await handle.db.select().from(taskWorkups).where(eq(taskWorkups.taskId, feiyuTask));
+    const builtin = planInputOf(w!.snapshot, w!.data, batch!.input.issuedOn).agencies;
+    expect(builtin.emergencyBureau?.name).toBeTruthy();
+    expect(batch!.input.agencies).toEqual(builtin);
   });
 });

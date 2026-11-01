@@ -15,7 +15,8 @@ export const draftProcessStepSchema = z.object({
 });
 export type DraftProcessStep = z.infer<typeof draftProcessStepSchema>;
 
-// 第一版内置 6 个常见行业（2026-10-27 Martin 确认），「更多行业」等 M3 知识库
+// 第一版内置 6 个常见行业（2026-10-27 Martin 确认）。M3 第 5 项起由运营在知识库维护（数据库表 process_templates），
+// 迁移 0025 把这 6 个原样写进去；数据库没有数据时用这里的内置模板
 export const PROCESS_TEMPLATES = {
   lithium_battery: {
     label: '锂电池组装（电芯封装）',
@@ -110,10 +111,31 @@ export const PROCESS_TEMPLATES = {
 export type ProcessTemplateId = keyof typeof PROCESS_TEMPLATES;
 export const PROCESS_TEMPLATE_IDS = Object.keys(PROCESS_TEMPLATES) as [ProcessTemplateId, ...ProcessTemplateId[]];
 
+// 客户选用的工艺模板（知识库里已发布的那一版）：只有工序名称和常见设备，风险提示等只给注安师看
+export interface ProcessTemplate {
+  id: string;
+  label: string;
+  keywords: readonly string[];
+  steps: readonly { name: string; equipment: readonly string[] }[];
+}
+
+export const BUILTIN_PROCESS_TEMPLATES: readonly ProcessTemplate[] = PROCESS_TEMPLATE_IDS.map((id) => ({
+  id,
+  label: PROCESS_TEMPLATES[id].label,
+  keywords: PROCESS_TEMPLATES[id].keywords,
+  steps: PROCESS_TEMPLATES[id].steps.map(([name, equipment]) => ({ name, equipment })),
+}));
+
+// 模板编号：内置的是英文短名（如 metal_stamping），运营新增的由系统生成
+export const PROCESS_TEMPLATE_ID_PATTERN = /^[a-z][a-z0-9_]{1,39}$/;
+
 export const processDraftSchema = z.object({
   // 最近一次从哪里开始：模板 / 一句话 / 照片
   source: z.enum(['template', 'text', 'sketch']).optional(),
-  templateId: z.enum(PROCESS_TEMPLATE_IDS).optional(),
+  // 知识库里的模板编号（保存时接口再核对模板存在）
+  templateId: z.string().regex(PROCESS_TEMPLATE_ID_PATTERN, '没有这个行业模板').optional(),
+  // 选用时模板的名称（模板以后改名、停用，整理页仍显示客户当时选的）
+  templateLabel: z.string().trim().max(40).optional(),
   description: z.string().trim().max(500, '描述最多 500 个字').optional(),
   // 已有流程图的照片（同时挂在任务的「生产工艺流程」上）
   sketchFileIds: z.array(z.uuid()).max(20, '每处最多 20 个文件').default([]),
@@ -122,24 +144,35 @@ export const processDraftSchema = z.object({
 export type ProcessDraft = z.infer<typeof processDraftSchema>;
 
 // 按经营范围推荐一个模板（关键词先出现的优先），没有接近的不推荐
-export function recommendedTemplate(businessScope: string | undefined): ProcessTemplateId | undefined {
+export function recommendedTemplate(
+  businessScope: string | undefined,
+  templates: readonly ProcessTemplate[] = BUILTIN_PROCESS_TEMPLATES,
+): string | undefined {
   if (!businessScope) return undefined;
-  let best: { id: ProcessTemplateId; at: number } | undefined;
-  for (const tid of PROCESS_TEMPLATE_IDS) {
-    for (const word of PROCESS_TEMPLATES[tid].keywords) {
+  let best: { id: string; at: number } | undefined;
+  for (const t of templates) {
+    for (const word of t.keywords) {
+      if (!word) continue;
       const at = businessScope.toUpperCase().indexOf(word.toUpperCase());
-      if (at >= 0 && (!best || at < best.at)) best = { id: tid, at };
+      if (at >= 0 && (!best || at < best.at)) best = { id: t.id, at };
     }
   }
   return best?.id;
 }
 
-export function stepsFromTemplate(templateId: ProcessTemplateId, makeId: () => string): DraftProcessStep[] {
-  return PROCESS_TEMPLATES[templateId].steps.map(([name, equipment]) => ({
+export function stepsFromTemplate(template: ProcessTemplate | ProcessTemplateId, makeId: () => string): DraftProcessStep[] {
+  const t = typeof template === 'string' ? BUILTIN_PROCESS_TEMPLATES.find((x) => x.id === template)! : template;
+  return t.steps.map(({ name, equipment }) => ({
     id: makeId(),
     name,
     equipment: [...equipment],
   }));
+}
+
+// 整理页显示「来自「X」模板」用的名称：先用客户选用时记下的，老数据按内置模板查
+export function processTemplateLabel(draft: { templateId?: string; templateLabel?: string }): string | undefined {
+  if (draft.templateLabel) return draft.templateLabel;
+  return BUILTIN_PROCESS_TEMPLATES.find((t) => t.id === draft.templateId)?.label;
 }
 
 // 一句话拆成工序：按顿号、逗号、箭头、换行等分开，如「熔融、压铸、攻牙→包装出货」

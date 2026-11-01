@@ -1,6 +1,6 @@
 // 第 10 项「生成三份草稿」的输入：按锁定的快照与专家整理结果拼出 PlanInput。
 // 客户资料取快照；专家改过的事实（data.overrides）盖在上面；设备物料、危险源、适用范围、图件用各模块给生成的转换。
-import { localAgenciesOf, type LocalAgencies } from './plan/agencies.ts';
+import { type AgencyDistrict, localAgenciesOf, type LocalAgencies } from './plan/agencies.ts';
 import type { ExpertFacts, PlanInput } from './plan/input.ts';
 import type { Address, BasicInfo, YesNoUnknown } from './profile/basic.ts';
 import { YES_NO_UNKNOWN_LABELS } from './profile/basic.ts';
@@ -166,8 +166,8 @@ function organizationFrom(step: OrganizationStep): Organization {
   };
 }
 
-function agenciesOf(location: Location, data: WorkupData): LocalAgencies {
-  const agencies = localAgenciesOf(location.siteAddress);
+function agenciesOf(location: Location, data: WorkupData, districts?: readonly AgencyDistrict[]): LocalAgencies {
+  const agencies = localAgenciesOf(location.siteAddress, districts);
   const o = (key: string) => agencyOf(data.overrides[key]?.value);
   return {
     ...agencies,
@@ -218,7 +218,8 @@ export function workupGaps(snapshot: WorkupSnapshot, data: WorkupData): { requir
 
 const compact =<T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
-export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn: string): PlanInput {
+// districts：知识库里的属地机构（生成时从数据库取）；不传时用内置数据
+export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn: string, districts?: readonly AgencyDistrict[]): PlanInput {
   const production = productionView(snapshot, data);
   const { hazardousMaterials, ...plan } = planProductionOf(snapshot, production);
   const location = locationOf(snapshot, data);
@@ -227,7 +228,7 @@ export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn
     location,
     organization: organizationFrom(organizationStepOf(snapshot, data)),
     ...plan,
-    agencies: agenciesOf(location, data),
+    agencies: agenciesOf(location, data, districts),
     issuedOn,
     expert: {
       hazardousMaterials,

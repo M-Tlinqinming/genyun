@@ -115,7 +115,7 @@ export function ExpertTaskPage() {
   const rows = useRef(new Map<string, HTMLElement>());
 
   const facts = useMemo(
-    () => (workup.data ? workupFacts(workup.data.snapshot, workup.data.data) : []),
+    () => (workup.data ? workupFacts(workup.data.snapshot, workup.data.data, workup.data.agencyDistricts) : []),
     [workup.data],
   );
   const progress = useMemo(() => workupProgress(facts), [facts]);

@@ -1,5 +1,5 @@
 import { ArrowRightOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { EXPERT_STAGES, expertTodo, workingDaysLeft, type ExpertStage, type ExpertTodo } from '@genyun/shared';
+import { EXPERT_STAGES, expertTodo, type ExpertStage, type ExpertTodo } from '@genyun/shared';
 import { Button, Input, Result, Select, Table, Tabs } from 'antd';
 import { useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -232,7 +232,8 @@ function ContactBanner({ rows, onOpen }: { rows: Row[]; onOpen: (id: string) => 
   const first = requests[0];
   if (!first) return null;
   const { contact } = first;
-  const left = workingDaysLeft(new Date(contact.deadline));
+  // 剩几个工作日由接口按知识库里的节假日算好
+  const left = contact.daysLeft;
   const due =
     left < 0
       ? '已超过 2 个工作日，已转运营兜底'

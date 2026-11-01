@@ -3,19 +3,18 @@ import {
   checkProcessEquipment,
   newId,
   PROCESS_STEP_MAX,
-  PROCESS_TEMPLATE_IDS,
-  PROCESS_TEMPLATES,
   recommendedTemplate,
   snakeRows,
   stepsFromDescription,
   stepsFromTemplate,
   type DraftProcessStep,
   type ProcessDraft,
-  type ProcessTemplateId,
+  type ProcessTemplate,
   type ProductionStep,
 } from '@genyun/shared';
 import { App, Button, Input, Modal, Popconfirm, Upload } from 'antd';
 import { Fragment, useState, type CSSProperties, type ReactNode } from 'react';
+import { useProcessTemplates } from '../../../api/knowledge';
 import type { Task } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
 import { OnSiteDialog } from '../OnSiteVisit';
@@ -36,6 +35,8 @@ export function ProcessStepPage({ task }: { task: Task }) {
   const { step, saved, fileNames, uploading, leaving, autosave, update, leave, upload, removeLinked } =
     useProductionDraft(task);
   const [booking, setBooking] = useState(false);
+  // 运营在知识库发布的行业模板
+  const templates = useProcessTemplates();
   const process = step?.process;
   const setProcess = (p: ProcessDraft) => step && update({ ...step, process: p });
 
@@ -100,22 +101,24 @@ export function ProcessStepPage({ task }: { task: Task }) {
           title="您的产品是怎么做出来的"
           description="选一个最接近的行业模板，再按实际情况增删工序。不用自己画图，系统会自动生成。"
         />
-        {!step || !process ? (
+        {!step || !process || !templates.data ? (
           <div style={{ flex: 1 }}><Loading rows={8} /></div>
         ) : (
           <>
             <TemplateCard
               process={process}
+              templates={templates.data}
               businessScope={saved.current?.businessScope ?? null}
               fileNames={fileNames}
               uploading={uploading === 'sketch'}
-              onTemplate={(templateId) =>
-                replaceSteps(steps.length, `换成「${PROCESS_TEMPLATES[templateId].label}」？`, () =>
+              onTemplate={(template) =>
+                replaceSteps(steps.length, `换成「${template.label}」？`, () =>
                   setProcess({
                     ...process,
                     source: 'template',
-                    templateId,
-                    steps: stepsFromTemplate(templateId, newStepId),
+                    templateId: template.id,
+                    templateLabel: template.label,
+                    steps: stepsFromTemplate(template, newStepId),
                   }),
                 )
               }
@@ -201,6 +204,7 @@ const chipOn: CSSProperties = { ...chip, background: gy.selected, borderColor: g
 
 function TemplateCard({
   process,
+  templates,
   businessScope,
   fileNames,
   uploading,
@@ -212,19 +216,22 @@ function TemplateCard({
   onOnSite,
 }: {
   process: ProcessDraft;
+  templates: ProcessTemplate[];
   businessScope: string | null;
   fileNames: Record<string, string>;
   uploading: boolean;
-  onTemplate: (id: ProcessTemplateId) => void;
+  onTemplate: (template: ProcessTemplate) => void;
   onDescription: (text: string) => void;
   onSplit: () => void;
   onSketch: (file: File) => void;
   onRemoveSketch: (fileId: string) => void;
   onOnSite: () => void;
 }) {
-  const recommended = recommendedTemplate(businessScope ?? undefined);
+  const recommended = recommendedTemplate(businessScope ?? undefined, templates);
   // 推荐的排在最前
-  const ids = recommended ? [recommended, ...PROCESS_TEMPLATE_IDS.filter((t) => t !== recommended)] : PROCESS_TEMPLATE_IDS;
+  const ordered = recommended
+    ? [...templates.filter((t) => t.id === recommended), ...templates.filter((t) => t.id !== recommended)]
+    : templates;
   const selected = process.source === 'template' ? process.templateId : undefined;
   const [writing, setWriting] = useState(Boolean(process.description));
   const canSplit = stepsFromDescription(process.description ?? '', () => '').length > 0;
@@ -240,7 +247,8 @@ function TemplateCard({
         }
       />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-        {ids.map((tid) => {
+        {ordered.map((template) => {
+          const tid = template.id;
           const on = selected === tid;
           return (
             <button
@@ -248,10 +256,10 @@ function TemplateCard({
               type="button"
               aria-pressed={on}
               style={on ? chipOn : chip}
-              onClick={() => !on && onTemplate(tid)}
+              onClick={() => !on && onTemplate(template)}
             >
               {on && <CheckOutlined aria-hidden style={{ fontSize: 12 }} />}
-              {PROCESS_TEMPLATES[tid].label}
+              {template.label}
               {tid === recommended && (
                 <span
                   style={{

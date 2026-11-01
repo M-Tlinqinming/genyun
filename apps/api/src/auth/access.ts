@@ -155,3 +155,8 @@ export function canViewOperatorOverview(user: SessionUser): boolean {
 export function canManageInternalAccounts(user: SessionUser): boolean {
   return isOperator(user);
 }
+
+// 知识库（属地应急机构、工艺模板、节假日）：只有运营能看、能维护。客户选模板走只读的已发布列表
+export function canManageKnowledge(user: SessionUser): boolean {
+  return isOperator(user);
+}
