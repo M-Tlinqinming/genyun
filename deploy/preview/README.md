@@ -85,10 +85,82 @@ docker compose --env-file /opt/genyun/.env logs app | grep 模拟发信
 
 日志不一定记正文（M3 第 2 项起正式环境不记），链接以发件箱文件为准。
 
+## 健康检查和日志
+
+- `GET /api/health` 返回 `{"status":"ok|degraded|down","checks":{"database":…,"redis":…,"disk":…}}`。
+  - 每项最多等 2 秒。
+  - 数据库或 Redis 连不上时是 `down`，返回 503。容器会被判为不健康，`deploy.sh` 等不到 healthy 就会报错。
+  - 上传文件所在分区的剩余空间低于 10% 时是 `degraded`，仍返回 200：服务照常可用，但该清理或扩容了。
+  - 返回内容里没有路径、地址和版本号。
+- 容器日志用 json-file 轮转：每个文件最大 10 MB，最多 5 个（`compose.yml` 的 `x-logging`）。四个容器都设了 `restart: unless-stopped`。
+  - 查最近的日志：`docker logs --tail 200 genyun-preview-app-1`。
+
+## 备份与恢复
+
+每天 03:30 备份一次，存到 `/opt/genyun/backups/<日期>/`，保留最近 7 天。每份备份包含：
+
+- `db.sql.gz`：在 db 容器里跑 `pg_dump` 导出的数据库；
+- `files.tar.gz`：`files` 数据卷，即客户上传的文件和生成的草稿；
+- `SHA256SUMS`：前两个文件的校验和。
+
+备份先写到 `<日期>.partial`，全部成功才改名，所以失败时不会留下半截的备份。
+
+```sh
+# 安装定时任务（发布过一次之后，只需运行一次）
+bash /opt/genyun/src/deploy/preview/install-cron.sh
+# 手动备份；同一天再跑会覆盖当天那份
+bash /opt/genyun/src/deploy/preview/backup.sh
+# 恢复
+bash /opt/genyun/src/deploy/preview/restore.sh 2026-11-01
+```
+
+`restore.sh` 依次执行：
+
+1. 核对校验和；
+2. 要求输入一遍备份名称，确认后才继续；
+3. 把当前状态另存为 `<今天>-before-restore-<时分秒>`；
+4. 停止应用；
+5. 删库重建并导入；
+6. 清空 `files` 数据卷后解包；
+7. 启动应用，等健康检查通过。
+
+如果恢复错了，再用 `restore.sh <今天>-before-restore-…` 恢复回去。
+
+备份日志在 `/var/log/genyun-backup.log`，按周轮转。备份目前只存在同一台服务器上：服务器本身坏了，备份也会一起丢失。异地备份（例如阿里云 OSS）留给后续。
+
+### 本机演练（2026-11-01）
+
+本机没有 Docker 和 PostgreSQL，演练时用真实的 `backup.sh` 和 `restore.sh`，只把 `docker` 换成 `rehearsal/docker`。这个假 docker 的做法：
+
+- 数据库用 e2e 留下的 PGlite 目录冒充，`pg_dump` 用 `@electric-sql/pglite-tools` 的 WASM 版；
+- 数据卷用本机目录冒充。
+
+```sh
+# 先跑过一次 e2e，留下 apps/api/.data/e2e-db 和 .data/files
+mkdir /tmp/pgtools && (cd /tmp/pgtools && npm init -y && npm i @electric-sql/pglite@0.5.14 @electric-sql/pglite-tools@0.4.14)
+PGLITE_TOOLS_DIR=/tmp/pgtools bash deploy/preview/rehearsal/rehearse.sh
+```
+
+演练过程和结果：
+
+1. 准备：28 张表，用户 6 个，上传文件 58 个。另外放了两份 8 天前和 6 天前的旧备份。
+2. 备份：生成 `db.sql.gz`（11 KB）、`files.tar.gz`（546 KB）和 `SHA256SUMS`。8 天前的旧备份被删除，6 天前的保留。
+3. 删数据：`TRUNCATE organizations, users CASCADE`，并删掉全部上传文件。之后用户剩 0 个，文件剩 0 个。
+4. 恢复时故意输错备份名称：中止，数据没有变化。
+5. 正常恢复：先另存了一份 `before-restore`，然后删库重建、导入、解包文件。
+6. 核对：28 张表的行数与备份前逐表一致；58 个文件的 sha256 逐个一致。
+
+与服务器上的差别：
+
+- 演练导出用的是 `--inserts`，因为 PGlite 不支持 `COPY … FROM stdin`；服务器上 psql 导入的是 `pg_dump` 默认的 COPY 格式。
+- 停止、启动应用和健康检查在演练里只打印，不实际执行。
+- 第一次在服务器上安装定时任务后，请手动跑一次 `backup.sh`，再在测试库上恢复一次确认。
+
 ## 服务器上的位置
 
 - `/opt/genyun/.env`：密钥（数据库密码、下载链接签名密钥、演示账号密码），由 `server-setup.sh` 首次运行时随机生成，不进仓库
 - `/opt/genyun/src`：最近一次发布的代码；`/opt/genyun/DEPLOYED_COMMIT`：对应的提交
+- `/opt/genyun/backups`：每日备份（见「备份与恢复」）
 
 ## 演示账号
 
@@ -112,4 +184,4 @@ bash deploy/preview/deploy.sh
 # 再写入演示账号（见上）
 ```
 
-`server-setup.sh` 会加 2G 交换空间、安装 Docker、生成密钥文件。阿里云防火墙只需开 22 / 80 / 443。
+`server-setup.sh` 会加 2G 交换空间、安装 Docker、生成密钥文件。第一次发布后再运行 `install-cron.sh` 安装每日备份。阿里云防火墙只需开 22 / 80 / 443。
