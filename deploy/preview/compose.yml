@@ -18,8 +18,14 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       # 草稿生成队列（BullMQ），服务重启后没跑完的继续
       REDIS_URL: redis://redis:6379
+      # 邮件里的链接（邀请、找回密码）指向这个地址
+      APP_ORIGIN: https://${SITE_DOMAIN}
+      # 还没接阿里云邮件推送：模拟发信，邮件写进发件箱目录（数据卷），查看方法见 README「查看模拟发信」
+      MAIL_DRIVER: mock
+      MAIL_OUTBOX_DIR: /data/mail-outbox
     volumes:
       - files:/data/files
+      - mail_outbox:/data/mail-outbox
     depends_on:
       db:
         condition: service_healthy
@@ -77,6 +83,7 @@ services:
 volumes:
   db:
   files:
+  mail_outbox:
   redis:
   caddy_data:
   caddy_config:

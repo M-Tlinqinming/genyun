@@ -14,8 +14,8 @@ const appMatchers = (caddyfile.match(/^\s*@app path (.+)$/m)?.[1] ?? '').trim().
 /** router.tsx 顶层路由的第一段，例如 /login、/customer */
 function topLevelSegments(): string[] {
   const block = router.slice(router.indexOf('createBrowserRouter('));
-  const paths = [...block.matchAll(/path: '(\/[^']*)'/g)].map((m) => m[1]);
-  const workspaces = [...block.matchAll(/workspaceRoutes\('(\w+)'\)/g)].map((m) => `/${m[1]}`);
+  const paths = [...block.matchAll(/path: (['"])(\/.*?)\1/g)].map((m) => m[2]!);
+  const workspaces = [...block.matchAll(/workspaceRoutes\((['"])(\w+)\1\)/g)].map((m) => `/${m[2]}`);
   return [...new Set([...paths, ...workspaces].map((p) => `/${p.split('/')[1]}`))];
 }
 
@@ -37,7 +37,9 @@ describe('预览环境的路径分流', () => {
     const files = readdirSync(api, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'));
     const segs = new Set<string>();
     for (const f of files) {
-      for (const m of readFileSync(new URL(f.replaceAll('\\', '/'), api), 'utf8').matchAll(/appLink\(`(\/[^/`$]+)/g)) segs.add(m[1]!);
+      // 第一段在 /、?、#、${ 或引号处截断，例如 appLink(`/reset-password?token=${t}`) 取 /reset-password
+      const source = readFileSync(new URL(f.replaceAll('\\', '/'), api), 'utf8');
+      for (const m of source.matchAll(/appLink\(\s*[`'"](\/[^/?#`'"$]+)/g)) segs.add(m[1]!);
     }
     expect(segs.size, '找到 appLink 的链接').toBeGreaterThan(0);
     for (const seg of segs) {

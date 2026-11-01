@@ -24,7 +24,7 @@ bash deploy/preview/deploy.sh
 | `/login`、`/invite`（邀请邮件里的链接）、`/recover`、`/reset-password`、`/account`、`/customer`、`/expert`、`/operator` 及其下级 | 业务应用 |
 | 其余（`/`、`/product/`、`/expertise/`、`/privacy/`、`/terms/`、`/_astro/*`、`/fonts/*`、`/images/*` 等） | 官网静态页 |
 
-官网在构建 Caddy 镜像时一起构建（`site.Dockerfile`：先用 Node 构建 `apps/site`，再把 `dist` 放进 Caddy 镜像），所以发布脚本不用改，`docker compose up --build` 会同时重建两个镜像。
+官网在构建 Caddy 镜像时一起构建（`site.Dockerfile`：先用 Node 构建 `apps/site`，再把 `dist` 放进 Caddy 镜像），发布脚本依次构建应用和 Caddy 两个镜像（服务器内存小，不同时构建），再重启容器。
 
 为什么不用子域名（比如官网 `gengyun.net.cn`、产品 `app.gengyun.net.cn`）：
 
@@ -37,9 +37,9 @@ bash deploy/preview/deploy.sh
 其他：
 
 - HTTPS 由 Caddy 自动申请和续期；响应统一 zstd / gzip 压缩
-- 缓存：带哈希的文件（官网 `/_astro/*`、业务应用 `/assets/*`）缓存一年；官网字体、图片缓存一天；官网页面 `no-cache`，改了文案马上生效
+- 缓存：带哈希的文件（官网 `/_astro/*`、业务应用 `/assets/*`）缓存一年（`/assets/*` 只给成功的响应加，不存在的文件返回 404）；官网字体、图片缓存一天；官网页面 `no-cache`，改了文案马上生效
 - 安全响应头：HSTS、`nosniff`、`Referrer-Policy`、`X-Frame-Options: SAMEORIGIN`（专家看原件用同源 iframe）、`Permissions-Policy`，去掉 `Server`、`X-Powered-By`
-- 内容安全策略（CSP）先用「只报告」模式：官网有内联脚本、Ant Design 运行时插样式，正式拦截前要在预览环境打开各页看浏览器控制台有没有违规提示
+- 内容安全策略（CSP）先用「只报告」模式：官网有内联脚本、Ant Design 运行时插样式，正式拦截前要在预览环境打开各页看浏览器控制台有没有违规提示。文件原件（`/api/files/blob`）不加 CSP，专家在 iframe 里看 PDF 不受影响
 - 不存在的官网地址返回 404（官网有 `404.html` 时用它，没有就是一行文字）
 
 ## 发布后检查
@@ -48,7 +48,36 @@ bash deploy/preview/deploy.sh
 bash deploy/preview/smoke.sh https://preview.gengyun.net.cn
 ```
 
-逐项检查：官网各路径拿到官网、业务路径拿到业务应用、`/expertise/` 没有被错分、接口通、缓存头、压缩和安全头。CI 每次也会用同一份 Caddyfile 起一套容器跑这个脚本。
+逐项检查：官网各路径拿到官网、业务路径拿到业务应用、`/expertise/` 没有被错分、接口通、经过代理登录错误密码返回 401、HTTPS 地址的 http 跳转、缓存头、压缩和安全头。CI 每次也会用同一份 Caddyfile 起一套容器跑这个脚本。
+
+## 回退
+
+发布脚本在构建前把正在运行的两个镜像标成 `genyun:previous`、`genyun-site:previous`，清理旧镜像时它们会留下。新版本有问题时，在服务器上：
+
+```sh
+cd /opt/genyun/src/deploy/preview
+docker tag genyun:previous genyun:preview
+docker tag genyun-site:previous genyun-site:preview
+docker compose --env-file /opt/genyun/.env up -d --no-build
+```
+
+只能退一版。要退得更远，在本机切到那个提交重新运行 `deploy.sh`。数据库迁移只会往前加，退回旧版本的代码一般能直接用新表结构；如果某次发布删过列或改过列名，退回前先确认。
+
+## 查看模拟发信
+
+还没接阿里云邮件推送，邀请、找回密码的邮件都不真的发出，而是写成文件放进发件箱（数据卷 `mail_outbox`，容器里是 `/data/mail-outbox`），发布和重启都不会丢。在服务器上：
+
+```sh
+cd /opt/genyun/src/deploy/preview
+# 最近 10 封（文件名是「时间-收件人.json」）
+docker compose --env-file /opt/genyun/.env exec app ls -t /data/mail-outbox | head
+# 看最新一封的内容，里面有邀请链接
+docker compose --env-file /opt/genyun/.env exec app sh -c 'cat "$(ls -t /data/mail-outbox/* | head -1)"'
+# 服务日志里能看到发给谁、什么标题
+docker compose --env-file /opt/genyun/.env logs app | grep 模拟发信
+```
+
+日志不一定记正文（M3 第 2 项起正式环境不记），链接以发件箱文件为准。
 
 ## 服务器上的位置
 

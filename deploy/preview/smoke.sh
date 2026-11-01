@@ -34,6 +34,17 @@ done
 
 echo "接口"
 if body /api/health | grep -q '"ok":true'; then ok "/api/health"; else bad "/api/health 不通"; fi
+# 经过代理登录：错误密码应返回 401（说明 POST、请求体、cookie 路径都通到了应用）
+code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -H 'Content-Type: application/json' \
+  -d '{"email":"smoke-nobody@example.com","password":"wrong-password"}' "$BASE/api/auth/login")
+[ "$code" = 401 ] && ok "/api/auth/login 错误密码 → 401" || bad "/api/auth/login 错误密码 → $code（应为 401）"
+
+if [[ "$BASE" == https://* ]]; then
+  echo "HTTP 跳转"
+  http="http://${BASE#https://}"
+  loc=$(curl -sS -o /dev/null -D - --max-time 20 "$http/login" | tr -d '\r' | grep -i '^location:' | cut -d' ' -f2-)
+  [[ "$loc" == https://* ]] && ok "http → $loc" || bad "http 没有跳转到 https（Location：$loc）"
+fi
 
 echo "缓存头"
 asset=$(body /login | grep -o '/assets/[^"]*\.js' | head -1)
@@ -43,6 +54,9 @@ if [ -n "$asset" ]; then
 else
   bad "/login 页面里没找到 /assets/ 下的脚本"
 fi
+code=$(status /assets/no-such-file.js)
+cc=$(header /assets/no-such-file.js Cache-Control)
+if [ "$code" = 404 ] && ! echo "$cc" | grep -q immutable; then ok "不存在的 /assets/ 文件 → 404，不长期缓存"; else bad "不存在的 /assets/ 文件 → $code，Cache-Control：$cc（应为 404 且不长期缓存）"; fi
 astro=$(body / | grep -o '/_astro/[^"]*\.\(js\|css\)' | head -1)
 if [ -n "$astro" ]; then
   cc=$(header "$astro" Cache-Control)
@@ -62,6 +76,8 @@ for h in X-Content-Type-Options Referrer-Policy X-Frame-Options Strict-Transport
     [ -n "$v" ] && ok "$p $h" || bad "$p 缺 $h"
   done
 done
+v=$(header /api/files/blob Content-Security-Policy-Report-Only)
+[ -z "$v" ] && ok "文件原件（/api/files/blob）不加 CSP" || bad "/api/files/blob 带了 CSP，切到拦截后专家会看不了 PDF"
 for h in Server X-Powered-By; do
   v=$(header /login "$h")
   [ -z "$v" ] && ok "/login 不暴露 $h" || bad "/login 暴露了 $h：$v"

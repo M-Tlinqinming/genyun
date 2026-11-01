@@ -17,19 +17,24 @@
 		# 专家看原件用同源 iframe，所以是 SAMEORIGIN 而不是 DENY
 		X-Frame-Options "SAMEORIGIN"
 		Permissions-Policy "geolocation=(), microphone=(), payment=(), usb=()"
-		# 先只报告不拦截：官网有内联脚本、Ant Design 运行时插样式，正式拦截前要在预览上看一轮浏览器控制台
-		Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
 		-Server
 		-X-Powered-By
 	}
 
+	# 内容安全策略。先只报告不拦截：官网有内联脚本、Ant Design 运行时插样式，正式拦截前要在预览上看一轮浏览器控制台。
+	# 文件原件（/api/files/blob，专家在同源 iframe 里看 PDF）不加：浏览器的 PDF 查看器受 object-src 等限制，切到拦截后会打不开
+	@csp not path /api/files/blob /api/files/blob/*
+	header @csp Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+
 	@app path /api/* /assets/* /login /login/* /invite /invite/* /recover /recover/* /reset-password /reset-password/* /account /account/* /customer /customer/* /expert /expert/* /operator /operator/*
 
-	# 前端构建产物文件名带内容哈希，可以长期缓存
+	# 前端构建产物文件名带内容哈希，可以长期缓存；只给成功的响应加，404 不能被缓存一年
 	handle /assets/* {
-		reverse_proxy app:3000 {
-			header_down Cache-Control "public, max-age=31536000, immutable"
+		header {
+			Cache-Control "public, max-age=31536000, immutable"
+			match status 2xx
 		}
+		reverse_proxy app:3000
 	}
 
 	handle @app {
