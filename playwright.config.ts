@@ -21,6 +21,8 @@ const env = {
   // 生成草稿时风险评估报告第一次失败，测试只重试这一份（generation.spec）
   DRAFT_FAIL_ONCE: 'risk',
   SOFFICE_PATH: '',
+  // Word 校对页的当前稿 PDF 用假的转换（几页英文），不装 LibreOffice 也能测
+  PDF_CONVERTER: 'fake',
   // 邀请邮件里的链接指向测试用的前端
   APP_ORIGIN: WEB_URL,
 };

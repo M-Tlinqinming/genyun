@@ -88,7 +88,7 @@ test('改一节、写修订说明保存；离开前提醒；别人刚保存过�
   // E18-04：保存后显示保存时间，目录标出已改，修订说明只读显示
   await footer(page).getByRole('button', { name: '保存本节修订' }).click();
   await expect(page.getByText(/✓ 已保存 \d\d\.\d\d \d\d:\d\d/)).toBeVisible();
-  await expect(footer(page)).toContainText('修订已保存 · 人工核对仍为 0 / 3');
+  await expect(footer(page)).toContainText('修订已保存 · 人工核对 0 / 3');
   await expect(page.getByRole('status').filter({ hasText: '已保存 · 待人工核对' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: '章节目录' }).getByLabel('已修订')).toHaveCount(1);
   await expect(page.getByLabel('本节修订说明')).toContainText('修订说明：按现场核实补充说明');

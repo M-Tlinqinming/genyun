@@ -1,9 +1,13 @@
 import {
   blocksText,
+  checkedCount,
+  checkStale,
+  checkValid,
   DRAFT_KIND_KEYS,
   DRAFT_KINDS,
   EDIT_LIMITS,
   sameBlocks,
+  type DraftCheckView,
   type DraftKind,
   type EditBlock,
   type GenerationProgress,
@@ -26,6 +30,7 @@ import {
   useSection,
 } from '../../../api/editing';
 import { ApiError } from '../../../api/request';
+import { previewKey, reviewKey, useReview } from '../../../api/review';
 import { linkButton, Loading } from '../../../components/ui';
 import { gy, stage } from '../../../theme/tokens';
 import { ContactRecords } from '../workup/ContactRecords';
@@ -33,6 +38,7 @@ import { ConflictDialog, copyText, LeaveDialog, RewriteDialog, stamp } from './E
 import { blocksToDoc, docToBlocks } from './editorDoc';
 import type { Editor } from '@tiptap/react';
 import { retryStep } from './saveRetry';
+import { ProofreadView } from './ProofreadView';
 import { currentParagraph, EditorPane, LockedContext, replaceParagraph } from './SectionEditor';
 
 // I05 审核与修订 · 正文编辑（14 页 E18-03 未保存、E18-04 已保存、E18-07 恢复状态、E18-08 1366×768）。
@@ -87,6 +93,9 @@ export function EditView({
   const doc = useEditDocument(taskId, kind);
   const sectionId = params.get('section') ?? (doc.data ? firstLeaf(doc.data.outline) : null);
   const section = useSection(taskId, kind, doc.data ? sectionId : null);
+  // 「Word 预览」页签（E18-05）：看当前稿的 Word 版式并逐份核对
+  const preview = params.get('tab') === 'preview';
+  const review = useReview(taskId);
   const client = useQueryClient();
   const { message, modal } = App.useApp();
   const [showRecords, setShowRecords] = useState(false);
@@ -174,6 +183,9 @@ export function EditView({
     setSaved(view.saved);
     client.setQueryData(sectionKey(taskId, kind, view.id), { ...view });
     void client.invalidateQueries({ queryKey: editDocumentKey(taskId, kind) });
+    // 保存后这份的核对失效、Word 预览要按新稿重新转
+    void client.invalidateQueries({ queryKey: reviewKey(taskId) });
+    void client.invalidateQueries({ queryKey: previewKey(taskId, kind) });
   };
 
   // 保存成功：不弹提示，状态和底栏变成「已保存」；待合并的内容自动收起
@@ -321,7 +333,7 @@ export function EditView({
 
   const download = () => downloadCurrentWord(taskId, kind).catch(() => message.error('没有下载成功，请检查网络后重试'));
 
-  const go = (next: { doc?: DraftKind; section?: string }) => {
+  const go = (next: { doc?: DraftKind; section?: string; tab?: 'text' | 'preview' }) => {
     const p = new URLSearchParams(params);
     p.set('view', 'edit');
     if (next.doc) {
@@ -329,6 +341,8 @@ export function EditView({
       p.delete('section');
     }
     if (next.section) p.set('section', next.section);
+    if (next.tab === 'preview') p.set('tab', 'preview');
+    if (next.tab === 'text') p.delete('tab');
     setParams(p);
   };
 
@@ -368,15 +382,22 @@ export function EditView({
   }
   const d = doc.data!;
   const expanded = new Set([...(ancestorsOf(d.outline, sectionId ?? '') ?? []), sectionId ?? '']);
+  const r = review.data;
+  const checked = r ? checkedCount(r.docs) : 0;
+  const thisDoc = r?.docs.find((x) => x.kind === kind);
   const chip = !editable
     ? { text: '只读 · 由负责专家修改', color: gy.secondary, bg: gy.neutralBg }
     : dirty
       ? { text: '修订未保存', ...stage.action }
       : kept
         ? { text: '你的修改待合并', ...stage.action }
-        : saved
-          ? { text: '已保存 · 待人工核对', color: gy.primary, bg: gy.selected }
-          : { text: '待人工核对', color: gy.primary, bg: gy.selected };
+        : checked === 3
+          ? { text: '三份已核对 · 待审核', color: gy.primary, bg: gy.selected }
+          : checked > 0 || preview
+            ? { text: '正在人工核对', color: gy.primary, bg: gy.selected }
+            : saved
+              ? { text: '已保存 · 待人工核对', color: gy.primary, bg: gy.selected }
+              : { text: '待人工核对', color: gy.primary, bg: gy.selected };
   const status =
     state.kind === 'saving' ? (
       <span style={{ color: gy.secondary }}>正在保存…</span>
@@ -437,13 +458,26 @@ export function EditView({
               onClick={() => k !== kind && go({ doc: k })}
               style={{ ...linkButton, ...text14, color: k === kind ? gy.primary : gy.text, fontWeight: k === kind ? 500 : 400 }}
             >
-              {DRAFT_KINDS[k]}　待核对
+              {DRAFT_KINDS[k]}　<DocCheckLabel doc={r?.docs.find((x) => x.kind === k)} active={k === kind && preview} />
             </button>
           ))}
         </div>
-        <span style={{ marginLeft: 'auto', ...text14, color: gy.secondary }}>人工核对 0 / 3</span>
+        <span style={{ marginLeft: 'auto', ...text14, color: gy.secondary }}>人工核对 {checked} / 3</span>
       </div>
 
+      {preview && r ? (
+        <ProofreadView
+          taskId={taskId}
+          kind={kind}
+          review={r}
+          onBackToText={() => go({ tab: 'text' })}
+          onOpen={(k) => go({ doc: k, tab: 'preview' })}
+          onConclude={() => setParams({ view: 'review' })}
+        />
+      ) : preview ? (
+        review.isError ? <Result status="info" title="还不能核对" subTitle={review.error.message} /> : <Loading />
+      ) : (
+        <>
       <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 330px)', minHeight: 420 }}>
         <nav aria-label="章节目录" style={{ ...panel, width: 168, flexShrink: 0, display: 'flex', flexDirection: 'column', padding: '18px 0' }}>
           <div style={{ ...text14, fontWeight: 500, color: gy.text, padding: '0 12px 12px' }}>章节目录</div>
@@ -454,7 +488,14 @@ export function EditView({
 
         <section aria-label="本节正文" style={{ ...panel, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14, padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 24, ...text14 }}>
-            <span style={{ color: gy.primary, fontWeight: 500 }}>正文</span>
+            <div role="tablist" aria-label="查看方式" style={{ display: 'flex', gap: 24 }}>
+              <button type="button" role="tab" aria-selected style={{ ...linkButton, ...text14, color: gy.primary, fontWeight: 500 }}>
+                正文
+              </button>
+              <button type="button" role="tab" aria-selected={false} style={{ ...linkButton, ...text14, color: gy.text }} onClick={() => go({ tab: 'preview' })}>
+                Word 预览
+              </button>
+            </div>
             <span style={{ marginLeft: 'auto' }} aria-live="polite">
               {status}
             </span>
@@ -622,10 +663,12 @@ export function EditView({
           <span style={{ flex: 1, ...text14, color: gy.warning }}>你的输入还在右栏，合并进正文后写修订说明保存</span>
         ) : state.kind === 'saved' ? (
           <>
-            <span style={{ flex: 1, ...text14, color: gy.success }}>修订已保存 · 人工核对仍为 0 / 3；请检查全文与 Word 版式</span>
+            <span style={{ flex: 1, ...text14, color: gy.success }}>
+              修订已保存 · 人工核对 {checked} / 3{thisDoc && checkStale(thisDoc) ? '，本份需重新核对' : ''}；请检查全文与 Word 版式
+            </span>
             <Button onClick={() => editorRef.current?.commands.focus('end')}>继续编辑本节</Button>
-            <Button type="primary" onClick={() => void download()}>
-              下载当前稿 Word
+            <Button type="primary" onClick={() => go({ tab: 'preview' })}>
+              查看 Word 并核对
             </Button>
           </>
         ) : (
@@ -634,9 +677,14 @@ export function EditView({
               {saved ? `本节已修订 · ${saved.byName} ${stamp(saved.at)}` : '在正文里直接修改；改完写明修订说明再保存本节'}
             </span>
             <Button onClick={() => void download()}>下载当前稿 Word</Button>
+            <Button type="primary" onClick={() => go({ tab: 'preview' })}>
+              查看 Word 并核对
+            </Button>
           </>
         )}
       </div>
+        </>
+      )}
 
       <LeaveDialog
         open={blocker.state === 'blocked'}
@@ -722,4 +770,12 @@ function OutlineList({
       })}
     </ul>
   );
+}
+
+// 文档页签上的核对情况：已核对 / 待核对 / 核对后又改过
+function DocCheckLabel({ doc, active }: { doc: DraftCheckView | undefined; active: boolean }) {
+  if (!doc) return <>待核对</>;
+  if (checkValid(doc)) return <span style={{ color: gy.success }}>✓ 已核对</span>;
+  if (checkStale(doc)) return <span style={{ color: gy.warning }}>需重新核对</span>;
+  return <>{active ? '核对中' : '待核对'}</>;
 }
