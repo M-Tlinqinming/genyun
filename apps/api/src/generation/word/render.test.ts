@@ -129,3 +129,16 @@ describe('表格列宽', () => {
     expect(Math.min(...widths)).toBeGreaterThan(0);
   });
 });
+
+describe('段内换行', () => {
+  it('编辑器里的换行（\n）写成 Word 的换行，不变成空格', async () => {
+    const doc = samplePlan();
+    doc.sections[0]!.blocks.unshift({ type: 'paragraph', text: ['第一行', { text: '加粗\n第二行', bold: true }] });
+    const zip = await JSZip.loadAsync(await renderWord(doc));
+    const xml = await zip.file('word/document.xml')!.async('string');
+    const at = xml.indexOf('第一行');
+    const para = xml.slice(at, xml.indexOf('</w:p>', at));
+    expect(para).toMatch(/加粗<\/w:t>[\s\S]*<w:br\/>[\s\S]*第二行/);
+    expect(para).not.toContain('\n第二行');
+  }, 30_000);
+});
