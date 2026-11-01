@@ -1,0 +1,100 @@
+---
+// 隐私说明（Paper「10 · 官网与账户」/ W06）。正文是草案，待法务审定，正式发布前不让搜索引擎收录。
+import LegalPage from '../components/LegalPage.astro';
+import { EMAIL, PHONE, PHONE_HREF } from '../site';
+
+const toc = [
+  { id: 'summary', label: '三句话说清' },
+  { id: 'collect', label: '1　我们收集哪些信息' },
+  { id: 'use', label: '2　信息用在哪里' },
+  { id: 'store', label: '3　如何存储与保护' },
+  { id: 'share', label: '4　何时会共享' },
+  { id: 'rights', label: '5　您的权利' },
+  // 页脚的联系栏已占用 id="contact"（没有脚本时「预约演示」跳到那里），这一节用 contact-us
+  { id: 'contact-us', label: '6　联系我们' },
+];
+// 只写系统现在真能做到的（代码审查 #59）；操作记录等 M4 第 5 项做好再加
+const summary = [
+  '您提供的企业资料，只用于为您生成安全文件。',
+  '文件私有存储，本组织成员、负责该任务的注安师，以及耕云运营人员按职责查看。',
+  '如需导出或删除资料，请联系我们。',
+];
+---
+
+<LegalPage
+  title="隐私说明"
+  description="耕云如何收集、使用、存储和保护您提供的企业资料与账号信息（草案，待法务审定）。"
+  pill="正文待法务审定"
+  toc={toc}
+>
+  <section id="summary" class="legal-summary privacy-summary">
+    <h2>三句话说清</h2>
+    <ol class="privacy-summary__list">
+      {
+        summary.map((t, i) => (
+          <li>
+            <span>{String(i + 1).padStart(2, '0')}</span>
+            {t}
+          </li>
+        ))
+      }
+    </ol>
+  </section>
+
+  <section id="collect">
+    <h2>1　我们收集哪些信息</h2>
+    <p>为编制应急预案，我们需要企业基本信息（名称、统一社会信用代码、地址）、人员与应急分工（姓名、岗位、联系电话）、设备与物料情况，以及您上传的相关文件。人员资料里的联系电话只用于电话联系。账号信息包括登录邮箱和姓名。</p>
+    <p>开通服务时，我们登记贵单位联系人和管理员的姓名、电话、邮箱，以及签约合同，用于开通服务和日常联络。</p>
+    <p class="legal-note">待法务确认：个人信息的最短保存期限、日志保存范围。</p>
+  </section>
+
+  <section id="use">
+    <h2>2　信息用在哪里</h2>
+    <p>只用于三件事：生成并审核您的安全文件；在任务需要补充时联系您；在系统里给您发交付和服务到期的站内提醒。我们不会把您的企业资料用于广告或出售给任何第三方。</p>
+  </section>
+
+  <section id="store">
+    <h2>3　如何存储与保护</h2>
+    <p>您上传的文件私有存储，需登录后按权限查看，下载链接 5 分钟内有效；传输全程加密（HTTPS）。本组织成员、负责该任务的注安师，以及耕云运营人员按职责查看。</p>
+    <p>AI 起草由阿里云百炼大模型服务处理，仅用于生成本任务的文件。发给模型的只有场所、设备、物料名称，不含人员姓名和联系方式。</p>
+  </section>
+
+  <section id="share">
+    <h2>4　何时会共享</h2>
+    <p class="legal-todo">正文待法务提供。</p>
+  </section>
+
+  <section id="rights">
+    <h2>5　您的权利</h2>
+    <p class="legal-todo">正文待法务提供。</p>
+  </section>
+
+  <section id="contact-us">
+    <h2>6　联系我们</h2>
+    <p>对本说明或您的资料有任何问题，或需要导出、删除资料，请致电 <a href={PHONE_HREF}>{PHONE}</a>，或发邮件到 <a href={`mailto:${EMAIL}`}>{EMAIL}</a>。</p>
+  </section>
+</LegalPage>
+
+<style>
+  .privacy-summary {
+    --legal-accent: var(--gy-brand-teal);
+  }
+  .privacy-summary__list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .privacy-summary__list li {
+    display: flex;
+    gap: 16px;
+    font-size: 16px;
+    line-height: 28px;
+    color: var(--site-heading);
+  }
+  /* Paper 用 #23A6AD，白底 16px 只有 2.95:1，压深到 #178086（4.70:1），见 DESIGN-DIFF */
+  .privacy-summary__list span {
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    color: #178086;
+  }
+</style>

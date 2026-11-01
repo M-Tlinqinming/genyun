@@ -1,0 +1,89 @@
+---
+// 内页深色页头（Paper W02 / W03「页头 · 深色」，W06 / W07「页头 · 深色 · 紧凑」）
+import Nav from './Nav.astro';
+import type { NavKey } from '../site';
+
+interface Props {
+  active?: NavKey;
+  eyebrow: string;
+  compact?: boolean;
+}
+const { active, eyebrow, compact = false } = Astro.props;
+---
+
+<div class:list={['page-head', 'on-dark', { 'page-head--compact': compact }]}>
+  <Nav active={active} />
+  <div class="wrap page-head__body">
+    <div class="page-head__title">
+      <p class="eyebrow">{eyebrow}</p>
+      <h1><slot /></h1>
+    </div>
+    <div class="page-head__aside"><slot name="aside" /></div>
+  </div>
+</div>
+
+<style>
+  .page-head {
+    background: var(--gy-brand-ink);
+    overflow: clip;
+  }
+  .page-head__body {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 48px;
+    padding-top: 88px;
+    padding-bottom: 80px;
+  }
+  .page-head__title {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  h1 {
+    color: #fff;
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 56px;
+    line-height: 72px;
+  }
+  .page-head__aside {
+    flex-shrink: 0;
+    width: 440px;
+    color: #ffffffad;
+    font-size: 16px;
+    line-height: 30px;
+  }
+  .page-head--compact .page-head__body {
+    padding-top: 64px;
+    padding-bottom: 56px;
+  }
+  .page-head--compact .page-head__title {
+    gap: 16px;
+  }
+  .page-head--compact h1 {
+    font-size: 44px;
+    line-height: 56px;
+  }
+  .page-head--compact .page-head__aside {
+    width: auto;
+  }
+  @media (max-width: 1000px) {
+    .page-head__body {
+      flex-direction: column;
+      align-items: flex-start;
+      padding-top: 64px;
+      padding-bottom: 56px;
+    }
+    .page-head__aside {
+      width: auto;
+      max-width: 560px;
+    }
+  }
+  @media (max-width: 720px) {
+    h1 {
+      font-size: 36px;
+      line-height: 50px;
+    }
+  }
+</style>
