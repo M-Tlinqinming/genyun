@@ -197,16 +197,9 @@ export function isStale(err: unknown): err is ApiError {
 export async function uploadFile(orgId: string, file: File, rule: 'material' | 'image_or_pdf'): Promise<string> {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`/api/orgs/${orgId}/files?rule=${rule}`, {
-    method: 'POST',
-    credentials: 'include',
-    body: form,
-  });
-  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!res.ok) {
-    throw new ApiError(res.status, typeof body?.message === 'string' ? body.message : '上传失败，请稍后重试', body);
-  }
-  return body!.id as string;
+  // 走 request：服务出错、断网时提示和其他请求一样
+  const { id } = await request<{ id: string }>(`/orgs/${orgId}/files?rule=${rule}`, { method: 'POST', body: form });
+  return id;
 }
 
 // 营业执照：挂到任务的资料清单上，再挂到企业并识别

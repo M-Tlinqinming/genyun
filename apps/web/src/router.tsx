@@ -2,6 +2,7 @@ import type { Workspace } from '@genyun/shared';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
 import { NAVIGATION } from './layouts/navigation';
 import { WorkspaceLayout } from './layouts/WorkspaceLayout';
+import { InvitePage } from './pages/InvitePage';
 import { LoginPage } from './pages/LoginPage';
 import { PendingPage } from './pages/PendingPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
@@ -16,6 +17,7 @@ import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
+import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
 import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
@@ -43,7 +45,10 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
-  '/operator/organizations': [{ index: true, element: <OrganizationListPage /> }],
+  '/operator/organizations': [
+    { index: true, element: <OrganizationListPage /> },
+    { path: ':orgId', element: <OrganizationDetailPage /> },
+  ],
   // 运营任务中心的列表在 M3 做；任务正文先能从网址只读查看
   '/operator/tasks': [
     { index: true, element: <PendingPage eyebrow={EYEBROW.operator} title="任务中心" /> },
@@ -80,6 +85,8 @@ function workspaceRoutes(workspace: Workspace): RouteObject {
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  // 邮件里的邀请链接，不用登录
+  { path: '/invite/:token', element: <InvitePage /> },
   // 选择开始方式是全屏页，不在工作区框架里
   { path: '/customer/tasks/:taskId/start', element: <StartMethodPage /> },
   { path: '/customer/tasks/:taskId/fill/:step', element: <SelfFillPage /> },

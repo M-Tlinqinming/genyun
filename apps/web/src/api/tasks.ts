@@ -215,7 +215,8 @@ export async function submitTask(id: string, input: SubmitRequest): Promise<Subm
       signal: controller.signal,
     });
   } catch (err) {
-    if (err instanceof ApiError && err.status < 500) throw err;
+    // 0 是断网或 30 秒超时中断（request 包成 ApiError(0)），和 5xx 一样算不确定
+    if (err instanceof ApiError && err.status > 0 && err.status < 500) throw err;
     throw new SubmitUnknownError(err instanceof Error ? err.message : '提交结果未知');
   } finally {
     clearTimeout(timer);
