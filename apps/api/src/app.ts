@@ -1,13 +1,13 @@
 import 'reflect-metadata';
-import { Controller, Get, type INestApplication, Module } from '@nestjs/common';
+import { type INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD, NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import { AccountController, AccountService } from './auth/account.ts';
 import { AuthController } from './auth/auth.controller.ts';
 import { AuthService } from './auth/auth.service.ts';
+import { SessionGuard } from './auth/session.guard.ts';
 import { RecoveryService } from './auth/recovery.service.ts';
-import { Public, SessionGuard } from './auth/session.guard.ts';
 import { DATABASE, type Database } from './db/client.ts';
 import { EnterpriseDocumentsController, TaskDocumentsController } from './documents/documents.controller.ts';
 import { DocumentsService } from './documents/documents.service.ts';
@@ -41,16 +41,10 @@ import { GenerationController, GenerationService } from './tasks/generation.serv
 import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
 import { TasksService } from './tasks/tasks.service.ts';
+import { HealthController } from './health/health.controller.ts';
+import { AuditLogsController, AuditService } from './audit/audit.ts';
+import { defaultProbes, HEALTH_PROBES, type HealthProbes } from './health/health.ts';
 import { WorkupController, WorkupService } from './tasks/workup.service.ts';
-
-@Controller('health')
-class HealthController {
-  @Public()
-  @Get()
-  check() {
-    return { ok: true };
-  }
-}
 
 export interface AppOptions {
   loginLimitPerMinute?: number;
@@ -73,6 +67,8 @@ export interface AppOptions {
   pdf?: PdfConverter | null;
   // 发邮件；不传时按环境变量 MAIL_DRIVER 选用（mail/mailer.ts）
   mailer?: Mailer;
+  // 健康检查的各项探测；不传时按环境变量（数据库、REDIS_URL、FILE_STORAGE_DIR 所在分区）
+  health?: HealthProbes;
   // 是否开放「模拟发件箱」接口；不传时只在 MAIL_DRIVER=mock 时开放，其他情况没有这个地址（404）
   mailOutbox?: boolean;
 }
@@ -82,6 +78,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
   @Module({
     controllers: [
       HealthController,
+      AuditLogsController,
       AuthController,
       AccountController,
       OrgsController,
@@ -110,6 +107,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
     ],
     providers: [
       { provide: DATABASE, useValue: db },
+      { provide: HEALTH_PROBES, useValue: options.health ?? defaultProbes(db) },
       { provide: FILE_STORAGE, useValue: options.storage ?? defaultStorage() },
       {
         provide: LICENSE_RECOGNIZER,
@@ -123,6 +121,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       { provide: MAIL_OUTBOX, useValue: mailOutbox },
       { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
       AuthService,
+      AuditService,
       RecoveryService,
       AccountService,
       GenerationService,

@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { deliveries, deliveryFiles, enterprises, files, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
+import { auditLogs, deliveries, deliveryFiles, enterprises, files, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
@@ -334,6 +334,11 @@ describe('发布', () => {
     const all = await handle.db.select().from(deliveries).where(eq(deliveries.taskId, taskId));
     expect(all.filter((d) => d.status === 'done')).toHaveLength(1);
     expect(await handle.db.select().from(files).where(eq(files.kind, 'delivery'))).toHaveLength(3);
+    // 操作日志：只有形成交付的那一次记「发布」；存储失败的、重发的、被拒绝的都不记
+    const logged = await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'publish'));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({ actorEmail: 'zhou@test.cn', target: 'GY-2026-001 · 交付 V1' });
+    expect(logged[0]!.ip).toBeTruthy();
   });
 
   it('发布后正文只读：不能保存修订、不能再核对', async () => {

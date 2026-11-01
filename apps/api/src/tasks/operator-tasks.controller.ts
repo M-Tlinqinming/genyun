@@ -22,9 +22,12 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
 } from '@nestjs/common';
 import { and, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import type { Request } from 'express';
+import { AuditService, clientIp } from '../audit/audit.ts';
 import { canAssignTasks, canHandleOverdue } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
@@ -85,6 +88,7 @@ export class OperatorTasksController {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   // 全部任务，新提交的在前；待分派由前端按 needsAssignment 筛出来（数量少，不分页）
@@ -193,7 +197,12 @@ export class OperatorTasksController {
 
   // 分派或改派。专业整理、联系记录都挂在任务上，改派后自动归新注安师；原注安师从此打不开这个任务（404）
   @Post(':id/assign')
-  async assign(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+  async assign(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ) {
     this.guard(user);
     const parsed = assignExpertSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '分派信息不完整');
@@ -273,6 +282,16 @@ export class OperatorTasksController {
         now.assignedExpertName ? `这个任务刚被分派给${now.assignedExpertName}，请看最新情况再决定` : '这个任务的负责注安师刚有变化，请刷新后再试',
       );
     }
+    // 操作日志：对象写任务编号和接手的注安师；改派时带上原来的注安师
+    await this.audit.record({
+      action: previous ? 'task_reassign' : 'task_assign',
+      actorId: user.id,
+      actorEmail: user.email,
+      ip: clientIp(req),
+      target: previous
+        ? `${task.number} · ${task.assignedExpertName ?? '原注安师'} → ${target.name}`
+        : `${task.number} · ${target.name}`,
+    });
     return withStage(await this.load(id));
   }
 

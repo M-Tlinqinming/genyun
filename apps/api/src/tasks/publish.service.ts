@@ -31,9 +31,12 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
+import type { Request } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
+import { AuditService, clientIp } from '../audit/audit.ts';
 import { canPublishTask, canViewTaskWork } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
@@ -78,6 +81,7 @@ export class PublishService {
     @Inject(EditingService) private readonly editing: EditingService,
     @Inject(ReviewService) private readonly review: ReviewService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   /** 发布页：能不能发布、这批文稿最近一次（或 publishId 那一次）发布的情况、已形成的交付版本 */
@@ -88,7 +92,7 @@ export class PublishService {
     return this.build(user, task, publishId);
   }
 
-  async publish(user: SessionUser, taskId: string, body: unknown): Promise<PublishView> {
+  async publish(user: SessionUser, taskId: string, body: unknown, ip: string | null = null): Promise<PublishView> {
     const task = await this.task(user, taskId);
     if (!canPublishTask(user, task)) throw new ForbiddenException(ONLY_EXPERT);
     const parsed = publishRequestSchema.safeParse(body);
@@ -142,7 +146,17 @@ export class PublishService {
       throw err;
     }
 
-    await this.finish(row, task, batch, review.review!.byName);
+    const published = await this.finish(row, task, batch, review.review!.byName);
+    // 操作日志：只记形成了交付版本的发布；重发同一个 publishId 走上面的 replay，不会再记
+    if (published) {
+      await this.audit.record({
+        action: 'publish',
+        actorId: user.id,
+        actorEmail: user.email,
+        ip,
+        target: `${task.number} · ${deliveryLabel(row.version)}`,
+      });
+    }
     return this.build(user, task, publishId);
   }
 
@@ -156,8 +170,8 @@ export class PublishService {
     return this.build(user, task, publishId);
   }
 
-  // 出三份定稿、存文件，再在一个事务里核对修订次数没变、记为已交付、关闭任务、提醒客户
-  private async finish(row: Delivery, task: Task, batch: Batch, reviewerName: string) {
+  // 出三份定稿、存文件，再在一个事务里核对修订次数没变、记为已交付、关闭任务、提醒客户。形成交付版本时返回 true
+  private async finish(row: Delivery, task: Task, batch: Batch, reviewerName: string): Promise<boolean> {
     const fail = (error: string) =>
       this.db
         .update(deliveries)
@@ -173,8 +187,9 @@ export class PublishService {
     } catch (err) {
       this.logger.warn(`发布 ${task.number} 失败：${err instanceof Error ? err.message : String(err)}`);
       await fail(FAILED);
-      return;
+      return false;
     }
+    let published = false;
 
     const changed = await this.db.transaction(async (tx) => {
       // 锁住三份的修订记录，和保存修订不交错；发布期间又保存过就不算
@@ -211,13 +226,16 @@ export class PublishService {
         },
         tx,
       );
+      published = true;
       return false;
     }).catch(async (err: unknown) => {
+      published = false;
       this.logger.warn(`发布 ${task.number} 记录交付失败：${err instanceof Error ? err.message : String(err)}`);
       await fail(FAILED);
       return false;
     });
     if (changed) await fail(CHANGED_WHILE_PUBLISHING);
+    return published;
   }
 
   private async store(task: Task, by: string, originalName: string, data: Buffer) {
@@ -366,7 +384,7 @@ export class PublishController {
   }
 
   @Post('publication')
-  publish(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
-    return this.service.publish(user, id, body);
+  publish(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown, @Req() req: Request) {
+    return this.service.publish(user, id, body, clientIp(req));
   }
 }

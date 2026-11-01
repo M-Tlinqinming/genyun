@@ -18,6 +18,7 @@ import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
+import { AuditLogPage } from './pages/operator/AuditLogPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
 import { MailOutboxPage } from './pages/operator/MailOutboxPage';
 import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
@@ -49,6 +50,7 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
+  '/operator/audit-logs': [{ index: true, element: <AuditLogPage /> }],
   '/operator/organizations': [
     { index: true, element: <OrganizationListPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },

@@ -23,7 +23,10 @@ get() { curl -sS --max-time 20 "$@"; }
 status() { curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$@"; }
 
 echo "服务"
-if get "$BASE/api/health" | grep -q '"ok":true'; then ok "/api/health"; else bad "/api/health 不通"; fi
+health=$(get "$BASE/api/health")
+if echo "$health" | grep -q '"status":"ok"'; then ok "/api/health"
+elif echo "$health" | grep -q '"status":"degraded"'; then ok "/api/health（degraded：数据盘剩余不到 10%，该清理了）"
+else bad "/api/health 不通或有检查项失败：$health"; fi
 
 echo "页面"
 code=$(status "$BASE/")
