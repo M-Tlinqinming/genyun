@@ -37,6 +37,10 @@ describe('AI 按企业改写事故风险描述', () => {
     expect(checkRiskParagraph(original, `（2）事故区域：${site}锅炉房及使用电气设备的岗位，电工作业场所等。`, facts)).toMatch(/锅炉/);
     expect(checkRiskParagraph(original, `（2）事故区域：${site}共 36 个使用电气设备的岗位，电工作业场所等。`, facts)).toMatch(/数字/);
     expect(checkRiskParagraph(original, `（2）事故区域：${site}使用电气设备的岗位，电话 0752-1234567。`, facts)).toMatch(/电话/);
+    // 原文里的国标编号不算新增的长数字
+    const gb = '（3）防护要求：按 GB/T 29639-2020 配备绝缘防护用品，定期检查电气线路。';
+    expect(checkRiskParagraph(gb, '（3）防护要求：定期检查电气线路，并按 GB/T 29639-2020 配备绝缘防护用品。', facts)).toBeNull();
+    expect(checkRiskParagraph(gb, '（3）防护要求：按 GB/T 29639-2020 配备绝缘防护用品，值班 13912345678。', facts)).toMatch(/「13912345678」/);
   });
 
   it('改写通过的段落进到成稿，并记为 AI 写的', async () => {

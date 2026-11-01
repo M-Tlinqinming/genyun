@@ -35,7 +35,9 @@ export function checkRiskParagraph(original: string, value: string, facts: RiskR
   const label = /^（\d+）[^：]{1,20}：/.exec(original)?.[0];
   if (label && !v.startsWith(label)) return `没有保留「${label}」开头`;
   if (v.length < original.length * 0.5 || v.length > Math.max(original.length * 2, original.length + 120)) return '篇幅与原文相差太大';
-  if (/\d{5,}|\d{3,4}-\d{7,8}/.test(v)) return '写了电话或长串数字';
+  // 同「帮我改写这段」：原文里有的长数字（如国标编号 GB/T 29639-2020）照常保留，只拒绝原文里没有的
+  const long = (v.match(/\d{3,4}-\d{7,8}|\d{5,}/g) ?? []).find((x) => !original.includes(x));
+  if (long) return `写了原文里没有的电话或长串数字「${long}」`;
   if (/有限公司|有限责任公司/.test(v)) return '写了企业名称';
   const known = [original, ...facts.sites, ...facts.processes, ...facts.equipment, ...facts.materials].join('\n');
   const numbers = (v.match(/\d+(?:\.\d+)?/g) ?? []).filter((n) => !known.includes(n));
