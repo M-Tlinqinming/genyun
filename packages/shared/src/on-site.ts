@@ -8,6 +8,23 @@ export type CallTime = keyof typeof CALL_TIMES;
 // new = 新工单；handed_over = 已转交公司；closed = 已关闭
 export const ON_SITE_STATUSES = ['new', 'handed_over', 'closed'] as const;
 export type OnSiteStatus = (typeof ON_SITE_STATUSES)[number];
+export const ON_SITE_STATUS_LABELS: Record<OnSiteStatus, string> = { new: '新工单', handed_over: '已转交公司', closed: '已关闭' };
+export const ON_SITE_NOTE_MAX = 500;
+
+// 运营处理上门工单：改状态（转交公司、关闭、重新打开）和 / 或内部备注，一次请求一起保存
+export const onSiteUpdateSchema = z
+  .object({
+    status: z.enum(ON_SITE_STATUSES).optional(),
+    internalNote: z.string().trim().max(ON_SITE_NOTE_MAX, `内部备注最多 ${ON_SITE_NOTE_MAX} 个字`).optional(),
+  })
+  .refine((v) => v.status !== undefined || v.internalNote !== undefined, '没有要改的内容');
+export type OnSiteUpdateInput = z.input<typeof onSiteUpdateSchema>;
+
+// 列表排序：新工单在前，其次已转交公司，已关闭的放最后；同一状态里新的在前
+export function compareOnSiteOrders(a: { status: OnSiteStatus; createdAt: string }, b: { status: OnSiteStatus; createdAt: string }): number {
+  const rank = ON_SITE_STATUSES.indexOf(a.status) - ON_SITE_STATUSES.indexOf(b.status);
+  return rank !== 0 ? rank : b.createdAt.localeCompare(a.createdAt);
+}
 
 export const onSiteRequestSchema = z.object({
   contactName: z.string().trim().min(1, '请填写联系人').max(50, '联系人最多 50 个字'),

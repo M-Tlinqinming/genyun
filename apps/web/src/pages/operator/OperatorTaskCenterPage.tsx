@@ -1,15 +1,15 @@
-import { OPERATOR_TASK_STAGES, type OperatorTaskStage } from '@genyun/shared';
+import { OPERATOR_TASK_STAGES, compareOnSiteOrders, type OperatorTaskStage } from '@genyun/shared';
 import { Button, Empty, Input, Skeleton } from 'antd';
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { useOnSiteOrders, useOperatorTask, useOperatorTasks, useOverdueTasks, type OperatorTask, type OverdueTask } from '../../api/operator';
+import { useOnSiteOrders, useOperatorTask, useOperatorTasks, useOverdueTasks, type OperatorTask, type OperatorTaskDetail, type OverdueTask } from '../../api/operator';
 import { PageHeader } from '../../components/PageHeader';
 import { Loading, Notice, panel } from '../../components/ui';
 import { gy, stage } from '../../theme/tokens';
 import { AssignExpertModal } from './AssignExpertModal';
 import { OnSitePanel, OnSiteRow } from './OnSiteOrders';
-import { OperatorNotes, OverdueReason } from './OverdueSection';
-import { businessShort, monthDay, monthDayTime, submittedLine, taskTitle } from './taskCenterText';
+import { NoteModal, OVERDUE_LINE, OperatorNotes, OverdueSections, overdueBadge } from './OverdueSection';
+import { businessShort, monthDay, monthDayTime, taskTitle } from './taskCenterText';
 
 type Tab = 'unassigned' | 'overdue' | 'onsite' | 'all';
 const TAB_LABEL: Record<Tab, string> = { unassigned: '待分派', overdue: '超时兜底', onsite: '上门工单', all: '全部任务' };
@@ -41,7 +41,7 @@ function rowLine(t: OperatorTask): string {
   return `${businessShort(t)} · ${who}`;
 }
 
-function TaskRow({ task: t, selected, onSelect }: { task: OperatorTask; selected: boolean; onSelect: () => void }) {
+function TaskRow({ task: t, overdue, selected, onSelect }: { task: OperatorTask; overdue?: OverdueTask; selected: boolean; onSelect: () => void }) {
   return (
     <li style={{ listStyle: 'none' }}>
       <button
@@ -67,11 +67,13 @@ function TaskRow({ task: t, selected, onSelect }: { task: OperatorTask; selected
           <span style={{ ...body, fontWeight: selected ? 500 : 400, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {t.enterpriseName}
           </span>
-          <span style={{ ...small, flexShrink: 0 }}>{t.submittedAt ? monthDayTime(t.submittedAt) : `${monthDay(t.createdAt)} 创建`}</span>
+          <span style={{ ...small, flexShrink: 0 }}>
+            {overdue ? `${monthDay(overdue.request.requestedAt)} 起` : t.submittedAt ? monthDayTime(t.submittedAt) : `${monthDay(t.createdAt)} 创建`}
+          </span>
         </span>
-        <span style={{ ...caption, color: gy.secondary }}>{rowLine(t)}</span>
+        <span style={{ ...caption, color: gy.secondary }}>{overdue ? `${rowLine(t)} · ${OVERDUE_LINE}` : rowLine(t)}</span>
         <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Pill tone={STAGE_TONE[t.needsAssignment ? 'unassigned' : t.stage]}>{stageLabel(t)}</Pill>
+          {overdue ? <Pill tone={stage.action}>超时</Pill> : <Pill tone={STAGE_TONE[t.needsAssignment ? 'unassigned' : t.stage]}>{stageLabel(t)}</Pill>}
           <Pill tone={stage.progress}>{t.orgName}</Pill>
         </span>
       </button>
@@ -151,12 +153,28 @@ function TaskPanel({ taskId, overdue, onAssign }: { taskId: string; overdue?: Ov
             </Link>
           </span>
         </div>
-        <Pill tone={STAGE_TONE[t.needsAssignment ? 'unassigned' : t.stage]}>{stageLabel(t)}</Pill>
+        {overdue ? (
+          <Pill tone={stage.error}>{overdueBadge(overdue)}</Pill>
+        ) : (
+          <Pill tone={STAGE_TONE[t.needsAssignment ? 'unassigned' : t.stage]}>{stageLabel(t)}</Pill>
+        )}
       </header>
 
-      {overdue && <OverdueReason task={overdue} />}
+      {overdue ? (
+        <OverdueSections task={overdue} onReassign={() => onAssign(t)} />
+      ) : (
+        <TaskSections task={t} canAssign={canAssign} onAssign={onAssign} />
+      )}
+    </section>
+  );
+}
 
-      {overdue ? null : t.needsAssignment ? (
+// 待分派、全部任务的右栏：为什么出现在这里 / 当前负责、基本信息、运营记录，底栏写内部备注和分派
+function TaskSections({ task: t, canAssign, onAssign }: { task: OperatorTaskDetail; canAssign: boolean; onAssign: (t: OperatorTask) => void }) {
+  const [noting, setNoting] = useState(false);
+  return (
+    <>
+      {t.needsAssignment ? (
         <Section title="为什么出现在这里">
           <Reason
             title={`客户 ${t.submittedAt ? monthDay(t.submittedAt) : ''} 提交了资料，还没有负责注安师`}
@@ -193,7 +211,7 @@ function TaskPanel({ taskId, overdue, onAssign }: { taskId: string; overdue?: Ov
         </Section>
       )}
 
-      <Section title="基本信息" style={{ paddingBottom: 24 }}>
+      <Section title="基本信息">
         <dl style={{ display: 'grid', gridTemplateColumns: '96px 1fr', rowGap: 8, margin: 0, ...caption, color: gy.secondary }}>
           <dt>任务</dt>
           <dd style={{ margin: 0, color: gy.text }}>{t.name}</dd>
@@ -204,18 +222,18 @@ function TaskPanel({ taskId, overdue, onAssign }: { taskId: string; overdue?: Ov
         </dl>
       </Section>
 
-      <div style={{ paddingBottom: 24 }}>
-        <OperatorNotes taskId={t.id} />
-      </div>
+      <OperatorNotes taskId={t.id} />
 
-      {canAssign && (
-        <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 24px', borderTop: `1px solid ${gy.split}`, marginTop: 'auto' }}>
+      <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 24px', borderTop: `1px solid ${gy.split}`, marginTop: 24 }}>
+        <Button onClick={() => setNoting(true)}>写内部备注</Button>
+        {canAssign && (
           <Button type="primary" onClick={() => onAssign(t)}>
             {t.assignedExpertId ? '改派注安师' : '分配注安师'}
           </Button>
-        </footer>
-      )}
-    </section>
+        )}
+      </footer>
+      <NoteModal taskId={t.id} open={noting} onClose={() => setNoting(false)} />
+    </>
   );
 }
 
@@ -237,8 +255,9 @@ export function OperatorTaskCenterPage() {
   const unassigned = useMemo(() => (tasks.data ?? []).filter((t) => t.needsAssignment), [tasks.data]);
   const overdue = useMemo(() => overdueQuery.data ?? [], [overdueQuery.data]);
   const onSite = useOnSiteOrders();
-  const orders = onSite.data ?? [];
-  const openOrders = orders.filter((o) => o.status !== 'closed').length;
+  // 新工单在前，已转交、已关闭在后；页签数字是新工单数（设计稿：运营概览和侧栏显示新工单数）
+  const orders = useMemo(() => [...(onSite.data ?? [])].sort(compareOnSiteOrders), [onSite.data]);
+  const newOrders = orders.filter((o) => o.status === 'new').length;
   const linkedOrder = params.get('order');
   const selectedOrder = orders.find((o) => o.id === linkedOrder) ?? orders[0] ?? null;
   // 从组织详情点进来带着任务时，直接看全部任务；否则有待分派就先看待分派
@@ -259,7 +278,7 @@ export function OperatorTaskCenterPage() {
     <PageHeader
       eyebrow="耕云运营 / 任务中心"
       title="任务中心"
-      description="运营只做三件事：分派负责注安师、处理上门工单、兜底超时任务。客户补充由负责专家直接联系，不经运营转话。"
+      description="运营只做三件事：分派负责注安师、处理上门工单、兜底超时任务。客户补充由负责注安师直接联系，不经运营转话。"
     />
   );
 
@@ -288,7 +307,7 @@ export function OperatorTaskCenterPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'unassigned', label: `待分派 ${unassigned.length}` },
     { key: 'overdue', label: `超时兜底 ${overdue.length}` },
-    { key: 'onsite', label: `上门工单 ${openOrders}` },
+    { key: 'onsite', label: `上门工单 ${newOrders}` },
     { key: 'all', label: '全部任务' },
   ];
 
@@ -365,14 +384,23 @@ export function OperatorTaskCenterPage() {
           ) : (
             <ul role="tabpanel" aria-label={TAB_LABEL[tab]} style={{ margin: 0, padding: 0, maxHeight: 640, overflowY: 'auto' }}>
               {shown.map((t) => (
-                <TaskRow key={t.id} task={t} selected={t.id === selectedId} onSelect={() => select(t.id)} />
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  overdue={tab === 'overdue' ? overdue.find((o) => o.id === t.id) : undefined}
+                  selected={t.id === selectedId}
+                  onSelect={() => select(t.id)}
+                />
               ))}
             </ul>
           )}
-          {tab === 'unassigned' && (
+          {(tab === 'unassigned' || tab === 'overdue') && (
             <p style={{ ...small, margin: 0, padding: '14px 20px' }}>
-              只列需要运营介入的任务；正常进行中的客户沟通由注安师自己处理，运营不经手。
+              只列需要运营介入的任务；正常进行中的客户沟通由注安师自己处理，运营不经手。上门工单见「上门工单」页签。
             </p>
+          )}
+          {tab === 'onsite' && orders.length > 0 && (
+            <p style={{ fontSize: 12, lineHeight: '18px', color: gy.tertiary, margin: 0, padding: '12px 20px' }}>新工单排在前面，已关闭的在最后。</p>
           )}
         </div>
         {tab === 'onsite' ? (

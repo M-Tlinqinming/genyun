@@ -28,8 +28,8 @@ test('列表：演示组织为服务中', async () => {
   await expect(page.getByRole('heading', { name: '客户组织' })).toBeVisible();
   await expect(row('示例安全咨询机构')).toContainText('服务中');
   await expect(row('示例安全咨询机构')).toContainText('2026.01.01 – 2027.12.31');
-  // 飞宇：两家企业、一个管理员
-  await expect(row('飞宇演示客户')).toContainText('2 / 1');
+  // 飞宇：三家企业（飞宇、五金、塑胶）、一个管理员
+  await expect(row('飞宇演示客户')).toContainText('3 / 1');
   await page.screenshot({ path: 'out/m3-1-I02-list.png', fullPage: true });
 });
 

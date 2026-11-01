@@ -127,6 +127,9 @@ describe('超时兜底', () => {
     expect(rows.map((r) => r.id).sort()).toEqual([task.silent, task.unreachable].sort());
     const silent = rows.find((r) => r.id === task.silent)!;
     expect(silent).toMatchObject({ reason: '还没有联系过客户', contacts: [], request: { labels: ['消防水池'] } });
+    // 10.27 提出，10.29 到期，现在早已超时；等待天数按工作日算
+    expect((silent as unknown as { waitedDays: number; overdueDays: number }).waitedDays).toBeGreaterThan(2);
+    expect((silent as unknown as { overdueDays: number }).overdueDays).toBeGreaterThan(0);
     const unreachable = rows.find((r) => r.id === task.unreachable)!;
     expect(unreachable.reason).toBe('打过 2 次电话都没接通');
     expect(unreachable.contacts.map((c) => c.result)).toEqual(['unreachable', 'unreachable']);
@@ -150,6 +153,36 @@ describe('超时兜底', () => {
     expect(JSON.stringify(view.body)).not.toContain('客户说周五前回电');
   });
 
+  it('我先打给客户安抚：打完记一笔，可以不写内容', async () => {
+    const ops = await as('ops@test.cn');
+    const res = await ops.post(`/api/operator/tasks/${task.unreachable}/notes`).send({ kind: 'called_customer' });
+    expect(res.status).toBe(201);
+    expect(res.body[0]).toMatchObject({ kind: 'called_customer', body: '', createdByName: '赵运营' });
+    // 只能写备注和致电记录，提醒、改派走各自的接口
+    expect((await ops.post(`/api/operator/tasks/${task.unreachable}/notes`).send({ kind: 'reassign', body: 'x' })).status).toBe(400);
+    // 运营致电不算注安师联系上客户，任务仍在超时兜底
+    const overdue = (await ops.get('/api/operator/tasks/overdue')).body as { id: string }[];
+    expect(overdue.map((r) => r.id)).toContain(task.unreachable);
+  });
+
+  it('客户、注安师都打不开超时兜底列表', async () => {
+    for (const email of ['admin@test.cn', 'zhou@test.cn']) {
+      const other = await as(email);
+      expect((await other.get('/api/operator/tasks/overdue')).status).toBe(403);
+      expect((await other.post(`/api/operator/tasks/${task.silent}/notes`).send({ kind: 'called_customer' })).status).toBe(403);
+    }
+    // 没登录
+    expect((await request(app.getHttpServer()).get('/api/operator/tasks/overdue')).status).toBe(401);
+  });
+
+  it('还没分派注安师的任务不进超时兜底（在待分派里）', async () => {
+    await handle.db.update(tasks).set({ assignedExpertId: null }).where(eq(tasks.id, task.reached));
+    await handle.db.delete(taskContacts).where(eq(taskContacts.taskId, task.reached));
+    const ops = await as('ops@test.cn');
+    const overdue = (await ops.get('/api/operator/tasks/overdue')).body as { id: string }[];
+    expect(overdue.map((r) => r.id)).not.toContain(task.reached);
+  });
+
   it('提醒注安师：负责注安师收到站内提醒，任务上记一条', async () => {
     const ops = await as('ops@test.cn');
     const res = await ops.post(`/api/operator/tasks/${task.unreachable}/remind`).send({ body: '客户上午在厂里' });
@@ -163,7 +196,9 @@ describe('超时兜底', () => {
     expect(sent[0]!.title).toBe('运营提醒：请尽快联系客户');
     expect(sent[0]!.body.startsWith('运营说明：客户上午在厂里')).toBe(true);
     // 客户、注安师不能发
-    expect((await (await as('zhou@test.cn')).post(`/api/operator/tasks/${task.unreachable}/remind`).send({})).status).toBe(403);
+    for (const email of ['admin@test.cn', 'zhou@test.cn']) {
+      expect((await (await as(email)).post(`/api/operator/tasks/${task.unreachable}/remind`).send({})).status).toBe(403);
+    }
   });
 
   it('从超时兜底改派：任务上记一条改派，期限从新注安师接手重新算', async () => {
@@ -201,8 +236,19 @@ describe('上门工单', () => {
 
     const noted = await ops.patch(`/api/operator/on-site/${req!.id}`).send({ internalNote: '已约周三上门' });
     expect(noted.body).toMatchObject({ status: 'new', internalNote: '已约周三上门' });
-    expect((await ops.patch(`/api/operator/on-site/${req!.id}`).send({ status: 'handed_over' })).body).toMatchObject({ status: 'handed_over', internalNote: '已约周三上门' });
-    expect((await ops.patch(`/api/operator/on-site/${req!.id}`).send({ status: 'closed' })).body.status).toBe('closed');
+    const handed = (await ops.patch(`/api/operator/on-site/${req!.id}`).send({ status: 'handed_over' })).body;
+    expect(handed).toMatchObject({ status: 'handed_over', internalNote: '已约周三上门', closedAt: null });
+    expect(handed.handedOverAt).toEqual(expect.any(String));
+    // 状态和备注一起保存（关闭时写下结果）
+    const closed = (await ops.patch(`/api/operator/on-site/${req!.id}`).send({ status: 'closed', internalNote: '公司已上门，资料已补齐' })).body;
+    expect(closed).toMatchObject({ status: 'closed', internalNote: '公司已上门，资料已补齐', handedOverAt: handed.handedOverAt });
+    expect(closed.closedAt).toEqual(expect.any(String));
+    // 重新打开清空转交、关闭时间
+    expect((await ops.patch(`/api/operator/on-site/${req!.id}`).send({ status: 'new' })).body).toMatchObject({ status: 'new', handedOverAt: null, closedAt: null });
+    expect((await ops.patch('/api/operator/on-site/00000000-0000-4000-8000-000000000000').send({ status: 'closed' })).status).toBe(404);
+    // 客户那边看不到内部备注
+    const admin = await as('admin@test.cn');
+    expect(JSON.stringify((await admin.get(`/api/tasks/${t!.id}`)).body)).not.toContain('资料已补齐');
     expect((await ops.patch(`/api/operator/on-site/${req!.id}`).send({ status: 'done' })).status).toBe(400);
     expect((await ops.patch(`/api/operator/on-site/${req!.id}`).send({})).status).toBe(400);
 

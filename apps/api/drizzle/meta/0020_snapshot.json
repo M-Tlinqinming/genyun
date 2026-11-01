@@ -1,5 +1,5 @@
 {
-  "id": "ed299eb2-7454-4060-98e5-bc7d632b3026",
+  "id": "07922a5b-181f-470a-9418-6c977418a2db",
   "prevId": "83f0f543-ac79-4182-8e0e-8bd13fb65d91",
   "version": "7",
   "dialect": "postgresql",
@@ -2063,6 +2063,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "handed_over_at": {
+          "name": "handed_over_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "uuid",
@@ -3590,7 +3602,8 @@
       "values": [
         "note",
         "remind_expert",
-        "reassign"
+        "reassign",
+        "called_customer"
       ]
     },
     "public.org_kind": {

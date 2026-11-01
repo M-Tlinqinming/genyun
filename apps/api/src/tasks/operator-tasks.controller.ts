@@ -1,7 +1,9 @@
 import {
   type OperatorNote,
+  CONTACT_WORKING_DAYS,
   REASSIGN_REASONS,
   assignExpertSchema,
+  workingDaysBetween,
   assignmentBlockedReason,
   needsAssignment,
   operatorNoteSchema,
@@ -23,7 +25,7 @@ import {
 } from '@nestjs/common';
 import { and, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { canAssignTasks } from '../auth/access.ts';
+import { canAssignTasks, canHandleOverdue } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -96,7 +98,7 @@ export class OperatorTasksController {
   // 超时兜底：客户请电话联系后 2 个工作日还没联系上（按 reachedCustomer，未接通不算）。写在 ':id' 前面，免得被当成任务编号
   @Get('overdue')
   async overdue(@CurrentUser() user: SessionUser) {
-    this.guard(user);
+    this.overdueGuard(user);
     const now = new Date();
     const open = await this.select()
       .where(and(eq(tasks.status, 'submitted'), isNull(tasks.closedAt), ne(organizations.kind, 'internal')))
@@ -127,6 +129,8 @@ export class OperatorTasksController {
       .where(inArray(taskContacts.taskId, ids))
       .orderBy(desc(taskContacts.createdAt));
     return open.flatMap((t) => {
+      // 还没分派的在「待分派」里处理，不进超时兜底
+      if (!t.assignedExpertId) return [];
       // 和专家任务中心同一套：专家已判定过的项不再等电话
       const mine = calls.filter((c) => c.taskId === t.id && (c.expertResult === null || c.expertResult === 'pending'));
       const records = contacts.filter((c) => c.taskId === t.id);
@@ -139,6 +143,9 @@ export class OperatorTasksController {
           request,
           // 原因：没打过电话 / 打了没接通
           reason: unreachable.length > 0 ? `打过 ${unreachable.length} 次电话都没接通` : '还没有联系过客户',
+          // 客户已等了几个工作日、过了期限几个工作日（0 = 今天刚超时）
+          waitedDays: workingDaysBetween(request.requestedAt, now),
+          overdueDays: workingDaysBetween(request.deadline, now),
           contacts: records.map(({ taskId: _, ...r }) => r),
         },
       ];
@@ -272,7 +279,7 @@ export class OperatorTasksController {
   // 运营在任务上的记录：内部备注、提醒注安师、改派（新的在前）
   @Get(':id/notes')
   async notes(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string): Promise<OperatorNote[]> {
-    this.guard(user);
+    this.overdueGuard(user);
     await this.load(id);
     const rows = await this.db
       .select({
@@ -289,21 +296,21 @@ export class OperatorTasksController {
     return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
   }
 
-  // 写内部备注：只有运营看得到
+  // 写内部备注，或记下「我先打给客户安抚」已经打过：只有运营看得到
   @Post(':id/notes')
   async addNote(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
-    this.guard(user);
-    const parsed = operatorNoteSchema.safeParse(body);
+    this.overdueGuard(user);
+    const parsed = operatorNoteSchema.safeParse(body ?? {});
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请写备注内容');
     await this.load(id);
-    await this.db.insert(taskOperatorNotes).values({ taskId: id, kind: 'note', body: parsed.data.body, createdBy: user.id });
+    await this.db.insert(taskOperatorNotes).values({ taskId: id, kind: parsed.data.kind, body: parsed.data.body, createdBy: user.id });
     return this.notes(user, id);
   }
 
   // 提醒注安师：给负责注安师发站内提醒，同时记在任务上
   @Post(':id/remind')
   async remind(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
-    this.guard(user);
+    this.overdueGuard(user);
     const parsed = remindExpertSchema.safeParse(body ?? {});
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '提醒内容不对');
     const task = await this.load(id);
@@ -316,7 +323,7 @@ export class OperatorTasksController {
         {
           taskId: id,
           title: '运营提醒：请尽快联系客户',
-          body: [said ? `运营说明：${said}` : null, `${task.enterpriseName} · ${task.name}（${task.number}）客户请电话联系，已超过 2 个工作日。`]
+          body: [said ? `运营说明：${said}` : null, `${task.enterpriseName} · ${task.name}（${task.number}）：客户请您电话联系，已超过 ${CONTACT_WORKING_DAYS} 个工作日，请今天联系客户。`]
             .filter(Boolean)
             .join(' '),
           link: `/expert/tasks/${id}`,
@@ -335,6 +342,10 @@ export class OperatorTasksController {
 
   private guard(user: SessionUser) {
     if (!canAssignTasks(user)) throw new ForbiddenException('只有耕云运营可以分派任务');
+  }
+
+  private overdueGuard(user: SessionUser) {
+    if (!canHandleOverdue(user)) throw new ForbiddenException('只有耕云运营可以处理超时任务');
   }
 
   private select() {

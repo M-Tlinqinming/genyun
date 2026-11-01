@@ -392,7 +392,7 @@ export class TasksService {
     return (await this.onSiteRequestsOf(id))[0]!;
   }
 
-  // 客户看得到的字段（不含运营内部备注），新的在前
+  // 客户看得到的字段（不含工单状态和运营内部备注：客户只看到「已收到上门需求」），新的在前
   private onSiteRequestsOf(taskId: string) {
     return this.db
       .select({
@@ -402,7 +402,6 @@ export class TasksService {
         callTime: onSiteRequests.callTime,
         helpItems: onSiteRequests.helpItems,
         note: onSiteRequests.note,
-        status: onSiteRequests.status,
         createdAt: onSiteRequests.createdAt,
       })
       .from(onSiteRequests)

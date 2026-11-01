@@ -5,7 +5,9 @@ import type {
   CallTime,
   InvitationState,
   OnSiteStatus,
+  OnSiteUpdateInput,
   OperatorNote,
+  OperatorNoteInput,
   OperatorTaskStage,
   OrgOpenDraft,
   OrgRegisterInput,
@@ -196,6 +198,9 @@ export interface OperatorTaskDetail extends OperatorTask {
 export interface OverdueTask extends OperatorTask {
   request: { requestedAt: string; requestedBy: string; labels: string[]; deadline: string };
   reason: string;
+  // 客户已等几个工作日；过了期限几个工作日（0 = 今天刚超时）
+  waitedDays: number;
+  overdueDays: number;
   contacts: { method: 'request' | 'phone'; result: 'clarified' | 'later' | 'unreachable' | null; createdAt: string; createdByName: string }[];
 }
 
@@ -224,6 +229,7 @@ export interface OnSiteOrder {
   enterpriseName: string;
   taskId: string | null;
   taskNumber: string | null;
+  taskName: string | null;
   contactName: string;
   contactPhone: string;
   callTime: CallTime | null;
@@ -231,6 +237,8 @@ export interface OnSiteOrder {
   note: string | null;
   status: OnSiteStatus;
   internalNote: string | null;
+  handedOverAt: string | null;
+  closedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -244,7 +252,7 @@ export function useOnSiteOrders() {
 export function useUpdateOnSiteOrder(id: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { status?: OnSiteStatus; internalNote?: string }) =>
+    mutationFn: (input: OnSiteUpdateInput) =>
       request<OnSiteOrder>(`/operator/on-site/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
     onSuccess: () => void client.invalidateQueries({ queryKey: onSiteKey }),
   });
@@ -262,8 +270,8 @@ export function useOperatorNotes(taskId: string) {
 export function useAddOperatorNote(taskId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: string) =>
-      request<OperatorNote[]>(`/operator/tasks/${taskId}/notes`, { method: 'POST', body: JSON.stringify({ body }) }),
+    mutationFn: (input: OperatorNoteInput) =>
+      request<OperatorNote[]>(`/operator/tasks/${taskId}/notes`, { method: 'POST', body: JSON.stringify(input) }),
     onSuccess: (notes) => client.setQueryData(operatorTaskKeys.notes(taskId), notes),
   });
 }

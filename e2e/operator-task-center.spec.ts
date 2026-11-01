@@ -86,9 +86,9 @@ test('待分派里有已提交、没有负责注安师的任务；分派给周�
   const dialog = page.getByRole('dialog', { name: /分配注安师/ });
   // 还没选人时不能提交
   await expect(dialog.getByRole('button', { name: /^分\s*配$/ })).toBeDisabled();
-  // 周工手上已有飞宇演示客户的另一家企业（飞宇）
-  await expect(dialog.getByRole('radio', { name: /周工/ })).toBeVisible();
-  await expect(dialog.getByText('在办 1 个 · 正在处理该客户的另外 1 家企业')).toBeVisible();
+  // 周工手上已有飞宇演示客户的另一家企业（飞宇）；吴工手上有塑胶（超时兜底的演示任务）
+  await expect(dialog.getByRole('radio', { name: '周工 在办 1 个 · 正在处理该客户的另外 1 家企业' })).toBeVisible();
+  await expect(dialog.getByRole('radio', { name: '吴工 在办 1 个 · 正在处理该客户的另外 1 家企业' })).toBeVisible();
   // 第一次分派不问改派理由
   await expect(dialog.getByText(/改派理由/)).toHaveCount(0);
   await dialog.getByRole('radio', { name: /周工/ }).check();

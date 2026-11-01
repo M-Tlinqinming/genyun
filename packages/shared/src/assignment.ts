@@ -31,13 +31,23 @@ export type AssignExpertInput = z.input<typeof assignExpertSchema>;
 export type OperatorTaskView = 'unassigned' | 'overdue' | 'all';
 
 // 超时兜底（16 页 I04）：运营在任务上的记录。客户、注安师都看不到
-export const OPERATOR_NOTE_KINDS = { note: '内部备注', remind_expert: '提醒注安师', reassign: '改派' } as const;
+export const OPERATOR_NOTE_KINDS = {
+  note: '内部备注',
+  remind_expert: '提醒注安师',
+  reassign: '改派',
+  called_customer: '已致电客户安抚',
+} as const;
 export type OperatorNoteKind = keyof typeof OPERATOR_NOTE_KINDS;
 export const OPERATOR_NOTE_MAX = 500;
 
-export const operatorNoteSchema = z.object({
-  body: z.string().trim().min(1, '请写备注内容').max(OPERATOR_NOTE_MAX, `备注最多 ${OPERATOR_NOTE_MAX} 个字`),
-});
+// 运营自己写的记录：内部备注（必须写内容）、「我先打给客户安抚」打完记一笔（可附一句）
+export const operatorNoteSchema = z
+  .object({
+    kind: z.enum(['note', 'called_customer']).default('note'),
+    body: z.string().trim().max(OPERATOR_NOTE_MAX, `备注最多 ${OPERATOR_NOTE_MAX} 个字`).default(''),
+  })
+  .refine((v) => v.kind !== 'note' || v.body.length > 0, { message: '请写备注内容', path: ['body'] });
+export type OperatorNoteInput = z.input<typeof operatorNoteSchema>;
 // 提醒注安师：附带的话可以不写，写了放在提醒正文第一句
 export const remindExpertSchema = z.object({
   body: z.string().trim().max(ASSIGNMENT_NOTE_MAX, `最多 ${ASSIGNMENT_NOTE_MAX} 个字`).optional(),
