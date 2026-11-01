@@ -169,6 +169,13 @@
       "when": 1793559801701,
       "tag": "0023_user_disabled",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793565672738,
+      "tag": "0024_client_org_members",
+      "breakpoints": true
     }
   ]
 }

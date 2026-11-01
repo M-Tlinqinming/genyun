@@ -24,13 +24,13 @@ import {
 } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { canEditOrganizationData } from '../auth/access.ts';
+import { canEditEnterpriseData } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { checklistItems, enterprises, files, memberships, taskContacts, tasks, users } from '../db/schema.ts';
 import { DocumentsService } from '../documents/documents.service.ts';
-import { NotificationsService } from '../notifications/notifications.service.ts';
+import { enterpriseCustomerIds, NotificationsService } from '../notifications/notifications.service.ts';
 import { TasksService } from './tasks.service.ts';
 import { WorkupService } from './workup.service.ts';
 
@@ -118,7 +118,7 @@ export class ContactsService {
     }
     if (input.method === 'request') {
       const [ent] = await this.db.select({ name: enterprises.name }).from(enterprises).where(eq(enterprises.id, task.enterpriseId));
-      await this.notifications.notify(await this.customerUsers(task.orgId), {
+      await this.notifications.notify(await enterpriseCustomerIds(this.db, task), {
         taskId: task.id,
         title: `${user.name}请您补充 ${questions.length} 项`,
         body: `${ent?.name ?? ''}：${questions.map((q) => q.label).join('、')}`,
@@ -134,7 +134,7 @@ export class ContactsService {
   // 发给客户的补充请求（客户待补清单）
   async customerRequests(user: SessionUser, taskId: string): Promise<CustomerRequest[]> {
     const task = await this.tasks.load(user, taskId);
-    if (!canEditOrganizationData(user, task.orgId)) throw new NotFoundException('找不到该任务');
+    if (!canEditEnterpriseData(user, task)) throw new NotFoundException('找不到该任务');
     const records = (await this.records(task.id)).filter((r) => r.method === 'request');
     const fileIds = [...new Set(records.flatMap((r) => r.questions.flatMap((q) => q.fileIds ?? [])))];
     const names = fileIds.length
@@ -153,7 +153,7 @@ export class ContactsService {
 
   async answer(user: SessionUser, taskId: string, contactId: string, body: unknown) {
     const task = await this.tasks.load(user, taskId);
-    if (!canEditOrganizationData(user, task.orgId)) throw new NotFoundException('找不到该任务');
+    if (!canEditEnterpriseData(user, task)) throw new NotFoundException('找不到该任务');
     const [contact] = await this.db
       .select()
       .from(taskContacts)
@@ -221,14 +221,6 @@ export class ContactsService {
       createdAt: r.createdAt.toISOString(),
       answeredAt: r.answeredAt?.toISOString() ?? null,
     }));
-  }
-
-  private async customerUsers(orgId: string) {
-    const rows = await this.db
-      .select({ userId: memberships.userId })
-      .from(memberships)
-      .where(and(eq(memberships.orgId, orgId), inArray(memberships.role, ['customer_admin', 'customer_member'])));
-    return rows.map((r) => r.userId);
   }
 }
 

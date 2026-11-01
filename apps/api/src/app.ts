@@ -30,6 +30,7 @@ import { OperatorOverviewController } from './operator/overview.controller.ts';
 import { OperatorOnSiteController } from './tasks/operator-on-site.controller.ts';
 import { OperatorTasksController } from './tasks/operator-tasks.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
+import { OrgMembersController } from './orgs/org-members.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
 import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/drawings.service.ts';
 import { DrawingRenderer } from './generation/drawings/renderer.ts';
@@ -85,6 +86,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       AuthController,
       AccountController,
       OrgsController,
+      OrgMembersController,
       OperatorOrgsController,
       OperatorTasksController,
       OperatorOnSiteController,

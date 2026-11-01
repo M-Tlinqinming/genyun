@@ -54,7 +54,7 @@ import {
 } from '@nestjs/common';
 import { and, eq, inArray, isNull, notExists } from 'drizzle-orm';
 import { z } from 'zod';
-import { canEditOrganizationData, canViewOrganization } from '../auth/access.ts';
+import { canEditEnterpriseData, canViewEnterprise } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -62,6 +62,7 @@ import { isUniqueViolation } from '../db/errors.ts';
 import { checklistItemFiles, checklistItems, enterprises, files, tasks } from '../db/schema.ts';
 import { registerFile } from '../documents/documents.service.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
+import { assertFilesUsable } from '../files/file-links.ts';
 import { LicenseReader, type RecognitionStatus } from '../license/license-reader.ts';
 
 const NOT_FOUND = '找不到该企业';
@@ -119,6 +120,7 @@ export class EnterpriseProfileController {
     const row = await this.editable(user, id);
     const parsed = licenseSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请选择文件');
+    await assertFilesUsable(this.db, user, row.orgId, [parsed.data.fileId]);
     const read = await this.licenseReader.read(row.orgId, parsed.data.fileId);
     const recognized: RecognizedLicense = read.recognized;
     let status: RecognitionStatus = read.status;
@@ -190,6 +192,7 @@ export class EnterpriseProfileController {
       .where(and(eq(files.id, parsed.data.fileId), eq(files.orgId, row.orgId), eq(files.kind, 'customer_material')))
       .limit(1);
     if (!file) throw new NotFoundException('找不到该文件');
+    await assertFilesUsable(this.db, user, row.orgId, [file.id]);
     const current = this.organizationStored(row);
     if (current.rosterFileIds.includes(file.id)) return this.organizationView(row);
     const stored = { ...current, rosterFileIds: [...current.rosterFileIds, file.id] };
@@ -221,7 +224,7 @@ export class EnterpriseProfileController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     if (parsed.data.version !== row.version) throw this.stale(row.version);
     const { step } = parsed.data;
-    await this.ownFiles(row, fileIdsOfProductionStep(step));
+    await this.ownFiles(user, row, fileIdsOfProductionStep(step));
     return this.productionView(await this.write(user, row, row.version, { productionStep: { step } }));
   }
 
@@ -237,7 +240,7 @@ export class EnterpriseProfileController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     if (parsed.data.version !== row.version) throw this.stale(row.version);
     const { step } = parsed.data;
-    await this.ownFiles(row, fileIdsOfResourcesStep(step));
+    await this.ownFiles(user, row, fileIdsOfResourcesStep(step));
     if (step.custodianId) {
       const people = row.profile.organizationStep ? peopleOf(row.profile.organizationStep.step) : [];
       if (!people.some((p) => p.id === step.custodianId)) throw new BadRequestException('保管人请从已填人员中选');
@@ -246,13 +249,14 @@ export class EnterpriseProfileController {
   }
 
   // 照片、台账、图纸只能引用本组织上传的文件
-  private async ownFiles(row: Row, ids: string[]) {
+  private async ownFiles(user: SessionUser, row: Row, ids: string[]) {
     if (ids.length === 0) return;
     const found = await this.db
       .select({ id: files.id })
       .from(files)
       .where(and(inArray(files.id, ids), eq(files.orgId, row.orgId), eq(files.kind, 'customer_material')));
     if (found.length !== ids.length) throw new NotFoundException('找不到该文件');
+    await assertFilesUsable(this.db, user, row.orgId, ids);
   }
 
   private resourcesStep(row: Row): ResourcesStep {
@@ -356,6 +360,8 @@ export class EnterpriseProfileController {
     identity?: EnterpriseInput,
   ) {
     const profile: EnterpriseProfile = { ...row.profile, ...patch };
+    // 成员只能引用自己上传的、或本企业已有的文件
+    await assertFilesUsable(this.db, user, row.orgId, libraryFilesOf(patch).map((f) => f.fileId));
     try {
       return await this.db.transaction(async (tx) => {
         const [saved] = await tx
@@ -515,13 +521,13 @@ export class EnterpriseProfileController {
   // 无权访问与不存在返回同样的结果，不暴露别家企业是否存在
   private async load(user: SessionUser, id: string): Promise<Row> {
     const [row] = await this.db.select().from(enterprises).where(eq(enterprises.id, id)).limit(1);
-    if (!row || !canViewOrganization(user, row.orgId)) throw new NotFoundException(NOT_FOUND);
+    if (!row || !canViewEnterprise(user, { orgId: row.orgId, enterpriseId: row.id })) throw new NotFoundException(NOT_FOUND);
     return row;
   }
 
   private async editable(user: SessionUser, id: string): Promise<Row> {
     const row = await this.load(user, id);
-    if (!canEditOrganizationData(user, row.orgId)) throw new ForbiddenException('企业资料由客户填写');
+    if (!canEditEnterpriseData(user, { orgId: row.orgId, enterpriseId: row.id })) throw new ForbiddenException('企业资料由客户填写');
     return row;
   }
 }

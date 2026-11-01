@@ -10,7 +10,7 @@ import {
 } from '@genyun/shared';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
-import { canEditOrganizationData } from '../auth/access.ts';
+import { canEditEnterpriseData } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
@@ -55,7 +55,7 @@ export class SubmissionService {
 
   async submit(user: SessionUser, taskId: string, input: SubmitRequest) {
     const task = await this.tasks.load(user, taskId);
-    if (!canEditOrganizationData(user, task.orgId)) throw new ForbiddenException('申请由客户提交');
+    if (!canEditEnterpriseData(user, task)) throw new ForbiddenException('申请由客户提交');
     // 同一次提交重发（如断网后），或别人已经交了：都按已提交处理，不会再交一次
     const existing = await this.find(taskId);
     if (existing) return existing;

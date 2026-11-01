@@ -130,7 +130,7 @@ describe('接受邀请', () => {
     const res = await agent.post(`/api/invitations/${token}/accept`).send(accept);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ email: 'accept@test.cn', name: '孙志强' });
-    expect(res.body.memberships).toEqual([{ orgId, orgName: '接受邀请机构', role: 'customer_admin' }]);
+    expect(res.body.memberships).toEqual([{ orgId, orgName: '接受邀请机构', role: 'customer_admin', enterpriseIds: [] }]);
     // 已登录：直接能进客户工作台的接口
     expect((await agent.get('/api/auth/me')).body.email).toBe('accept@test.cn');
     // 新密码能登录

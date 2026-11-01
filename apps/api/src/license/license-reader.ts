@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { canEditOrganizationData } from '../auth/access.ts';
+import { canCreateEnterprise } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -76,7 +76,8 @@ export class LicenseRecognitionController {
 
   @Post()
   async recognize(@CurrentUser() user: SessionUser, @Param('orgId', ParseUUIDPipe) orgId: string, @Body() body: unknown) {
-    if (!canEditOrganizationData(user, orgId)) throw new ForbiddenException('只有客户可以上传营业执照');
+    // 只给新建企业用（已有企业在档案第 1 步里识别，走企业的权限）；新建企业只有机构管理员
+    if (!canCreateEnterprise(user, orgId)) throw new ForbiddenException('新建企业请联系机构管理员');
     const parsed = fileIdSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请选择文件');
     return this.reader.read(orgId, parsed.data.fileId);

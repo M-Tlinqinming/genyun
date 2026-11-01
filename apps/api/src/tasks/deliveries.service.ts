@@ -16,7 +16,7 @@ import {
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Response } from 'express';
 import JSZip from 'jszip';
-import { canViewDeliveries, canViewOrganization } from '../auth/access.ts';
+import { canViewDeliveries, canViewOrganization, enterpriseScope } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -37,7 +37,10 @@ export class DeliveriesService {
   /** 成果文档列表（C06）：本组织每个已交付任务的全部交付版本，最近发布的任务在前 */
   async listForOrg(user: SessionUser, orgId: string): Promise<TaskDeliveries[]> {
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
-    const list = await this.tasks().where(eq(tasks.orgId, orgId));
+    // 成员只列出分配给自己的企业的成果
+    const scope = enterpriseScope(user, orgId);
+    if (Array.isArray(scope) && scope.length === 0) return [];
+    const list = await this.tasks().where(and(eq(tasks.orgId, orgId), Array.isArray(scope) ? inArray(tasks.enterpriseId, scope) : undefined));
     const built = await this.build(list);
     return built.sort((a, b) => b.versions[0]!.publishedAt.localeCompare(a.versions[0]!.publishedAt));
   }

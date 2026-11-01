@@ -13,6 +13,7 @@ import { DocumentsPage } from './pages/customer/documents/DocumentsPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
 import { EnterpriseDetailPage } from './pages/customer/EnterpriseDetailPage';
 import { EnterpriseListPage } from './pages/customer/EnterpriseListPage';
+import { OrganizationPage } from './pages/customer/OrganizationPage';
 import { SelfFillPage } from './pages/customer/fill/SelfFillPage';
 import { StartMethodPage } from './pages/customer/StartMethodPage';
 import { TaskCreatePage } from './pages/customer/TaskCreatePage';
@@ -56,6 +57,8 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
+  // 组织管理（仅机构管理员，侧栏只对机构管理员显示）；?tab= 切换组织资料、成员与权限、企业分配、年度服务
+  '/customer/organization': [{ index: true, element: <OrganizationPage /> }],
   '/operator/audit-logs': [{ index: true, element: <AuditLogPage /> }],
   '/operator/accounts': [{ index: true, element: <InternalAccountsPage /> }],
   '/operator/organizations': [

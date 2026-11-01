@@ -180,6 +180,8 @@ describe('内部账号', () => {
     const res = await ops.post(`/api/operator/accounts/${uid['wu@test.cn']}/disable`).expect(200);
     expect((res.body.accounts as { name: string; disabledAt: string | null }[]).find((a) => a.name === '吴工')!.disabledAt).not.toBeNull();
 
+    // 记明是运营停用的（客户邀请不能恢复）
+    expect((await handle.db.select({ r: users.disabledReason }).from(users).where(eq(users.id, uid['wu@test.cn']!)))[0]!.r).toBe('operator');
     // 已登录的地方退出
     expect((await wu.get('/api/auth/me')).status).toBe(401);
     expect(await handle.db.select().from(sessions).where(eq(sessions.userId, uid['wu@test.cn']!))).toHaveLength(0);
@@ -214,6 +216,7 @@ describe('内部账号', () => {
   it('恢复后可以登录、重新出现在分派名单', async () => {
     const ops = await as('ops@test.cn');
     await ops.post(`/api/operator/accounts/${uid['wu@test.cn']}/enable`).expect(200);
+    expect((await handle.db.select({ r: users.disabledReason }).from(users).where(eq(users.id, uid['wu@test.cn']!)))[0]!.r).toBeNull();
     // 已经恢复的再点恢复：409，不重复记日志
     expect((await ops.post(`/api/operator/accounts/${uid['wu@test.cn']}/enable`)).status).toBe(409);
     await as('wu@test.cn');

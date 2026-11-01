@@ -26,7 +26,8 @@ import {
 } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { canEditOrganizationData, canViewOrganization, canViewTask, isExpert } from '../auth/access.ts';
+import { canEditEnterpriseData, canViewEnterprise, canViewOrganization, canViewTask, enterpriseScope, isExpert } from '../auth/access.ts';
+import { assertFilesUsable } from '../files/file-links.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
@@ -87,7 +88,12 @@ export class TasksService {
   // 最近一次有人动过资料的时间
   async listForOrg(user: SessionUser, orgId: string) {
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
-    const list = await this.selectTasks().where(eq(tasks.orgId, orgId)).orderBy(desc(tasks.createdAt));
+    // 成员只列出分配给自己的企业的任务
+    const scope = enterpriseScope(user, orgId);
+    if (Array.isArray(scope) && scope.length === 0) return [];
+    const list = await this.selectTasks()
+      .where(and(eq(tasks.orgId, orgId), Array.isArray(scope) ? inArray(tasks.enterpriseId, scope) : undefined))
+      .orderBy(desc(tasks.createdAt));
     if (list.length === 0) return [];
     const ids = list.map((t) => t.id);
     const rows = await this.db.select().from(checklistItems).where(inArray(checklistItems.taskId, ids));
@@ -161,8 +167,8 @@ export class TasksService {
       .innerJoin(organizations, eq(organizations.id, enterprises.orgId))
       .where(eq(enterprises.id, enterpriseId))
       .limit(1);
-    if (!ent || !canViewOrganization(user, ent.orgId)) throw new NotFoundException('找不到该企业');
-    if (!canEditOrganizationData(user, ent.orgId)) throw new ForbiddenException('编制任务由客户自己创建');
+    if (!ent || !canViewEnterprise(user, { orgId: ent.orgId, enterpriseId })) throw new NotFoundException('找不到该企业');
+    if (!canEditEnterpriseData(user, { orgId: ent.orgId, enterpriseId })) throw new ForbiddenException('编制任务由客户自己创建');
 
     // 已有没结束的同类任务：带客户去继续那个任务（12 页 P02B）
     const existing = await this.findOpenTask(enterpriseId, input.businessType);
@@ -207,7 +213,7 @@ export class TasksService {
 
   async update(user: SessionUser, id: string, input: TaskUpdateInput) {
     const task = await this.load(user, id);
-    if (!canEditOrganizationData(user, task.orgId)) throw new ForbiddenException('只有客户可以修改任务信息');
+    if (!canEditEnterpriseData(user, task)) throw new ForbiddenException('只有客户可以修改任务信息');
     await this.db
       .update(tasks)
       .set({ ...input, updatedAt: new Date() })
@@ -224,7 +230,7 @@ export class TasksService {
   // 提交以后只有待补清单里的项还能补，其余随提交锁定
   private async editableItem(user: SessionUser, id: string, key: string) {
     const task = await this.load(user, id);
-    if (!canEditOrganizationData(user, task.orgId)) throw new ForbiddenException('资料由客户填写');
+    if (!canEditEnterpriseData(user, task)) throw new ForbiddenException('资料由客户填写');
     if (!(CHECKLIST_ITEM_KEYS as readonly string[]).includes(key)) throw new NotFoundException('没有这一项资料');
     const itemKey = key as ChecklistItemKey;
     const submission = task.status === 'preparing' ? null : await this.submissionOf(id);
@@ -285,6 +291,7 @@ export class TasksService {
       .where(and(eq(files.id, fileId), eq(files.orgId, task.orgId), eq(files.kind, 'customer_material')))
       .limit(1);
     if (!file) throw new NotFoundException('找不到该文件');
+    await assertFilesUsable(this.db, user, task.orgId, [fileId]);
 
     const now = new Date();
     await this.db.transaction(async (tx) => {
@@ -385,7 +392,7 @@ export class TasksService {
   // 预约耕云上门：只登记工单，运营在 M3 处理。同一任务可以多次预约（如补充新的需要）
   async requestOnSite(user: SessionUser, id: string, input: OnSiteRequestInput) {
     const task = await this.load(user, id);
-    if (!canEditOrganizationData(user, task.orgId)) throw new ForbiddenException('上门需求由客户提交');
+    if (!canEditEnterpriseData(user, task)) throw new ForbiddenException('上门需求由客户提交');
     await this.db.insert(onSiteRequests).values({
       orgId: task.orgId,
       enterpriseId: task.enterpriseId,

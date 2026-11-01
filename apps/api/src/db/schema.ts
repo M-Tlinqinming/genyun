@@ -75,6 +75,9 @@ export const users = pgTable('users', {
   passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
   // 运营停用账号的时间（M3 第 8 项）：停用后不能登录、已有会话全部退出、不出现在分派名单；为空 = 正常
   disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  // 为什么停用（M3 第 7 项）：operator = 运营在内部账号里停用；removed_by_customer = 被机构管理员移出组织、不在任何组织里。
+  // 客户再次邀请只能恢复 removed_by_customer 的账号；运营停用的必须由运营恢复
+  disabledReason: text('disabled_reason').$type<'operator' | 'removed_by_customer'>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -142,6 +145,8 @@ export const enterprises = pgTable(
       .references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    // 机构管理员最近一次调整这家企业负责成员的时间（11 页 C08「企业分配」最近调整）；没调整过为空
+    membersChangedAt: timestamp('members_changed_at', { withTimezone: true }),
   },
   // 同一组织里不能有两家统一社会信用代码相同的企业；没填代码的不限制
   (t) => [
@@ -149,6 +154,27 @@ export const enterprises = pgTable(
       .on(t.orgId, t.socialCreditCode)
       .where(sql`${t.socialCreditCode} is not null`),
   ],
+);
+
+// 企业分配（M3 第 7 项，11 页 C08）：机构管理员把企业分给成员。成员（customer_member）只能看到、处理分配给自己的企业；
+// 机构管理员始终看到全部企业，分给管理员只表示「负责成员」。移除成员或企业时一并删除
+export const enterpriseAssignments = pgTable(
+  'enterprise_assignments',
+  {
+    enterpriseId: uuid('enterprise_id')
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // 冗余存所属组织：移除成员时按组织删
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.enterpriseId, t.userId] }), index('enterprise_assignments_user').on(t.userId)],
 );
 
 export const businessType = pgEnum('business_type', ['emergency_plan']);
@@ -323,8 +349,13 @@ export const notifications = pgTable(
     link: text('link').notNull(),
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // 同一件事只提醒一次（例如合同到期提醒按「组织 + 到期日」）；为空的不去重
+    dedupeKey: text('dedupe_key'),
   },
-  (t) => [index('notifications_user').on(t.userId, t.createdAt)],
+  (t) => [
+    index('notifications_user').on(t.userId, t.createdAt),
+    uniqueIndex('notifications_user_dedupe').on(t.userId, t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
+  ],
 );
 
 // 任务编号按年流水，全平台共用一个计数
