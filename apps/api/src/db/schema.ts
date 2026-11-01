@@ -75,6 +75,9 @@ export const users = pgTable('users', {
   passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
   // 运营停用账号的时间（M3 第 8 项）：停用后不能登录、已有会话全部退出、不出现在分派名单；为空 = 正常
   disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  // 为什么停用（M3 第 7 项）：operator = 运营在内部账号里停用；removed_by_customer = 被机构管理员移出组织、不在任何组织里。
+  // 客户再次邀请只能恢复 removed_by_customer 的账号；运营停用的必须由运营恢复
+  disabledReason: text('disabled_reason').$type<'operator' | 'removed_by_customer'>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

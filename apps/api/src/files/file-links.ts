@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { profileFileIdsOf } from '@genyun/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { canViewFile, needsFileEnterprises } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
@@ -45,20 +46,28 @@ export async function linkedEnterpriseIds(db: Database | Tx, orgId: string, file
       .innerJoin(tasks, eq(tasks.id, deliveries.taskId))
       .where(inArray(deliveryFiles.fileId, fileIds)),
   );
-  for (const fileId of fileIds) {
-    const asJson = sql`jsonb_build_array(${fileId}::text)`;
-    const supplements = await db
-      .select({ enterpriseId: tasks.enterpriseId })
-      .from(factSupplements)
-      .innerJoin(tasks, eq(tasks.id, factSupplements.taskId))
-      .where(and(eq(tasks.orgId, orgId), sql`${factSupplements.responseFileIds} @> ${asJson}`));
-    add(supplements.map((r) => ({ fileId, enterpriseId: r.enterpriseId })));
-    // 企业档案里的文件 ID 散在各步骤的 JSON 里，按文本找（ID 是 UUID，不会误中）
-    const profiles = await db
-      .select({ enterpriseId: enterprises.id })
-      .from(enterprises)
-      .where(and(eq(enterprises.orgId, orgId), sql`position(${fileId} in ${enterprises.profile}::text) > 0`));
-    add(profiles.map((r) => ({ fileId, enterpriseId: r.enterpriseId })));
+  const idArray = sql`array[${sql.join(
+    fileIds.map((id) => sql`${id}`),
+    sql`, `,
+  )}]::text[]`;
+  // 补件回复：response_file_ids 是文件 ID 数组，?| 判断含有其中任意一个
+  const supplements = await db
+    .select({ enterpriseId: tasks.enterpriseId, fileIds: factSupplements.responseFileIds })
+    .from(factSupplements)
+    .innerJoin(tasks, eq(tasks.id, factSupplements.taskId))
+    .where(and(eq(tasks.orgId, orgId), sql`${factSupplements.responseFileIds} ?| ${idArray}`));
+  for (const r of supplements) {
+    for (const fileId of (r.fileIds as string[] | null) ?? []) out.get(fileId)?.add(r.enterpriseId);
+  }
+  // 企业档案：按字段取出引用的文件（profileFileIdsOf），不在整段内容里搜文本——
+  // 不然成员在可见企业的地址、说明里写上别家企业的文件 ID，就能把那个文件「挂」过来。
+  // 一个组织的企业不多（几十家），一次取出本组织的档案在内存里比对
+  const profiles = await db
+    .select({ enterpriseId: enterprises.id, profile: enterprises.profile })
+    .from(enterprises)
+    .where(eq(enterprises.orgId, orgId));
+  for (const r of profiles) {
+    for (const fileId of profileFileIdsOf(r.profile)) out.get(fileId)?.add(r.enterpriseId);
   }
   return new Map([...out].map(([id, set]) => [id, [...set]]));
 }

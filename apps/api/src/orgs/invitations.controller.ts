@@ -12,13 +12,13 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
-import { and, eq, gt, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import type { Response } from 'express';
 import { setSessionCookie } from '../auth/auth.controller.ts';
 import { AuthService, hashPassword, type SessionUser } from '../auth/auth.service.ts';
 import { Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { memberships, notifications, organizationInvitations, organizations, users } from '../db/schema.ts';
+import { enterpriseAssignments, memberships, notifications, organizationInvitations, organizations, users } from '../db/schema.ts';
 import { NotificationsService } from '../notifications/notifications.service.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { hashInvitationToken } from './invitations.ts';
@@ -77,15 +77,16 @@ export class InvitationsController {
     if (problem) throw new BadRequestException(problem);
 
     // 只给新邮箱开账号；已有账号、还在某个组织里的人不能再接受邀请。
-    // 例外：被机构管理员移除（账号已停用、不在任何组织）的账号（M3 第 7 项），重新接受邀请时恢复这个账号，上传记录仍归他
+    // 例外：被机构管理员移除（账号已停用、不在任何组织）的账号（M3 第 7 项），重新接受邀请时恢复这个账号，上传记录仍归他。
+    // 运营停用的账号不算，只能由运营恢复
     const [existing] = await this.db
-      .select({ id: users.id, disabledAt: users.disabledAt })
+      .select({ id: users.id, disabledReason: users.disabledReason })
       .from(users)
       .where(eq(users.email, inv.email))
       .limit(1);
     if (existing) {
       const [member] = await this.db.select({ orgId: memberships.orgId }).from(memberships).where(eq(memberships.userId, existing.id)).limit(1);
-      if (member || !existing.disabledAt) throw new ConflictException(HAS_ACCOUNT);
+      if (member || existing.disabledReason !== 'removed_by_customer') throw new ConflictException(HAS_ACCOUNT);
     }
 
     const passwordHash = await hashPassword(parsed.data.password);
@@ -129,6 +130,8 @@ export class InvitationsController {
                 throw err;
               })
           )[0];
+      // 以前在这个组织里时的企业分配不带回来：重新加入后由机构管理员重新分配
+      await tx.delete(enterpriseAssignments).where(and(eq(enterpriseAssignments.orgId, inv.orgId), eq(enterpriseAssignments.userId, user!.id)));
       await tx
         .insert(memberships)
         .values({ userId: user!.id, orgId: inv.orgId, role: inv.role })
@@ -152,8 +155,8 @@ export class InvitationsController {
     if (member) throw new ConflictException(HAS_ACCOUNT);
     const [user] = await tx
       .update(users)
-      .set({ name, passwordHash, disabledAt: null })
-      .where(and(eq(users.id, userId), isNotNull(users.disabledAt)))
+      .set({ name, passwordHash, disabledAt: null, disabledReason: null })
+      .where(and(eq(users.id, userId), eq(users.disabledReason, 'removed_by_customer')))
       .returning({ id: users.id });
     if (!user) throw new ConflictException(HAS_ACCOUNT);
     return user;
@@ -195,7 +198,8 @@ export class InvitationsController {
       .from(notifications)
       .where(and(eq(notifications.userId, inv.invitedBy), eq(notifications.title, title), eq(notifications.body, body)))
       .limit(1);
-    if (!already) await this.notifications.notify([inv.invitedBy], { title, body, link });
+    // 邀请人已被移出组织、降为成员或停用：不再提醒他（他发出的未接受邀请那时已作废，这里防万一）
+    if (!already && (await this.inviterActive(inv))) await this.notifications.notify([inv.invitedBy], { title, body, link });
     return { inviterName: await this.inviterName(inv) };
   }
 
@@ -208,6 +212,23 @@ export class InvitationsController {
       .where(and(eq(memberships.userId, userId), eq(memberships.role, 'operator')))
       .limit(1);
     return Boolean(m);
+  }
+
+  // 邀请人还能处理这封邀请：账号没停用，并且是运营或这个组织的机构管理员
+  private async inviterActive(inv: { invitedBy: string; orgId: string }): Promise<boolean> {
+    const [row] = await this.db
+      .select({ userId: memberships.userId })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(
+        and(
+          eq(memberships.userId, inv.invitedBy),
+          isNull(users.disabledAt),
+          or(eq(memberships.role, 'operator'), and(eq(memberships.orgId, inv.orgId), eq(memberships.role, 'customer_admin'))),
+        ),
+      )
+      .limit(1);
+    return Boolean(row);
   }
 
   private async inviterName(inv: { invitedBy: string; inviterName: string }): Promise<string> {

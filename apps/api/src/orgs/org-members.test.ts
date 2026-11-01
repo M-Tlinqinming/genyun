@@ -14,6 +14,7 @@ import {
   files,
   memberships,
   notifications,
+  organizationInvitations,
   organizations,
   sessions,
   tasks,
@@ -186,6 +187,40 @@ describe('成员只看分配给自己的企业', () => {
     await li.get(`/api/files/${file.two}/download-url`).expect(404);
   });
 
+  it('在可见企业档案的自由填写内容里写上别家企业的文件 ID，也看不到那个文件；档案里按字段引用的照片能看到', async () => {
+    const li = await as('li@test.cn');
+    const [photo] = await handle.db
+      .insert(files)
+      .values({
+        orgId: org.a,
+        kind: 'customer_material',
+        originalName: '油漆包装标签.jpg',
+        contentType: 'image/jpeg',
+        sizeBytes: 1,
+        sha256: 'label',
+        storageKey: `${org.a}/label`,
+        uploadedBy: uid['admin@test.cn']!,
+      })
+      .returning();
+    await li.get(`/api/files/${photo!.id}`).expect(404);
+    await handle.db
+      .update(enterprises)
+      .set({
+        profile: {
+          basicStep: { basic: { siteAddress: file.two, businessScope: `见 ${file.two}` } as never, later: [], sources: {} },
+          productionStep: {
+            step: { materials: [{ id: 'm1', name: file.two, labelPhotoFileIds: [photo!.id] }], process: { description: file.two } } as never,
+          },
+        },
+      })
+      .where(eq(enterprises.id, ent.one));
+    await li.get(`/api/files/${file.two}`).expect(404);
+    await li.get(`/api/files/${file.two}/download-url`).expect(404);
+    await li.get(`/api/files/${photo!.id}`).expect(200);
+    await li.get(`/api/files/${photo!.id}/download-url`).expect(200);
+    await handle.db.update(enterprises).set({ profile: {} }).where(eq(enterprises.id, ent.one));
+  });
+
   it('成员不能新建企业，也不能进组织管理', async () => {
     const li = await as('li@test.cn');
     await li.post(`/api/orgs/${org.a}/enterprises`).send({ name: '成员建的' }).expect(403);
@@ -223,6 +258,19 @@ describe('成员只看分配给自己的企业', () => {
       [uid['admin@test.cn'], uid['zhang@test.cn']].sort(),
     );
     expect(await actions('enterprise_assign')).toContain('惠州德赛电池 · 负责成员：张伟、林管理员');
+
+    // 张伟不再负责这家企业：这家企业任务的站内通知从他那里删掉；机构管理员的保留
+    const notice = { taskId: task.two, title: '补充请求', body: '惠州德赛电池：请补充值班电话', link: `/customer/tasks/${task.two}` };
+    await handle.db.insert(notifications).values([
+      { userId: uid['zhang@test.cn']!, ...notice },
+      { userId: uid['admin@test.cn']!, ...notice },
+    ]);
+    await admin.put(`${base()}/enterprises/${ent.two}/members`).send({ userIds: [uid['admin@test.cn']] }).expect(200);
+    const left = await handle.db.select({ userId: notifications.userId }).from(notifications).where(eq(notifications.taskId, task.two));
+    expect(left.map((n) => n.userId)).toEqual([uid['admin@test.cn']]);
+    await admin.put(`${base()}/enterprises/${ent.two}/members`).send({ userIds: [uid['zhang@test.cn'], uid['admin@test.cn']] }).expect(200);
+    // 选了不在本组织的人：404
+    await admin.put(`${base()}/enterprises/${ent.two}/members`).send({ userIds: [uid['other@test.cn']] }).expect(404);
   });
 });
 
@@ -324,8 +372,16 @@ describe('邀请、移除、改角色', () => {
         uploadedBy: uid['li@test.cn']!,
       })
       .returning();
+    await handle.db.insert(notifications).values([
+      { userId: uid['li@test.cn']!, taskId: task.one, title: '补充请求', body: '惠州立讯精密：请补充值班电话', link: `/customer/tasks/${task.one}` },
+      { userId: uid['li@test.cn']!, title: '其他提醒', body: '没有关联任务', link: '/customer' },
+    ]);
     const view: OrgManagementView = (await admin.post(`${base()}/members/${uid['li@test.cn']}/remove`).expect(200)).body;
     expect(view.members.map((m) => m.email)).not.toContain('li@test.cn');
+    // 不在任何组织了：账号记为「被机构管理员移除」，站内通知全部删掉
+    const [removed] = await handle.db.select({ reason: users.disabledReason }).from(users).where(eq(users.id, uid['li@test.cn']!));
+    expect(removed!.reason).toBe('removed_by_customer');
+    expect(await handle.db.select().from(notifications).where(eq(notifications.userId, uid['li@test.cn']!))).toEqual([]);
     await li.get('/api/auth/me').expect(401);
     expect(await handle.db.select().from(sessions).where(eq(sessions.userId, uid['li@test.cn']!))).toEqual([]);
     expect(await handle.db.select().from(enterpriseAssignments).where(eq(enterpriseAssignments.userId, uid['li@test.cn']!))).toEqual([]);
@@ -335,14 +391,52 @@ describe('邀请、移除、改角色', () => {
     expect(await actions('member_remove')).toEqual(['李静（li@test.cn）· 成员']);
     await admin.post(`${base()}/members/${uid['li@test.cn']}/remove`).expect(404);
 
-    // 重新邀请：接受时恢复原账号
+    // 重新邀请：接受时恢复原账号；以前的企业分配不带回来（假设残留了一条）
     await admin.post(`${base()}/invitations`).send({ name: '李静', email: 'li@test.cn', role: 'customer_member' }).expect(200);
+    await handle.db.insert(enterpriseAssignments).values({ enterpriseId: ent.one, userId: uid['li@test.cn']!, orgId: org.a, assignedBy: uid['admin@test.cn']! });
     const back = await request(app.getHttpServer())
       .post(`/api/invitations/${tokenOf('li@test.cn')}/accept`)
       .send({ name: '李静', password: 'genyun2027', agreed: true })
       .expect(200);
     expect(back.body).toMatchObject({ id: uid['li@test.cn'], memberships: [{ orgId: org.a, role: 'customer_member', enterpriseIds: [] }] });
     await as('li@test.cn', 'genyun2027');
+    const [back2] = await handle.db.select({ reason: users.disabledReason, at: users.disabledAt }).from(users).where(eq(users.id, uid['li@test.cn']!));
+    expect(back2).toEqual({ reason: null, at: null });
+  });
+
+  it('运营停用的账号：客户邀请不能恢复', async () => {
+    const admin = await as('admin@test.cn');
+    // 先发邀请，之后这个邮箱有了一个被运营停用的账号（不在任何组织）
+    await admin.post(`${base()}/invitations`).send({ name: '孙七', email: 'sun@test.cn', role: 'customer_member' }).expect(200);
+    const token = tokenOf('sun@test.cn');
+    const passwordHash = await hashPassword(PASSWORD);
+    await handle.db.insert(users).values({ email: 'sun@test.cn', name: '孙七', passwordHash, disabledAt: new Date(), disabledReason: 'operator' });
+    await request(app.getHttpServer()).post(`/api/invitations/${token}/accept`).send({ name: '孙七', password: 'genyun2026', agreed: true }).expect(409);
+    await admin.post(`${base()}/invitations`).send({ name: '孙七', email: 'sun@test.cn', role: 'customer_member' }).expect(409);
+    const [sun] = await handle.db.select({ reason: users.disabledReason }).from(users).where(eq(users.email, 'sun@test.cn'));
+    expect(sun!.reason).toBe('operator');
+  });
+
+  it('机构管理员被降为成员或移除：他发出、还没接受的邀请作废；过期提醒不再发给他', async () => {
+    const admin = await as('admin@test.cn');
+    await admin.put(`${base()}/members/${uid['zhang@test.cn']}/role`).send({ role: 'customer_admin' }).expect(200);
+    const zhang = await as('zhang@test.cn');
+    await zhang.post(`${base()}/invitations`).send({ name: '钱八', email: 'qian@test.cn', role: 'customer_member' }).expect(200);
+    const token = tokenOf('qian@test.cn');
+    await admin.put(`${base()}/members/${uid['zhang@test.cn']}/role`).send({ role: 'customer_member' }).expect(200);
+    expect(((await admin.get(base())).body as OrgManagementView).invitations.map((i) => i.email)).not.toContain('qian@test.cn');
+    const guest = request(app.getHttpServer());
+    expect((await guest.get(`/api/invitations/${token}`).expect(200)).body.state).toBe('revoked');
+
+    // 万一还有一封过期的（例如作废前刚好过期）：对方请求重发，也不提醒已经不是管理员的张伟
+    await handle.db
+      .update(organizationInvitations)
+      .set({ revokedAt: null, expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(organizationInvitations.email, 'qian@test.cn'));
+    await guest.post(`/api/invitations/${token}/request-resend`).expect(200);
+    const toZhang = await handle.db.select().from(notifications).where(and(eq(notifications.userId, uid['zhang@test.cn']!), eq(notifications.title, '邀请过期，请重新发送')));
+    expect(toZhang).toEqual([]);
+    await handle.db.update(organizationInvitations).set({ revokedAt: new Date() }).where(eq(organizationInvitations.email, 'qian@test.cn'));
   });
 
   it('组织资料：机构管理员改联系人、电话、邮箱', async () => {

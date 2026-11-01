@@ -30,7 +30,7 @@ import {
   Put,
   Req,
 } from '@nestjs/common';
-import { and, asc, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, notInArray } from 'drizzle-orm';
+import { and, asc, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, like, notInArray, or } from 'drizzle-orm';
 import type { Request } from 'express';
 import { AuditService, clientIp } from '../audit/audit.ts';
 import { canManageOrgMembers, canViewOrganization } from '../auth/access.ts';
@@ -42,6 +42,7 @@ import {
   enterpriseAssignments,
   enterprises,
   memberships,
+  notifications,
   organizationContracts,
   organizationInvitations,
   organizations,
@@ -50,6 +51,7 @@ import {
   users,
 } from '../db/schema.ts';
 import { MAILER, type Mailer } from '../mail/mailer.ts';
+import { contractReminderKey } from '../notifications/notifications.service.ts';
 import { createInvitation, EMAIL_HAS_ACCOUNT } from './invitations.ts';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -58,6 +60,25 @@ const NO_MEMBER = '找不到这位成员';
 const LAST_ADMIN = '组织里至少要保留一位机构管理员。请先把另一位成员设为机构管理员';
 const RESENT_JUST_NOW = '这封邀请刚刚已经重新发送过了，请刷新页面查看最新的一封';
 const isCustomerRole = (r: string): r is CustomerRole => (CUSTOMER_ROLES as readonly string[]).includes(r);
+
+// 删掉某人和本组织有关的站内通知：本组织任务的（传 enterpriseIds 时只删这些企业的），不传时连同年度服务到期提醒。
+// 移除成员、成员不再负责某家企业时用，避免通知里还能看到已经看不到的企业和任务
+async function dropOrgNotifications(tx: Tx, userId: string, orgId: string, enterpriseIds?: string[]) {
+  const orgTasks = tx
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.orgId, orgId), enterpriseIds ? inArray(tasks.enterpriseId, enterpriseIds) : undefined));
+  await tx
+    .delete(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        enterpriseIds
+          ? inArray(notifications.taskId, orgTasks)
+          : or(inArray(notifications.taskId, orgTasks), like(notifications.dedupeKey, `${contractReminderKey(orgId, '')}%`)),
+      ),
+    );
+}
 
 // 客户组织管理（M3 第 7 项，Paper 11 页「组织管理」）：机构管理员管理成员（邀请、重新发送、撤销、移除、改角色）、
 // 把企业分配给成员、维护组织联系人、查看年度服务。只有本组织机构管理员；成员、运营 403，别家组织 404。
@@ -233,6 +254,8 @@ export class OrgMembersController {
     if (userId === user.id) throw new ConflictException('不能移除自己。需要退出组织请联系另一位机构管理员');
     const target = await this.member(orgId, userId);
     const outcome = await this.db.transaction(async (tx) => {
+      // 先锁住账号这一行：和他同时接受别家组织的邀请、运营停用他排队，下面判断「还有没有别的组织」才可靠
+      await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
       if (!(await this.adminRemains(tx, orgId, userId))) return 'last_admin' as const;
       const [gone] = await tx
         .delete(memberships)
@@ -244,11 +267,21 @@ export class OrgMembersController {
         .where(and(eq(enterpriseAssignments.orgId, orgId), eq(enterpriseAssignments.userId, userId)))
         .returning({ enterpriseId: enterpriseAssignments.enterpriseId });
       if (ents.length) await tx.update(enterprises).set({ membersChangedAt: new Date() }).where(inArray(enterprises.id, ents.map((e) => e.enterpriseId)));
-      // 不在任何组织里了：账号停用、已登录的地方全部退出
+      // 他发出、还没接受的邀请作废（移除的是机构管理员时）
+      await this.revokeSentBy(tx, orgId, userId);
+      // 不在任何组织里了：账号停用（记明是被机构管理员移除，以后再邀请可以恢复）、已登录的地方全部退出、站内通知全部删掉；
+      // 还在别的组织：只删和本组织有关的通知
       const [other] = await tx.select({ orgId: memberships.orgId }).from(memberships).where(eq(memberships.userId, userId)).limit(1);
       if (!other) {
-        await tx.update(users).set({ disabledAt: new Date() }).where(eq(users.id, userId));
+        // 运营已经停用的账号保留原因（只能由运营恢复）
+        await tx
+          .update(users)
+          .set({ disabledAt: new Date(), disabledReason: 'removed_by_customer' })
+          .where(and(eq(users.id, userId), isNull(users.disabledAt)));
         await tx.delete(sessions).where(eq(sessions.userId, userId));
+        await tx.delete(notifications).where(eq(notifications.userId, userId));
+      } else {
+        await dropOrgNotifications(tx, userId, orgId);
       }
       return 'ok' as const;
     });
@@ -281,7 +314,10 @@ export class OrgMembersController {
         .set({ role })
         .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId), eq(memberships.role, target.role)))
         .returning({ userId: memberships.userId });
-      return changed ? ('ok' as const) : ('unchanged' as const);
+      if (!changed) return 'unchanged' as const;
+      // 降为成员：他发出、还没接受的邀请作废
+      if (role === 'customer_member') await this.revokeSentBy(tx, orgId, userId);
+      return 'ok' as const;
     });
     if (outcome === 'last_admin') throw new ConflictException(LAST_ADMIN);
     if (outcome === 'unchanged') throw new ConflictException(`${target.name}的角色刚刚被改过了，请刷新页面查看`);
@@ -310,6 +346,13 @@ export class OrgMembersController {
     const target = await this.member(orgId, userId);
     const ents = await this.enterprisesOf(orgId, ids);
     const changed = await this.db.transaction(async (tx) => {
+      // 锁住这位成员的成员行并确认还在（和移除成员排队：刚被移除的人不会又被分到企业）
+      const [still] = await tx
+        .select({ role: memberships.role })
+        .from(memberships)
+        .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, userId)))
+        .for('update');
+      if (!still || !isCustomerRole(still.role)) return null;
       const removed = await tx
         .delete(enterpriseAssignments)
         .where(
@@ -329,8 +372,13 @@ export class OrgMembersController {
         : [];
       const touched = [...removed, ...added].map((r) => r.enterpriseId);
       if (touched.length) await tx.update(enterprises).set({ membersChangedAt: new Date() }).where(inArray(enterprises.id, touched));
+      // 成员不再负责的企业：这些企业任务的站内通知一并删掉（机构管理员本来就看全部企业，不删）
+      if (still.role === 'customer_member' && removed.length) {
+        await dropOrgNotifications(tx, userId, orgId, removed.map((r) => r.enterpriseId));
+      }
       return touched.length;
     });
+    if (changed === null) throw new NotFoundException(NO_MEMBER);
     if (changed) {
       const names = ents.map((e) => e.name).join('、') || '无';
       await this.record(user, req, 'enterprise_assign', `${target.name}（${target.email}）· 可访问企业：${names}`);
@@ -361,10 +409,28 @@ export class OrgMembersController {
       : [];
     if (people.length !== ids.length) throw new NotFoundException(NO_MEMBER);
     const changed = await this.db.transaction(async (tx) => {
+      // 锁住选中的成员行并确认都还在（和移除成员排队）
+      if (ids.length) {
+        const still = await tx
+          .select({ userId: memberships.userId })
+          .from(memberships)
+          .where(and(eq(memberships.orgId, orgId), inArray(memberships.userId, ids), inArray(memberships.role, [...CUSTOMER_ROLES])))
+          .orderBy(memberships.userId)
+          .for('update');
+        if (still.length !== ids.length) return null;
+      }
       const removed = await tx
         .delete(enterpriseAssignments)
         .where(and(eq(enterpriseAssignments.enterpriseId, enterpriseId), ids.length ? notInArray(enterpriseAssignments.userId, ids) : undefined))
         .returning({ userId: enterpriseAssignments.userId });
+      // 不再负责这家企业的成员（不是机构管理员）：删掉这家企业任务的站内通知
+      if (removed.length) {
+        const members = await tx
+          .select({ userId: memberships.userId })
+          .from(memberships)
+          .where(and(eq(memberships.orgId, orgId), inArray(memberships.userId, removed.map((r) => r.userId)), eq(memberships.role, 'customer_member')));
+        for (const m of members) await dropOrgNotifications(tx, m.userId, orgId, [enterpriseId]);
+      }
       const added = ids.length
         ? await tx
             .insert(enterpriseAssignments)
@@ -376,6 +442,7 @@ export class OrgMembersController {
       if (n) await tx.update(enterprises).set({ membersChangedAt: new Date() }).where(eq(enterprises.id, enterpriseId));
       return n;
     });
+    if (changed === null) throw new NotFoundException(NO_MEMBER);
     if (changed) {
       const names = ids.map((id) => people.find((p) => p.id === id)!.name).join('、') || '无';
       await this.record(user, req, 'enterprise_assign', `${ent!.name} · 负责成员：${names}`);
@@ -399,11 +466,12 @@ export class OrgMembersController {
     return this.audit.record({ action, actorId: user.id, actorEmail: user.email, ip: clientIp(req), target });
   }
 
-  // 邮箱已有耕云账号：不能再邀请。例外是被移除的旧账号（已停用、不在任何组织），可以重新邀请，接受时恢复
+  // 邮箱已有耕云账号：不能再邀请。例外是被机构管理员移除的旧账号（不在任何组织），可以重新邀请，接受时恢复；
+  // 运营停用的账号不算例外
   private async hasAccount(email: string): Promise<boolean> {
-    const [row] = await this.db.select({ id: users.id, disabledAt: users.disabledAt }).from(users).where(eq(users.email, email)).limit(1);
+    const [row] = await this.db.select({ id: users.id, disabledReason: users.disabledReason }).from(users).where(eq(users.email, email)).limit(1);
     if (!row) return false;
-    if (!row.disabledAt) return true;
+    if (row.disabledReason !== 'removed_by_customer') return true;
     const [member] = await this.db.select({ orgId: memberships.orgId }).from(memberships).where(eq(memberships.userId, row.id)).limit(1);
     return Boolean(member);
   }
@@ -454,6 +522,21 @@ export class OrgMembersController {
       .for('update');
     if (!admins.some((a) => a.userId === exceptId)) return true;
     return admins.some((a) => a.userId !== exceptId);
+  }
+
+  // 某人在本组织发出、还没接受的邀请全部作废（他被移除或降为成员时）
+  private async revokeSentBy(tx: Tx, orgId: string, userId: string) {
+    await tx
+      .update(organizationInvitations)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(organizationInvitations.orgId, orgId),
+          eq(organizationInvitations.invitedBy, userId),
+          isNull(organizationInvitations.acceptedAt),
+          isNull(organizationInvitations.revokedAt),
+        ),
+      );
   }
 
   private async send(user: SessionUser, orgId: string, who: { name: string; email: string; role: CustomerRole }, resend: boolean): Promise<MemberInviteResult> {

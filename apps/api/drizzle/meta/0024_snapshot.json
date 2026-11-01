@@ -1,5 +1,5 @@
 {
-  "id": "9f16a9fa-5815-490f-b61e-4206c5654554",
+  "id": "0986411e-e9ad-4759-82bc-d5f960b73dd8",
   "prevId": "270e1636-fcde-4057-99ad-90d2622d3fbd",
   "version": "7",
   "dialect": "postgresql",
@@ -4052,6 +4052,12 @@
         "disabled_at": {
           "name": "disabled_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disabled_reason": {
+          "name": "disabled_reason",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

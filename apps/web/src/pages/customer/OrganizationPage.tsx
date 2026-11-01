@@ -337,7 +337,7 @@ function ServiceTab({ view }: { view: OrgManagementView }) {
   const rows: [string, string][] = [
     ['开放业务', '生产安全事故应急预案编制'],
     ['每次交付', '应急预案、风险评估报告、应急资源调查报告，共三份 Word'],
-    ['办理方式', '资料齐全后提交 → 耕云编制 → 耕云专家审核 → 交付'],
+    ['办理方式', '资料齐全后提交 → 耕云编制 → 注安师审核 → 交付'],
     ['本年已办理', `${s.enterprises} 家企业${scope} · 已交付 ${s.delivered} · 办理中 ${s.inProgress}`],
   ];
   return (

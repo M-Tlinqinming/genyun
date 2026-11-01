@@ -168,7 +168,7 @@ export class InternalAccountsController {
       if ((busy?.n ?? 0) > 0) return { busy: busy!.n };
       const [changed] = await tx
         .update(users)
-        .set({ disabledAt: new Date() })
+        .set({ disabledAt: new Date(), disabledReason: 'operator' })
         .where(and(eq(users.id, id), isNull(users.disabledAt)))
         .returning({ id: users.id });
       if (!changed) return 'unchanged';
@@ -201,7 +201,7 @@ export class InternalAccountsController {
     if (!target.disabledAt) throw new ConflictException(`${target.name}的账号没有停用`);
     const [changed] = await this.db
       .update(users)
-      .set({ disabledAt: null })
+      .set({ disabledAt: null, disabledReason: null })
       .where(and(eq(users.id, id), isNotNull(users.disabledAt)))
       .returning({ id: users.id });
     // 别人刚恢复过：不重复记日志
