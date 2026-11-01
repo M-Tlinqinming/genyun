@@ -194,8 +194,10 @@ export interface EditDocumentView {
   /** 整份文档的修订次数（任何一节保存都加 1；第 12 项按它判断核对是否失效） */
   version: number;
   outline: OutlineNode[];
-  /** 当前账号能不能改（只有负责专家能改，运营只能看） */
+  /** 当前账号能不能改（只有负责注安师能改，运营只能看；发布以后谁都不能改） */
   editable: boolean;
+  /** 这批文稿已发布为哪个交付版本（M2 第 15 项）；没发布为 null */
+  published?: { version: number; at: string } | null;
   /** 「帮我改写这段」是否可用（服务器配了 AI） */
   rewrite: boolean;
   /** 生成时每个空位、每段用的是 AI 还是系统的内容 */

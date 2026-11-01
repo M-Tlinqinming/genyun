@@ -39,12 +39,13 @@ export function canViewTask(user: SessionUser, task: { orgId: string; assignedEx
 // 专业人员只能看分派给自己的任务里用到的文件
 export function canViewFile(
   user: SessionUser,
-  file: { orgId: string; kind: 'customer_material' | 'contract' | 'draft' },
+  file: { orgId: string; kind: 'customer_material' | 'contract' | 'draft' | 'delivery' },
   usedInMyAssignedTask: boolean,
 ): boolean {
   if (file.kind === 'contract') return isOperator(user);
   // 生成的草稿发布前客户看不到，只有负责专家和运营
   if (file.kind === 'draft') return isOperator(user) || (usedInMyAssignedTask && user.memberships.some((m) => m.role === 'expert'));
+  // 其余（客户资料、发布后的交付 Word）：本组织客户、运营；负责专家通过任务看到
   if (canViewOrganization(user, file.orgId)) return true;
   return usedInMyAssignedTask && user.memberships.some((m) => m.role === 'expert');
 }
@@ -77,4 +78,9 @@ export function canEditTaskWork(user: SessionUser, task: { assignedExpertId: str
 // 客户组织的登记、开通、合同原件：只有运营。客户、专业人员一律不行
 export function canManageOrganizations(user: SessionUser): boolean {
   return isOperator(user);
+}
+
+// 发布成果（形成交付版本）：只有负责这个任务的注安师。运营、其他注安师、客户一律不行
+export function canPublishTask(user: SessionUser, task: { assignedExpertId: string | null }): boolean {
+  return task.assignedExpertId === user.id && isExpert(user);
 }
