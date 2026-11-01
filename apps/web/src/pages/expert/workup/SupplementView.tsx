@@ -301,7 +301,13 @@ function Round({
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {verifying ? (
             <>
-              <Checkbox checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)}>
+              <Checkbox
+                checked={confirmed}
+                onChange={(e) => {
+                  setConfirmed(e.target.checked);
+                  if (e.target.checked && error === '请勾选确认') setError(null);
+                }}
+              >
                 已核对原件与客户确认，以上事实可靠，其他本次输入仍适用。
               </Checkbox>
               <span style={{ ...text13, color: gy.secondary }}>

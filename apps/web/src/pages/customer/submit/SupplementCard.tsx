@@ -166,7 +166,13 @@ function OpenSupplement({ task, supplement: s }: { task: Task; supplement: Custo
             placeholder="例如：应急联系人已调整为谁、联系方式是多少"
           />
         </label>
-        <Checkbox checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)}>
+        <Checkbox
+          checked={confirmed}
+          onChange={(e) => {
+            setConfirmed(e.target.checked);
+            if (e.target.checked && error === '请勾选确认') setError(null);
+          }}
+        >
           我已核对上述资料，确认其反映企业当前实际情况。
         </Checkbox>
         {error && (

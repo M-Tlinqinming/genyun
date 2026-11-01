@@ -52,6 +52,7 @@ test('飞宇换了应急联系人：专家发起补件，客户回应，专家�
   await card.getByRole('button', { name: '提交本轮补充' }).click();
   await expect(card.getByRole('alert')).toHaveText('请勾选确认');
   await card.getByRole('checkbox').check();
+  await customer.screenshot({ path: 'test-results/acceptance/m2-13-客户回应.png', fullPage: true });
   await card.getByRole('button', { name: '提交本轮补充' }).click();
   await expect(customer.getByRole('region', { name: '已提交的事实补件' })).toContainText('等待耕云核实');
   await customer.close();
@@ -70,6 +71,7 @@ test('飞宇换了应急联系人：专家发起补件，客户回应，专家�
   await table.getByLabel('联系人本轮采用').fill('王某');
   await table.getByLabel('联系电话本轮采用').fill('139 0000 3102');
   await table.getByLabel('联系人核实依据').fill('新名册第 1 页');
+  await page.screenshot({ path: 'test-results/acceptance/m2-13-待核实.png', fullPage: true });
   await page.getByRole('button', { name: '确认事实并采用到本任务' }).click();
   await expect(page.getByRole('alert')).toHaveText('请勾选确认');
   await page.getByRole('checkbox', { name: /已核对原件与客户确认/ }).check();
@@ -81,6 +83,7 @@ test('飞宇换了应急联系人：专家发起补件，客户回应，专家�
   await expect(status).toContainText('本次资料已更新，原文稿尚未更新');
   await expect(table).toContainText('王某');
   await expect(table).toContainText('新名册第 1 页');
+  await page.screenshot({ path: 'test-results/acceptance/m2-13-等待重新生成.png', fullPage: true });
   await page.getByRole('button', { name: '重新生成三份草稿' }).click();
   await expect(page).toHaveURL(/view=confirm/);
 
