@@ -53,10 +53,11 @@ echo "演示数据"
 if [ "$expert" = 1 ]; then
   tasks=$(get -b "$jar_dir/expert" "$BASE/api/expert/tasks")
   echo "$tasks" | grep -q '惠阳飞宇电器有限公司' && ok "周工的任务中心有飞宇的任务" || bad "周工的任务中心没有飞宇的任务"
-  echo "$tasks" | grep -q '示例五金制品有限公司' && bad "周工看到了分派给吴工的任务" || ok "周工看不到吴工的任务"
+  echo "$tasks" | grep -q '示例五金制品有限公司' && bad "周工看到了不归他的示例五金任务" || ok "周工看不到示例五金的任务（待分派或在吴工名下）"
 fi
 if [ "$expert2" = 1 ]; then
-  get -b "$jar_dir/expert2" "$BASE/api/expert/tasks" | grep -q '示例五金制品有限公司' && ok "吴工的任务中心有示例五金的任务" || bad "吴工的任务中心没有示例五金的任务"
+  # 新写入的演示数据里示例五金待运营分派（M3 第 3 项）；老预览库里它仍在吴工名下。两种都算对，只查吴工看不到飞宇
+  get -b "$jar_dir/expert2" "$BASE/api/expert/tasks" | grep -q '惠阳飞宇电器有限公司' && bad "吴工看到了周工的飞宇任务" || ok "吴工看不到周工的飞宇任务"
 fi
 if [ "$feiyu" = 1 ]; then
   get -b "$jar_dir/feiyu" "$BASE/api/auth/me" | grep -q '飞宇演示客户' && ok "飞宇客户进入「飞宇演示客户」" || bad "飞宇客户不在「飞宇演示客户」组织里"
