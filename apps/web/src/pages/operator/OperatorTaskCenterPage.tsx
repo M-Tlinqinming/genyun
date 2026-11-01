@@ -1,15 +1,18 @@
-import { OPERATOR_TASK_STAGES, type OperatorTaskStage } from '@genyun/shared';
+import { OPERATOR_TASK_STAGES, compareOnSiteOrders, type OperatorTaskStage } from '@genyun/shared';
 import { Button, Empty, Input, Skeleton } from 'antd';
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { useOperatorTask, useOperatorTasks, type OperatorTask } from '../../api/operator';
+import { useOnSiteOrders, useOperatorTask, useOperatorTasks, useOverdueTasks, type OperatorTask, type OperatorTaskDetail, type OverdueTask } from '../../api/operator';
 import { PageHeader } from '../../components/PageHeader';
 import { Loading, Notice, panel } from '../../components/ui';
 import { gy, stage } from '../../theme/tokens';
 import { AssignExpertModal } from './AssignExpertModal';
-import { businessShort, monthDay, monthDayTime, submittedLine, taskTitle } from './taskCenterText';
+import { OnSitePanel, OnSiteRow } from './OnSiteOrders';
+import { NoteModal, OVERDUE_LINE, OperatorNotes, OverdueSections, overdueBadge } from './OverdueSection';
+import { businessShort, monthDay, monthDayTime, taskTitle } from './taskCenterText';
 
-type Tab = 'unassigned' | 'all';
+type Tab = 'unassigned' | 'overdue' | 'onsite' | 'all';
+const TAB_LABEL: Record<Tab, string> = { unassigned: '待分派', overdue: '超时兜底', onsite: '上门工单', all: '全部任务' };
 
 const body = { fontSize: 14, lineHeight: '22px', color: gy.text } as const;
 const small = { fontSize: 12, lineHeight: '20px', color: gy.tertiary } as const;
@@ -38,7 +41,7 @@ function rowLine(t: OperatorTask): string {
   return `${businessShort(t)} · ${who}`;
 }
 
-function TaskRow({ task: t, selected, onSelect }: { task: OperatorTask; selected: boolean; onSelect: () => void }) {
+function TaskRow({ task: t, overdue, selected, onSelect }: { task: OperatorTask; overdue?: OverdueTask; selected: boolean; onSelect: () => void }) {
   return (
     <li style={{ listStyle: 'none' }}>
       <button
@@ -64,11 +67,13 @@ function TaskRow({ task: t, selected, onSelect }: { task: OperatorTask; selected
           <span style={{ ...body, fontWeight: selected ? 500 : 400, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {t.enterpriseName}
           </span>
-          <span style={{ ...small, flexShrink: 0 }}>{t.submittedAt ? monthDayTime(t.submittedAt) : `${monthDay(t.createdAt)} 创建`}</span>
+          <span style={{ ...small, flexShrink: 0 }}>
+            {overdue ? `${monthDay(overdue.request.requestedAt)} 起` : t.submittedAt ? monthDayTime(t.submittedAt) : `${monthDay(t.createdAt)} 创建`}
+          </span>
         </span>
-        <span style={{ ...caption, color: gy.secondary }}>{rowLine(t)}</span>
+        <span style={{ ...caption, color: gy.secondary }}>{overdue ? `${rowLine(t)} · ${OVERDUE_LINE}` : rowLine(t)}</span>
         <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Pill tone={STAGE_TONE[t.needsAssignment ? 'unassigned' : t.stage]}>{stageLabel(t)}</Pill>
+          {overdue ? <Pill tone={stage.action}>超时</Pill> : <Pill tone={STAGE_TONE[t.needsAssignment ? 'unassigned' : t.stage]}>{stageLabel(t)}</Pill>}
           <Pill tone={stage.progress}>{t.orgName}</Pill>
         </span>
       </button>
@@ -104,7 +109,7 @@ function Reason({ title, text, tone = 'warning' }: { title: ReactNode; text: Rea
 }
 
 // 右侧：选中任务的情况和操作（Paper I04 右栏；分派用同一个面板）
-function TaskPanel({ taskId, onAssign }: { taskId: string; onAssign: (t: OperatorTask) => void }) {
+function TaskPanel({ taskId, overdue, onAssign }: { taskId: string; overdue?: OverdueTask; onAssign: (t: OperatorTask) => void }) {
   const detail = useOperatorTask(taskId);
   if (detail.isPending) {
     return (
@@ -148,9 +153,27 @@ function TaskPanel({ taskId, onAssign }: { taskId: string; onAssign: (t: Operato
             </Link>
           </span>
         </div>
-        <Pill tone={STAGE_TONE[t.needsAssignment ? 'unassigned' : t.stage]}>{stageLabel(t)}</Pill>
+        {overdue ? (
+          <Pill tone={stage.error}>{overdueBadge(overdue)}</Pill>
+        ) : (
+          <Pill tone={STAGE_TONE[t.needsAssignment ? 'unassigned' : t.stage]}>{stageLabel(t)}</Pill>
+        )}
       </header>
 
+      {overdue ? (
+        <OverdueSections task={overdue} onReassign={() => onAssign(t)} />
+      ) : (
+        <TaskSections task={t} canAssign={canAssign} onAssign={onAssign} />
+      )}
+    </section>
+  );
+}
+
+// 待分派、全部任务的右栏：为什么出现在这里 / 当前负责、基本信息、运营记录，底栏写内部备注和分派
+function TaskSections({ task: t, canAssign, onAssign }: { task: OperatorTaskDetail; canAssign: boolean; onAssign: (t: OperatorTask) => void }) {
+  const [noting, setNoting] = useState(false);
+  return (
+    <>
       {t.needsAssignment ? (
         <Section title="为什么出现在这里">
           <Reason
@@ -188,7 +211,7 @@ function TaskPanel({ taskId, onAssign }: { taskId: string; onAssign: (t: Operato
         </Section>
       )}
 
-      <Section title="基本信息" style={{ paddingBottom: 24 }}>
+      <Section title="基本信息">
         <dl style={{ display: 'grid', gridTemplateColumns: '96px 1fr', rowGap: 8, margin: 0, ...caption, color: gy.secondary }}>
           <dt>任务</dt>
           <dd style={{ margin: 0, color: gy.text }}>{t.name}</dd>
@@ -199,14 +222,18 @@ function TaskPanel({ taskId, onAssign }: { taskId: string; onAssign: (t: Operato
         </dl>
       </Section>
 
-      {canAssign && (
-        <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 24px', borderTop: `1px solid ${gy.split}`, marginTop: 'auto' }}>
+      <OperatorNotes taskId={t.id} />
+
+      <footer style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 24px', borderTop: `1px solid ${gy.split}`, marginTop: 24 }}>
+        <Button onClick={() => setNoting(true)}>写内部备注</Button>
+        {canAssign && (
           <Button type="primary" onClick={() => onAssign(t)}>
             {t.assignedExpertId ? '改派注安师' : '分配注安师'}
           </Button>
-        </footer>
-      )}
-    </section>
+        )}
+      </footer>
+      <NoteModal taskId={t.id} open={noting} onClose={() => setNoting(false)} />
+    </>
   );
 }
 
@@ -224,17 +251,25 @@ export function OperatorTaskCenterPage() {
   };
   const linked = params.get('task');
 
+  const overdueQuery = useOverdueTasks();
   const unassigned = useMemo(() => (tasks.data ?? []).filter((t) => t.needsAssignment), [tasks.data]);
+  const overdue = useMemo(() => overdueQuery.data ?? [], [overdueQuery.data]);
+  const onSite = useOnSiteOrders();
+  // 新工单在前，已转交、已关闭在后；页签数字是新工单数（设计稿：运营概览和侧栏显示新工单数）
+  const orders = useMemo(() => [...(onSite.data ?? [])].sort(compareOnSiteOrders), [onSite.data]);
+  const newOrders = orders.filter((o) => o.status === 'new').length;
+  const linkedOrder = params.get('order');
+  const selectedOrder = orders.find((o) => o.id === linkedOrder) ?? orders[0] ?? null;
   // 从组织详情点进来带着任务时，直接看全部任务；否则有待分派就先看待分派
   const [tabChoice, setTabChoice] = useState<Tab | null>(null);
   const tab: Tab = tabChoice ?? (linked && !unassigned.some((t) => t.id === linked) ? 'all' : unassigned.length > 0 || !tasks.data ? 'unassigned' : 'all');
 
   const shown = useMemo(() => {
-    const list = tab === 'unassigned' ? unassigned : (tasks.data ?? []);
+    const list = tab === 'unassigned' ? unassigned : tab === 'overdue' ? overdue : (tasks.data ?? []);
     const k = keyword.trim().toLowerCase();
     if (!k) return list;
     return list.filter((t) => [t.enterpriseName, t.number, t.orgName].some((s) => s.toLowerCase().includes(k)));
-  }, [tab, unassigned, tasks.data, keyword]);
+  }, [tab, unassigned, overdue, tasks.data, keyword]);
 
   const selectedId = shown.some((t) => t.id === linked) ? linked : (shown[0]?.id ?? null);
   const select = (id: string) => setParams({ task: id }, { replace: true });
@@ -243,7 +278,7 @@ export function OperatorTaskCenterPage() {
     <PageHeader
       eyebrow="耕云运营 / 任务中心"
       title="任务中心"
-      description="运营只做三件事：分派负责注安师、处理上门工单、兜底超时任务。客户补充由负责专家直接联系，不经运营转话。"
+      description="运营只做三件事：分派负责注安师、处理上门工单、兜底超时任务。客户补充由负责注安师直接联系，不经运营转话。"
     />
   );
 
@@ -271,6 +306,8 @@ export function OperatorTaskCenterPage() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'unassigned', label: `待分派 ${unassigned.length}` },
+    { key: 'overdue', label: `超时兜底 ${overdue.length}` },
+    { key: 'onsite', label: `上门工单 ${newOrders}` },
     { key: 'all', label: '全部任务' },
   ];
 
@@ -311,7 +348,26 @@ export function OperatorTaskCenterPage() {
               <Input.Search allowClear placeholder="企业 / 任务编号 / 客户组织" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
             </div>
           )}
-          {shown.length === 0 ? (
+          {tab === 'onsite' ? (
+            orders.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                style={{ padding: '24px 20px' }}
+                description={onSite.isError ? `上门工单暂时读不出来：${onSite.error.message}` : '还没有上门需求。客户在任务里预约耕云上门后会出现在这里。'}
+              />
+            ) : (
+              <ul role="tabpanel" aria-label={TAB_LABEL.onsite} style={{ margin: 0, padding: 0, maxHeight: 640, overflowY: 'auto' }}>
+                {orders.map((o) => (
+                  <OnSiteRow
+                    key={o.id}
+                    order={o}
+                    selected={o.id === selectedOrder?.id}
+                    onSelect={() => setParams({ order: o.id }, { replace: true })}
+                  />
+                ))}
+              </ul>
+            )
+          ) : shown.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               style={{ padding: '24px 20px' }}
@@ -320,24 +376,46 @@ export function OperatorTaskCenterPage() {
                   ? '没有符合条件的任务'
                   : tab === 'unassigned'
                     ? '现在没有待分派的任务。客户提交资料后会出现在这里。'
-                    : '还没有客户任务'
+                    : tab === 'overdue'
+                      ? '现在没有超时的任务。客户请电话联系后 2 个工作日没联系上会出现在这里。'
+                      : '还没有客户任务'
               }
             />
           ) : (
-            <ul role="tabpanel" aria-label={tab === 'unassigned' ? '待分派' : '全部任务'} style={{ margin: 0, padding: 0, maxHeight: 640, overflowY: 'auto' }}>
+            <ul role="tabpanel" aria-label={TAB_LABEL[tab]} style={{ margin: 0, padding: 0, maxHeight: 640, overflowY: 'auto' }}>
               {shown.map((t) => (
-                <TaskRow key={t.id} task={t} selected={t.id === selectedId} onSelect={() => select(t.id)} />
+                <TaskRow
+                  key={t.id}
+                  task={t}
+                  overdue={tab === 'overdue' ? overdue.find((o) => o.id === t.id) : undefined}
+                  selected={t.id === selectedId}
+                  onSelect={() => select(t.id)}
+                />
               ))}
             </ul>
           )}
-          {tab === 'unassigned' && (
+          {(tab === 'unassigned' || tab === 'overdue') && (
             <p style={{ ...small, margin: 0, padding: '14px 20px' }}>
-              只列需要运营介入的任务；正常进行中的客户沟通由注安师自己处理，运营不经手。
+              只列需要运营介入的任务；正常进行中的客户沟通由注安师自己处理，运营不经手。上门工单见「上门工单」页签。
             </p>
           )}
+          {tab === 'onsite' && orders.length > 0 && (
+            <p style={{ fontSize: 12, lineHeight: '18px', color: gy.tertiary, margin: 0, padding: '12px 20px' }}>新工单排在前面，已关闭的在最后。</p>
+          )}
         </div>
-        {selectedId ? (
-          <TaskPanel key={selectedId} taskId={selectedId} onAssign={openAssign} />
+        {tab === 'onsite' ? (
+          selectedOrder ? (
+            <OnSitePanel key={selectedOrder.id} order={selectedOrder} />
+          ) : (
+            <p style={{ ...caption, flex: 1, minWidth: 0, margin: 0, padding: '16px 0' }}>选中上门工单后，在这里写内部备注、标记转交或关闭。</p>
+          )
+        ) : selectedId ? (
+          <TaskPanel
+            key={selectedId}
+            taskId={selectedId}
+            overdue={tab === 'overdue' ? overdue.find((t) => t.id === selectedId) : undefined}
+            onAssign={openAssign}
+          />
         ) : (
           // 列表是空的：右栏不放空白卡片，只写一句说明
           <p style={{ ...caption, flex: 1, minWidth: 0, margin: 0, padding: '16px 0' }}>

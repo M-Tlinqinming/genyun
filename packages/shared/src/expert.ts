@@ -34,29 +34,3 @@ export function expertTodo(t: ExpertTaskFacts): ExpertTodo {
 
 // 客户请专家电话联系后，负责专家应在 2 个工作日内联系；超过由运营兜底（CLAUDE.md）
 export const CONTACT_WORKING_DAYS = 2;
-
-// 工作日先只排除周六周日；法定节假日与调休需要每年的日历，等运营知识库（M3）
-const CHINA_OFFSET = 8 * 3_600_000;
-const isWeekend = (d: Date) => d.getUTCDay() === 0 || d.getUTCDay() === 6;
-const chinaDay = (d: Date) => Math.floor((d.getTime() + CHINA_OFFSET) / 86_400_000);
-
-// 从提出时间起往后数 n 个工作日，保留同一时刻（北京时间 09.19 15:20 → 09.21 15:20）
-export function addWorkingDays(from: Date, n: number): Date {
-  const d = new Date(from.getTime() + CHINA_OFFSET);
-  let left = n;
-  while (left > 0) {
-    d.setUTCDate(d.getUTCDate() + 1);
-    if (!isWeekend(d)) left--;
-  }
-  return new Date(d.getTime() - CHINA_OFFSET);
-}
-
-// 离期限还剩几个工作日：0 = 今天到期，负数 = 已超时
-export function workingDaysLeft(deadline: Date, now: Date = new Date()): number {
-  if (now.getTime() > deadline.getTime()) return -1;
-  let count = 0;
-  for (let day = chinaDay(now) + 1; day <= chinaDay(deadline); day++) {
-    if (!isWeekend(new Date(day * 86_400_000))) count++;
-  }
-  return count;
-}

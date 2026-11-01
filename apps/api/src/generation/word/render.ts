@@ -26,7 +26,7 @@ import {
   type IParagraphStyleOptions,
   type ISectionOptions,
 } from 'docx';
-import type { Block, DeliveryDocument, DocSection, TextRun as Run } from '@genyun/shared';
+import { AI_ASSISTED_NOTE, deliveryLabel, type Block, type DeliveryDocument, type DocSection, type TextRun as Run } from '@genyun/shared';
 import { exactLine, LAYOUTS, type Layout, type TextStyle } from './layout.ts';
 
 const ALIGN = {
@@ -43,11 +43,37 @@ const HEADING_LEVELS = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingL
 const LIST_REFERENCE = 'gy-list';
 const BULLET_REFERENCE = 'gy-bullet';
 
-export async function renderWord(doc: DeliveryDocument): Promise<Buffer> {
-  return Packer.toBuffer(buildWord(doc));
+/**
+ * 发布时写进 Word 文件属性（docProps/core.xml、custom.xml）的说明：AI 辅助起草、注册安全工程师审核，以及审核人。
+ * 正文里不加可见说明（TECH-PLAN 4.1）；草稿不写
+ */
+export interface DeliveryMeta {
+  reviewerName: string;
+  /** 交付版本号（V1 = 1） */
+  version: number;
 }
 
-export function buildWord(doc: DeliveryDocument): Document {
+export async function renderWord(doc: DeliveryDocument, meta?: DeliveryMeta): Promise<Buffer> {
+  return Packer.toBuffer(buildWord(doc, meta));
+}
+
+function deliveryProperties(meta: DeliveryMeta | undefined) {
+  if (!meta) return {};
+  const note = `${AI_ASSISTED_NOTE}（审核人：${meta.reviewerName}）`;
+  return {
+    subject: deliveryLabel(meta.version),
+    description: note,
+    keywords: AI_ASSISTED_NOTE,
+    lastModifiedBy: meta.reviewerName,
+    customProperties: [
+      { name: '编制方式', value: AI_ASSISTED_NOTE },
+      { name: '审核人', value: meta.reviewerName },
+      { name: '交付版本', value: deliveryLabel(meta.version) },
+    ],
+  };
+}
+
+export function buildWord(doc: DeliveryDocument, meta?: DeliveryMeta): Document {
   const layout = LAYOUTS[doc.kind];
   const writer = new Writer(layout);
 
@@ -104,6 +130,7 @@ export function buildWord(doc: DeliveryDocument): Document {
   return new Document({
     title: doc.title,
     creator: '耕云',
+    ...deliveryProperties(meta),
     features: { updateFields: true },
     styles: styles(layout),
     numbering: {

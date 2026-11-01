@@ -38,6 +38,8 @@ export interface ReviewView {
    * 这时原来的审核结论作废，也不能再确认结论，要先按新事实重新生成。没有为 null
    */
   factsChangedAt?: string | null;
+  /** 这批文稿已发布为哪个交付版本（M2 第 15 项）：发布后不能再核对、再确认结论。没发布为 null */
+  published?: { version: number; at: string } | null;
 }
 
 /** 这份的核对还对应当前稿 */
