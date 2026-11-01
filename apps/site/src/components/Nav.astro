@@ -46,16 +46,18 @@ const { active, overlay = false } = Astro.props;
 </header>
 
 <script>
-  // 窄屏菜单（展开 / 收起）：按 Esc 或焦点离开导航时收起，Esc 后焦点回到菜单按钮；点菜单里的链接也收起
+  // 窄屏菜单（展开 / 收起）：按 Esc 或焦点离开导航时收起，Esc 后焦点回到菜单按钮；点菜单里的链接、页面滚动也收起
+  // 按钮名字始终是「菜单」，展开与否只由 aria-expanded 表达（读屏软件读「菜单，已展开」）
   for (const header of document.querySelectorAll<HTMLElement>('[data-nav]')) {
     const toggle = header.querySelector<HTMLButtonElement>('[data-nav-toggle]');
     const menu = header.querySelector<HTMLElement>('.nav__menu');
     if (!toggle || !menu) continue;
     header.classList.add('nav--js');
+    let openedAt = 0;
     const setOpen = (open: boolean) => {
       toggle.setAttribute('aria-expanded', String(open));
-      toggle.querySelector('.nav__toggle-label')!.textContent = open ? '收起' : '菜单';
       header.classList.toggle('nav--open', open);
+      openedAt = window.scrollY;
     };
     toggle.addEventListener('click', () => setOpen(toggle.getAttribute('aria-expanded') !== 'true'));
     header.addEventListener('keydown', (e) => {
@@ -72,6 +74,10 @@ const { active, overlay = false } = Astro.props;
       if (!header.contains(e.target as Node)) setOpen(false);
     });
     for (const a of menu.querySelectorAll('a')) a.addEventListener('click', () => setOpen(false));
+    // 展开后页面滚动超过 16px 就收起（Tab 进菜单时浏览器可能微调滚动位置，不算）
+    window.addEventListener('scroll', () => {
+      if (header.classList.contains('nav--open') && Math.abs(window.scrollY - openedAt) > 16) setOpen(false);
+    }, { passive: true });
     // 拉宽到 900px 以上时菜单是常显的，状态复位
     matchMedia('(min-width: 901px)').addEventListener('change', (e) => e.matches && setOpen(false));
   }
@@ -199,7 +205,7 @@ const { active, overlay = false } = Astro.props;
     .nav__actions {
       gap: 16px;
     }
-    /* 只剩图标；文字留给读屏软件，按钮的名称仍是「菜单 / 收起」 */
+    /* 只剩图标；文字留给读屏软件，按钮的名称始终是「菜单」 */
     .nav--js .nav__toggle-label {
       position: absolute;
       width: 1px;
