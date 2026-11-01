@@ -37,8 +37,6 @@ const HOME: Partial<Record<Workspace, RouteObject['element']>> = {
 // 不在菜单里的页面（从列表点进去）
 const EXTRA: Partial<Record<Workspace, RouteObject[]>> = {
   expert: [{ path: 'tasks/:taskId', element: <ExpertTaskPage /> }],
-  // 模拟发件箱只在预览环境有用，平时不在菜单里（navigation.tsx 的 onlyWhenActive）
-  operator: [{ path: 'mail-outbox', element: <MailOutboxPage /> }],
 };
 
 // 已做好的页面；菜单项下可以有子页面
@@ -53,6 +51,8 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { index: true, element: <OrganizationListPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },
   ],
+  // 模拟发件箱只在预览环境有用，平时不在菜单里（navigation.tsx 的 onlyWhenActive）
+  '/operator/mail-outbox': [{ index: true, element: <MailOutboxPage /> }],
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
