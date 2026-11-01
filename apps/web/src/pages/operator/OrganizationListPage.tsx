@@ -2,6 +2,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import { chinaToday, contractState, maskPhone, ORG_SERVICE_STATES, type OrgServiceState } from '@genyun/shared';
 import { Button, Empty, Input, Select, Table, Tabs, Typography } from 'antd';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { useOperatorOrgs, type OperatorOrgRow } from '../../api/operator';
 import { PageHeader } from '../../components/PageHeader';
 import { linkButton, Notice, panel } from '../../components/ui';
@@ -63,7 +64,7 @@ function ServiceCell({ org: o }: { org: OperatorOrgRow }) {
   );
 }
 
-// I02 客户组织：登记、开通并维护年度服务（Paper 16 页）。组织详情在 M3 第 2 项
+// I02 客户组织：登记、开通并维护年度服务（Paper 16 页）。点「查看」进组织详情（I03）
 export function OrganizationListPage() {
   const orgs = useOperatorOrgs();
   const [tab, setTab] = useState<Tab>('all');
@@ -71,7 +72,6 @@ export function OrganizationListPage() {
   const [region, setRegion] = useState<string>('all');
   const [expiry, setExpiry] = useState<Expiry>('any');
   const [registering, setRegistering] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
 
   const all = orgs.data ?? [];
@@ -278,23 +278,16 @@ export function OrganizationListPage() {
                       开通
                     </button>
                   ) : (
-                    <button type="button" style={linkButton} onClick={() => setEditing(o.id)} aria-label={`修改${o.name}的资料`}>
-                      修改资料
-                    </button>
+                    <Link to={o.id} style={linkButton} aria-label={`查看${o.name}`}>
+                      查看
+                    </Link>
                   ),
               },
             ]}
           />
         </div>
       )}
-      <RegisterOrgModal
-        orgId={editing}
-        open={registering || editing !== null}
-        onClose={() => {
-          setRegistering(false);
-          setEditing(null);
-        }}
-      />
+      <RegisterOrgModal orgId={null} open={registering} onClose={() => setRegistering(false)} />
       {opening && <OpenOrgModal orgId={opening} onClose={() => setOpening(null)} />}
     </>
   );
