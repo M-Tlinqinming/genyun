@@ -39,7 +39,7 @@ jobs:
           # 正式环境必须有 Redis（草稿生成队列），与预览环境一样起一个
           docker network create smoke
           docker run -d --name redis --network smoke redis:8
-          docker run -d --name app --network smoke -e DATABASE_URL=/tmp/db -e FILE_STORAGE_DIR=/tmp/files -e FILE_URL_SECRET=ci-smoke-test -e REDIS_URL=redis://redis:6379 -p 3000:3000 genyun:${{ github.sha }}
+          docker run -d --name app --network smoke -e DATABASE_URL=/tmp/db -e FILE_STORAGE_DIR=/tmp/files -e FILE_URL_SECRET=ci-smoke-test -e REDIS_URL=redis://redis:6379 -e MAIL_DRIVER=mock -p 3000:3000 genyun:${{ github.sha }}
           for i in $(seq 1 30); do curl -sf localhost:3000/api/health && break; sleep 1; done
           curl -sf localhost:3000/api/health || (docker logs app; exit 1)
           curl -sf localhost:3000/login | grep -q '<div id="root">'
