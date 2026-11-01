@@ -1,4 +1,13 @@
-import { REASSIGN_REASONS, assignExpertSchema, assignmentBlockedReason, needsAssignment, operatorTaskStage } from '@genyun/shared';
+import {
+  type OperatorNote,
+  REASSIGN_REASONS,
+  assignExpertSchema,
+  assignmentBlockedReason,
+  needsAssignment,
+  operatorNoteSchema,
+  operatorTaskStage,
+  remindExpertSchema,
+} from '@genyun/shared';
 import {
   BadRequestException,
   Body,
@@ -18,8 +27,19 @@ import { canAssignTasks } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { enterprises, memberships, organizations, taskContacts, taskWorkups, tasks, users } from '../db/schema.ts';
+import {
+  checklistItems,
+  enterprises,
+  memberships,
+  organizations,
+  taskContacts,
+  taskOperatorNotes,
+  taskWorkups,
+  tasks,
+  users,
+} from '../db/schema.ts';
 import { NotificationsService, REASSIGNED_TITLE } from '../notifications/notifications.service.ts';
+import { pendingContactRequest } from './contact-request.ts';
 
 const NOT_FOUND = '找不到该任务';
 
@@ -41,6 +61,7 @@ const columns = {
   closedAt: tasks.closedAt,
   assignedExpertId: tasks.assignedExpertId,
   assignedExpertName: expert.name,
+  assignedAt: tasks.assignedAt,
 };
 
 type Row = { status: 'preparing' | 'submitted'; assignedExpertId: string | null; closedAt: Date | null };
@@ -70,6 +91,58 @@ export class OperatorTasksController {
     this.guard(user);
     const rows = await this.select().orderBy(desc(sql`coalesce(${tasks.submittedAt}, ${tasks.createdAt})`));
     return rows.map(withStage);
+  }
+
+  // 超时兜底：客户请电话联系后 2 个工作日还没联系上（按 reachedCustomer，未接通不算）。写在 ':id' 前面，免得被当成任务编号
+  @Get('overdue')
+  async overdue(@CurrentUser() user: SessionUser) {
+    this.guard(user);
+    const now = new Date();
+    const open = await this.select()
+      .where(and(eq(tasks.status, 'submitted'), isNull(tasks.closedAt), ne(organizations.kind, 'internal')))
+      .orderBy(tasks.submittedAt);
+    if (open.length === 0) return [];
+    const ids = open.map((t) => t.id);
+    const calls = await this.db
+      .select({
+        taskId: checklistItems.taskId,
+        itemKey: checklistItems.itemKey,
+        updatedAt: checklistItems.updatedAt,
+        updatedByName: users.name,
+        expertResult: checklistItems.expertResult,
+      })
+      .from(checklistItems)
+      .innerJoin(users, eq(users.id, checklistItems.updatedBy))
+      .where(and(inArray(checklistItems.taskId, ids), eq(checklistItems.callRequested, true)));
+    const contacts = await this.db
+      .select({
+        taskId: taskContacts.taskId,
+        method: taskContacts.method,
+        result: taskContacts.result,
+        createdAt: taskContacts.createdAt,
+        createdByName: users.name,
+      })
+      .from(taskContacts)
+      .innerJoin(users, eq(users.id, taskContacts.createdBy))
+      .where(inArray(taskContacts.taskId, ids))
+      .orderBy(desc(taskContacts.createdAt));
+    return open.flatMap((t) => {
+      // 和专家任务中心同一套：专家已判定过的项不再等电话
+      const mine = calls.filter((c) => c.taskId === t.id && (c.expertResult === null || c.expertResult === 'pending'));
+      const records = contacts.filter((c) => c.taskId === t.id);
+      const request = pendingContactRequest(t, mine, records);
+      if (!request || request.deadline.getTime() > now.getTime()) return [];
+      const unreachable = records.filter((r) => r.method === 'phone' && r.result === 'unreachable' && r.createdAt >= request.requestedAt);
+      return [
+        {
+          ...withStage(t),
+          request,
+          // 原因：没打过电话 / 打了没接通
+          reason: unreachable.length > 0 ? `打过 ${unreachable.length} 次电话都没接通` : '还没有联系过客户',
+          contacts: records.map(({ taskId: _, ...r }) => r),
+        },
+      ];
+    });
   }
 
   @Get(':id')
@@ -175,6 +248,15 @@ export class OperatorTasksController {
           },
           tx,
         );
+        // 改派记在任务的运营记录里（超时兜底里能看到谁、什么时候、为什么改派）
+        await tx.insert(taskOperatorNotes).values({
+          taskId: id,
+          kind: 'reassign',
+          body: [`${task.assignedExpertName ?? '原注安师'} → ${target.name}`, reason ? REASSIGN_REASONS[reason] : null, note]
+            .filter(Boolean)
+            .join(' · '),
+          createdBy: user.id,
+        });
       }
       return true;
     });
@@ -185,6 +267,70 @@ export class OperatorTasksController {
       );
     }
     return withStage(await this.load(id));
+  }
+
+  // 运营在任务上的记录：内部备注、提醒注安师、改派（新的在前）
+  @Get(':id/notes')
+  async notes(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string): Promise<OperatorNote[]> {
+    this.guard(user);
+    await this.load(id);
+    const rows = await this.db
+      .select({
+        id: taskOperatorNotes.id,
+        kind: taskOperatorNotes.kind,
+        body: taskOperatorNotes.body,
+        createdAt: taskOperatorNotes.createdAt,
+        createdByName: users.name,
+      })
+      .from(taskOperatorNotes)
+      .innerJoin(users, eq(users.id, taskOperatorNotes.createdBy))
+      .where(eq(taskOperatorNotes.taskId, id))
+      .orderBy(desc(taskOperatorNotes.createdAt));
+    return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+  }
+
+  // 写内部备注：只有运营看得到
+  @Post(':id/notes')
+  async addNote(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    this.guard(user);
+    const parsed = operatorNoteSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请写备注内容');
+    await this.load(id);
+    await this.db.insert(taskOperatorNotes).values({ taskId: id, kind: 'note', body: parsed.data.body, createdBy: user.id });
+    return this.notes(user, id);
+  }
+
+  // 提醒注安师：给负责注安师发站内提醒，同时记在任务上
+  @Post(':id/remind')
+  async remind(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    this.guard(user);
+    const parsed = remindExpertSchema.safeParse(body ?? {});
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '提醒内容不对');
+    const task = await this.load(id);
+    if (task.closedAt) throw new ConflictException('任务已结束，不用再提醒');
+    if (!task.assignedExpertId) throw new ConflictException('这个任务还没有负责注安师，请先分派');
+    const said = parsed.data.body || null;
+    await this.db.transaction(async (tx) => {
+      await this.notifications.notify(
+        [task.assignedExpertId!],
+        {
+          taskId: id,
+          title: '运营提醒：请尽快联系客户',
+          body: [said ? `运营说明：${said}` : null, `${task.enterpriseName} · ${task.name}（${task.number}）客户请电话联系，已超过 2 个工作日。`]
+            .filter(Boolean)
+            .join(' '),
+          link: `/expert/tasks/${id}`,
+        },
+        tx,
+      );
+      await tx.insert(taskOperatorNotes).values({
+        taskId: id,
+        kind: 'remind_expert',
+        body: [task.assignedExpertName, said].filter(Boolean).join(' · '),
+        createdBy: user.id,
+      });
+    });
+    return this.notes(user, id);
   }
 
   private guard(user: SessionUser) {

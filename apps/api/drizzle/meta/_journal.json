@@ -127,6 +127,13 @@
       "when": 1793510569894,
       "tag": "0017_m3_assigned_at",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793515038825,
+      "tag": "0019_m3_operator_notes",
+      "breakpoints": true
     }
   ]
 }

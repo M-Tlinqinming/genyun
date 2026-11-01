@@ -3,6 +3,7 @@ import type {
   AssignExpertInput,
   BusinessType,
   InvitationState,
+  OperatorNote,
   OperatorTaskStage,
   OrgOpenDraft,
   OrgRegisterInput,
@@ -189,6 +190,13 @@ export interface OperatorTaskDetail extends OperatorTask {
   workupStartedAt: string | null;
 }
 
+// 超时兜底：客户请电话联系后 2 个工作日没联系上
+export interface OverdueTask extends OperatorTask {
+  request: { requestedAt: string; requestedBy: string; labels: string[]; deadline: string };
+  reason: string;
+  contacts: { method: 'request' | 'phone'; result: 'clarified' | 'later' | 'unreachable' | null; createdAt: string; createdByName: string }[];
+}
+
 export interface AssignableExpert {
   id: string;
   name: string;
@@ -202,7 +210,36 @@ export const operatorTaskKeys = {
   list: ['operator', 'tasks'] as const,
   detail: (id: string) => ['operator', 'tasks', id] as const,
   experts: (id: string) => ['operator', 'tasks', id, 'experts'] as const,
+  overdue: ['operator', 'tasks', 'overdue'] as const,
+  notes: (id: string) => ['operator', 'tasks', id, 'notes'] as const,
 };
+
+export function useOverdueTasks() {
+  return useQuery({ queryKey: operatorTaskKeys.overdue, queryFn: () => request<OverdueTask[]>('/operator/tasks/overdue') });
+}
+
+// 运营在任务上的记录（内部备注、提醒注安师、改派），客户和注安师看不到
+export function useOperatorNotes(taskId: string) {
+  return useQuery({ queryKey: operatorTaskKeys.notes(taskId), queryFn: () => request<OperatorNote[]>(`/operator/tasks/${taskId}/notes`) });
+}
+
+export function useAddOperatorNote(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) =>
+      request<OperatorNote[]>(`/operator/tasks/${taskId}/notes`, { method: 'POST', body: JSON.stringify({ body }) }),
+    onSuccess: (notes) => client.setQueryData(operatorTaskKeys.notes(taskId), notes),
+  });
+}
+
+export function useRemindExpert(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body?: string) =>
+      request<OperatorNote[]>(`/operator/tasks/${taskId}/remind`, { method: 'POST', body: JSON.stringify({ body }) }),
+    onSuccess: (notes) => client.setQueryData(operatorTaskKeys.notes(taskId), notes),
+  });
+}
 
 export function useOperatorTasks() {
   return useQuery({ queryKey: operatorTaskKeys.list, queryFn: () => request<OperatorTask[]>('/operator/tasks') });
@@ -233,6 +270,9 @@ export function useAssignExpert(taskId: string) {
       void client.invalidateQueries({ queryKey: operatorTaskKeys.list });
       void client.invalidateQueries({ queryKey: operatorTaskKeys.detail(taskId) });
       void client.invalidateQueries({ queryKey: operatorTaskKeys.experts(taskId) });
+      // 改派后期限重新算、改派记一条运营记录
+      void client.invalidateQueries({ queryKey: operatorTaskKeys.overdue });
+      void client.invalidateQueries({ queryKey: operatorTaskKeys.notes(taskId) });
       // 组织详情「企业与任务」里的阶段跟着变
       void client.invalidateQueries({ queryKey: ['operator', 'organizations'] });
     },

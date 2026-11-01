@@ -251,6 +251,26 @@ export const taskContacts = pgTable(
   (t) => [index('task_contacts_task').on(t.taskId, t.createdAt)],
 );
 
+// 运营在任务上的记录（16 页 I04 超时兜底）：内部备注、提醒注安师、改派。只在运营端显示，客户、注安师都看不到
+export const operatorNoteKind = pgEnum('operator_note_kind', ['note', 'remind_expert', 'reassign']);
+export const taskOperatorNotes = pgTable(
+  'task_operator_notes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    kind: operatorNoteKind('kind').notNull(),
+    // 备注正文；提醒注安师时是附带的话（可空）；改派时是「周工 → 吴工 · 理由」
+    body: text('body').notNull().default(''),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('task_operator_notes_task').on(t.taskId, t.createdAt)],
+);
+
 // 站内提醒（顶栏铃铛）：业务提醒只在站内，不发邮件、短信（2026-10-28 Martin 确认）
 export const notifications = pgTable(
   'notifications',

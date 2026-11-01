@@ -27,8 +27,29 @@ export const assignExpertSchema = z.object({
 });
 export type AssignExpertInput = z.input<typeof assignExpertSchema>;
 
-// 运营任务中心的页签：待分派 = 客户已提交、还没有负责专家、任务没结束
-export type OperatorTaskView = 'unassigned' | 'all';
+// 运营任务中心的页签：待分派 = 客户已提交、还没有负责专家、任务没结束；超时兜底 = 客户请电话联系后 2 个工作日没联系上
+export type OperatorTaskView = 'unassigned' | 'overdue' | 'all';
+
+// 超时兜底（16 页 I04）：运营在任务上的记录。客户、注安师都看不到
+export const OPERATOR_NOTE_KINDS = { note: '内部备注', remind_expert: '提醒注安师', reassign: '改派' } as const;
+export type OperatorNoteKind = keyof typeof OPERATOR_NOTE_KINDS;
+export const OPERATOR_NOTE_MAX = 500;
+
+export const operatorNoteSchema = z.object({
+  body: z.string().trim().min(1, '请写备注内容').max(OPERATOR_NOTE_MAX, `备注最多 ${OPERATOR_NOTE_MAX} 个字`),
+});
+// 提醒注安师：附带的话可以不写，写了放在提醒正文第一句
+export const remindExpertSchema = z.object({
+  body: z.string().trim().max(ASSIGNMENT_NOTE_MAX, `最多 ${ASSIGNMENT_NOTE_MAX} 个字`).optional(),
+});
+
+export interface OperatorNote {
+  id: string;
+  kind: OperatorNoteKind;
+  body: string;
+  createdAt: string;
+  createdByName: string;
+}
 
 export function needsAssignment(t: {
   status: 'preparing' | 'submitted';
