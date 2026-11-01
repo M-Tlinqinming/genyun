@@ -8,6 +8,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { generationKey } from './generation';
 import { request } from './request';
+import { reviewKey } from './review';
 import { taskKey } from './tasks';
 import { workupKey } from './workup';
 
@@ -34,6 +35,8 @@ function useExpertMutation<T>(taskId: string, fn: (input: T) => Promise<FactSupp
         // 采用后企业事实变了，确认采用资料页会按新事实标出变化
         void client.invalidateQueries({ queryKey: workupKey(taskId) });
         void client.invalidateQueries({ queryKey: generationKey(taskId) });
+        // 采用后原审核结论作废
+        void client.invalidateQueries({ queryKey: reviewKey(taskId) });
       }
     },
   });
@@ -61,10 +64,11 @@ export function useReturnSupplement(taskId: string) {
 }
 
 // 客户：只看到要确认什么和自己的回应
-export function useCustomerSupplements(taskId: string) {
+export function useCustomerSupplements(taskId: string, enabled = true) {
   return useQuery({
     queryKey: supplementRequestsKey(taskId),
     queryFn: () => request<CustomerSupplement[]>(`/tasks/${taskId}/supplement-requests`),
+    enabled,
   });
 }
 

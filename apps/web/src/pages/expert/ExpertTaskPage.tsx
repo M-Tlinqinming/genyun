@@ -51,7 +51,7 @@ import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
 import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
 import { ScopePanel, ScopePreviewPanel } from './workup/ScopePanel';
-import { currentSupplement, SupplementDialog, SupplementView } from './workup/SupplementView';
+import { currentSupplement, FactsChangedNotice, SupplementDialog, SupplementView } from './workup/SupplementView';
 
 const STAGES = ['资料核实', '专业编制', '审核与修订', '成果发布'];
 
@@ -379,7 +379,7 @@ export function ExpertTaskPage() {
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 500, lineHeight: '32px', color: gy.text }}>{task.data.enterpriseName}</h1>
             <span style={{ ...text14, color: gy.secondary }}>
               {task.data.number}
-              {view === 'supplement' && round ? `　·　第 ${round.round} 轮事实补件　·　处理专家：${round.createdByName}` : ''}
+              {view === 'supplement' && round ? `　·　第 ${round.round} 轮事实补件　·　负责注安师：${round.createdByName}` : ''}
             </span>
             <span style={{ flex: 1 }} />
             <span role="status" style={{ ...text14, padding: '2px 10px', borderRadius: 4, background: chip.bg, color: chip.color }}>
@@ -429,14 +429,17 @@ export function ExpertTaskPage() {
             onStarted={() => showView(null)}
           />
         ) : (
-          <GenerationView
-            taskId={taskId}
-            taskNumber={task.data.number}
-            generation={current!}
-            onBackToCenter={() => navigate('/expert')}
-            onBackToWorkup={() => showView('workup')}
-            onEdit={() => showView('edit')}
-          />
+          <>
+            <FactsChangedNotice taskId={taskId} onRegenerate={() => showView('confirm')} />
+            <GenerationView
+              taskId={taskId}
+              taskNumber={task.data.number}
+              generation={current!}
+              onBackToCenter={() => navigate('/expert')}
+              onBackToWorkup={() => showView('workup')}
+              onEdit={() => showView('edit')}
+            />
+          </>
         )}
         <ContactRecords taskId={taskId} open={showRecords} onClose={() => setShowRecords(false)} />
         {supplementDialog}

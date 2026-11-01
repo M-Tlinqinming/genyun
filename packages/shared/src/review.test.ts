@@ -36,6 +36,13 @@ describe('审核结论', () => {
     expect(reviewValid({ docs: all, review: null })).toBe(false);
   });
 
+  it('审核通过后又采用了事实补件：结论作废，要按新事实重新生成', () => {
+    const all = docs(check(0), check(0), check(0));
+    const review = { note: '通过', byName: '周工', at: '', versions: { plan: 0, risk: 0, resource: 0 } };
+    expect(reviewValid({ docs: all, review, factsChangedAt: null })).toBe(true);
+    expect(reviewValid({ docs: all, review, factsChangedAt: '2026-11-01T08:00:00.000Z' })).toBe(false);
+  });
+
   it('结论必填，三份修订次数都要带上', () => {
     expect(reviewRequestSchema.safeParse({ note: '  ', versions: { plan: 0, risk: 0, resource: 0 } }).success).toBe(false);
     expect(reviewRequestSchema.safeParse({ note: '通过', versions: { plan: 0, risk: 0 } }).success).toBe(false);

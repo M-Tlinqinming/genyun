@@ -4,7 +4,7 @@ import { App, Button, Checkbox, Input, Upload } from 'antd';
 import { useState, type CSSProperties } from 'react';
 import { openFile } from '../../../api/documents';
 import { uploadFile } from '../../../api/profile';
-import { ApiError } from '../../../api/request';
+import { ApiError, SERVER_TROUBLE } from '../../../api/request';
 import { useCustomerSupplements, useRespondSupplement } from '../../../api/supplements';
 import type { Task } from '../../../api/tasks';
 import { panel } from '../../../components/ui';
@@ -13,38 +13,49 @@ import { gy, stage } from '../../../theme/tokens';
 const h2: CSSProperties = { margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text };
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 
-// 客户回应事实补件（15 页 R00a）：专家请客户确认企业事实，客户提交文件或说明并勾选确认。
-// 提交后由专家核实、明确采用后才改本任务用的企业事实
+// 等客户回应的一轮（没有为 undefined）：任务页标题、状态条和页面上方的回应区都按它显示
+export function useOpenSupplement(taskId: string, enabled = true) {
+  const list = useCustomerSupplements(taskId, enabled);
+  return list.data?.find((s) => s.status === 'awaiting_customer');
+}
+
+// 客户回应事实补件（15 页 R00a）：注安师请客户确认企业事实，客户提交文件或说明并勾选确认。
+// 提交后由注安师核实、明确采用后才改本任务用的企业事实。等回应的一轮放在任务页上方（标题和状态条下面），
+// 不管在哪个页签，1366×768 下不用翻页就能看到
+export function OpenSupplementCard({ task }: { task: Task }) {
+  const open = useOpenSupplement(task.id);
+  if (!open) return null;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16 }}>
+      <OpenSupplement key={open.id} task={task} supplement={open} />
+    </div>
+  );
+}
+
+// 「处理记录」页签里：已提交的各轮补件
 export function SupplementCard({ task }: { task: Task }) {
   const list = useCustomerSupplements(task.id);
-  const rounds = list.data ?? [];
-  const open = rounds.find((s) => s.status === 'awaiting_customer');
-  const submitted = rounds.filter((s) => s.response);
-  if (!open && submitted.length === 0) return null;
+  const submitted = (list.data ?? []).filter((s) => s.response);
+  if (submitted.length === 0) return null;
   return (
-    <>
-      {open && <OpenSupplement key={open.id} task={task} supplement={open} />}
-      {submitted.length > 0 && (
-        <section aria-label="已提交的事实补件" style={{ ...panel, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <h2 style={h2}>已提交的事实补件</h2>
-          {submitted.map((s) => (
-            <div key={s.id} style={{ display: 'flex', gap: 12, ...text14 }}>
-              <CheckOutlined aria-hidden style={{ color: gy.success, fontSize: 12, marginTop: 5 }} />
-              <span style={{ flex: 1, minWidth: 0, color: gy.text }}>
-                第 {s.round} 轮 · {s.title}
-                <span style={{ color: gy.secondary }}>
-                  {'　'}
-                  {s.status === 'adopted' ? '耕云已核实' : s.status === 'returned' ? '耕云还需要您补充，请看新一轮' : '等待耕云核实'}
-                </span>
-                {s.files.map((f) => (
-                  <FileLink key={f.id} id={f.id} name={f.name} />
-                ))}
-              </span>
-            </div>
-          ))}
-        </section>
-      )}
-    </>
+    <section aria-label="已提交的事实补件" style={{ ...panel, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <h2 style={h2}>已提交的事实补件</h2>
+      {submitted.map((s) => (
+        <div key={s.id} style={{ display: 'flex', gap: 12, ...text14 }}>
+          <CheckOutlined aria-hidden style={{ color: gy.success, fontSize: 12, marginTop: 5 }} />
+          <span style={{ flex: 1, minWidth: 0, color: gy.text }}>
+            第 {s.round} 轮 · {s.title}
+            <span style={{ color: gy.secondary }}>
+              {'　'}
+              {s.status === 'adopted' ? '注安师已核实' : s.status === 'returned' ? '注安师还需要您补充，请看新一轮' : '等待注安师核实'}
+            </span>
+            {s.files.map((f) => (
+              <FileLink key={f.id} id={f.id} name={f.name} />
+            ))}
+          </span>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -76,7 +87,8 @@ function OpenSupplement({ task, supplement: s }: { task: Task; supplement: Custo
       setFiles((list) => [...list, { id, name: file.name }]);
       setError(null);
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '上传失败，请重试');
+      // 后台写好的说明（文件太大、格式不对，断网、服务出错时已换成带电话的话术）照用；其他错误一律用业务话术
+      message.error(err instanceof ApiError ? err.message : `${file.name}上传没有成功。${SERVER_TROUBLE}`);
     } finally {
       setUploading(false);
     }
@@ -99,7 +111,7 @@ function OpenSupplement({ task, supplement: s }: { task: Task; supplement: Custo
     <>
       <section
         aria-label="请确认企业事实"
-        style={{ display: 'flex', gap: 12, padding: '20px 24px', borderRadius: 8, background: gy.selected, border: `1px solid ${gy.primary}` }}
+        style={{ display: 'flex', gap: 12, padding: '16px 24px', borderRadius: 8, background: gy.selected, border: `1px solid ${gy.primary}` }}
       >
         <InfoCircleFilled aria-hidden style={{ color: gy.primary, fontSize: 20, marginTop: 2 }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

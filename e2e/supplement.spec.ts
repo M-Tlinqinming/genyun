@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // M2 第 13 项「发起事实补件」（15 页 R00a、R00b、R00c）：飞宇换了应急联系人，走完一整轮。
-// 专家发起 → 客户在任务页上传新名册并确认 → 专家收到提醒、写下本轮采用的值并明确采用 → 提示重新生成三份草稿。
-// 整轮走完、不留进行中的一轮，排在后面的用例不受影响
+// 注安师发起 → 客户在任务页上传新名册并确认 → 注安师收到提醒、写下本轮采用的值并明确采用 → 原审核结论作废，
+// 生成进度页、正文编辑页提示「事实已更新」→ 按新事实重新生成，提示消失。
+// 文件名排在 review-proofread.spec 之后：飞宇的三份草稿已生成。整轮走完、不留进行中的一轮，排在后面的用例不受影响
 async function login(page: Page, email: string, home: RegExp) {
   await page.goto('/login');
   await page.getByPlaceholder('请输入邮箱').fill(email);
@@ -13,8 +14,8 @@ async function login(page: Page, email: string, home: RegExp) {
 
 const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.7\n% ${name}\n`) });
 
-test('飞宇换了应急联系人：专家发起补件，客户回应，专家核实并采用后提示重新生成', async ({ page, browser }) => {
-  test.setTimeout(90_000);
+test('飞宇换了应急联系人：注安师发起补件，客户回应，注安师核实并采用后重新生成', async ({ page, browser }) => {
+  test.setTimeout(360_000);
   await login(page, 'expert@demo.genyun.net.cn', /\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
   await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
@@ -25,8 +26,11 @@ test('飞宇换了应急联系人：专家发起补件，客户回应，专家�
   const facts = dialog.getByRole('combobox', { name: '要核对的企业事实' });
   await facts.fill('联系电话');
   await page.keyboard.press('Enter');
+  // 选完一项下拉就收起，不挡住「发给客户」
+  await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
   await facts.fill('联系人');
   await page.keyboard.press('Enter');
+  await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
   await expect(dialog.getByRole('textbox', { name: '标题' })).toHaveValue('请确认联系电话、联系人');
   await dialog.getByRole('textbox', { name: '标题' }).fill('请确认应急联系人和电话');
   await dialog.getByRole('button', { name: '发给客户' }).click();
@@ -37,13 +41,18 @@ test('飞宇换了应急联系人：专家发起补件，客户回应，专家�
   await expect(page.getByRole('region', { name: '核对本轮事实变化' })).toContainText('等客户回应后填写');
 
   // 客户：提醒点进任务页，上传新名册、写说明、勾选确认后提交
-  const customer = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  // 1366×768：等回应的一轮放在页面上方，不用翻页就能看到
+  const customer = await browser.newPage({ viewport: { width: 1366, height: 768 } });
   await login(customer, 'feiyu@demo.genyun.net.cn', /\/customer/);
   await customer.getByRole('button', { name: /提醒，\d+ 条未读/ }).click();
   await customer.getByRole('button', { name: /周工请您确认企业事实/ }).first().click();
   await expect(customer.getByRole('region', { name: '请确认企业事实' })).toContainText('请确认应急联系人和电话');
   const card = customer.getByRole('region', { name: '本次需要您提供' });
   await expect(card).toContainText('需要确认：联系电话、联系人');
+  await expect(customer.getByText('等待您回应 · 第 1 轮')).toBeVisible();
+  await expect(customer.getByText(/请回应注安师的补充问题/)).toBeVisible();
+  await expect(customer.getByText('耕云整理资料')).toHaveCount(0);
+  await expect(card.getByRole('heading', { name: '本次需要您提供' })).toBeInViewport();
   await card.getByRole('button', { name: '提交本轮补充' }).click();
   await expect(card.getByRole('alert')).toHaveText('请上传文件或写补充说明');
   await card.locator('input[type=file]').setInputFiles(pdf('应急人员名册.pdf'));
@@ -56,7 +65,8 @@ test('飞宇换了应急联系人：专家发起补件，客户回应，专家�
   await customer.getByRole('region', { name: '请确认企业事实' }).scrollIntoViewIfNeeded();
   await customer.screenshot({ path: 'test-results/acceptance/m2-13-客户回应.png' });
   await card.getByRole('button', { name: '提交本轮补充' }).click();
-  await expect(customer.getByRole('region', { name: '已提交的事实补件' })).toContainText('等待耕云核实');
+  await expect(customer.getByRole('region', { name: '已提交的事实补件' })).toContainText('等待注安师核实');
+  await expect(customer.getByText('下一步：耕云整理资料并生成初稿')).toBeVisible();
   await customer.close();
 
   // 专家：收到提醒，点进来核实；不勾选确认不能采用
@@ -85,11 +95,36 @@ test('飞宇换了应急联系人：专家发起补件，客户回应，专家�
   await expect(status).toContainText('本次资料已更新，原文稿尚未更新');
   await expect(table).toContainText('王某');
   await expect(table).toContainText('新名册第 1 页');
+  await expect(page.getByText('继续原任务，无需客户再次申请')).toBeVisible();
   await page.screenshot({ path: 'test-results/acceptance/m2-13-等待重新生成.png', fullPage: true });
-  await page.getByRole('button', { name: '重新生成三份草稿' }).click();
-  await expect(page).toHaveURL(/view=confirm/);
 
   // 整理页里联系人已经是采用后的值
-  await page.goto(page.url().replace(/\?.*$/, '?view=workup'));
+  const base = page.url().replace(/\?.*$/, '');
+  await page.goto(`${base}?view=workup`);
   await expect(page.locator('[data-fact="contactPerson"]')).toContainText('王某');
+
+  // 暂不生成：生成进度页、正文编辑页都提示事实已更新；原审核结论作废
+  const changed = page.getByRole('region', { name: '事实已更新' });
+  await page.goto(base);
+  await expect(page.getByRole('heading', { name: '三份草稿已生成' })).toBeVisible();
+  await expect(changed).toContainText('事实已更新，草稿还没有重新生成');
+  await page.getByRole('button', { name: '进入正文编辑' }).click();
+  await expect(page.getByRole('textbox', { name: '本节正文' })).toBeVisible();
+  await expect(changed).toContainText('事实已更新，草稿还没有重新生成');
+  await expect(page.getByRole('status').filter({ hasText: '审核已通过' })).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/acceptance/m2-13-事实已更新.png' });
+
+  // 重新生成：进确认采用资料页，确认后按新事实生成，提示消失
+  await changed.getByRole('button', { name: '重新生成' }).click();
+  await expect(page).toHaveURL(/view=confirm/);
+  await page.getByRole('button', { name: '确认采用并生成三份草稿' }).click();
+  // 上一批有人工修订时先确认一次
+  const again = page.getByRole('button', { name: '确认重新生成' });
+  await expect(again.or(page.getByRole('list', { name: '三份草稿' }))).toBeVisible();
+  if (await again.isVisible()) await again.click();
+  await expect(page).not.toHaveURL(/view=/);
+  await expect(page.getByRole('heading', { name: '三份草稿已生成' })).toBeVisible({ timeout: 240_000 });
+  await expect(changed).toHaveCount(0);
+  await page.goto(`${base}?view=supplement`);
+  await expect(page.getByRole('region', { name: '本轮补件状态' })).toContainText('已按新事实重新生成');
 });

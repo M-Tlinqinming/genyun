@@ -14,6 +14,7 @@ import {
 } from '@genyun/shared';
 import { App, Button, Checkbox, Input, InputNumber, Modal, Result, Select, Switch } from 'antd';
 import { useState, type CSSProperties } from 'react';
+import { useSupplements } from '../../../api/supplements';
 import { openFile } from '../../../api/documents';
 import { ApiError } from '../../../api/request';
 import { useAdoptSupplement, useCreateSupplement, useReturnSupplement } from '../../../api/supplements';
@@ -130,7 +131,7 @@ function Round({
     : verifying
       ? {
           title: '补件待核实',
-          sub: '客户已回应，等待专家核实',
+          sub: '客户已回应，等待注安师核实',
           text: `${s.response!.byName}于 ${stamp(s.response!.at)} 提交${s.response!.note ? `：${s.response!.note}` : '。'}${s.response!.note && !/[。！？]$/.test(s.response!.note) ? '。' : ''}当前任务仍采用原资料。`,
           tag: '尚未采用',
           tone: stage.action,
@@ -341,12 +342,15 @@ function Round({
         )}
         {adopted && !s.regenerated && (
           <>
-            <Button size="large" onClick={onBack} title="继续原任务，无需客户再次申请">
+            <Button size="large" onClick={onBack}>
               暂不生成
             </Button>
-            <Button type="primary" size="large" onClick={onRegenerate}>
-              重新生成三份草稿
-            </Button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <Button type="primary" size="large" onClick={onRegenerate}>
+                重新生成三份草稿
+              </Button>
+              <span style={{ ...text13, color: gy.secondary }}>继续原任务，无需客户再次申请</span>
+            </div>
           </>
         )}
         {(s.status === 'returned' || (adopted && s.regenerated)) && (
@@ -492,6 +496,8 @@ function SupplementForm({
       keys.map((k) => choices.find((f) => f.key === k)).filter((f): f is Fact => !!f).map((f) => ({ label: f.label, kind: f.kind, before: f.value ?? null })),
     );
   const [keys, setKeys] = useState<string[]>(initialKeys);
+  // 选完一项就收起下拉，不挡住下面的「发给客户」
+  const [listOpen, setListOpen] = useState(false);
   const [title, setTitle] = useState(() => textFor(initialKeys).title);
   const [body, setBody] = useState(() => textFor(initialKeys).message);
   const [edited, setEdited] = useState(false);
@@ -502,6 +508,7 @@ function SupplementForm({
 
   const pick = (next: string[]) => {
     setKeys(next);
+    setListOpen(false);
     if (!edited) {
       const t = textFor(next);
       setTitle(t.title);
@@ -534,6 +541,9 @@ function SupplementForm({
           aria-label="要核对的企业事实"
           value={keys}
           onChange={pick}
+          open={listOpen}
+          onOpenChange={setListOpen}
+          listHeight={192}
           maxCount={10}
           optionFilterProp="label"
           options={choices.map((f) => ({ value: f.key, label: f.label }))}
@@ -591,5 +601,36 @@ function SupplementForm({
         </Button>
       </div>
     </div>
+  );
+}
+
+// 采用了事实补件、还没按新事实重新生成（生成进度页、正文编辑页、审核结论页顶部）：原审核结论已作废，提示重新生成。
+// 重新生成出新一批以后自然消失
+export function FactsChangedNotice({ taskId, onRegenerate }: { taskId: string; onRegenerate?: () => void }) {
+  const list = useSupplements(taskId);
+  if (!list.data?.some(supplementPendingRegeneration)) return null;
+  return (
+    <section
+      aria-label="事实已更新"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        padding: '12px 20px',
+        borderRadius: 8,
+        background: stage.action.bg,
+        border: `1px solid ${stage.action.color}`,
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ ...text14, fontWeight: 500, color: gy.text }}>事实已更新，草稿还没有重新生成</span>
+        <span style={{ ...text13, color: gy.secondary }}>已采用事实补件，原来的核对和审核结论不再作为发布依据。请按新事实重新生成三份草稿。</span>
+      </div>
+      {onRegenerate && (
+        <Button type="primary" onClick={onRegenerate}>
+          重新生成
+        </Button>
+      )}
+    </section>
   );
 }

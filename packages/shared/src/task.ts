@@ -111,7 +111,7 @@ export function taskTodo(t: TaskProgressFacts): TaskTodo {
     return { bucket: 'delivered', stage: 3, stageText: '成果交付', next: '成果已发布，可查看和下载', action: '查看成果' };
   }
   if (t.status === 'submitted' && t.supplement) {
-    return { bucket: 'mine', stage: 2, stageText: '专家审核 · 等待您回应', next: t.supplement, action: '去回应' };
+    return { bucket: 'mine', stage: 2, stageText: '注安师审核 · 等待您回应', next: t.supplement, action: '去回应' };
   }
   if (t.status === 'submitted') {
     return {

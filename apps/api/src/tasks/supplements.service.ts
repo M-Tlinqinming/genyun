@@ -23,6 +23,7 @@ import {
   Get,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -34,6 +35,7 @@ import { canEditOrganizationData } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
+import { isUniqueViolation } from '../db/errors.ts';
 import {
   enterpriseDocuments,
   enterpriseDocumentVersions,
@@ -52,9 +54,16 @@ import { WorkupService } from './workup.service.ts';
 const responder = alias(users, 'responder');
 const adopter = alias(users, 'adopter');
 const NOT_FOUND = '找不到这一轮事实补件';
+const ADOPTED = '这一轮已经采用过了';
+const WRITE_FAILED = '没能写入，请重试';
+const OPEN_ROUND = '上一轮补件还没有完成，请先处理那一轮';
+// 两个窗口同时发起：轮次唯一索引拦住后一个，按「已有一轮在进行」答复
+const ROUND_INDEX = 'fact_supplements_round';
 
 @Injectable()
 export class SupplementsService {
+  private readonly logger = new Logger('SupplementsService');
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(WorkupService) private readonly workup: WorkupService,
@@ -73,7 +82,7 @@ export class SupplementsService {
 
   async create(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.workup.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以发起事实补件');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责注安师可以发起事实补件');
     const parsed = supplementCreateSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const input = parsed.data;
@@ -89,22 +98,24 @@ export class SupplementsService {
       facts.push({ key: f.key, label: f.label, kind: f.kind, before: f.value ?? null });
     }
 
-    await this.db.transaction(async (tx) => {
-      const existing = await tx.select({ status: factSupplements.status }).from(factSupplements).where(eq(factSupplements.taskId, task.id));
-      if (existing.some(supplementOpen)) throw new ConflictException('上一轮补件还没有完成，请先处理那一轮');
-      const [top] = await tx.select({ n: max(factSupplements.round) }).from(factSupplements).where(eq(factSupplements.taskId, task.id));
-      await tx.insert(factSupplements).values({
-        taskId: task.id,
-        round: (top?.n ?? 0) + 1,
-        status: 'awaiting_customer',
-        title: input.title,
-        message: input.message,
-        itemKey: input.itemKey,
-        needsFile: input.needsFile,
-        facts,
-        createdBy: user.id,
-      });
-    });
+    await this.inRound(() =>
+      this.db.transaction(async (tx) => {
+        const existing = await tx.select({ status: factSupplements.status }).from(factSupplements).where(eq(factSupplements.taskId, task.id));
+        if (existing.some(supplementOpen)) throw new ConflictException(OPEN_ROUND);
+        const [top] = await tx.select({ n: max(factSupplements.round) }).from(factSupplements).where(eq(factSupplements.taskId, task.id));
+        await tx.insert(factSupplements).values({
+          taskId: task.id,
+          round: (top?.n ?? 0) + 1,
+          status: 'awaiting_customer',
+          title: input.title,
+          message: input.message,
+          itemKey: input.itemKey,
+          needsFile: input.needsFile,
+          facts,
+          createdBy: user.id,
+        });
+      }),
+    );
     await this.notifyCustomer(user, task, input.title);
     return this.rounds(task.id);
   }
@@ -112,10 +123,10 @@ export class SupplementsService {
   // R00b「确认事实并采用到本任务」：写下每项本轮采用的值，改专业整理里的企业事实（来源：客户确认 · 事实补件）
   async adopt(user: SessionUser, taskId: string, supplementId: string, body: unknown) {
     const task = await this.workup.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以采用补件');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责注安师可以采用补件');
     const row = await this.row(task.id, supplementId);
     if (row.status !== 'awaiting_expert') {
-      throw new ConflictException(row.status === 'adopted' ? '这一轮已经采用过了' : '客户还没有回应这一轮补件');
+      throw new ConflictException(row.status === 'adopted' ? ADOPTED : '客户还没有回应这一轮补件');
     }
     const parsed = supplementAdoptSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
@@ -127,51 +138,64 @@ export class SupplementsService {
       const a = parsed.data.facts.find((x) => x.key === f.key)!;
       return { ...f, after: a.value, ...(a.basis ? { basis: a.basis } : {}) };
     });
+    // 「这一轮改成已采用」和「写回企业事实」在同一个事务里：写回失败一起回滚，这一轮仍是待采用。
     // 先占住这一轮（两个窗口同时点只有一个成功），再改企业事实
-    const [claimed] = await this.db
-      .update(factSupplements)
-      .set({ status: 'adopted', facts, adoptedBy: user.id, adoptedAt: new Date() })
-      .where(and(eq(factSupplements.id, row.id), eq(factSupplements.status, 'awaiting_expert')))
-      .returning({ id: factSupplements.id });
-    if (!claimed) throw new ConflictException('这一轮已经采用过了');
-    await this.workup.applySupplement(
-      user,
-      task,
-      row.id,
-      facts.map((f) => ({ key: f.key, value: f.after! })),
-    );
-    await this.db.update(tasks).set({ updatedAt: new Date() }).where(eq(tasks.id, task.id));
+    try {
+      await this.db.transaction(async (tx) => {
+        const [claimed] = await tx
+          .update(factSupplements)
+          .set({ status: 'adopted', facts, adoptedBy: user.id, adoptedAt: new Date() })
+          .where(and(eq(factSupplements.id, row.id), eq(factSupplements.status, 'awaiting_expert')))
+          .returning({ id: factSupplements.id });
+        if (!claimed) throw new ConflictException(ADOPTED);
+        await this.workup.applySupplement(
+          user,
+          task,
+          row.id,
+          facts.map((f) => ({ key: f.key, value: f.after! })),
+          tx,
+        );
+        await tx.update(tasks).set({ updatedAt: new Date() }).where(eq(tasks.id, task.id));
+      });
+    } catch (err) {
+      if (err instanceof ConflictException && err.message === ADOPTED) throw err;
+      this.logger.warn(`事实补件写回企业事实失败：${err instanceof Error ? err.message : String(err)}`);
+      // 409：页面直接显示这句（5xx 页面会换成通用的「服务出了问题」）
+      throw new ConflictException({ statusCode: 409, message: WRITE_FAILED, reason: 'write_failed' });
+    }
     return this.rounds(task.id);
   }
 
   // R00b「仍需客户补充」：这一轮标为 returned，另起下一轮（同样的事实与资料项，专家写新的说明）
   async returnToCustomer(user: SessionUser, taskId: string, supplementId: string, body: unknown) {
     const task = await this.workup.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以发起事实补件');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责注安师可以发起事实补件');
     const row = await this.row(task.id, supplementId);
     if (row.status !== 'awaiting_expert') throw new ConflictException('只有客户已回应、还没采用的一轮可以请客户再补充');
     const parsed = supplementReturnSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
 
-    await this.db.transaction(async (tx) => {
-      const [done] = await tx
-        .update(factSupplements)
-        .set({ status: 'returned' })
-        .where(and(eq(factSupplements.id, row.id), eq(factSupplements.status, 'awaiting_expert')))
-        .returning({ id: factSupplements.id });
-      if (!done) throw new ConflictException('这一轮刚被处理过，请刷新后再看');
-      await tx.insert(factSupplements).values({
-        taskId: task.id,
-        round: row.round + 1,
-        status: 'awaiting_customer',
-        title: row.title,
-        message: parsed.data.message,
-        itemKey: row.itemKey,
-        needsFile: row.needsFile,
-        facts: row.facts.map(({ key, label, kind, before }) => ({ key, label, kind, before })),
-        createdBy: user.id,
-      });
-    });
+    await this.inRound(() =>
+      this.db.transaction(async (tx) => {
+        const [done] = await tx
+          .update(factSupplements)
+          .set({ status: 'returned' })
+          .where(and(eq(factSupplements.id, row.id), eq(factSupplements.status, 'awaiting_expert')))
+          .returning({ id: factSupplements.id });
+        if (!done) throw new ConflictException('这一轮刚被处理过，请刷新后再看');
+        await tx.insert(factSupplements).values({
+          taskId: task.id,
+          round: row.round + 1,
+          status: 'awaiting_customer',
+          title: row.title,
+          message: parsed.data.message,
+          itemKey: row.itemKey,
+          needsFile: row.needsFile,
+          facts: row.facts.map(({ key, label, kind, before }) => ({ key, label, kind, before })),
+          createdBy: user.id,
+        });
+      }),
+    );
     await this.notifyCustomer(user, task, row.title);
     return this.rounds(task.id);
   }
@@ -237,6 +261,15 @@ export class SupplementsService {
   }
 
   // ---- 内部 ----
+
+  private async inRound(run: () => Promise<unknown>) {
+    try {
+      await run();
+    } catch (err) {
+      if (isUniqueViolation(err, ROUND_INDEX)) throw new ConflictException(OPEN_ROUND);
+      throw err;
+    }
+  }
 
   private async row(taskId: string, id: string) {
     const [row] = await this.db
