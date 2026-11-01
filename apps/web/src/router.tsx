@@ -7,6 +7,9 @@ import { InvitePage } from './pages/InvitePage';
 import { LoginPage } from './pages/LoginPage';
 import { RecoverPage } from './pages/RecoverPage';
 import { PendingPage } from './pages/PendingPage';
+import { DeliveryPage } from './pages/customer/documents/DeliveryPage';
+import { DeliveryReaderPage } from './pages/customer/documents/DeliveryReaderPage';
+import { DocumentsPage } from './pages/customer/documents/DocumentsPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
 import { EnterpriseDetailPage } from './pages/customer/EnterpriseDetailPage';
 import { EnterpriseListPage } from './pages/customer/EnterpriseListPage';
@@ -65,6 +68,12 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
+  ],
+  // 成果文档：列表 → 某任务的交付详情（?v= 版本）→ 在线阅读
+  '/customer/documents': [
+    { index: true, element: <DocumentsPage /> },
+    { path: ':taskId', element: <DeliveryPage /> },
+    { path: ':taskId/read/:kind', element: <DeliveryReaderPage /> },
   ],
 };
 

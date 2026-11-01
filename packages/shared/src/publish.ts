@@ -76,3 +76,42 @@ export const deliveryLabel = (version: number) => `交付 V${version}`;
 
 /** 发布中断（服务重启等）多久以后按失败处理、可以重新发布 */
 export const PUBLISH_STALE_MS = 5 * 60_000;
+
+// ---- 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05、R06） ----
+
+/** 每份成果给客户看的一句话说明 */
+export const DELIVERY_DOC_SUMMARY: Record<DraftKind, string> = {
+  plan: '综合预案、专项预案、现场处置方案与附件',
+  risk: '企业风险辨识、分析与评估',
+  resource: '企业应急人员、物资与资源情况',
+};
+
+export interface DeliveredFile {
+  kind: DraftKind;
+  /** 文件名（例：惠阳飞宇电器有限公司应急预案.docx） */
+  name: string;
+  fileId: string;
+  sizeBytes: number;
+  /** 有没有可以在线阅读的版式（PDF）；没有时只能下载 Word */
+  readable: boolean;
+}
+
+export interface DeliveredVersion {
+  version: number;
+  publishedAt: string;
+  /** 三份 Word，按应急预案、风险评估报告、应急资源调查报告排 */
+  files: DeliveredFile[];
+}
+
+/** 一个任务的成果：已形成的交付版本，新的在前 */
+export interface TaskDeliveries {
+  taskId: string;
+  taskNumber: string;
+  taskName: string;
+  enterpriseId: string;
+  enterpriseName: string;
+  versions: DeliveredVersion[];
+}
+
+/** 整套下载的压缩包名（例：惠阳飞宇电器有限公司编制成果（交付 V1）.zip） */
+export const deliveryBundleName = (enterpriseName: string, version: number) => `${enterpriseName}编制成果（${deliveryLabel(version)}）.zip`;

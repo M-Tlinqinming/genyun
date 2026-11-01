@@ -221,8 +221,8 @@ export class PublishService {
         {
           taskId: task.id,
           title: `${task.enterpriseName}的成果已交付`,
-          body: `应急预案、风险评估报告、应急资源调查报告已发布（${deliveryLabel(row.version)}），可在任务里查看。`,
-          link: `/customer/tasks/${task.id}`,
+          body: `应急预案、风险评估报告、应急资源调查报告已发布（${deliveryLabel(row.version)}），可在成果文档里查看和下载。`,
+          link: `/customer/documents/${task.id}`,
         },
         tx,
       );

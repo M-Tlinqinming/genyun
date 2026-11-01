@@ -80,6 +80,12 @@ export function canManageOrganizations(user: SessionUser): boolean {
   return isOperator(user);
 }
 
+// 已交付的成果（交付版本列表、在线阅读、下载整套）：本组织客户、运营管理员，以及负责这个任务的注安师。
+// 别家客户、其他注安师一律当作不存在。规则与单个任务相同，单独写一个函数，以后成员只看分配给自己的企业时只改这里
+export function canViewDeliveries(user: SessionUser, task: { orgId: string; assignedExpertId: string | null }): boolean {
+  return canViewTask(user, task);
+}
+
 // 发布成果（形成交付版本）：只有负责这个任务的注安师。运营、其他注安师、客户一律不行
 export function canPublishTask(user: SessionUser, task: { assignedExpertId: string | null }): boolean {
   return task.assignedExpertId === user.id && isExpert(user);

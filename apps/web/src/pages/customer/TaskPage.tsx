@@ -9,6 +9,7 @@ import { SubmittedMaterials, SubmittedRecords, SubmittedStatusBar } from './subm
 import { OpenSupplementCard, useOpenSupplement } from './submit/SupplementCard';
 import { TaskDocumentsSection } from './TaskDocumentsSection';
 import { Loading } from '../../components/ui';
+import { TaskVersions } from './documents/TaskVersions';
 
 const STAGES = ['资料准备', '耕云编制', '专家审核', '成果交付'];
 
@@ -97,7 +98,7 @@ export function TaskPage() {
               <Empty description="提交后，耕云的处理记录会显示在这里" />
             ),
           },
-          { key: 'versions', label: '成果版本', children: <Empty description="审核完成后，成果文档会显示在这里" /> },
+          { key: 'versions', label: '成果版本', children: <TaskVersions taskId={t.id} /> },
         ]}
       />
     </>
