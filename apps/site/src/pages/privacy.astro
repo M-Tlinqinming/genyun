@@ -14,9 +14,10 @@ const toc = [
   { id: 'contact-us', label: '6　联系我们' },
 ];
 // 只写系统现在真能做到的（代码审查 #59）；操作记录等 M4 第 5 项做好再加
+// 可以带 <span class="nobr">：句末几个字不拆行，避免最后一行只剩「查看。」（768 宽）
 const summary = [
   '您提供的企业资料，只用于为您生成安全文件。',
-  '文件私有存储，本组织成员、负责该任务的注安师，以及耕云运营人员按职责查看。',
+  '文件私有存储，本组织成员、负责该任务的注安师，以及耕云运营人员<span class="nobr">按职责查看。</span>',
   '如需导出或删除资料，请联系我们。',
 ];
 ---
@@ -33,8 +34,8 @@ const summary = [
       {
         summary.map((t, i) => (
           <li>
-            <span>{String(i + 1).padStart(2, '0')}</span>
-            {t}
+            <span class="privacy-summary__no">{String(i + 1).padStart(2, '0')}</span>
+            <span set:html={t} />
           </li>
         ))
       }
@@ -92,7 +93,7 @@ const summary = [
     color: var(--site-heading);
   }
   /* Paper 用 #23A6AD，白底 16px 只有 2.95:1，压深到 #178086（4.70:1），见 DESIGN-DIFF */
-  .privacy-summary__list span {
+  .privacy-summary__no {
     flex-shrink: 0;
     font-family: var(--font-mono);
     color: #178086;

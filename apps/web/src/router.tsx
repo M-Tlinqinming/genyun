@@ -2,8 +2,10 @@ import type { Workspace } from '@genyun/shared';
 import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
 import { NAVIGATION } from './layouts/navigation';
 import { WorkspaceLayout } from './layouts/WorkspaceLayout';
+import { AccountPage, AccountLayout } from './pages/AccountPage';
 import { InvitePage } from './pages/InvitePage';
 import { LoginPage } from './pages/LoginPage';
+import { RecoverPage } from './pages/RecoverPage';
 import { PendingPage } from './pages/PendingPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
 import { EnterpriseDetailPage } from './pages/customer/EnterpriseDetailPage';
@@ -17,7 +19,9 @@ import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
+import { MailOutboxPage } from './pages/operator/MailOutboxPage';
 import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
+import { OperatorTaskCenterPage } from './pages/operator/OperatorTaskCenterPage';
 import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
@@ -49,11 +53,13 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { index: true, element: <OrganizationListPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },
   ],
-  // 运营任务中心的列表在 M3 做；任务正文先能从网址只读查看
+  // 任务中心（列表、分派，?task= 打开某个任务）；任务正文只读查看在 /operator/tasks/<任务>
   '/operator/tasks': [
-    { index: true, element: <PendingPage eyebrow={EYEBROW.operator} title="任务中心" /> },
+    { index: true, element: <OperatorTaskCenterPage /> },
     { path: ':taskId', element: <OperatorTaskPage /> },
   ],
+  // 模拟发件箱只在预览环境有用，平时不在菜单里（navigation.tsx 的 onlyWhenActive）
+  '/operator/mail-outbox': [{ index: true, element: <MailOutboxPage /> }],
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
@@ -85,6 +91,9 @@ function workspaceRoutes(workspace: Workspace): RouteObject {
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/recover', element: <RecoverPage /> },
+  // 个人账户不属于某个工作区，套用登录人第一个身份所在工作区的框架（顶层路由要和 deploy/preview/Caddyfile 对上）
+  { path: '/account', element: <AccountLayout />, children: [{ index: true, element: <AccountPage /> }] },
   // 邮件里的邀请链接，不用登录
   { path: '/invite/:token', element: <InvitePage /> },
   // 选择开始方式是全屏页，不在工作区框架里

@@ -252,7 +252,7 @@ export function ConclusionView({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ flex: 1, ...text14, color: gy.secondary }}>
-          {passed ? `审核人：${r.review!.byName}` : r.editable ? `审核人：${session.data?.name ?? ''}` : '只有负责这个任务的专家可以确认审核结论'}
+          {passed ? `审核人：${r.review!.byName}` : r.editable ? `审核人：${session.data?.name ?? ''}` : '只有负责这个任务的注安师可以确认审核结论'}
         </span>
         <Button onClick={() => onOpen(pending[0]?.kind ?? 'plan')}>返回检查文稿</Button>
         {passed ? (

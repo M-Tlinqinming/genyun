@@ -86,7 +86,7 @@ const { title, description, pill, toc } = Astro.props;
       mark(pinned);
     });
   }
-  // 用户自己滚动（滚轮、触摸、键盘）才取消「点哪项标哪项」；点击后的平滑滚动不算
+  // 用户自己滚动（滚轮、触摸、键盘、拖滚动条）才取消「点哪项标哪项」；点击后的平滑滚动不算
   const unpin = () => {
     if (pinned) {
       pinned = null;
@@ -98,16 +98,32 @@ const { title, description, pill, toc } = Astro.props;
   window.addEventListener('keydown', (e) => {
     if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) unpin();
   });
-  window.addEventListener('scroll', schedule, { passive: true });
+  // 按在页面滚动条上（视口内、页面内容宽度以外）
+  window.addEventListener('pointerdown', (e) => {
+    if (e.clientX >= document.documentElement.clientWidth) unpin();
+  });
+  // 点击后的平滑滚动停下：解锁但保留被点的那一项，下次滚动再按位置算
+  window.addEventListener('scrollend', () => {
+    pinned = null;
+  });
+  window.addEventListener('scroll', () => {
+    if (!pinned) schedule();
+  }, { passive: true });
   window.addEventListener('resize', schedule);
 
-  const fromHash = decodeURIComponent(location.hash.slice(1));
-  if (sections.some((s) => s.id === fromHash)) {
-    pinned = fromHash;
-    mark(fromHash);
-  } else {
-    update();
-  }
+  // 地址里的锚点（打开时带的、浏览器后退 / 前进）决定高亮
+  const fromHash = () => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (sections.some((s) => s.id === id)) {
+      pinned = id;
+      mark(id);
+    } else {
+      pinned = null;
+      update();
+    }
+  };
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
 </script>
 
 <style>

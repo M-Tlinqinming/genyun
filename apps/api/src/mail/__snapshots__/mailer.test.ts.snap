@@ -1,0 +1,92 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`邮件模板 > invitation：纯文本和 HTML 两版 > html 1`] = `
+"<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>耕云运营邀请您加入「示例安全咨询机构」</title></head>
+<body style="margin:0;padding:24px 12px;background:#F5F6F8;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#FFFFFF;border:1px solid #E8EAEE;border-radius:8px">
+<tr><td style="padding:20px 32px;border-bottom:3px solid #245BDB"><span style="font-size:20px;font-weight:600;letter-spacing:4px;color:#245BDB">耕云</span><span style="margin-left:12px;font-size:13px;color:#596170">生产安全事故应急预案编制</span></td></tr>
+<tr><td style="padding:28px 32px 12px">
+<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#18243B">林管理员，您好：</p>
+<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#18243B">耕云运营邀请您以机构管理员身份加入耕云工作空间「示例安全咨询机构」。点下面的按钮设置登录密码，之后就可以开始使用。</p>
+<p style="margin:8px 0 16px"><a href="https://preview.example.cn/invite/abc?x=1&amp;y=2" style="display:inline-block;padding:10px 24px;background:#245BDB;color:#FFFFFF;border-radius:6px;font-size:15px;text-decoration:none">接受邀请</a></p><p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">按钮打不开时，复制下面的地址到浏览器：<br><a href="https://preview.example.cn/invite/abc?x=1&amp;y=2" style="color:#245BDB;word-break:break-all">https://preview.example.cn/invite/abc?x=1&amp;y=2</a></p>
+<p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">链接有效期至 2026 年 11 月 8 日 09:30（北京时间），只能使用一次。</p>
+<p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">不认识这个机构？忽略这封邮件即可，链接过期后会自动失效。</p>
+</td></tr>
+<tr><td style="padding:16px 32px 24px;border-top:1px solid #E8EAEE;font-size:13px;color:#596170">耕云 · 0752-5200831</td></tr>
+</table>
+</body></html>"
+`;
+
+exports[`邮件模板 > invitation：纯文本和 HTML 两版 > text 1`] = `
+"林管理员，您好：
+
+耕云运营邀请您以机构管理员身份加入耕云工作空间「示例安全咨询机构」。点下面的按钮设置登录密码，之后就可以开始使用。
+
+接受邀请：
+https://preview.example.cn/invite/abc?x=1&y=2
+
+链接有效期至 2026 年 11 月 8 日 09:30（北京时间），只能使用一次。
+
+不认识这个机构？忽略这封邮件即可，链接过期后会自动失效。
+
+——
+耕云 · 0752-5200831"
+`;
+
+exports[`邮件模板 > passwordReset：纯文本和 HTML 两版 > html 1`] = `
+"<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>您的耕云登录密码已重设</title></head>
+<body style="margin:0;padding:24px 12px;background:#F5F6F8;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#FFFFFF;border:1px solid #E8EAEE;border-radius:8px">
+<tr><td style="padding:20px 32px;border-bottom:3px solid #245BDB"><span style="font-size:20px;font-weight:600;letter-spacing:4px;color:#245BDB">耕云</span><span style="margin-left:12px;font-size:13px;color:#596170">生产安全事故应急预案编制</span></td></tr>
+<tr><td style="padding:28px 32px 12px">
+<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#18243B">林管理员，您好：</p>
+<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#18243B">您的耕云登录密码已于 2026 年 11 月 1 日 09:30（北京时间）重设，其他设备上的登录都已退出。</p>
+<p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">如果不是您本人操作，请立即致电耕云 0752-5200831。</p>
+</td></tr>
+<tr><td style="padding:16px 32px 24px;border-top:1px solid #E8EAEE;font-size:13px;color:#596170">耕云 · 0752-5200831</td></tr>
+</table>
+</body></html>"
+`;
+
+exports[`邮件模板 > passwordReset：纯文本和 HTML 两版 > text 1`] = `
+"林管理员，您好：
+
+您的耕云登录密码已于 2026 年 11 月 1 日 09:30（北京时间）重设，其他设备上的登录都已退出。
+
+如果不是您本人操作，请立即致电耕云 0752-5200831。
+
+——
+耕云 · 0752-5200831"
+`;
+
+exports[`邮件模板 > recoveryCode：纯文本和 HTML 两版 > html 1`] = `
+"<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>重设耕云登录密码的验证码</title></head>
+<body style="margin:0;padding:24px 12px;background:#F5F6F8;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#FFFFFF;border:1px solid #E8EAEE;border-radius:8px">
+<tr><td style="padding:20px 32px;border-bottom:3px solid #245BDB"><span style="font-size:20px;font-weight:600;letter-spacing:4px;color:#245BDB">耕云</span><span style="margin-left:12px;font-size:13px;color:#596170">生产安全事故应急预案编制</span></td></tr>
+<tr><td style="padding:28px 32px 12px">
+<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#18243B">林管理员，您好：</p>
+<p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#18243B">您正在重设耕云的登录密码。请在重设密码页面输入下面的验证码：</p>
+<p style="margin:8px 0 16px;font-size:30px;line-height:40px;letter-spacing:8px;font-weight:600;color:#18243B">482913</p>
+<p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">验证码 10 分钟内有效，只能使用一次。如果不是您本人操作，请忽略这封邮件，您的密码不会改变。</p>
+</td></tr>
+<tr><td style="padding:16px 32px 24px;border-top:1px solid #E8EAEE;font-size:13px;color:#596170">耕云 · 0752-5200831</td></tr>
+</table>
+</body></html>"
+`;
+
+exports[`邮件模板 > recoveryCode：纯文本和 HTML 两版 > text 1`] = `
+"林管理员，您好：
+
+您正在重设耕云的登录密码。请在重设密码页面输入下面的验证码：
+
+验证码：482913
+
+验证码 10 分钟内有效，只能使用一次。如果不是您本人操作，请忽略这封邮件，您的密码不会改变。
+
+——
+耕云 · 0752-5200831"
+`;

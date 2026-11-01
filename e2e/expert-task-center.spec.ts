@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// 演示数据：飞宇任务分派给周工（expert@），另一家分派给吴工（expert2@）
+// 演示数据：飞宇任务分派给周工（expert@），另一家（五金）待运营分派；分派、改派后的越权见 operator-task-center.spec
 async function login(page: Page, email: string) {
   await page.goto('/login');
   await page.getByPlaceholder('请输入邮箱').fill(email);
@@ -47,17 +47,16 @@ test('搜索和阶段筛选', async ({ page }) => {
   await expect(page.getByText('没有符合条件的任务')).toBeVisible();
 });
 
-test('越权：周工打不开分派给吴工的任务', async ({ page, browser }) => {
-  // 先用吴工的账号拿到他的任务链接
-  const other = await browser.newPage();
-  await login(other, 'expert2@demo.genyun.net.cn');
-  await other.getByRole('row', { name: /示例五金制品有限公司/ }).click();
-  await expect(other).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+$/);
-  const href = new URL(other.url()).pathname;
-  await other.close();
+test('越权：周工打不开没分派给他的任务', async ({ page }) => {
+  // 五金的任务还在待分派（M3 第 3 项起由运营分派）；用运营账号拿到它的编号
+  const res = await page.request.post('/api/auth/login', { data: { email: 'ops@demo.genyun.net.cn', password: 'e2e-password' } });
+  expect(res.ok()).toBe(true);
+  const tasks = (await (await page.request.get('/api/operator/tasks')).json()) as { id: string; enterpriseName: string }[];
+  const hardware = tasks.find((t) => t.enterpriseName === '示例五金制品有限公司')!;
+  await page.request.post('/api/auth/logout');
 
   await login(page, 'expert@demo.genyun.net.cn');
-  await page.goto(href);
+  await page.goto(`/expert/tasks/${hardware.id}`);
   await expect(page.getByText('找不到该任务')).toBeVisible();
   await expect(page.getByText('示例五金制品有限公司')).toHaveCount(0);
 });

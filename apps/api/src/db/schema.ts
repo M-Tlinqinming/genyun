@@ -69,8 +69,29 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
   passwordHash: text('password_hash').notNull(),
+  // 本人最近一次改密码或重设密码的时间；邀请、运营建号时为空
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// A03 账号恢复验证码：只存哈希（argon2），10 分钟有效，错 5 次或用过一次即作废。
+// 同一账号重新发送时，旧的未用验证码一并作废。
+export const passwordRecoveryCodes = pgTable(
+  'password_recovery_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    // 用过、错满次数或被新验证码替换时填上
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('password_recovery_codes_user').on(t.userId)],
+);
 
 export const memberships = pgTable(
   'memberships',
@@ -147,8 +168,10 @@ export const tasks = pgTable(
     // 还没选开始方式时为空
     startMethod: startMethod('start_method'),
     status: taskStatus('status').notNull().default('preparing'),
-    // 负责专家，运营分派前为空
+    // 负责注安师，运营分派前为空
     assignedExpertId: uuid('assigned_expert_id').references(() => users.id),
+    // 现在这位负责注安师接手的时间；改派后「客户请电话联系」的期限从这里重新算
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),

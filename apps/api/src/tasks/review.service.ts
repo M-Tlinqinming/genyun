@@ -43,10 +43,10 @@ import { PDF_CONVERTER, type PdfConverter } from '../generation/word/preview-pdf
 import { EditingService } from './editing.service.ts';
 
 const NOT_FOUND = '找不到该任务';
-const ONLY_EXPERT = '只有负责这个任务的专家可以核对和确认审核结论';
+const ONLY_EXPERT = '只有负责这个任务的注安师可以核对和确认审核结论';
 const STALE_CHECK = '这份刚保存了新的修订，请看最新稿后再核对';
 const STALE_REVIEW = '有文稿在核对后又保存了修订，请重新核对后再确认审核结论';
-const CONVERT_FAILED = '转换没有成功，请重试；也可以先下载 Word 核对';
+const CONVERT_FAILED = '转换没有成功，请重试';
 // 转换中途服务重启，记录会一直停在「正在转」：超过这么久按失败处理，可以重试
 const CONVERT_STALE_MS = 5 * 60_000;
 

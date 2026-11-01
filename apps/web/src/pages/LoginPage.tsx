@@ -16,6 +16,9 @@ export function LoginPage() {
   const session = useSession();
   const login = useLogin();
   const navigate = useNavigate();
+  const [form] = Form.useForm<LoginInput>();
+  // 已经填好的邮箱带到「忘记密码」页，不用再输一遍
+  const typedEmail = Form.useWatch('email', form);
 
   if (session.data) return <Navigate to={homeOf(session.data)} replace />;
 
@@ -34,6 +37,8 @@ export function LoginPage() {
         </Typography.Text>
 
         <Form<LoginInput>
+          form={form}
+          className="gy-form-gap"
           layout="vertical"
           requiredMark={false}
           onFinish={onFinish}
@@ -56,7 +61,7 @@ export function LoginPage() {
             <Input.Password size="large" prefix={<LockOutlined />} placeholder="请输入密码" autoComplete="current-password" />
           </Form.Item>
           <div style={{ textAlign: 'right', marginBottom: 26 }}>
-            <Link to="/recover" style={{ fontSize: 14 }}>
+            <Link to="/recover" state={{ email: typedEmail?.trim() || undefined }} style={{ fontSize: 14 }}>
               忘记密码
             </Link>
           </div>
