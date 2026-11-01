@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { reviewValid } from '@genyun/shared';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -10,6 +12,7 @@ import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import {
+  deliveries,
   draftChecks,
   draftReviews,
   enterprises,
@@ -350,16 +353,34 @@ describe('事实补件', () => {
       .post(`/api/tasks/${taskId}/supplement-requests/${round.id}/response`)
       .send({ note: '联系人还是王建国', confirmed: true })
       .expect(201);
-    const adopted = await zhou
-      .post(`/api/tasks/${taskId}/supplements/${round.id}/adopt`)
-      .send({
-        facts: [
-          { key: 'contactPerson', value: '王建国' },
-          { key: 'contactPhone', value: '13900002072' },
-        ],
-        confirmed: true,
+    const adoption = {
+      facts: [
+        { key: 'contactPerson', value: '王建国' },
+        { key: 'contactPhone', value: '13900002072' },
+      ],
+      confirmed: true,
+    };
+    // 这个任务正在发布：不能采用（采用会让正在发布的审核结论作废），这一轮仍待采用
+    const [publishing] = await db
+      .insert(deliveries)
+      .values({
+        publishId: randomUUID(),
+        taskId,
+        batchId,
+        version: 1,
+        status: 'publishing',
+        reviewedBy: expertId,
+        reviewedAt: new Date(),
+        versions: { plan: 0, risk: 0, resource: 0 },
+        publishedBy: expertId,
       })
-      .expect(201);
+      .returning();
+    const blocked = await zhou.post(`/api/tasks/${taskId}/supplements/${round.id}/adopt`).send(adoption).expect(409);
+    expect(blocked.body).toMatchObject({ reason: 'publishing', message: '这个任务正在发布三份 Word，请等发布完成后再采用补件' });
+    expect((await zhou.get(`/api/tasks/${taskId}/supplements`).expect(200)).body[0]).toMatchObject({ id: round.id, status: 'awaiting_expert' });
+    await db.delete(deliveries).where(eq(deliveries.id, publishing!.id));
+
+    const adopted = await zhou.post(`/api/tasks/${taskId}/supplements/${round.id}/adopt`).send(adoption).expect(201);
     expect(adopted.body[0]).toMatchObject({ status: 'adopted', regenerated: false });
 
     const stale = await zhou.get(`/api/tasks/${taskId}/draft-review`).expect(200);

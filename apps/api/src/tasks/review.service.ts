@@ -137,10 +137,11 @@ export class ReviewService {
     if (!canEditTaskWork(user, ctx.task)) throw new ForbiddenException(ONLY_EXPERT);
     const parsed = reviewRequestSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请填写审核结论');
+    // 已发布（或正在发布）的这批文稿不再确认结论，重复点击也一样答复
+    throwIfLocked(await batchLock(this.db, ctx.batch.id));
     const before = await this.build(user, ctx);
     // 已经有效通过（重复点击、两个窗口都点了）：原样返回，不改审核时间和审核人
     if (reviewValid(before)) return before;
-    throwIfLocked(await batchLock(this.db, ctx.batch.id));
     // 这批草稿生成以后采用过事实补件：草稿用的还是旧事实，不能确认结论
     if (before.factsChangedAt) {
       throw new ConflictException({ statusCode: 409, message: FACTS_CHANGED, reason: 'facts_changed', view: before });

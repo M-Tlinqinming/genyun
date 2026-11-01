@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { deliveries, enterprises, files, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
+import { deliveries, deliveryFiles, enterprises, files, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
@@ -26,8 +26,11 @@ const queue = new InProcessQueue();
 const stored = new Map<string, Buffer>();
 // failPuts > 0：接下来这么多次存文件失败（模拟发布时存储出错）
 let failPuts = 0;
+// hold：存文件停在这里，直到放行（让一次发布停在「正在发布」）
+let hold: Promise<void> | null = null;
 const storage: FileStorage = {
   async put(key, data) {
+    if (hold) await hold;
     if (failPuts > 0) {
       failPuts--;
       throw new Error('storage unavailable');
@@ -247,8 +250,30 @@ describe('发布', () => {
     const unknown: PublishView = (await zhou.get(`${publishUrl()}?publishId=${randomUUID()}`).expect(200)).body;
     expect(unknown.attempt).toBeNull();
 
+    // 两次不同的发布同时进来：先到的停在「正在发布」，后到的撞上「同一任务只有一次在发布」，答复 409 而不是出错
     const publishId = randomUUID();
-    const done: PublishView = (await zhou.post(publishUrl()).send(body(publishId)).expect(201)).body;
+    let release!: () => void;
+    hold = new Promise<void>((r) => (release = r));
+    const first = zhou.post(publishUrl()).send(body(publishId)).then((r) => r);
+    for (let i = 0; i < 100; i++) {
+      if ((await handle.db.select().from(deliveries).where(eq(deliveries.status, 'publishing'))).length > 0) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    const second = await zhou.post(publishUrl()).send(body());
+    expect(second.status).toBe(409);
+    expect(second.body.reason).toBe('publishing');
+    expect(second.body.message).toContain('正在发布');
+    // 正在发布时也不能改正文
+    const sectionNow = (await zhou.get(url('plan', '/sections/ch1.1')).expect(200)).body;
+    await zhou
+      .put(url('plan', '/sections/ch1.1'))
+      .send({ saveId: randomUUID(), batchId, baseRev: sectionNow.rev, blocks: [{ type: 'paragraph', text: ['发布中再改。'] }], note: '更正' })
+      .expect(409);
+    hold = null;
+    release();
+    const firstRes = await first;
+    expect(firstRes.status).toBe(201);
+    const done: PublishView = firstRes.body;
     expect(done.attempt).toMatchObject({ publishId, status: 'done', version: 1, byName: '周工' });
     expect(done.deliveries).toHaveLength(1);
     expect(done.deliveries[0]).toMatchObject({ version: 1, byName: '周工' });
@@ -281,6 +306,13 @@ describe('发布', () => {
     // 交付的 Word 本组织客户能取，别家客户不能
     await feiyu.get(`/api/files/${plan.id}`).expect(200);
     await (await as('other@test.cn')).get(`/api/files/${plan.id}`).expect(404);
+    // 负责注安师能看、能下载交付文件；别的注安师当作不存在
+    expect((await handle.db.select().from(deliveryFiles)).map((f) => f.fileId)).toContain(plan.id);
+    await zhou.get(`/api/files/${plan.id}`).expect(200);
+    expect((await zhou.get(`/api/files/${plan.id}/download-url`).expect(200)).body.url).toBeTruthy();
+    const wu = await as('wu@test.cn');
+    await wu.get(`/api/files/${plan.id}`).expect(404);
+    await wu.get(`/api/files/${plan.id}/download-url`).expect(404);
   });
 
   it('同一次发布重发只返回那一次，不产生第二个版本；换一次发布也不能重复发布这批文稿', async () => {
@@ -290,6 +322,13 @@ describe('发布', () => {
     expect(again.attempt).toMatchObject({ publishId: first!.publishId, status: 'done', version: 1 });
     const other = (await zhou.post(publishUrl()).send(body()).expect(409)).body;
     expect(other.reason).toBe('already_published');
+    // 这个 publishId 属于别的任务：拒绝，不当成本任务的那一次
+    const [otherTask] = await handle.db
+      .insert(tasks)
+      .values({ ...(await handle.db.select().from(tasks).where(eq(tasks.id, taskId)))[0]!, id: undefined, number: 'GY-2026-002', name: '另一个任务', closedAt: null })
+      .returning();
+    const cross = (await zhou.post(`/api/tasks/${otherTask!.id}/publication`).send(body(first!.publishId)).expect(409)).body;
+    expect(cross.reason).toBe('other_task');
     // 同一个 publishId 两个请求同时到
     await Promise.all([zhou.post(publishUrl()).send(body(first!.publishId)), zhou.post(publishUrl()).send(body(first!.publishId))]);
     const all = await handle.db.select().from(deliveries).where(eq(deliveries.taskId, taskId));
@@ -310,6 +349,11 @@ describe('发布', () => {
     ).body;
     expect(saved.message).toContain('已发布为交付 V1');
     await zhou.put(url('plan', '/check')).send({ version: 0 }).expect(409);
+    // AI 改写、再确认审核结论也被拦下
+    const rewrite = (await zhou.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '一段需要改写的文字。' }).expect(409)).body;
+    expect(rewrite.message).toContain('已发布为交付 V1');
+    const conclude = (await zhou.post(reviewUrl()).send({ note: '再确认一次。', versions: VERSIONS }).expect(409)).body;
+    expect(conclude.message).toContain('已发布为交付 V1');
     const review: ReviewView = (await zhou.get(reviewUrl()).expect(200)).body;
     expect(review).toMatchObject({ editable: false, published: { version: 1 } });
   });

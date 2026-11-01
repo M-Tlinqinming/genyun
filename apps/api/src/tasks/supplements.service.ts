@@ -48,6 +48,7 @@ import {
 } from '../db/schema.ts';
 import { DocumentsService } from '../documents/documents.service.ts';
 import { NotificationsService } from '../notifications/notifications.service.ts';
+import { PUBLISHING_MESSAGE, throwIfTaskPublishing } from './delivery-lock.ts';
 import { TasksService } from './tasks.service.ts';
 import { WorkupService } from './workup.service.ts';
 
@@ -133,6 +134,7 @@ export class SupplementsService {
     const { snapshot } = await this.workup.rowOf(task);
     const error = supplementAdoptError(row.facts, parsed.data, (key) => factDefOf(snapshot, key));
     if (error) throw new BadRequestException(error);
+    await throwIfTaskPublishing(this.db, task.id);
 
     const facts: SupplementFact[] = row.facts.map((f) => {
       const a = parsed.data.facts.find((x) => x.key === f.key)!;
@@ -148,6 +150,8 @@ export class SupplementsService {
           .where(and(eq(factSupplements.id, row.id), eq(factSupplements.status, 'awaiting_expert')))
           .returning({ id: factSupplements.id });
         if (!claimed) throw new ConflictException(ADOPTED);
+        // 占住这一轮之后再看一次：发布刚好在这时开始的，一起回滚
+        await throwIfTaskPublishing(tx, task.id);
         await this.workup.applySupplement(
           user,
           task,
@@ -158,7 +162,7 @@ export class SupplementsService {
         await tx.update(tasks).set({ updatedAt: new Date() }).where(eq(tasks.id, task.id));
       });
     } catch (err) {
-      if (err instanceof ConflictException && err.message === ADOPTED) throw err;
+      if (err instanceof ConflictException && (err.message === ADOPTED || err.message === PUBLISHING_MESSAGE)) throw err;
       this.logger.warn(`事实补件写回企业事实失败：${err instanceof Error ? err.message : String(err)}`);
       // 409：页面直接显示这句（5xx 页面会换成通用的「服务出了问题」）
       throw new ConflictException({ statusCode: 409, message: WRITE_FAILED, reason: 'write_failed' });

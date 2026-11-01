@@ -33,3 +33,17 @@ export function lockedMessage(lock: BatchLock) {
 export function throwIfLocked(lock: BatchLock | null) {
   if (lock) throw new ConflictException({ statusCode: 409, message: lockedMessage(lock), reason: 'published' });
 }
+
+// 这个任务正在发布（不论哪一批）：采用补件会改企业事实、让审核结论作废，等发布完成后再采用
+export const PUBLISHING_MESSAGE = '这个任务正在发布三份 Word，请等发布完成后再采用补件';
+
+export async function throwIfTaskPublishing(db: Pick<Database, 'select'>, taskId: string) {
+  const [row] = await db
+    .select({ updatedAt: deliveries.updatedAt })
+    .from(deliveries)
+    .where(and(eq(deliveries.taskId, taskId), eq(deliveries.status, 'publishing')))
+    .limit(1);
+  if (row && Date.now() - row.updatedAt.getTime() <= PUBLISH_STALE_MS) {
+    throw new ConflictException({ statusCode: 409, message: PUBLISHING_MESSAGE, reason: 'publishing' });
+  }
+}

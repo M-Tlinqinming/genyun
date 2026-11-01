@@ -96,11 +96,8 @@ export class PublishService {
     const { publishId, batchId, versions } = parsed.data;
 
     // 同一次发布重发（超时、断网后再点）：只返回那一次的结果，不再发布
-    const [same] = await this.db.select().from(deliveries).where(eq(deliveries.publishId, publishId)).limit(1);
-    if (same) {
-      if (same.taskId !== task.id) throw new ConflictException({ statusCode: 409, message: '这次发布属于另一个任务，请刷新后重试', reason: 'other_task' });
-      return this.build(user, task, publishId);
-    }
+    const replayed = await this.replay(user, task, publishId);
+    if (replayed) return replayed;
 
     await this.expireStale(task.id);
     const review = await this.review.view(user, task.id);
@@ -135,7 +132,10 @@ export class PublishService {
         .returning()) as [Delivery];
     } catch (err) {
       // 同一个 publishId 两个请求同时到：后到的按已收到返回
-      if (isUniqueViolation(err, 'deliveries_publish_id_unique')) return this.build(user, task, publishId);
+      if (isUniqueViolation(err, 'deliveries_publish_id_unique')) {
+        const replayedLate = await this.replay(user, task, publishId);
+        if (replayedLate) return replayedLate;
+      }
       if (isUniqueViolation(err, 'deliveries_one_publishing') || isUniqueViolation(err, 'deliveries_batch_once')) {
         return refuse('这批文稿正在发布或已经发布，请刷新查看发布结果', 'publishing');
       }
@@ -143,6 +143,16 @@ export class PublishService {
     }
 
     await this.finish(row, task, batch, review.review!.byName);
+    return this.build(user, task, publishId);
+  }
+
+  // 这个 publishId 已经收到过：属于本任务就返回那一次的结果；属于别的任务（页面串了编号）就拒绝，不当成本任务的发布
+  private async replay(user: SessionUser, task: Task, publishId: string): Promise<PublishView | null> {
+    const [same] = await this.db.select({ taskId: deliveries.taskId }).from(deliveries).where(eq(deliveries.publishId, publishId)).limit(1);
+    if (!same) return null;
+    if (same.taskId !== task.id) {
+      throw new ConflictException({ statusCode: 409, message: '这次发布的编号属于另一个任务，请刷新页面后重新发布', reason: 'other_task' });
+    }
     return this.build(user, task, publishId);
   }
 
