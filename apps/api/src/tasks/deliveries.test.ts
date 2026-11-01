@@ -1,4 +1,4 @@
-import type { TaskDeliveries } from '@genyun/shared';
+import { deliveryBundleName, safeFileName, type TaskDeliveries } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
@@ -14,6 +14,7 @@ import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
+import { attachment } from './deliveries.service.ts';
 import { complete, testDocument } from './test-workup.ts';
 
 // 客户成果文档（M2 第 16 项）：同组织客户能看、下载三份 Word 与整套压缩包、在线阅读发布时的 PDF；
@@ -197,6 +198,20 @@ describe('成果文档', () => {
     const word = await zip.file('惠阳飞宇电器有限公司应急预案.docx')!.async('nodebuffer');
     expect((await JSZip.loadAsync(word)).file('word/document.xml')).not.toBeNull();
     await feiyu.get(`${base()}/9/bundle`).expect(404);
+    // 版本号不是正整数或超出整数范围：一律 404
+    for (const v of ['0', '-1', 'abc', '1.5', '01', '2147483648', '99999999999999999999']) {
+      await feiyu.get(`${base()}/${v}/bundle`).expect(404);
+      await feiyu.get(`${base()}/${v}/plan/pdf`).expect(404);
+    }
+  });
+
+  it('文件名：企业名称里的路径字符和 .. 被替换，下载头把 \'()* 也转义', () => {
+    expect(safeFileName('a/b\\c:d*e?f"g<h>i|j')).toBe('a_b_c_d_e_f_g_h_i_j');
+    expect(safeFileName('../../etc')).toBe('____etc');
+    expect(deliveryBundleName('惠阳/飞宇..', 2)).toBe('惠阳_飞宇_编制成果（交付 V2）.zip');
+    const header = attachment("飞宇(惠州)'s*.zip");
+    expect(header).toContain("filename*=UTF-8''%E9%A3%9E%E5%AE%87%28%E6%83%A0%E5%B7%9E%29%27s%2A.zip");
+    expect(header.split("UTF-8''")[1]).not.toMatch(/['()*]/);
   });
 
   it('在线阅读：有 PDF 的返回 PDF，没有的提示下载 Word', async () => {

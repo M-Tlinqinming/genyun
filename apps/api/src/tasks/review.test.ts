@@ -1,18 +1,19 @@
 import { reviewValid, type ReviewView } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { enterprises, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
+import { draftPreviews, enterprises, generationBatches, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
+import { EditingService } from './editing.service.ts';
 import { complete, testDocument } from './test-workup.ts';
 
 // Word 校对与审核结论（M2 第 12 项）：逐份核对、改正文后该份回到待核对、三份核对完才能确认结论、
@@ -347,5 +348,37 @@ describe('当前稿 PDF', () => {
     await ops.get(url('resource', '/preview/file')).expect(200);
     const other = await as('other@test.cn');
     await other.get(url('resource', '/preview')).expect(404);
+  });
+});
+
+describe('转 PDF 用的是开始转换时那一批', () => {
+  it('转换期间又生成了新一批，仍按开始时那一批出 Word', async () => {
+    const zhou = await as('zhou@test.cn');
+    const editing = app.get(EditingService);
+    const original = editing.batchWord.bind(editing);
+    const spy = vi.spyOn(editing, 'batchWord');
+    const [old] = await handle.db.select().from(generationBatches).where(eq(generationBatches.id, batchId));
+    // 打开时还是这一批；转换开始后插入更新的一批（还没生成完），旧写法会读到新一批而失败
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    spy.mockImplementationOnce(async (...args) => {
+      await gate;
+      return original(...args);
+    });
+    expect((await zhou.get(url('risk', '/preview')).expect(200)).body.status).toBe('converting');
+    const { id: _id, createdAt: _at, ...rest } = old!;
+    await handle.db.insert(generationBatches).values({ ...rest, createdAt: new Date(Date.now() + 60_000) });
+    release();
+    await expect
+      .poll(async () => {
+        const [row] = await handle.db
+          .select()
+          .from(draftPreviews)
+          .where(and(eq(draftPreviews.batchId, batchId), eq(draftPreviews.kind, 'risk')));
+        return row?.status;
+      })
+      .toBe('done');
+    expect(spy.mock.calls[0]![0].id).toBe(batchId);
+    spy.mockRestore();
   });
 });

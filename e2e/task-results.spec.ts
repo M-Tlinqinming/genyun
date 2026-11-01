@@ -100,6 +100,14 @@ test('客户在成果文档里看到交付 V1，在线阅读，下载三份 Word
   await page.getByRole('link', { name: /返回惠阳飞宇电器有限公司的编制成果/ }).click();
   await expect(page).toHaveURL(new RegExp(`/customer/documents/${taskId}$`));
 
+  // 指定的交付版本不存在：提示后显示最新版本
+  await page.goto(`/customer/documents/${taskId}?v=9`);
+  await expect(page.getByText('没有找到交付 V9，已为您显示最新版本')).toBeVisible();
+  await expect(page.getByText('三份文档已交付 · V1 当前版本')).toBeVisible();
+  await page.goto(`/customer/documents/${taskId}/read/plan?v=9`);
+  await expect(page.getByText('没有找到交付 V9，已为您显示最新版本')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '应急预案 · V1' })).toBeVisible();
+
   // 业务任务「已交付」写明交付版本，点进去是交付详情；任务页「成果版本」列出 V1
   await page.goto('/customer/tasks?tab=delivered');
   const row = page.getByRole('row', { name: /惠阳飞宇电器有限公司/ });

@@ -202,7 +202,7 @@ export class ReviewService {
       if (row.status === 'converting' && !this.convertingStale(row)) return { status: 'converting', version, error: null };
     }
     if (!this.converter) return { status: 'unavailable', version, error: null };
-    await this.startConvert(user, ctx, k, version);
+    await this.startConvert(ctx, k, version);
     return { status: 'converting', version, error: null };
   }
 
@@ -212,7 +212,7 @@ export class ReviewService {
     const version = await this.versionOf(ctx.batch.id, k);
     if (await this.readyFile(ctx.batch.id, k, version)) return { status: 'ready', version, error: null };
     if (!this.converter) return { status: 'unavailable', version, error: null };
-    await this.startConvert(user, ctx, k, version);
+    await this.startConvert(ctx, k, version);
     return { status: 'converting', version, error: null };
   }
 
@@ -224,7 +224,7 @@ export class ReviewService {
     return this.storage.read(file.storageKey);
   }
 
-  private async startConvert(user: SessionUser, ctx: Ctx, kind: DraftKind, version: number) {
+  private async startConvert(ctx: Ctx, kind: DraftKind, version: number) {
     const key = `${ctx.batch.id}/${kind}/${version}`;
     if (this.running.has(key)) return;
     this.running.add(key);
@@ -241,18 +241,18 @@ export class ReviewService {
           updatedAt: new Date(),
         },
       });
-    void this.convert(user, ctx, kind, version).finally(() => this.running.delete(key));
+    void this.convert(ctx, kind, version).finally(() => this.running.delete(key));
   }
 
   // 先读修订次数再出 Word：期间又有人保存，转出来的内容只会比记下的次数新，下次打开按新次数重转
-  private async convert(user: SessionUser, ctx: Ctx, kind: DraftKind, version: number) {
+  private async convert(ctx: Ctx, kind: DraftKind, version: number) {
     const done = (set: Partial<typeof draftPreviews.$inferInsert>) =>
       this.db
         .update(draftPreviews)
         .set({ ...set, updatedAt: new Date() })
         .where(and(eq(draftPreviews.batchId, ctx.batch.id), eq(draftPreviews.kind, kind), eq(draftPreviews.version, version)));
     try {
-      const word = await this.editing.word(user, ctx.task.id, kind);
+      const word = await this.editing.batchWord(ctx.batch, kind);
       const pdf = await this.converter!(word.data);
       const fileId = await this.store(ctx, `${word.name.replace(/\.docx$/, '')}.pdf`, pdf);
       await done({ status: 'done', fileId, error: null });

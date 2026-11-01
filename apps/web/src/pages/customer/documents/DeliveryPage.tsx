@@ -6,7 +6,7 @@ import { downloadBundle, downloadWord, useTaskDeliveries } from '../../../api/de
 import { ContactLink } from '../../../components/ContactLink';
 import { Loading } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
-import { card, NOT_READABLE, stampFull, text14, textLink, textLinkDisabled, versionText } from './shared';
+import { card, MissingVersion, NOT_READABLE, pickVersion, stampFull, text14, textLink, textLinkDisabled, versionText } from './shared';
 
 // R05 交付详情｜一个任务某个交付版本的三份 Word：在线阅读、单份下载、整套下载；下方是交付版本记录与反馈入口。
 // ?v= 指定版本，不写就是最新
@@ -29,12 +29,11 @@ export function DeliveryPage() {
       />
     );
   }
-  const wanted = Number(params.get('v'));
-  const current = data.versions.find((v) => v.version === wanted) ?? latest;
-  return <Delivery data={data} current={current} isLatest={current === latest} />;
+  const { current = latest, missing } = pickVersion(data.versions, params.get('v'));
+  return <Delivery data={data} current={current} isLatest={current === latest} missing={missing} />;
 }
 
-function Delivery({ data, current, isLatest }: { data: TaskDeliveries; current: DeliveredVersion; isLatest: boolean }) {
+function Delivery({ data, current, isLatest, missing }: { data: TaskDeliveries; current: DeliveredVersion; isLatest: boolean; missing: string | null }) {
   const { message } = App.useApp();
   const [bundling, setBundling] = useState(false);
   const v = versionText(current.version);
@@ -58,6 +57,7 @@ function Delivery({ data, current, isLatest }: { data: TaskDeliveries; current: 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {missing && <MissingVersion text={missing} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <nav aria-label="位置" style={{ ...text14, color: gy.secondary }}>
           <Link to="/customer/documents" style={{ color: gy.secondary }}>

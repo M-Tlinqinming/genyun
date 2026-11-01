@@ -1,7 +1,7 @@
-import { Empty } from 'antd';
+import { Button, Empty } from 'antd';
 import { Link } from 'react-router';
 import { useTaskDeliveries } from '../../../api/deliveries';
-import { Loading } from '../../../components/ui';
+import { Loading, Notice } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
 import { card, stampFull, text14, textLink, versionText } from './shared';
 
@@ -9,6 +9,19 @@ import { card, stampFull, text14, textLink, versionText } from './shared';
 export function TaskVersions({ taskId }: { taskId: string }) {
   const query = useTaskDeliveries(taskId);
   if (query.isPending) return <Loading rows={2} />;
+  if (query.isError)
+    return (
+      <Notice
+        tone="warning"
+        title="成果版本暂时没有加载出来"
+        text="可能是网络不稳定，请稍后重试。"
+        action={
+          <Button onClick={() => void query.refetch()} loading={query.isFetching}>
+            重试
+          </Button>
+        }
+      />
+    );
   const versions = query.data?.versions ?? [];
   if (versions.length === 0) return <Empty description="审核完成后，成果文档会显示在这里" />;
   return (

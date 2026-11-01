@@ -22,6 +22,25 @@ export function stampShort(iso: string): string {
 
 export const versionText = (version: number) => `V${version}`;
 
+/** 按 ?v= 取交付版本；不写就是最新。写了但没有这一版时退回最新，并给出提示文字 */
+export function pickVersion<T extends { version: number }>(versions: T[], raw: string | null): { current: T | undefined; missing: string | null } {
+  const latest = versions[0];
+  if (raw === null || raw === '') return { current: latest, missing: null };
+  const found = /^\d+$/.test(raw) ? versions.find((v) => v.version === Number(raw)) : undefined;
+  if (found) return { current: found, missing: null };
+  const label = /^\d{1,6}$/.test(raw) ? `交付 V${Number(raw)}` : '这个交付版本';
+  return { current: latest, missing: `没有找到${label}，已为您显示最新版本` };
+}
+
+/** 指定的版本不存在时的提示条 */
+export function MissingVersion({ text }: { text: string }) {
+  return (
+    <div role="status" style={{ padding: '10px 16px', borderRadius: 6, background: gy.warningBg, color: gy.text, fontSize: 14, lineHeight: '22px' }}>
+      {text}
+    </div>
+  );
+}
+
 // Word 文件图标（设计稿 C06 的 20×20 线框图标）
 export function WordIcon() {
   return (

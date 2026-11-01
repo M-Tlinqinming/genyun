@@ -6,7 +6,7 @@ import { deliveryPdfUrl, downloadWord, useTaskDeliveries } from '../../../api/de
 import { PdfPages, type PdfOutlineItem, type PdfPagesHandle } from '../../../components/PdfPages';
 import { Loading } from '../../../components/ui';
 import { gy, layout } from '../../../theme/tokens';
-import { card, NOT_READABLE, stampFull, text14, textLink, versionText } from './shared';
+import { card, MissingVersion, NOT_READABLE, pickVersion, stampFull, text14, textLink, versionText } from './shared';
 
 // R06 在线阅读｜一份成果按发布时的 Word 版式只读显示：左侧章节目录（来自文档自带的标题书签），
 // 底部翻页；下载失败时提示可继续在线阅读，重试仍下载同一版本
@@ -20,8 +20,7 @@ export function DeliveryReaderPage() {
   if (query.isError) return <Result status="404" title="找不到这份成果" subTitle={query.error.message} extra={<Link to="/customer/documents">返回成果文档</Link>} />;
   const data = query.data;
   const latest = data.versions[0];
-  const wanted = Number(params.get('v'));
-  const current = data.versions.find((v) => v.version === wanted) ?? latest;
+  const { current, missing } = pickVersion(data.versions, params.get('v'));
   const file = (DRAFT_KIND_KEYS as string[]).includes(kind) ? current?.files.find((f) => f.kind === kind) : undefined;
   if (!current || !file) {
     return <Result status="404" title="找不到这份成果" extra={<Link to={back}>返回编制成果</Link>} />;
@@ -40,6 +39,7 @@ export function DeliveryReaderPage() {
       fileName={file.name}
       readable={file.readable}
       back={current === latest ? back : `${back}?v=${current.version}`}
+      missing={missing}
     />
   );
 }
@@ -56,8 +56,9 @@ function Reader(props: {
   fileName: string;
   readable: boolean;
   back: string;
+  missing: string | null;
 }) {
-  const { taskId, enterpriseName, taskNumber, version, isLatest, publishedAt, kind, fileId, fileName, readable, back } = props;
+  const { taskId, enterpriseName, taskNumber, version, isLatest, publishedAt, kind, fileId, fileName, readable, back, missing } = props;
   const pages = useRef<PdfPagesHandle>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -90,6 +91,7 @@ function Reader(props: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {missing && <MissingVersion text={missing} />}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24 }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <Link to={back} style={{ ...text14, color: gy.primary, alignSelf: 'flex-start' }}>

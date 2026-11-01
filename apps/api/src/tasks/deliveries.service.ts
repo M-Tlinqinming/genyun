@@ -1,8 +1,18 @@
 // 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05、R06）：已交付的三份 Word 按交付版本（V1、V2…）列出，
 // 在线阅读（发布时那一版的 PDF）、单份下载（走 /files/:id/download-url）、整套下载（三份打包成一个压缩包）。
 // 谁能看由 access.ts 的 canViewDeliveries / canViewOrganization 决定；别家客户、其他注安师一律 404，不暴露任务是否存在
-import { DRAFT_KIND_KEYS, deliveryBundleName, type DeliveredVersion, type DraftKind, type TaskDeliveries } from '@genyun/shared';
-import { Controller, Get, Inject, Injectable, NotFoundException, Param, ParseIntPipe, ParseUUIDPipe, Res } from '@nestjs/common';
+import { DRAFT_KIND_KEYS, deliveryBundleName, safeFileName, type DeliveredVersion, type DraftKind, type TaskDeliveries } from '@genyun/shared';
+import {
+  Controller,
+  Get,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Res,
+  type PipeTransform,
+} from '@nestjs/common';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Response } from 'express';
 import JSZip from 'jszip';
@@ -61,7 +71,7 @@ export class DeliveriesService {
     const zip = new JSZip();
     for (const kind of DRAFT_KIND_KEYS) {
       const row = rows.find((r) => r.kind === kind);
-      if (row) zip.file(row.name, await this.storage.read(row.storageKey));
+      if (row) zip.file(safeFileName(row.name), await this.storage.read(row.storageKey));
     }
     // Word 本身已经压缩过，打包时不再压缩
     const data = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
@@ -181,10 +191,21 @@ export class DeliveriesService {
 
 const isKind = (k: string): k is DraftKind => (DRAFT_KIND_KEYS as string[]).includes(k);
 
-// 中文文件名按 RFC 5987 写入下载头
-function attachment(filename: string): string {
+// 中文文件名按 RFC 5987 写入下载头；encodeURIComponent 不转义 '()*，这里补上
+export function attachment(filename: string): string {
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, '_');
-  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
+// 交付版本号：不是正整数或超出整数范围，一律当作找不到
+const MAX_VERSION = 2_147_483_647;
+@Injectable()
+class VersionPipe implements PipeTransform<string, number> {
+  transform(value: string): number {
+    if (!/^[1-9]\d{0,9}$/.test(value) || Number(value) > MAX_VERSION) throw new NotFoundException('找不到这次交付');
+    return Number(value);
+  }
 }
 
 @Controller()
@@ -205,7 +226,7 @@ export class DeliveriesController {
   async bundle(
     @CurrentUser() user: SessionUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Param('version', ParseIntPipe) version: number,
+    @Param('version', VersionPipe) version: number,
     @Res() res: Response,
   ) {
     const { name, data } = await this.service.bundle(user, id, version);
@@ -222,7 +243,7 @@ export class DeliveriesController {
   async pdf(
     @CurrentUser() user: SessionUser,
     @Param('id', ParseUUIDPipe) id: string,
-    @Param('version', ParseIntPipe) version: number,
+    @Param('version', VersionPipe) version: number,
     @Param('kind') kind: string,
     @Res() res: Response,
   ) {

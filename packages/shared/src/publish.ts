@@ -114,4 +114,13 @@ export interface TaskDeliveries {
 }
 
 /** 整套下载的压缩包名（例：惠阳飞宇电器有限公司编制成果（交付 V1）.zip） */
-export const deliveryBundleName = (enterpriseName: string, version: number) => `${enterpriseName}编制成果（${deliveryLabel(version)}）.zip`;
+export const deliveryBundleName = (enterpriseName: string, version: number) =>
+  `${safeFileName(enterpriseName)}编制成果（${deliveryLabel(version)}）.zip`;
+
+/** 拼进文件名的文字：去掉路径和系统不允许的字符（/\:*?"<>| 与控制字符），连续的点换成下划线，避免跳出目录 */
+export const safeFileName = (text: string) =>
+  text
+    // eslint-disable-next-line no-control-regex
+    .replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_')
+    .replace(/\.{2,}/g, '_')
+    .trim() || '未命名';
