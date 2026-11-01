@@ -18,6 +18,7 @@ import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
+import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
 import { MailOutboxPage } from './pages/operator/MailOutboxPage';
 import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
 import { OperatorTaskCenterPage } from './pages/operator/OperatorTaskCenterPage';
@@ -52,7 +53,11 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { index: true, element: <OrganizationListPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },
   ],
-  '/operator/tasks': [{ index: true, element: <OperatorTaskCenterPage /> }],
+  // 任务中心（列表、分派，?task= 打开某个任务）；任务正文只读查看在 /operator/tasks/<任务>
+  '/operator/tasks': [
+    { index: true, element: <OperatorTaskCenterPage /> },
+    { path: ':taskId', element: <OperatorTaskPage /> },
+  ],
   // 模拟发件箱只在预览环境有用，平时不在菜单里（navigation.tsx 的 onlyWhenActive）
   '/operator/mail-outbox': [{ index: true, element: <MailOutboxPage /> }],
   '/customer/tasks': [

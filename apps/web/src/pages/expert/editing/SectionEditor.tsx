@@ -1,23 +1,34 @@
 import { LockOutlined } from '@ant-design/icons';
-import type { EditBlock } from '@genyun/shared';
+import type { EditBlock, LockedPreview } from '@genyun/shared';
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
 import Paragraph from '@tiptap/extension-paragraph';
 import { Plugin } from '@tiptap/pm/state';
 import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, useEditorState, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { useEffect, type CSSProperties } from 'react';
+import { createContext, useContext, useEffect, useState, type CSSProperties } from 'react';
+import { Link } from 'react-router';
+import { linkButton } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
 import { blocksToDoc, docToBlocks, lockedOrder, type PmNode } from './editorDoc';
 
-// 表格和图：编辑器里只显示名称，不能删、不能挪（来自专业整理）
+/** 锁定块要显示的表格内容、图的缩略图，以及去专业整理修改的入口 */
+export const LockedContext = createContext<{ previews: LockedPreview[]; workupHref: string | null }>({ previews: [], workupHref: null });
+
+const cell: CSSProperties = { padding: '4px 8px', border: `1px solid ${gy.split}`, textAlign: 'left', verticalAlign: 'top', fontWeight: 400 };
+
+// 表格和图：来自专业整理，正文里不能删、不能挪、不能改；表格内容只读展示（可收起），图显示缩略图
 function LockedView({ node }: { node: { attrs: Record<string, unknown> } }) {
+  const { previews, workupHref } = useContext(LockedContext);
+  const preview = previews.find((p) => p.index === Number(node.attrs.index));
+  const [open, setOpen] = useState(true);
+  const label = String(node.attrs.label);
   return (
     <NodeViewWrapper
       data-locked=""
       contentEditable={false}
       style={{
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: 'column',
         gap: 8,
         margin: '8px 0',
         padding: '8px 12px',
@@ -29,9 +40,52 @@ function LockedView({ node }: { node: { attrs: Record<string, unknown> } }) {
         userSelect: 'none',
       }}
     >
-      <LockOutlined aria-hidden />
-      <span style={{ color: gy.text }}>{String(node.attrs.label)}</span>
-      <span style={{ marginLeft: 'auto' }}>来自专业整理，在正文里不能修改</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <LockOutlined aria-hidden />
+        <span style={{ color: gy.text }}>{label}</span>
+        {preview?.kind === 'table' && (
+          <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} style={{ ...linkButton, fontSize: 14, color: gy.secondary }}>
+            {open ? '收起表格' : '展开表格'}
+          </button>
+        )}
+        <span style={{ marginLeft: 'auto' }}>来自专业整理，正文里不能修改</span>
+        {workupHref && (
+          <Link to={workupHref} style={{ color: gy.primary }}>
+            去专业整理修改
+          </Link>
+        )}
+      </div>
+      {preview?.kind === 'table' && open && (
+        <div style={{ overflowX: 'auto', background: gy.surface }}>
+          <table aria-label={`${label}（只读）`} style={{ borderCollapse: 'collapse', width: '100%', color: gy.text, fontSize: 13, lineHeight: '20px' }}>
+            <thead>
+              {preview.header.map((r, i) => (
+                <tr key={i} style={{ background: gy.canvas }}>
+                  {r.map((c, j) => (
+                    <th key={j} style={{ ...cell, fontWeight: 500 }}>
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+            <tbody>
+              {preview.rows.map((r, i) => (
+                <tr key={i}>
+                  {r.map((c, j) => (
+                    <td key={j} style={cell}>
+                      {c}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {preview?.kind === 'figure' && (
+        <img src={preview.src} alt={label} style={{ maxWidth: 240, maxHeight: 160, objectFit: 'contain', alignSelf: 'flex-start', background: gy.surface, border: `1px solid ${gy.split}` }} />
+      )}
     </NodeViewWrapper>
   );
 }
@@ -203,8 +257,14 @@ export function Toolbar({ editor, extra }: { editor: Editor; extra?: React.React
       editable: e.isEditable,
     }),
   });
-  const on = (active: boolean): CSSProperties => (active ? { ...tool, background: gy.selected, color: gy.primary } : tool);
   const disabled = !state.editable;
+  // 只读（运营查看、非负责专家）时格式按钮置灰
+  const on = (active: boolean): CSSProperties =>
+    disabled
+      ? { ...tool, color: gy.tertiary, cursor: 'not-allowed' }
+      : active
+        ? { ...tool, background: gy.selected, color: gy.primary }
+        : tool;
   return (
     <div
       role="toolbar"
@@ -250,7 +310,7 @@ export function Toolbar({ editor, extra }: { editor: Editor; extra?: React.React
       <button
         type="button"
         disabled={disabled || !state.canUndo}
-        style={{ ...tool, color: disabled || !state.canUndo ? gy.tertiary : gy.text }}
+        style={{ ...tool, color: disabled || !state.canUndo ? gy.tertiary : gy.text, cursor: disabled || !state.canUndo ? 'not-allowed' : 'pointer' }}
         onClick={() => editor.chain().focus().undo().run()}
       >
         撤销
