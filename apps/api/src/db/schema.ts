@@ -4,7 +4,9 @@ import {
   DRAFT_STATUSES,
   ITEM_STATUSES,
   ON_SITE_STATUSES,
+  type AgencyCategory,
   type AuditAction,
+  type HolidayKind,
   type CallTime,
   type ChecklistItemKey,
   type ChecklistState,
@@ -13,6 +15,9 @@ import {
   type DraftKind,
   type EditBlock,
   type EnterpriseProfile,
+  type FeedbackCategory,
+  type FeedbackSource,
+  type FeedbackStatus,
   type LockedMaterial,
   type PlanInput,
   type PublishStatus,
@@ -21,6 +26,8 @@ import {
   type SubmittedDocument,
   type SupplementFact,
   type SupplementStatus,
+  type TemplateContent,
+  type TemplateStep,
   type WorkupData,
   type WorkupSnapshot,
 } from '@genyun/shared';
@@ -73,6 +80,11 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   // 本人最近一次改密码或重设密码的时间；邀请、运营建号时为空
   passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
+  // 运营停用账号的时间（M3 第 8 项）：停用后不能登录、已有会话全部退出、不出现在分派名单；为空 = 正常
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  // 为什么停用（M3 第 7 项）：operator = 运营在内部账号里停用；removed_by_customer = 被机构管理员移出组织、不在任何组织里。
+  // 客户再次邀请只能恢复 removed_by_customer 的账号；运营停用的必须由运营恢复
+  disabledReason: text('disabled_reason').$type<'operator' | 'removed_by_customer'>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -140,6 +152,8 @@ export const enterprises = pgTable(
       .references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    // 机构管理员最近一次调整这家企业负责成员的时间（11 页 C08「企业分配」最近调整）；没调整过为空
+    membersChangedAt: timestamp('members_changed_at', { withTimezone: true }),
   },
   // 同一组织里不能有两家统一社会信用代码相同的企业；没填代码的不限制
   (t) => [
@@ -147,6 +161,27 @@ export const enterprises = pgTable(
       .on(t.orgId, t.socialCreditCode)
       .where(sql`${t.socialCreditCode} is not null`),
   ],
+);
+
+// 企业分配（M3 第 7 项，11 页 C08）：机构管理员把企业分给成员。成员（customer_member）只能看到、处理分配给自己的企业；
+// 机构管理员始终看到全部企业，分给管理员只表示「负责成员」。移除成员或企业时一并删除
+export const enterpriseAssignments = pgTable(
+  'enterprise_assignments',
+  {
+    enterpriseId: uuid('enterprise_id')
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // 冗余存所属组织：移除成员时按组织删
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    assignedBy: uuid('assigned_by').references(() => users.id, { onDelete: 'set null' }),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.enterpriseId, t.userId] }), index('enterprise_assignments_user').on(t.userId)],
 );
 
 export const businessType = pgEnum('business_type', ['emergency_plan']);
@@ -321,8 +356,13 @@ export const notifications = pgTable(
     link: text('link').notNull(),
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    // 同一件事只提醒一次（例如合同到期提醒按「组织 + 到期日」）；为空的不去重
+    dedupeKey: text('dedupe_key'),
   },
-  (t) => [index('notifications_user').on(t.userId, t.createdAt)],
+  (t) => [
+    index('notifications_user').on(t.userId, t.createdAt),
+    uniqueIndex('notifications_user_dedupe').on(t.userId, t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
+  ],
 );
 
 // 任务编号按年流水，全平台共用一个计数
@@ -727,7 +767,13 @@ export const organizationInvitations = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('organization_invitations_org').on(t.orgId)],
+  (t) => [
+    index('organization_invitations_org').on(t.orgId),
+    // 同一组织同一邮箱只能有一封未接受、未作废的邀请：并发重发时只有一次能成功（M3 第 8 项）
+    uniqueIndex('organization_invitations_open_email')
+      .on(t.orgId, t.email)
+      .where(sql`${t.acceptedAt} is null and ${t.revokedAt} is null`),
+  ],
 );
 
 // 操作日志（M4 第 5 项，等保要求）：登录成功和失败、退出、改密码、找回重设、分派改派、发布。
@@ -798,4 +844,116 @@ export const deliveryFiles = pgTable(
       .references(() => files.id),
   },
   (t) => [primaryKey({ columns: [t.deliveryId, t.kind] })],
+);
+
+// ---------- 知识库（M3 第 5 项，16 页 I07 / I07B）：只有运营维护，改动只影响之后生成的文档 ----------
+
+// 属地应急机构所在的区县：地址里出现 aliases 任一个词就算这个区县；plan 是区县级上级预案名称。
+// 迁移 0025 把原来写死在 packages/shared/src/plan/agencies.ts 的惠州数据原样写进来，sort_order 保持原来的顺序（先认的区县在前）
+export const agencyRegions = pgTable(
+  'agency_regions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    province: text('province').notNull(),
+    city: text('city').notNull(),
+    name: text('name').notNull(),
+    aliases: text('aliases').array().notNull().default(sql`'{}'::text[]`),
+    plan: text('plan'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('agency_regions_name').on(t.province, t.city, t.name)],
+);
+
+// 区县下的机构：应急管理局（emergency）、镇街应急办（street，area 是地址里认的镇街名）、消防救援大队（fire）。
+// 停用的不再用于生成；同一区县同一类别的应急管理局、消防大队只用排在最前、没停用的一个
+export const localAgencies = pgTable(
+  'local_agencies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    regionId: uuid('region_id')
+      .notNull()
+      .references(() => agencyRegions.id, { onDelete: 'cascade' }),
+    category: text('category').$type<AgencyCategory>().notNull(),
+    name: text('name').notNull(),
+    phone: text('phone'),
+    area: text('area'),
+    aliases: text('aliases').array().notNull().default(sql`'{}'::text[]`),
+    plan: text('plan'),
+    note: text('note'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    disabledAt: timestamp('disabled_at', { withTimezone: true }),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    verifiedBy: uuid('verified_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('local_agencies_region').on(t.regionId)],
+);
+
+// 节假日与调休：一天一行。数据库里一行都没有时工作日计算用内置的 2026 年表（packages/shared/src/workdays.ts）
+export const holidays = pgTable('holidays', {
+  date: date('date').primaryKey(),
+  kind: text('kind').$type<HolidayKind>().notNull(),
+  name: text('name').notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// 工艺模板：已发布的内容（label、keywords、steps）客户选用；draft 是还没发布的修改。
+// version 是已发布的版本号（0 = 从未发布）；停用后客户看不到，已选用的企业不受影响
+export const processTemplates = pgTable('process_templates', {
+  id: text('id').primaryKey(),
+  label: text('label').notNull(),
+  industry: text('industry'),
+  keywords: text('keywords').array().notNull().default(sql`'{}'::text[]`),
+  steps: jsonb('steps').$type<TemplateStep[]>().notNull().default([]),
+  draft: jsonb('draft').$type<TemplateContent>(),
+  version: integer('version').notNull().default(0),
+  sortOrder: integer('sort_order').notNull().default(0),
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------- 反馈受理（M3 第 6 项，16 页「反馈受理」）：客户对平台或成果的意见，独立于编制交付 ----------
+
+// 客户提交的反馈。可关联任务和交付版本（从成果文档页提交时），附件是客户上传的文件 ID。
+// 运营受理（processing）、写回复并关闭（closed）；不改任务状态、不触发重新生成、不改已交付版本。
+// internal_note 只有运营看得到；reply 关闭时发给客户
+export const feedback = pgTable(
+  'feedback',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    enterpriseId: uuid('enterprise_id').references(() => enterprises.id, { onDelete: 'set null' }),
+    taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    deliveryVersion: integer('delivery_version'),
+    source: text('source').$type<FeedbackSource>().notNull(),
+    category: text('category').$type<FeedbackCategory>().notNull(),
+    content: text('content').notNull(),
+    fileIds: jsonb('file_ids').$type<string[]>().notNull().default([]),
+    status: text('status').$type<FeedbackStatus>().notNull().default('new'),
+    reply: text('reply'),
+    internalNote: text('internal_note'),
+    // 受理的运营（第一次受理或转给注安师时记下）
+    handledBy: uuid('handled_by').references(() => users.id, { onDelete: 'set null' }),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    // 转给了哪位注安师（站内提醒）
+    forwardedTo: uuid('forwarded_to').references(() => users.id, { onDelete: 'set null' }),
+    forwardedAt: timestamp('forwarded_at', { withTimezone: true }),
+    closedBy: uuid('closed_by').references(() => users.id, { onDelete: 'set null' }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('feedback_status_created').on(t.status, t.createdAt), index('feedback_org_created').on(t.orgId, t.createdAt)],
 );

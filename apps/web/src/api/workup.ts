@@ -1,4 +1,4 @@
-import type { CustomerDrawing, FactSave, FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
+import type { AgencyDistrict, CustomerDrawing,FactSave, FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -20,6 +20,8 @@ export interface Workup {
   updatedAt: string;
   updatedByName: string | null;
   originals: WorkupOriginal[];
+  // 知识库里的属地应急机构（企业事实里的属地机构按它算）
+  agencyDistricts: AgencyDistrict[];
 }
 
 export const workupKey = (taskId: string) => ['tasks', taskId, 'workup'] as const;

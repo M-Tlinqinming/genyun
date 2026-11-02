@@ -162,6 +162,34 @@
       "when": 1793554033140,
       "tag": "0022_audit_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793559801701,
+      "tag": "0023_user_disabled",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793565672738,
+      "tag": "0024_client_org_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793569245165,
+      "tag": "0025_knowledge_base",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793573122854,
+      "tag": "0026_feedback",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,8 @@ export interface Enterprise {
   legalRepresentative: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 列表里才有：分配到这家企业的成员（机构管理员不算） */
+  members?: { id: string; name: string }[];
 }
 
 // 组织下的任务列表（企业页、工作台、业务任务列表共用）；完整任务详情在任务页取。
@@ -29,6 +31,8 @@ export interface TaskSummary {
   missing: string[];
   remaining: number;
   activityAt: string;
+  /** 最新的交付版本（已发布才有） */
+  delivery: { version: number; publishedAt: string } | null;
 }
 
 export const enterpriseKeys = {

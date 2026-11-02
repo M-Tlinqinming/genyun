@@ -41,6 +41,7 @@ import { isOperator } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
+import { KnowledgeService } from '../knowledge/knowledge.service.ts';
 import {
   checklistItemFiles,
   enterpriseDocuments,
@@ -86,7 +87,10 @@ export interface WorkupOriginal {
 // 专业整理（14 页 E18-00A）：每个任务一份，只有负责专家能改；运营可以看（M3 改派时接手）
 @Injectable()
 export class WorkupService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
+  ) {}
 
   async get(user: SessionUser, taskId: string) {
     const task = await this.task(user, taskId);
@@ -372,6 +376,8 @@ export class WorkupService {
       updatedAt: row.updatedAt,
       updatedByName: by?.name ?? null,
       originals: await this.originals(taskId, row.snapshot),
+      // 知识库里的属地应急机构：整理页「企业事实」按它显示（与生成时一致）
+      agencyDistricts: await this.knowledge.agencyDistricts(),
     };
   }
 

@@ -15,7 +15,7 @@ export interface ExpertTask {
   closedAt: string | null;
   activityAt: string;
   verifyItems: { key: ChecklistItemKey; label: string; kind: 'photo' | 'call' }[];
-  contact: { requestedAt: string; requestedBy: string; labels: string[]; deadline: string } | null;
+  contact: { requestedAt: string; requestedBy: string; labels: string[]; deadline: string; daysLeft: number } | null;
 }
 
 export interface ExpertEvent {

@@ -15,7 +15,7 @@ import {
   type OrganizationStep,
 } from './profile/organization-step.ts';
 import { totalBuildingArea } from './profile/resources-step.ts';
-import { localAgenciesOf } from './plan/agencies.ts';
+import { type AgencyDistrict, localAgenciesOf } from './plan/agencies.ts';
 import type { ProductionWorkup } from './workup-production.ts';
 import type { RiskWorkup } from './workup-risk.ts';
 import type { FiguresWorkup } from './workup-figures.ts';
@@ -223,9 +223,9 @@ function basicEntries(snapshot: WorkupSnapshot): Entry[] {
   ];
 }
 
-function agencyEntries(snapshot: WorkupSnapshot): Entry[] {
+function agencyEntries(snapshot: WorkupSnapshot, districts?: readonly AgencyDistrict[]): Entry[] {
   const address = snapshot.profile.basicStep?.basic.siteAddress || snapshot.identity.registeredAddress || '';
-  const agencies = localAgenciesOf({ province: '', city: '', district: '', detail: address });
+  const agencies = localAgenciesOf({ province: '', city: '', district: '', detail: address }, districts);
   const known = (a: { name: string; phone?: string } | undefined): FactBase =>
     a
       ? { value: [a.name, a.phone].filter(Boolean).join(' · '), source: 'system', sourceNote: '知识库' }
@@ -334,8 +334,9 @@ function statusOf(def: FactDef, value: FactValue | undefined, later: boolean | u
   return def.required ? 'missing' : 'empty';
 }
 
-// 按快照与专家的修改算出每一项现在的值、来源和状态
-export function workupFacts(snapshot: WorkupSnapshot, data: WorkupData): Fact[] {
+// 按快照与专家的修改算出每一项现在的值、来源和状态。
+// districts 是知识库里的属地机构（接口从数据库取来传进来）；不传时用内置数据
+export function workupFacts(snapshot: WorkupSnapshot, data: WorkupData, districts?: readonly AgencyDistrict[]): Fact[] {
   const apply = ([def, base]: Entry): Fact => {
     const override = def.readonly ? undefined : data.overrides[def.key];
     const merged: FactBase = override
@@ -355,7 +356,7 @@ export function workupFacts(snapshot: WorkupSnapshot, data: WorkupData): Fact[] 
       : base;
     return { ...def, ...base, ...merged, override, status: statusOf(def, merged.value, base.later && !override) };
   };
-  const head = [...basicEntries(snapshot), ...agencyEntries(snapshot), ...organizationEntries(snapshot)].map(apply);
+  const head = [...basicEntries(snapshot), ...agencyEntries(snapshot, districts), ...organizationEntries(snapshot)].map(apply);
   const commander = head.find((f) => f.key === 'commander')?.value;
   return [...head, ...compilationEntries(snapshot, commander).map(apply), ...judgementEntries().map(apply)];
 }

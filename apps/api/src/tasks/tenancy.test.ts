@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { memberships, organizations, tasks, users } from '../db/schema.ts';
+import { enterpriseAssignments, memberships, organizations, tasks, users } from '../db/schema.ts';
 
 const PASSWORD = 'correct horse battery staple';
 const MISSING = '00000000-0000-4000-8000-000000000000';
@@ -83,12 +83,13 @@ async function createTask(email: string, enterpriseId: string, name = '2026 年�
 describe('企业档案', () => {
   it('只填企业名称就能建档，并出现在本组织的企业列表里', async () => {
     const ent = await createEnterprise('a-admin@test.cn', org.a, { name: '飞宇制造有限公司' });
-    const list = await (await as('a-member@test.cn')).get(`/api/orgs/${org.a}/enterprises`).expect(200);
+    const list = await (await as('a-admin@test.cn')).get(`/api/orgs/${org.a}/enterprises`).expect(200);
     expect(list.body.map((e: { id: string }) => e.id)).toContain(ent.id);
   });
 
-  it('机构成员也能建档', async () => {
-    await createEnterprise('a-member@test.cn', org.a, { name: '成员建的企业' });
+  it('只有机构管理员能新建企业，成员不能（成员只处理分配给自己的企业）', async () => {
+    const res = await (await as('a-member@test.cn')).post(`/api/orgs/${org.a}/enterprises`).send({ name: '成员建的企业' });
+    expect(res.status).toBe(403);
   });
 
   it('修改时只改传入的字段', async () => {
@@ -182,7 +183,7 @@ describe('编制任务', () => {
   it('同一家企业再建同类任务，被带到已有任务', async () => {
     const ent = await createEnterprise('a-admin@test.cn', org.a, { name: '重复创建企业' });
     const first = await createTask('a-admin@test.cn', ent.id);
-    const again = await (await as('a-member@test.cn')).post(`/api/enterprises/${ent.id}/tasks`).send({ name: '再来一个' });
+    const again = await (await as('a-admin@test.cn')).post(`/api/enterprises/${ent.id}/tasks`).send({ name: '再来一个' });
     expect(again.status).toBe(409);
     expect(again.body.existingTask).toMatchObject({ id: first.id, number: first.number });
   });
@@ -261,6 +262,8 @@ describe('资料项', () => {
   beforeAll(async () => {
     const ent = await createEnterprise('a-admin@test.cn', org.a, { name: '资料项企业' });
     taskId = (await createTask('a-admin@test.cn', ent.id)).id;
+    // 成员处理分配给自己的企业
+    await handle.db.insert(enterpriseAssignments).values({ enterpriseId: ent.id, userId: uid['a-member@test.cn']!, orgId: org.a });
   });
 
   it('标为已提供时记录确认人和时间', async () => {

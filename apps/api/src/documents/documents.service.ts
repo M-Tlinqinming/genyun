@@ -1,7 +1,7 @@
 import type { Category, TaskDocumentSelection } from '@genyun/shared';
 import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, max } from 'drizzle-orm';
-import { canEditOrganizationData, canViewOrganization } from '../auth/access.ts';
+import { canEditEnterpriseData, canViewEnterprise } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import {
@@ -12,6 +12,7 @@ import {
   taskDocuments,
   tasks,
 } from '../db/schema.ts';
+import { assertFilesUsable } from '../files/file-links.ts';
 import { TasksService } from '../tasks/tasks.service.ts';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -92,6 +93,7 @@ export class DocumentsService {
   // 客户在资料库直接上传，不关联任务；分类待整理
   async upload(user: SessionUser, enterpriseId: string, fileId: string) {
     const ent = await this.editableEnterprise(user, enterpriseId);
+    await assertFilesUsable(this.db, user, ent.orgId, [fileId]);
     await registerFile(this.db, user.id, { orgId: ent.orgId, enterpriseId }, fileId);
     return this.listForEnterprise(user, enterpriseId);
   }
@@ -106,6 +108,7 @@ export class DocumentsService {
       .where(and(eq(files.id, fileId), eq(files.orgId, ent.orgId), eq(files.kind, 'customer_material')))
       .limit(1);
     if (!file) throw new NotFoundException('找不到该文件');
+    await assertFilesUsable(this.db, user, ent.orgId, [fileId]);
     const [used] = await this.db
       .select({ id: enterpriseDocumentVersions.id })
       .from(enterpriseDocumentVersions)
@@ -164,6 +167,7 @@ export class DocumentsService {
   // 提交以后仍可以加新文件（补待补清单里的项），已提交的资料版本不动
   async addToTask(user: SessionUser, taskId: string, fileId: string) {
     const task = await this.editableTask(user, taskId, true);
+    await assertFilesUsable(this.db, user, task.orgId, [fileId]);
     await this.db.transaction(async (tx) => {
       const version = await registerFile(tx, user.id, task, fileId);
       await tx
@@ -237,13 +241,13 @@ export class DocumentsService {
       .from(enterprises)
       .where(eq(enterprises.id, enterpriseId))
       .limit(1);
-    if (!ent || !canViewOrganization(user, ent.orgId)) throw new NotFoundException('找不到该企业');
+    if (!ent || !canViewEnterprise(user, { orgId: ent.orgId, enterpriseId: ent.id })) throw new NotFoundException('找不到该企业');
     return ent;
   }
 
   private async editableEnterprise(user: SessionUser, enterpriseId: string) {
     const ent = await this.enterprise(user, enterpriseId);
-    if (!canEditOrganizationData(user, ent.orgId)) throw new ForbiddenException('企业资料由客户上传');
+    if (!canEditEnterpriseData(user, { orgId: ent.orgId, enterpriseId: ent.id })) throw new ForbiddenException('企业资料由客户上传');
     return ent;
   }
 
@@ -280,7 +284,7 @@ export class DocumentsService {
   // 客户才能改；已提交的任务，选用的资料版本锁定，只能再加新文件
   private async editableTask(user: SessionUser, taskId: string, addOnly = false) {
     const task = await this.tasks.load(user, taskId);
-    if (!canEditOrganizationData(user, task.orgId)) throw new ForbiddenException('资料由客户上传');
+    if (!canEditEnterpriseData(user, task)) throw new ForbiddenException('资料由客户上传');
     if (task.status !== 'preparing' && !addOnly) {
       throw new BadRequestException('申请已提交，已提交的资料不能更换或移除；需要更正请联系负责专家');
     }

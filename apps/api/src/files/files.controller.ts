@@ -17,7 +17,7 @@ import { and, eq, or } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
-import { canEditOrganizationData, canViewFile, canViewOrganization } from '../auth/access.ts';
+import { canEditOrganizationData, canViewFile, canViewOrganization, enterpriseScope, needsFileEnterprises } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser, Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -32,6 +32,7 @@ import {
   taskDocuments,
   tasks,
 } from '../db/schema.ts';
+import { linkedEnterpriseIds } from './file-links.ts';
 import { DOWNLOAD_TTL_SECONDS, FILE_STORAGE, type FileStorage, LocalDiskStorage } from './storage.ts';
 
 const NOT_FOUND = '找不到该文件';
@@ -168,13 +169,22 @@ export class FilesController {
   // 无权访问与不存在返回同样的结果，不暴露别家文件是否存在
   private async load(user: SessionUser, id: string) {
     const [file] = await this.db
-      .select({ ...columns, storageKey: files.storageKey })
+      .select({ ...columns, storageKey: files.storageKey, uploadedBy: files.uploadedBy })
       .from(files)
       .where(eq(files.id, id))
       .limit(1);
     if (!file) throw new NotFoundException(NOT_FOUND);
-    if (!canViewFile(user, file, await this.usedInAssignedTask(user, id))) throw new NotFoundException(NOT_FOUND);
-    return file;
+    // 成员只看挂在分配给自己的企业上的文件，才需要查文件挂在哪些企业上
+    const scope = enterpriseScope(user, file.orgId);
+    // 成员：企业档案只看分配给他的那几家
+    const linked = needsFileEnterprises(user, file.orgId)
+      ? ((await linkedEnterpriseIds(this.db, file.orgId, [id], Array.isArray(scope) ? scope : undefined)).get(id) ?? [])
+      : [];
+    if (!canViewFile(user, file, { usedInMyAssignedTask: await this.usedInAssignedTask(user, id), linkedEnterpriseIds: linked })) {
+      throw new NotFoundException(NOT_FOUND);
+    }
+    const { uploadedBy: _, ...rest } = file;
+    return rest;
   }
 
   private async usedInAssignedTask(user: SessionUser, fileId: string): Promise<boolean> {

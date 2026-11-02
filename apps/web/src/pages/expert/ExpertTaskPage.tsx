@@ -115,7 +115,7 @@ export function ExpertTaskPage() {
   const rows = useRef(new Map<string, HTMLElement>());
 
   const facts = useMemo(
-    () => (workup.data ? workupFacts(workup.data.snapshot, workup.data.data) : []),
+    () => (workup.data ? workupFacts(workup.data.snapshot, workup.data.data, workup.data.agencyDistricts) : []),
     [workup.data],
   );
   const progress = useMemo(() => workupProgress(facts), [facts]);
@@ -128,7 +128,7 @@ export function ExpertTaskPage() {
   const inProduction = module !== 'facts' && module !== 'risks' && module !== 'scope' && module !== 'figures';
   // 还差的项（底栏与「下一个缺失项」共用，确认生成时后台按同一规则再查一次）
   const { gaps, required } = useMemo(
-    () => (workup.data ? workupGaps(workup.data.snapshot, workup.data.data) : { gaps: [], required: 0 }),
+    () => (workup.data ? workupGaps(workup.data.snapshot, workup.data.data, workup.data.agencyDistricts) : { gaps: [], required: 0 }),
     [workup.data],
   );
   const done = required - gaps.length;

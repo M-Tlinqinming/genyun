@@ -17,6 +17,8 @@ import { AuthService, SESSION_TTL_MS, type SessionUser } from './auth.service.ts
 import { RecoveryService } from './recovery.service.ts';
 import { CurrentUser, Public, SESSION_COOKIE } from './session.guard.ts';
 
+export const ACCOUNT_DISABLED = '这个账号已停用。如需恢复，请联系耕云运营';
+
 export function setSessionCookie(res: Response, token: string): void {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
@@ -48,6 +50,10 @@ export class AuthController {
     if (!result) {
       await this.audit.record({ action: 'login_failure', actorEmail: parsed.data.email.trim().toLowerCase(), ip });
       throw new UnauthorizedException('邮箱或密码不正确');
+    }
+    if (result === 'disabled') {
+      await this.audit.record({ action: 'login_failure', actorEmail: parsed.data.email.trim().toLowerCase(), ip, target: '账号已停用' });
+      throw new UnauthorizedException(ACCOUNT_DISABLED);
     }
     await this.audit.record({ action: 'login_success', actorId: result.user.id, actorEmail: result.user.email, ip });
 

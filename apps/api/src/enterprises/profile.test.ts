@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { checklistItems, enterprises, memberships, organizations, users } from '../db/schema.ts';
+import { checklistItems, enterpriseAssignments, enterprises, memberships, organizations, users } from '../db/schema.ts';
 import { LocalDiskStorage } from '../files/storage.ts';
 import { FakeLicenseRecognizer } from '../license/recognizer.ts';
 
@@ -126,6 +126,9 @@ describe('企业自填第 1 步 · 保存', () => {
 
   it('别人已保存过（版本对不上）时拒绝，返回最新版本', async () => {
     const id = await newEnterprise('丙公司');
+    // 成员处理分配给自己的企业
+    const [member0] = await handle.db.select({ id: users.id }).from(users).where(eq(users.email, 'a-member@test.cn'));
+    await handle.db.insert(enterpriseAssignments).values({ enterpriseId: id, userId: member0!.id, orgId: org.a });
     const admin = await as('a-admin@test.cn');
     const member = await as('a-member@test.cn');
     expect(

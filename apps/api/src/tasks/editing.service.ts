@@ -221,10 +221,20 @@ export class EditingService {
   // 当前稿的 Word：生成时的结构盖上各节修订（第 12 项起再转 PDF、记核对）
   async word(user: SessionUser, taskId: string, kind: string): Promise<{ name: string; data: Buffer }> {
     const d = await this.draft(user, taskId, kind);
-    const edits = await this.edits(d.batch.id, d.kind);
+    return this.batchWord(d.batch, d.kind, d.doc);
+  }
+
+  // 指定那一批的当前稿 Word（转 PDF 用开始转换时的那一批，期间重新生成也不会串到新一批）。权限由调用方先查
+  async batchWord(
+    batch: typeof generationBatches.$inferSelect,
+    kind: DraftKind,
+    doc?: DeliveryDocument,
+  ): Promise<{ name: string; data: Buffer }> {
+    const base = doc ?? (await this.load(batch.id, kind)).doc;
+    const edits = await this.edits(batch.id, kind);
     const blocks = Object.fromEntries(Object.entries(edits?.sections ?? {}).map(([id, e]) => [id, e.blocks]));
-    const data = await renderWord(applyEdits(d.doc, blocks));
-    return { name: `${d.batch.input.basic.companyName}${DRAFT_KINDS[d.kind]}（修订稿）.docx`, data };
+    const data = await renderWord(applyEdits(base, blocks));
+    return { name: `${batch.input.basic.companyName}${DRAFT_KINDS[kind]}（修订稿）.docx`, data };
   }
 
   // 发布时的定稿：这批草稿的结构盖上各节修订，文件属性写上 AI 标识和审核人。权限由发布服务先查

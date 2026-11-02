@@ -13,6 +13,7 @@ import { EnterpriseDocumentsController, TaskDocumentsController } from './docume
 import { DocumentsService } from './documents/documents.service.ts';
 import { EnterprisesController } from './enterprises/enterprises.controller.ts';
 import { EnterpriseProfileController } from './enterprises/profile.controller.ts';
+import { FeedbackController, OperatorFeedbackController } from './feedback/feedback.controller.ts';
 import { FilesController } from './files/files.controller.ts';
 import { defaultDrafter, type ParagraphPolisher } from './generation/ai/drafter.ts';
 import { defaultRenderer, DRAFT_RENDERER, type DraftRenderer } from './generation/drafts.ts';
@@ -25,14 +26,18 @@ import { defaultMailer, MAIL_OUTBOX, MAILER, type Mailer, outboxEnabled } from '
 import { OutboxController } from './mail/outbox.controller.ts';
 import { InvitationsController } from './orgs/invitations.controller.ts';
 import { OperatorOrgsController } from './orgs/operator-orgs.controller.ts';
+import { InternalAccountsController } from './accounts/internal-accounts.controller.ts';
+import { OperatorOverviewController } from './operator/overview.controller.ts';
 import { OperatorOnSiteController } from './tasks/operator-on-site.controller.ts';
 import { OperatorTasksController } from './tasks/operator-tasks.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
+import { OrgMembersController } from './orgs/org-members.controller.ts';
 import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
 import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/drawings.service.ts';
 import { DrawingRenderer } from './generation/drawings/renderer.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
 import { EDIT_DRAFTER, EditingController, EditingService } from './tasks/editing.service.ts';
+import { DeliveriesController, DeliveriesService } from './tasks/deliveries.service.ts';
 import { PublishController, PublishService } from './tasks/publish.service.ts';
 import { ReviewController, ReviewService } from './tasks/review.service.ts';
 import { SupplementsController, SupplementsService } from './tasks/supplements.service.ts';
@@ -45,6 +50,8 @@ import { HealthController } from './health/health.controller.ts';
 import { AuditLogsController, AuditService } from './audit/audit.ts';
 import { defaultProbes, HEALTH_PROBES, type HealthProbes } from './health/health.ts';
 import { WorkupController, WorkupService } from './tasks/workup.service.ts';
+import { KnowledgeController, ProcessTemplatesController } from './knowledge/knowledge.controller.ts';
+import { KnowledgeService } from './knowledge/knowledge.service.ts';
 
 export interface AppOptions {
   loginLimitPerMinute?: number;
@@ -82,9 +89,16 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       AuthController,
       AccountController,
       OrgsController,
+      OrgMembersController,
       OperatorOrgsController,
       OperatorTasksController,
       OperatorOnSiteController,
+      OperatorOverviewController,
+      OperatorFeedbackController,
+      FeedbackController,
+      InternalAccountsController,
+      KnowledgeController,
+      ProcessTemplatesController,
       InvitationsController,
       EnterprisesController,
       EnterpriseProfileController,
@@ -95,6 +109,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EditingController,
       ReviewController,
       PublishController,
+      DeliveriesController,
       DrawingsController,
       ContactsController,
       SupplementsController,
@@ -122,12 +137,14 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       { provide: DRAWING_RENDERER, useFactory: () => options.drawingRenderer ?? new DrawingRenderer() },
       AuthService,
       AuditService,
+      KnowledgeService,
       RecoveryService,
       AccountService,
       GenerationService,
       EditingService,
       ReviewService,
       PublishService,
+      DeliveriesService,
       DrawingsService,
       TasksService,
       ExpertTasksService,

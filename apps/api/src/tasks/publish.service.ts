@@ -55,7 +55,7 @@ import {
   users,
 } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
-import { NotificationsService } from '../notifications/notifications.service.ts';
+import { enterpriseCustomerIds, NotificationsService } from '../notifications/notifications.service.ts';
 import { EditingService } from './editing.service.ts';
 import { ReviewService } from './review.service.ts';
 
@@ -67,7 +67,7 @@ const CHANGED_WHILE_PUBLISHING = '发布期间有文稿又保存了修订，本�
 
 const WORD_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-type Task = { id: string; orgId: string; assignedExpertId: string | null; number: string; enterpriseName: string; closedAt: Date | null };
+type Task = { id: string; orgId: string; enterpriseId: string; assignedExpertId: string | null; number: string; enterpriseName: string; closedAt: Date | null };
 type Batch = typeof generationBatches.$inferSelect;
 type Delivery = typeof deliveries.$inferSelect;
 
@@ -211,18 +211,14 @@ export class PublishService {
       // 任务进入已交付（以后再发布 V2 时已经是已交付，只更新时间）
       await tx.update(tasks).set({ updatedAt: now }).where(eq(tasks.id, task.id));
       await tx.update(tasks).set({ closedAt: now }).where(and(eq(tasks.id, task.id), isNull(tasks.closedAt)));
-      const customers = await tx
-        .select({ userId: memberships.userId })
-        .from(memberships)
-        .where(and(eq(memberships.orgId, task.orgId), inArray(memberships.role, ['customer_admin', 'customer_member'])));
-      // 只在站内提醒，不发邮件；不写注安师电话
+      // 只在站内提醒，不发邮件；不写注安师电话。只提醒机构管理员和负责这家企业的成员
       await this.notifications.notify(
-        customers.map((c) => c.userId),
+        await enterpriseCustomerIds(tx, task),
         {
           taskId: task.id,
           title: `${task.enterpriseName}的成果已交付`,
-          body: `应急预案、风险评估报告、应急资源调查报告已发布（${deliveryLabel(row.version)}），可在任务里查看。`,
-          link: `/customer/tasks/${task.id}`,
+          body: `应急预案、风险评估报告、应急资源调查报告已发布（${deliveryLabel(row.version)}），可在成果文档里查看和下载。`,
+          link: `/customer/documents/${task.id}`,
         },
         tx,
       );
@@ -350,6 +346,7 @@ export class PublishService {
       .select({
         id: tasks.id,
         orgId: tasks.orgId,
+        enterpriseId: tasks.enterpriseId,
         assignedExpertId: tasks.assignedExpertId,
         number: tasks.number,
         enterpriseName: enterprises.name,

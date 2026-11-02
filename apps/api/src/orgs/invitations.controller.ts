@@ -12,16 +12,18 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import type { Response } from 'express';
 import { setSessionCookie } from '../auth/auth.controller.ts';
 import { AuthService, hashPassword, type SessionUser } from '../auth/auth.service.ts';
 import { Public } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { memberships, notifications, organizationInvitations, organizations, users } from '../db/schema.ts';
-import { NotificationsService } from '../notifications/notifications.service.ts';
+import { enterpriseAssignments, memberships, notifications, organizationInvitations, organizations, users } from '../db/schema.ts';
+import { inviteExpiredKey, NotificationsService } from '../notifications/notifications.service.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { hashInvitationToken } from './invitations.ts';
+
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 const HAS_ACCOUNT = '这个邮箱已经有耕云账号。请先登录，再联系邀请人';
 const NOT_FOUND = '邀请链接不完整或已失效。请从邀请邮件里重新打开，或联系邀请人重新发送';
@@ -74,13 +76,24 @@ export class InvitationsController {
     const problem = passwordProblem(parsed.data.password, inv.email);
     if (problem) throw new BadRequestException(problem);
 
-    // 这一期只给新邮箱开账号；已有账号的人加入另一个组织留给客户组织管理（第 7 项）
-    const [existing] = await this.db.select({ id: users.id }).from(users).where(eq(users.email, inv.email)).limit(1);
-    if (existing) throw new ConflictException(HAS_ACCOUNT);
+    // 只给新邮箱开账号；已有账号、还在某个组织里的人不能再接受邀请。
+    // 例外：被机构管理员移除（账号已停用、不在任何组织）的账号（M3 第 7 项），重新接受邀请时恢复这个账号，上传记录仍归他。
+    // 运营停用的账号不算，只能由运营恢复
+    const [existing] = await this.db
+      .select({ id: users.id, disabledReason: users.disabledReason })
+      .from(users)
+      .where(eq(users.email, inv.email))
+      .limit(1);
+    if (existing) {
+      const [member] = await this.db.select({ orgId: memberships.orgId }).from(memberships).where(eq(memberships.userId, existing.id)).limit(1);
+      if (member || existing.disabledReason !== 'removed_by_customer') throw new ConflictException(HAS_ACCOUNT);
+    }
 
     const passwordHash = await hashPassword(parsed.data.password);
+    // 首位管理员邀请由运营发；机构管理员自己邀请的管理员（第 7 项）不受「已有管理员」限制
+    const firstAdmin = inv.role === 'customer_admin' && (await this.byOperator(inv.invitedBy));
     const userId = await this.db.transaction(async (tx) => {
-      if (inv.role === 'customer_admin') {
+      if (firstAdmin) {
         // 锁住组织这一行，和运营更换首位管理员排队；已经有管理员时不再接受第二封首位管理员邀请
         await tx.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, inv.orgId)).for('update');
         const [admin] = await tx
@@ -104,16 +117,28 @@ export class InvitationsController {
         )
         .returning({ id: organizationInvitations.id });
       if (!claimed) throw new ConflictException('这封邀请刚刚失效了，请刷新页面查看');
-      const [user] = await tx
-        .insert(users)
-        .values({ email: inv.email, name: parsed.data.name, passwordHash })
-        .returning({ id: users.id })
-        // 同一邮箱同时接受两家组织的邀请：后到的一方撞唯一约束，返回 409 而不是 500
+      const user = existing
+        ? await this.reactivate(tx, existing.id, parsed.data.name, passwordHash)
+        : (
+            await tx
+              .insert(users)
+              .values({ email: inv.email, name: parsed.data.name, passwordHash })
+              .returning({ id: users.id })
+              // 同一邮箱同时接受两家组织的邀请：后到的一方撞唯一约束，返回 409 而不是 500
+              .catch((err: unknown) => {
+                if (isUniqueViolation(err, 'users_email_unique')) throw new ConflictException(HAS_ACCOUNT);
+                throw err;
+              })
+          )[0];
+      // 以前在这个组织里时的企业分配不带回来：重新加入后由机构管理员重新分配
+      await tx.delete(enterpriseAssignments).where(and(eq(enterpriseAssignments.orgId, inv.orgId), eq(enterpriseAssignments.userId, user!.id)));
+      await tx
+        .insert(memberships)
+        .values({ userId: user!.id, orgId: inv.orgId, role: inv.role })
         .catch((err: unknown) => {
-          if (isUniqueViolation(err, 'users_email_unique')) throw new ConflictException(HAS_ACCOUNT);
+          if (isUniqueViolation(err, 'memberships_user_id_org_id_pk')) throw new ConflictException(HAS_ACCOUNT);
           throw err;
         });
-      await tx.insert(memberships).values({ userId: user!.id, orgId: inv.orgId, role: inv.role });
       await tx.update(organizationInvitations).set({ acceptedBy: user!.id }).where(eq(organizationInvitations.id, inv.id));
       return user!.id;
     });
@@ -121,6 +146,20 @@ export class InvitationsController {
     const session = await this.auth.startSession(userId);
     setSessionCookie(res, session.token);
     return session.user;
+  }
+
+  // 恢复被移除的账号：锁住这一行，再确认仍不在任何组织里（同时接受两封邀请时只有一次成功）
+  private async reactivate(tx: Tx, userId: string, name: string, passwordHash: string) {
+    await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
+    const [member] = await tx.select({ orgId: memberships.orgId }).from(memberships).where(eq(memberships.userId, userId)).limit(1);
+    if (member) throw new ConflictException(HAS_ACCOUNT);
+    const [user] = await tx
+      .update(users)
+      .set({ name, passwordHash, disabledAt: null, disabledReason: null })
+      .where(and(eq(users.id, userId), eq(users.disabledReason, 'removed_by_customer')))
+      .returning({ id: users.id });
+    if (!user) throw new ConflictException(HAS_ACCOUNT);
+    return user;
   }
 
   // 链接过期后「请邀请人重新发送」：只给邀请人发一条站内提醒，不自动生成新链接（Paper 10 页注释）
@@ -146,14 +185,23 @@ export class InvitationsController {
       hourCycle: 'h23',
     }).format(inv.expiresAt);
     const body = `${inv.orgName}：发给 ${inv.email} 的邀请已于 ${expired} 过期，对方请您重新发送。`;
-    const link = (await this.byOperator(inv.invitedBy)) ? `/operator/organizations/${inv.orgId}` : '/customer/organization';
+    // 内部成员（注安师、运营）的邀请在「内部账号」里重发
+    const internal = inv.role === 'expert' || inv.role === 'operator';
+    const link = internal
+      ? '/operator/accounts'
+      : (await this.byOperator(inv.invitedBy))
+        ? `/operator/organizations/${inv.orgId}`
+        : '/customer/organization';
     // 同一封邀请只提醒一次
     const [already] = await this.db
       .select({ id: notifications.id })
       .from(notifications)
       .where(and(eq(notifications.userId, inv.invitedBy), eq(notifications.title, title), eq(notifications.body, body)))
       .limit(1);
-    if (!already) await this.notifications.notify([inv.invitedBy], { title, body, link });
+    // 邀请人已被移出组织、降为成员或停用：不再提醒他（他发出的未接受邀请那时已作废，这里防万一）
+    if (!already && (await this.inviterActive(inv))) {
+      await this.notifications.notify([inv.invitedBy], { title, body, link, dedupeKey: inviteExpiredKey(inv.orgId, inv.id, inv.expiresAt) });
+    }
     return { inviterName: await this.inviterName(inv) };
   }
 
@@ -166,6 +214,23 @@ export class InvitationsController {
       .where(and(eq(memberships.userId, userId), eq(memberships.role, 'operator')))
       .limit(1);
     return Boolean(m);
+  }
+
+  // 邀请人还能处理这封邀请：账号没停用，并且是运营或这个组织的机构管理员
+  private async inviterActive(inv: { invitedBy: string; orgId: string }): Promise<boolean> {
+    const [row] = await this.db
+      .select({ userId: memberships.userId })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(
+        and(
+          eq(memberships.userId, inv.invitedBy),
+          isNull(users.disabledAt),
+          or(eq(memberships.role, 'operator'), and(eq(memberships.orgId, inv.orgId), eq(memberships.role, 'customer_admin'))),
+        ),
+      )
+      .limit(1);
+    return Boolean(row);
   }
 
   private async inviterName(inv: { invitedBy: string; inviterName: string }): Promise<string> {

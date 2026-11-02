@@ -50,12 +50,11 @@ test('按操作类型筛选：登录失败', async () => {
   await expect(page.locator('main')).not.toContainText('wrong-password-e2e');
 
   await page.getByLabel('操作类型').click();
-  await page.locator('.ant-select-item-option').filter({ hasText: '修改密码' }).click();
-  // 换筛选后登录失败的行消失；有没有修改密码记录取决于 account.spec 是否先跑过，两种都算对
+  await page.locator('.ant-select-item-option').filter({ hasText: '登录成功' }).click();
+  // 换筛选后登录失败的行消失，只剩本用例 beforeAll 里运营自己的登录成功（不依赖其他用例先跑）
   await expect(page.getByRole('row').filter({ hasText: '登录失败' })).toHaveCount(0);
-  await expect(
-    page.getByText('没有「修改密码」的记录').or(page.getByRole('row').filter({ hasText: '修改密码' }).first()),
-  ).toBeVisible();
+  const ok = page.getByRole('row').filter({ hasText: 'ops@demo.genyun.net.cn' }).first();
+  await expect(ok).toContainText('登录成功');
 });
 
 test('客户管理员调接口 403，菜单里也没有操作日志', async ({ browser }) => {

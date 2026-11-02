@@ -2,7 +2,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import { chinaToday, contractState, maskPhone, ORG_SERVICE_STATES, type OrgServiceState } from '@genyun/shared';
 import { Button, Empty, Input, Select, Table, Tabs, Typography } from 'antd';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useOperatorOrgs, type OperatorOrgRow } from '../../api/operator';
 import { PageHeader } from '../../components/PageHeader';
 import { linkButton, Notice, panel } from '../../components/ui';
@@ -72,7 +72,9 @@ export function OrganizationListPage() {
   const [region, setRegion] = useState<string>('all');
   const [expiry, setExpiry] = useState<Expiry>('any');
   const [registering, setRegistering] = useState(false);
-  const [opening, setOpening] = useState<string | null>(null);
+  // 从运营概览「今天先处理」点「开通与邀请」进来时带着 ?open=<组织>，直接打开开通弹窗
+  const [params, setParams] = useSearchParams();
+  const [opening, setOpening] = useState<string | null>(params.get('open'));
 
   const all = orgs.data ?? [];
   const counts = useMemo(() => {
@@ -194,8 +196,10 @@ export function OrganizationListPage() {
               style: { padding: '0 24px' },
             }}
             locale={{
-              emptyText:
-                all.length === 0 ? (
+              // 加载中不显示「还没有客户组织」和第二个登记按钮，免得一闪而过
+              emptyText: orgs.isPending ? (
+                <div style={{ height: 160 }} />
+              ) : all.length === 0 ? (
                   <Empty description="还没有客户组织。合作确认后先登记，签约到账后再开通。" style={{ padding: '48px 0' }}>
                     {registerButton}
                   </Empty>
@@ -288,7 +292,15 @@ export function OrganizationListPage() {
         </div>
       )}
       <RegisterOrgModal orgId={null} open={registering} onClose={() => setRegistering(false)} />
-      {opening && <OpenOrgModal orgId={opening} onClose={() => setOpening(null)} />}
+      {opening && (
+        <OpenOrgModal
+          orgId={opening}
+          onClose={() => {
+            setOpening(null);
+            if (params.has('open')) setParams({}, { replace: true });
+          }}
+        />
+      )}
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { libraryFilesOf } from './library.ts';
+import { libraryFilesOf, profileFileIdsOf } from './library.ts';
 import { productionStepSchema } from './production-step.ts';
 import { resourcesStepSchema } from './resources-step.ts';
 
@@ -45,5 +45,28 @@ describe('自填文件进企业资料库', () => {
     expect(libraryFilesOf({})).toEqual([]);
     const step = resourcesStepSchema.parse({ drawings: { site_plan: [id(1)], fire_facility_plan: [id(1)] } });
     expect(libraryFilesOf({ resourcesStep: { step } })).toEqual([{ fileId: id(1), category: 'drawings' }]);
+  });
+});
+
+describe('企业档案引用的所有文件', () => {
+  it('资料库的文件之外，还有铭牌、包装标签、药箱照片；自由填写的文字里的 ID 不算', () => {
+    const ids = profileFileIdsOf({
+      basicStep: { basic: { siteAddress: id(99) } as never, later: [], sources: {}, licenseFileId: id(1) },
+      productionStep: {
+        step: productionStepSchema.parse({
+          materials: [{ id: 'm1', name: id(98), labelPhotoFileIds: [id(2)] }],
+          specialEquipment: { pressureVessels: { answer: 'photo', photoFileIds: [id(3)] } },
+          process: { sketchFileIds: [id(4)], description: id(97) },
+        }),
+      },
+      resourcesStep: { step: resourcesStepSchema.parse({ firstAidKit: { answer: 'yes', mode: 'manual', photoFileIds: [id(5)] } }) },
+    });
+    expect(ids.sort()).toEqual([id(1), id(2), id(3), id(4), id(5)]);
+  });
+
+  it('早期保存的内容缺字段也不出错', () => {
+    expect(profileFileIdsOf({})).toEqual([]);
+    expect(profileFileIdsOf(null)).toEqual([]);
+    expect(profileFileIdsOf({ productionStep: { step: {} as never }, resourcesStep: { step: {} as never } })).toEqual([]);
   });
 });

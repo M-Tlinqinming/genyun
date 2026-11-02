@@ -13,13 +13,13 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { asc, eq, sql } from 'drizzle-orm';
-import { canEditOrganizationData, canViewOrganization } from '../auth/access.ts';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { canCreateEnterprise, canEditEnterpriseData, canViewEnterprise, canViewOrganization, enterpriseScope } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
-import { enterprises } from '../db/schema.ts';
+import { enterpriseAssignments, enterprises, users } from '../db/schema.ts';
 
 const NOT_FOUND = '找不到该企业';
 const DUPLICATE_CODE = '本组织已有使用该统一社会信用代码的企业';
@@ -42,13 +42,33 @@ export class EnterprisesController {
   @Get('orgs/:orgId/enterprises')
   async list(@CurrentUser() user: SessionUser, @Param('orgId', ParseUUIDPipe) orgId: string) {
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
-    return this.db.select(columns).from(enterprises).where(eq(enterprises.orgId, orgId)).orderBy(asc(enterprises.createdAt));
+    // 成员只列出分配给自己的企业
+    const scope = enterpriseScope(user, orgId);
+    if (Array.isArray(scope) && scope.length === 0) return [];
+    const rows = await this.db
+      .select(columns)
+      .from(enterprises)
+      .where(and(eq(enterprises.orgId, orgId), Array.isArray(scope) ? inArray(enterprises.id, scope) : undefined))
+      .orderBy(asc(enterprises.createdAt));
+    // 负责成员（企业列表「负责成员」列）
+    const assigned = rows.length
+      ? await this.db
+          .select({ enterpriseId: enterpriseAssignments.enterpriseId, id: users.id, name: users.name })
+          .from(enterpriseAssignments)
+          .innerJoin(users, eq(users.id, enterpriseAssignments.userId))
+          .where(inArray(enterpriseAssignments.enterpriseId, rows.map((r) => r.id)))
+          .orderBy(asc(enterpriseAssignments.assignedAt))
+      : [];
+    return rows.map((r) => ({
+      ...r,
+      members: assigned.filter((a) => a.enterpriseId === r.id).map(({ id, name }) => ({ id, name })),
+    }));
   }
 
   @Post('orgs/:orgId/enterprises')
   async create(@CurrentUser() user: SessionUser, @Param('orgId', ParseUUIDPipe) orgId: string, @Body() body: unknown) {
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
-    if (!canEditOrganizationData(user, orgId)) throw new ForbiddenException('企业档案由客户自己建立');
+    if (!canCreateEnterprise(user, orgId)) throw new ForbiddenException('新建企业请联系机构管理员');
     const parsed = enterpriseInputSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     try {
@@ -71,7 +91,7 @@ export class EnterprisesController {
   @Patch('enterprises/:id')
   async update(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     const found = await this.load(user, id);
-    if (!canEditOrganizationData(user, found.orgId)) throw new ForbiddenException('企业档案由客户自己维护');
+    if (!canEditEnterpriseData(user, { orgId: found.orgId, enterpriseId: found.id })) throw new ForbiddenException('企业档案由客户自己维护');
     const parsed = enterpriseUpdateSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     try {
@@ -91,7 +111,7 @@ export class EnterprisesController {
   // 无权访问与不存在返回同样的结果，不暴露别家企业是否存在
   private async load(user: SessionUser, id: string) {
     const [found] = await this.db.select(columns).from(enterprises).where(eq(enterprises.id, id)).limit(1);
-    if (!found || !canViewOrganization(user, found.orgId)) throw new NotFoundException(NOT_FOUND);
+    if (!found || !canViewEnterprise(user, { orgId: found.orgId, enterpriseId: found.id })) throw new NotFoundException(NOT_FOUND);
     return found;
   }
 }

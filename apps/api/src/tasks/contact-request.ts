@@ -1,4 +1,10 @@
-import { type ChecklistItemKey, CONTACT_WORKING_DAYS, addWorkingDays, getItemDef, reachedCustomer } from '@genyun/shared';
+import { type ChecklistItemKey, CHECKLIST_ITEM_KEYS, CONTACT_WORKING_DAYS, addWorkingDays, getItemDef, reachedCustomer } from '@genyun/shared';
+
+// 资料项按资料清单的固定顺序排（数据库查询不保证顺序；专家横幅、待核实列表、运营超时兜底都按这个顺序显示）
+const ITEM_ORDER = new Map<string, number>(CHECKLIST_ITEM_KEYS.map((k, i) => [k, i]));
+export function byChecklistOrder<T extends { itemKey: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => (ITEM_ORDER.get(a.itemKey) ?? Infinity) - (ITEM_ORDER.get(b.itemKey) ?? Infinity));
+}
 
 // 客户请专家电话联系：从提交（或提交后才点的那一刻）起算 2 个工作日；改派后从新注安师接手时重新算
 export interface ContactRequest {
@@ -39,7 +45,7 @@ export function pendingContactRequest(
   return {
     requestedAt,
     requestedBy: first.updatedByName,
-    labels: calls.map((p) => getItemDef(p.itemKey as ChecklistItemKey).label),
+    labels: byChecklistOrder(calls).map((p) => getItemDef(p.itemKey as ChecklistItemKey).label),
     deadline: addWorkingDays(requestedAt, CONTACT_WORKING_DAYS),
   };
 }

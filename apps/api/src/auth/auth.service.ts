@@ -1,10 +1,10 @@
 import { hash, verify } from '@node-rs/argon2';
 import type { LoginInput, Role } from '@genyun/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 import { DATABASE, type Database } from '../db/client.ts';
-import { memberships, organizations, sessions, users } from '../db/schema.ts';
+import { enterpriseAssignments, memberships, organizations, sessions, users } from '../db/schema.ts';
 
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -12,6 +12,8 @@ export interface Membership {
   orgId: string;
   orgName: string;
   role: Role;
+  // 客户账号在这个组织里被分配到的企业（成员只能看到这些；机构管理员不受限，这里只表示「负责」）
+  enterpriseIds?: string[];
 }
 
 export interface SessionUser {
@@ -36,11 +38,13 @@ const DUMMY_HASH = hash('genyun-dummy-password');
 export class AuthService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  async login(input: LoginInput): Promise<{ token: string; user: SessionUser } | null> {
+  // 停用的账号：密码对了才告诉对方「已停用」（密码不对时和其他错误一样，不暴露账号状态）
+  async login(input: LoginInput): Promise<{ token: string; user: SessionUser } | 'disabled' | null> {
     const email = input.email.trim().toLowerCase();
     const [found] = await this.db.select().from(users).where(eq(users.email, email)).limit(1);
     const ok = await verify(found?.passwordHash ?? (await DUMMY_HASH), input.password);
     if (!found || !ok) return null;
+    if (found.disabledAt) return 'disabled';
     return this.startSession(found.id);
   }
 
@@ -59,7 +63,9 @@ export class AuthService {
     const [row] = await this.db
       .select({ userId: sessions.userId })
       .from(sessions)
-      .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())))
+      // 停用时会删掉会话；这里再按账号状态挡一次，停用那一刻正在进行的请求之后也进不来
+      .innerJoin(users, eq(users.id, sessions.userId))
+      .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date()), isNull(users.disabledAt)))
       .limit(1);
     return row ? this.loadUser(row.userId) : null;
   }
@@ -77,6 +83,17 @@ export class AuthService {
       .innerJoin(organizations, eq(organizations.id, memberships.orgId))
       .where(eq(memberships.userId, userId))
       .orderBy(organizations.name);
-    return { id: user.id, email: user.email, name: user.name, memberships: rows };
+    const assigned = rows.some((m) => m.role === 'customer_admin' || m.role === 'customer_member')
+      ? await this.db
+          .select({ orgId: enterpriseAssignments.orgId, enterpriseId: enterpriseAssignments.enterpriseId })
+          .from(enterpriseAssignments)
+          .where(eq(enterpriseAssignments.userId, userId))
+      : [];
+    const result: Membership[] = rows.map((m) =>
+      m.role === 'customer_admin' || m.role === 'customer_member'
+        ? { ...m, enterpriseIds: assigned.filter((a) => a.orgId === m.orgId).map((a) => a.enterpriseId) }
+        : m,
+    );
+    return { id: user.id, email: user.email, name: user.name, memberships: result };
   }
 }

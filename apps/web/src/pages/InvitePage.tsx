@@ -1,4 +1,12 @@
-import { acceptInvitationSchema, passwordChecks, passwordProblem, ROLES, type AcceptInvitationInput } from '@genyun/shared';
+import {
+  acceptInvitationSchema,
+  INTERNAL_ROLE_LABELS,
+  INTERNAL_ROLE_SCOPES,
+  passwordChecks,
+  passwordProblem,
+  ROLES,
+  type AcceptInvitationInput,
+} from '@genyun/shared';
 import { Alert, Button, Checkbox, Form, Input } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
@@ -141,8 +149,16 @@ function AcceptForm({ token, inv, signedInAs }: { token: string; inv: Invitation
       <Heading title={`加入${inv.orgName}`}>{inv.inviterName}邀请您加入耕云工作空间。</Heading>
       <InfoBox
         rows={[
-          ['身份', ROLES[inv.role].label],
-          ['可见企业', inv.role === 'customer_admin' ? '全部企业' : '由管理员分配'],
+          // 耕云内部成员（注安师、运营）显示内部的叫法和可见范围
+          ...(inv.role === 'expert' || inv.role === 'operator'
+            ? ([
+                ['身份', INTERNAL_ROLE_LABELS[inv.role]],
+                ['可见范围', INTERNAL_ROLE_SCOPES[inv.role]],
+              ] as [string, string][])
+            : ([
+                ['身份', ROLES[inv.role].label],
+                ['可见企业', inv.role === 'customer_admin' ? '全部企业' : '由管理员分配'],
+              ] as [string, string][])),
           ['邀请有效期', `至 ${shortTime(inv.expiresAt)}`],
         ]}
       />

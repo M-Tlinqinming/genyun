@@ -7,9 +7,14 @@ import { InvitePage } from './pages/InvitePage';
 import { LoginPage } from './pages/LoginPage';
 import { RecoverPage } from './pages/RecoverPage';
 import { PendingPage } from './pages/PendingPage';
+import { DeliveryPage } from './pages/customer/documents/DeliveryPage';
+import { DeliveryReaderPage } from './pages/customer/documents/DeliveryReaderPage';
+import { DocumentsPage } from './pages/customer/documents/DocumentsPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
 import { EnterpriseDetailPage } from './pages/customer/EnterpriseDetailPage';
 import { EnterpriseListPage } from './pages/customer/EnterpriseListPage';
+import { MyFeedbackPage } from './pages/customer/MyFeedbackPage';
+import { OrganizationPage } from './pages/customer/OrganizationPage';
 import { SelfFillPage } from './pages/customer/fill/SelfFillPage';
 import { StartMethodPage } from './pages/customer/StartMethodPage';
 import { TaskCreatePage } from './pages/customer/TaskCreatePage';
@@ -19,6 +24,10 @@ import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
 import { TaskCenterPage } from './pages/expert/TaskCenterPage';
 import { AuditLogPage } from './pages/operator/AuditLogPage';
+import { FeedbackPage } from './pages/operator/FeedbackPage';
+import { InternalAccountsPage } from './pages/operator/InternalAccountsPage';
+import { KnowledgePage } from './pages/operator/knowledge/KnowledgePage';
+import { OperatorOverviewPage } from './pages/operator/OperatorOverviewPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
 import { MailOutboxPage } from './pages/operator/MailOutboxPage';
 import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
@@ -35,6 +44,7 @@ const EYEBROW: Record<Workspace, string> = {
 const HOME: Partial<Record<Workspace, RouteObject['element']>> = {
   customer: <WorkbenchPage />,
   expert: <TaskCenterPage />,
+  operator: <OperatorOverviewPage />,
 };
 
 // 不在菜单里的页面（从列表点进去）
@@ -50,7 +60,16 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
+  // 组织管理（仅机构管理员，侧栏只对机构管理员显示）；?tab= 切换组织资料、成员与权限、企业分配、年度服务
+  '/customer/organization': [{ index: true, element: <OrganizationPage /> }],
+  // 我的反馈（?id= 定位到某一条；平时不在菜单里）
+  '/customer/feedback': [{ index: true, element: <MyFeedbackPage /> }],
   '/operator/audit-logs': [{ index: true, element: <AuditLogPage /> }],
+  // 反馈受理（?id= 打开某一条）
+  '/operator/feedback': [{ index: true, element: <FeedbackPage /> }],
+  '/operator/accounts': [{ index: true, element: <InternalAccountsPage /> }],
+  // 知识库：?tab= 切换属地应急机构、工艺模板、节假日
+  '/operator/knowledge': [{ index: true, element: <KnowledgePage /> }],
   '/operator/organizations': [
     { index: true, element: <OrganizationListPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },
@@ -65,6 +84,12 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
+  ],
+  // 成果文档：列表 → 某任务的交付详情（?v= 版本）→ 在线阅读
+  '/customer/documents': [
+    { index: true, element: <DocumentsPage /> },
+    { path: ':taskId', element: <DeliveryPage /> },
+    { path: ':taskId/read/:kind', element: <DeliveryReaderPage /> },
   ],
 };
 

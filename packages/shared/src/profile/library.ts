@@ -34,3 +34,33 @@ export function libraryFilesOf(profile: EnterpriseProfile): LibraryFile[] {
   const seen = new Set<string>();
   return out.filter((f) => !seen.has(f.fileId) && seen.add(f.fileId));
 }
+
+// 企业档案里引用的所有文件（M3 第 7 项：判断成员能不能看某个文件）。比资料库多出铭牌、包装标签、药箱等零散照片。
+// 按字段逐个取，不在整段内容里搜文本：自由填写的地址、说明里写进别家的文件 ID 不算引用。
+// 存下来的内容可能是早期版本、缺字段，所以每一层都按可能缺失来取
+export function profileFileIdsOf(profile: EnterpriseProfile | null | undefined): string[] {
+  if (!profile) return [];
+  const ids: (string | undefined)[] = [];
+  const add = (list: readonly (string | undefined)[] | undefined) => {
+    if (Array.isArray(list)) ids.push(...list);
+  };
+  ids.push(profile.basicStep?.licenseFileId);
+  add(profile.organizationStep?.rosterFileIds);
+  const production = profile.productionStep?.step;
+  if (production) {
+    add(production.ledgers?.equipment);
+    add(production.ledgers?.materials);
+    add(production.process?.sketchFileIds);
+    for (const c of Object.values(production.specialEquipment ?? {})) add((c as { photoFileIds?: string[] } | undefined)?.photoFileIds);
+    for (const m of production.materials ?? []) add(m?.labelPhotoFileIds);
+  }
+  const resources = profile.resourcesStep?.step;
+  if (resources) {
+    add(resources.supplyLedgerFileIds);
+    add(resources.fireAcceptanceFileIds);
+    add(resources.firstAidKit?.photoFileIds);
+    for (const m of Object.values(resources.msds ?? {})) add(m?.fileIds);
+    for (const d of Object.values(resources.drawings ?? {})) add(d);
+  }
+  return [...new Set(ids.filter((id): id is string => typeof id === 'string' && id !== ''))];
+}

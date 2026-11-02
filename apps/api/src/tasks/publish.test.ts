@@ -301,7 +301,7 @@ describe('发布', () => {
     const notes = (await feiyu.get('/api/notifications').expect(200)).body.items as { title: string; body: string; link: string }[];
     const note = notes.find((n) => n.title.includes('成果已交付'))!;
     expect(note.body).toContain('交付 V1');
-    expect(note.link).toBe(`/customer/tasks/${taskId}`);
+    expect(note.link).toBe(`/customer/documents/${taskId}`);
     expect(note.body).not.toMatch(/1[3-9]\d{9}/);
     // 交付的 Word 本组织客户能取，别家客户不能
     await feiyu.get(`/api/files/${plan.id}`).expect(200);

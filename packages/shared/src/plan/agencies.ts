@@ -1,5 +1,6 @@
 // 属地机构（应急管理局、街道、消防）：TECH-PLAN 3.5 定为耕云知识库按地址带出，运营维护。
-// 知识库页面在 M3；第一版内置业主知识库四张表（基层应急管理机构、各区应急机构 24 小时电话、
+// M3 第 5 项起运营在知识库页面维护（数据库表 agency_regions / local_agencies），生成时从数据库取；
+// 下面是第一版内置的业主知识库四张表（基层应急管理机构、各区应急机构 24 小时电话、
 // 消防大队联系方式）里的惠州数据，上级预案名称按 Martin 的批注（2026-10 预案批注 [42][43]）。
 // 查不到的留空，文档里写通用说法或「（待补充）」，不编造电话。
 import type { Address } from '../profile/basic.ts';
@@ -28,7 +29,30 @@ interface District {
   towns: [name: string, phone?: string, aliases?: string[]][];
 }
 
-const DISTRICTS: District[] = [
+/** 镇街应急管理办公室：area 是地址里认的镇街名（如「陈江街道」），office 是写进文档的机构名 */
+export interface AgencyTown {
+  area: string;
+  office: string;
+  phone?: string;
+  aliases?: string[];
+  /** 街道级预案名称（园区没有） */
+  plan?: string;
+}
+
+/** 一个区县的属地机构（M3 第 5 项起由运营在知识库维护；数据库没有数据时用下面的内置数据） */
+export interface AgencyDistrict {
+  province?: string;
+  city?: string;
+  name: string;
+  aliases: string[];
+  /** 区县级上级预案名称 */
+  plan?: string;
+  bureau?: { name: string; phone?: string };
+  fire?: { name: string; phone?: string };
+  towns: AgencyTown[];
+}
+
+const SOURCE: District[] = [
   {
     name: '仲恺高新区',
     aliases: ['仲恺'],
@@ -182,28 +206,48 @@ const DISTRICTS: District[] = [
 /** 去掉「街道 / 镇 / 乡」后的简称，地址里常这么写（如「陈江」）；园区不缩 */
 const short = (town: string) => town.replace(/(街道|镇|乡)$/, '');
 
-export function localAgenciesOf(address: Address | undefined): LocalAgencies {
+/** 内置的惠州数据（迁移 0025 原样写进数据库，作为知识库的初始数据；数据库没有数据时也用它） */
+export const BUILTIN_AGENCY_DISTRICTS: AgencyDistrict[] = SOURCE.map((d) => ({
+  province: '广东省',
+  city: '惠州市',
+  name: d.name,
+  aliases: d.aliases,
+  ...(d.plan ? { plan: d.plan } : {}),
+  bureau: { name: d.bureau, phone: d.bureauPhone },
+  fire: { name: d.fire, phone: d.firePhone },
+  towns: d.towns.map(([area, phone, aliases]) => ({
+    area,
+    office: `${area}应急管理办公室`,
+    ...(phone ? { phone } : {}),
+    ...(aliases ? { aliases } : {}),
+    ...(short(area) !== area ? { plan: `${area}生产安全事故应急预案` } : {}),
+  })),
+}));
+
+const contact = (a: { name: string; phone?: string }) => ({ name: a.name, ...(a.phone ? { phone: a.phone } : {}) });
+
+export function localAgenciesOf(address: Address | undefined, districts: readonly AgencyDistrict[] = BUILTIN_AGENCY_DISTRICTS): LocalAgencies {
   if (!address) return {};
   const text = [address.province, address.city, address.district, address.detail].join(' ');
   // 镇街重名（博罗、龙门都有龙华镇），先认区县；地址里没写区县时只认全名唯一的镇街
-  const district = DISTRICTS.find((d) => d.aliases.some((w) => text.includes(w)));
-  const candidates = district ? [district] : DISTRICTS;
+  const district = districts.find((d) => d.aliases.some((w) => w && text.includes(w)));
+  const candidates = district ? [district] : districts;
   const hits = candidates.flatMap((d) =>
-    d.towns.filter(([t, , aliases]) => text.includes(t) || (aliases ?? []).some((a) => text.includes(a))).map((t) => ({ d, t })),
+    d.towns.filter((t) => text.includes(t.area) || (t.aliases ?? []).some((a) => a && text.includes(a))).map((t) => ({ d, t })),
   );
-  const shortHits = district ? district.towns.filter(([t]) => short(t) !== t && text.includes(short(t))).map((t) => ({ d: district, t })) : [];
+  const shortHits = district ? district.towns.filter((t) => short(t.area) !== t.area && text.includes(short(t.area))).map((t) => ({ d: district, t })) : [];
   const found = hits.length === 1 ? hits[0] : hits.length === 0 && shortHits.length === 1 ? shortHits[0] : undefined;
   const d = district ?? found?.d;
   if (!d) return {};
   const town = found && found.d === d ? found.t : undefined;
   return {
-    emergencyBureau: { name: d.bureau, phone: d.bureauPhone },
-    fireDept: { name: d.fire, phone: d.firePhone },
+    ...(d.bureau ? { emergencyBureau: contact(d.bureau) } : {}),
+    ...(d.fire ? { fireDept: contact(d.fire) } : {}),
     ...(d.plan ? { districtPlan: d.plan } : {}),
     ...(town
       ? {
-          streetOffice: { name: `${town[0]}应急管理办公室`, ...(town[1] ? { phone: town[1] } : {}) },
-          ...(short(town[0]) !== town[0] ? { streetPlan: `${town[0]}生产安全事故应急预案` } : {}),
+          streetOffice: { name: town.office, ...(town.phone ? { phone: town.phone } : {}) },
+          ...(town.plan ? { streetPlan: town.plan } : {}),
         }
       : {}),
   };

@@ -27,7 +27,10 @@ export function WorkbenchPage() {
   const mine = rows.filter((t) => t.todo.bucket === 'mine');
   const working = rows.find((t) => t.todo.bucket === 'gengyun');
   const workingCount = rows.filter((t) => t.todo.bucket === 'gengyun').length;
-  const delivered = rows.find((t) => t.todo.bucket === 'delivered');
+  // 最近交付：发布时间最晚的那项
+  const delivered = rows
+    .filter((t) => t.todo.bucket === 'delivered')
+    .sort((a, b) => (b.delivery?.publishedAt ?? '').localeCompare(a.delivery?.publishedAt ?? ''))[0];
 
   return (
     <>
@@ -88,7 +91,7 @@ export function WorkbenchPage() {
               label="最近交付"
               task={delivered}
               tag={<><CheckCircleOutlined /> 已交付</>}
-              text={() => '注安师已审核并发布，三份 Word 可直接查看和下载。'}
+              text={(t) => `注安师已审核并发布${t.delivery ? `交付 V${t.delivery.version}` : ''}，三份 Word 可直接查看和下载。`}
               action="查看编制成果"
               empty="注安师审核发布后，成果会显示在这里。"
               onOpen={(t) => navigate(taskHref(t))}

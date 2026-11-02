@@ -260,8 +260,10 @@ export function OperatorTaskCenterPage() {
   const newOrders = orders.filter((o) => o.status === 'new').length;
   const linkedOrder = params.get('order');
   const selectedOrder = orders.find((o) => o.id === linkedOrder) ?? orders[0] ?? null;
-  // 从组织详情点进来带着任务时，直接看全部任务；否则有待分派就先看待分派
-  const [tabChoice, setTabChoice] = useState<Tab | null>(null);
+  // 从组织详情点进来带着任务时，直接看全部任务；否则有待分派就先看待分派。
+  // 从运营概览「今天先处理」点进来时带着页签（?tab=overdue / onsite），直接打开那一页
+  const linkedTab = params.get('tab');
+  const [tabChoice, setTabChoice] = useState<Tab | null>(linkedTab && linkedTab in TAB_LABEL ? (linkedTab as Tab) : null);
   const tab: Tab = tabChoice ?? (linked && !unassigned.some((t) => t.id === linked) ? 'all' : unassigned.length > 0 || !tasks.data ? 'unassigned' : 'all');
 
   const shown = useMemo(() => {
