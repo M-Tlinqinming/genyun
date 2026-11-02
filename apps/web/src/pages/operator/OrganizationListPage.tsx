@@ -196,8 +196,10 @@ export function OrganizationListPage() {
               style: { padding: '0 24px' },
             }}
             locale={{
-              emptyText:
-                all.length === 0 ? (
+              // 加载中不显示「还没有客户组织」和第二个登记按钮，免得一闪而过
+              emptyText: orgs.isPending ? (
+                <div style={{ height: 160 }} />
+              ) : all.length === 0 ? (
                   <Empty description="还没有客户组织。合作确认后先登记，签约到账后再开通。" style={{ padding: '48px 0' }}>
                     {registerButton}
                   </Empty>
