@@ -115,7 +115,8 @@ test('客户在站内提醒和「我的反馈」里看到处理结果', async ()
   await expect(notes).toContainText('您的反馈已处理');
   await expect(notes).toContainText(REPLY);
   await expect(notes).toContainText('耕云已受理您的反馈');
-  await notes.getByText('您的反馈已处理').click();
+  // 同一账号可能还有别的「您的反馈已处理」，按回复原文认这一条
+  await notes.getByRole('listitem').filter({ hasText: REPLY }).getByText('您的反馈已处理').click();
   await expect(customer).toHaveURL(/\/customer\/feedback\?id=/);
   const item = customer.locator('main').getByRole('listitem').filter({ hasText: TITLE });
   await expect(item).toContainText('已处理');

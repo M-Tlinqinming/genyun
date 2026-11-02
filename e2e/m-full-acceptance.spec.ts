@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { expect, request, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import JSZip from 'jszip';
 import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -9,16 +9,20 @@ import { feiyuProfile } from '../packages/shared/src/fixtures/feiyu-profile';
 // A：运营登记并开通新组织、登记合同 → 首位机构管理员从邀请邮件设密码进入 → 新建企业、按提示填完五步 → 提交。
 // B：用飞宇样例从运营分派走到客户下载三份 Word：注安师接单、电话联系、专业整理、事实补件（客户补交、注安师采用）→
 //    生成 → 审阅编辑 → 校对 → 发布 → 客户下载并检查三份 Word → 客户就这次交付提交反馈 → 运营受理并回复关闭 → 客户看到回复。
-// B 不动演示数据里的飞宇任务（别的测试文件按顺序接着用它）：在另一个客户组织（示例安全咨询机构）按飞宇样例另建一家企业，
+// B 不碰演示账号和演示数据里的飞宇任务（别的测试文件按顺序接着用它们）：运营先开通一家本测试专用的客户组织，
+// 它的首位管理员按飞宇样例建企业、提交、下载、提反馈，提醒和反馈都只落在这个新账号上。
 // 客户提交后由运营分派给吴工（周工的任务列表别的测试要按企业名点「惠阳飞宇电器有限公司」，不能多出一行）。
-// 走完任务即已交付、反馈已关闭，不再计入在办任务和待受理反馈，后面的测试不受影响。
+// 走完任务即已交付、反馈已关闭，不再计入在办任务和待受理反馈。
+// 注意：A 会留下一个待分派任务，而且企业名是飞宇——测试环境的营业执照识别固定返回飞宇的执照，会把客户起的名字换掉。
+// 所以其他测试不要按绝对数量断言「待分派」，按企业名找飞宇时还要按客户组织过滤（operator-task-center 已这样做）。
+// 组织名、信用代码、合同编号都带时间后缀，同一个库里重复跑也不撞。
 // 文件名特意排在 generation.spec 之后：测试服务器让风险评估报告第一次生成失败一次（DRAFT_FAIL_ONCE），那次要留给 generation.spec；
 // 单独跑本文件时遇到这次失败就重试。
 // 页面截图放 out/m2-acceptance/screens/（与 Paper 画板并排对照用），客户下载的三份 Word 放 out/m2-acceptance/。
 const OUT = 'out/m2-acceptance';
 const COMPANY = feiyuBasicInfo.companyName;
-// 同一组织里信用代码唯一：enterprises.spec 已在这个组织用过飞宇的真实代码，这里换一个
-const CREDIT_CODE = '91441300ACCEPTM217';
+/** 时间后缀：7 位数字，拼进信用代码后仍是 18 位 */
+const stamp = () => String(Date.now()).slice(-7);
 const DOCS = ['应急预案', '风险评估报告', '应急资源调查报告'] as const;
 // 界面和交付文档里都不能出现的内部编码
 const INTERNAL_CODE = /(?<![A-Za-z0-9])(E[1-6]|S1|R1|SP\d{2}|P\d{1,2})(?![A-Za-z0-9])/;
@@ -40,14 +44,14 @@ async function shot(page: Page, name: string, fullPage = false) {
 }
 
 /** 客户按飞宇样例填好自填各步、处理好资料清单（和演示数据的飞宇一样：技术人员数没填，两项请专家电话联系，压力管道拍照给耕云看） */
-async function prepareFeiyu(customer: Page) {
+async function prepareFeiyu(customer: Page, creditCode: string) {
   const api = customer.request;
   const me = (await (await api.get('/api/auth/me')).json()) as { memberships: { orgId: string }[] };
   const orgId = me.memberships[0]!.orgId;
   const ent = await api.post(`/api/orgs/${orgId}/enterprises`, {
     data: {
       name: COMPANY,
-      socialCreditCode: CREDIT_CODE,
+      socialCreditCode: creditCode,
       registeredAddress: feiyuBasicInfo.registeredAddress?.detail,
       legalRepresentative: feiyuBasicInfo.legalRepresentative,
     },
@@ -80,7 +84,8 @@ async function prepareFeiyu(customer: Page) {
   const task = await api.post(`${base}/tasks`, { data: { name: '2026 年应急预案编制' } });
   expect(task.ok(), await task.text()).toBe(true);
   const taskId = ((await task.json()) as { id: string }).id;
-  await api.patch(`/api/tasks/${taskId}`, { data: { startMethod: 'self_fill' } });
+  const method = await api.patch(`/api/tasks/${taskId}`, { data: { startMethod: 'self_fill' } });
+  expect(method.ok(), await method.text()).toBe(true);
 
   const provided = [
     'business_license',
@@ -108,7 +113,9 @@ async function prepareFeiyu(customer: Page) {
     const res = await api.put(`/api/tasks/${taskId}/checklist/${key}`, { data });
     expect(res.ok(), `${key}: ${await res.text()}`).toBe(true);
   }
-  return taskId;
+  const number = ((await (await api.get(`/api/tasks/${taskId}`)).json()) as { number: string }).number;
+  expect(number).toMatch(/^GY-\d{4}-\d{3,}$/);
+  return { taskId, number };
 }
 
 /** Word 里的正文文字（只取 w:t，不看排版属性） */
@@ -133,6 +140,56 @@ async function inviteLink(email: string): Promise<string> {
   throw new Error(`发件箱里没有给 ${email} 的邮件`);
 }
 
+/** 运营通过接口登记并开通一家客户组织（界面操作在 A 里走过），首位管理员从邀请链接设密码进入，返回已登录的页面 */
+async function openOrgWithAdmin(browser: Browser, org: string, admin: string, email: string) {
+  const api = await request.newContext({ baseURL: test.info().project.use.baseURL });
+  try {
+    await api.post('/api/auth/login', { data: { email: 'ops@demo.genyun.net.cn', password: 'e2e-password' } });
+    const created = await api.post('/api/operator/organizations', {
+      data: {
+        name: org,
+        region: '广东省惠州市',
+        socialCreditCode: `91441300MA7${stamp()}`,
+        contactName: admin,
+        contactPhone: '137 0000 3217',
+        contactEmail: email,
+        note: '',
+      },
+    });
+    expect(created.ok(), await created.text()).toBe(true);
+    const { id } = (await created.json()) as { id: string };
+    const file = await api.post(`/api/operator/organizations/${id}/contract-file`, {
+      multipart: { file: { name: '年度服务合同.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') } },
+    });
+    expect(file.ok(), await file.text()).toBe(true);
+    const opened = await api.post(`/api/operator/organizations/${id}/open`, {
+      data: {
+        contractNumber: `GY-HT-2026-B${stamp()}`,
+        scopeKind: 'annual',
+        scopeEnterprises: 3,
+        startsAt: '2026-01-01',
+        endsAt: '2027-12-31',
+        contractFileId: ((await file.json()) as { id: string }).id,
+        paymentReceived: true,
+        adminName: admin,
+        adminPhone: '137 0000 3217',
+        adminEmail: email,
+      },
+    });
+    expect(opened.ok(), await opened.text()).toBe(true);
+  } finally {
+    await api.dispose();
+  }
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await ctx.newPage();
+  await page.goto(await inviteLink(email));
+  await page.getByLabel('设置密码').fill(`feiyu${stamp()}b`);
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: '接受邀请并进入' }).click();
+  await expect(page).toHaveURL(/\/customer$/);
+  return { ctx, page };
+}
+
 const PDF = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.7\n% ${name}\n`) });
 const PNG = (name: string) => ({
   name,
@@ -146,9 +203,10 @@ test.use({ actionTimeout: 20_000 });
 
 test('A 新客户：运营开通组织并登记合同 → 首位管理员接受邀请 → 新建企业、按提示填写 → 提交', async ({ browser }) => {
   await mkdir(`${OUT}/screens`, { recursive: true });
-  const ORG = '惠州验收安全咨询有限公司';
+  const SUFFIX = stamp();
+  const ORG = `惠州验收${SUFFIX}安全咨询有限公司`;
   const EMAIL = `he-${Date.now()}@huizhou-yanshou.cn`;
-  const ENTERPRISE = '惠州验收电器有限公司';
+  const ENTERPRISE = `惠州验收${SUFFIX}电器有限公司`;
   const { ctx: opsCtx, page: ops } = await signIn(browser, 'ops@demo.genyun.net.cn', /\/operator$/);
   const customerCtx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   try {
@@ -158,7 +216,7 @@ test('A 新客户：运营开通组织并登记合同 → 首位管理员接受�
     const register = ops.getByRole('dialog', { name: '登记客户组织' });
     await register.getByLabel('组织名称').fill(ORG);
     await register.getByLabel('所在地区').fill('广东省惠州市');
-    await register.getByLabel('统一社会信用代码').fill('91441300MA5ACCEPT2');
+    await register.getByLabel('统一社会信用代码').fill(`91441300MA5${SUFFIX}`);
     await register.getByLabel('主联系人').fill('何经理');
     await register.getByLabel('手机号').fill('137 0000 2217');
     await register.getByLabel('邮箱').fill(EMAIL);
@@ -173,7 +231,7 @@ test('A 新客户：运营开通组织并登记合同 → 首位管理员接受�
     const open = ops.getByRole('dialog', { name: /开通客户组织/ });
     await expect(open.getByLabel('姓名')).toHaveValue('何经理');
     await expect(open.getByLabel('邮箱')).toHaveValue(EMAIL);
-    await open.getByLabel('合同编号').fill('GY-HT-2026-217');
+    await open.getByLabel('合同编号').fill(`GY-HT-2026-A${SUFFIX}`);
     await open.getByLabel('年度服务包含几家企业').fill('3');
     await open.getByLabel('选择已签合同原件').setInputFiles(PDF('惠州验收-年度服务合同-盖章版.pdf'));
     await expect(open).toContainText('惠州验收-年度服务合同-盖章版.pdf');
@@ -299,9 +357,15 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
   };
 
   try {
+    // ── 本测试专用的客户组织：运营开通，首位管理员接受邀请（和其他测试不共享账号，提醒和反馈只落在这里） ──
+    const SUFFIX = stamp();
+    const CUSTOMER_ORG = `飞宇验收${SUFFIX}客户`;
+    const customerSession = await openOrgWithAdmin(browser, CUSTOMER_ORG, '陈验收', `chen-${Date.now()}@feiyu-yanshou.cn`);
+    contexts.push(customerSession.ctx);
+    const customer = customerSession.page;
+
     // ── 客户：按飞宇样例填好各步后，在第 5 步核对并提交 ──
-    const customer = await as('admin@demo.genyun.net.cn', /\/customer$/);
-    const taskId = await prepareFeiyu(customer);
+    const { taskId, number } = await prepareFeiyu(customer, `91441300MA6${SUFFIX}`);
     await customer.goto(`/customer/tasks/${taskId}/fill/5`);
     await expect(customer.getByRole('heading', { name: '核对一下，就可以交给耕云了' })).toBeVisible();
     await customer.getByRole('button', { name: '提交给耕云' }).click();
@@ -325,8 +389,8 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
 
     // ── 注安师吴工：任务中心看到新任务，进入（接单） ──
     const expert = await as('expert2@demo.genyun.net.cn', /\/expert$/);
-    const row = expert.getByRole('row', { name: new RegExp(COMPANY) });
-    await expect(row).toContainText('示例安全咨询机构');
+    const row = expert.getByRole('row', { name: new RegExp(COMPANY) }).filter({ hasText: number });
+    await expect(row).toContainText(CUSTOMER_ORG);
     await expect(row).toContainText('电话联系客户问清 2 项');
     await shot(expert, 'I04-注安师任务中心');
     await row.click();
@@ -558,8 +622,12 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
       expect(text, `${doc}应有企业名`).toContain(COMPANY);
       expect(text.length, `${doc}正文不应为空`).toBeGreaterThan(2000);
       const core = await zip.file('docProps/core.xml')!.async('string');
-      expect(core, `${doc}的文件属性`).toContain('AI 辅助起草、注册安全工程师审核');
+      expect(core, `${doc}的文件属性`).toContain('AI 辅助起草、注册安全工程师审核（审核人：吴工）');
       expect(text.match(INTERNAL_CODE)?.[0] ?? null, `${doc}正文出现内部编码`).toBeNull();
+      // 事实补件采用的新应急联系人进了三份交付稿
+      expect(text, `${doc}应有补件采用的联系人`).toContain('王海明');
+      // 审阅时改的那一句进了应急预案
+      if (doc === '应急预案') expect(text, '应急预案应有审阅时的修订').toContain('（经现场核实）');
     }
     await expect(customer.locator('main')).not.toContainText(INTERNAL_CODE);
 
@@ -581,7 +649,7 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
     await ops.getByRole('button', { name: new RegExp(TITLE) }).click();
     const fb = ops.getByRole('region', { name: '反馈详情' });
     await expect(fb.getByRole('heading', { name: TITLE })).toBeVisible();
-    await expect(fb).toContainText('示例安全咨询机构');
+    await expect(fb).toContainText(`陈验收 · ${CUSTOMER_ORG}`);
     await fb.getByRole('button', { name: '受理，稍后回复' }).click();
     await expect(ops.getByText('已受理，客户会收到站内提醒')).toBeVisible();
     await ops.getByRole('tab', { name: /处理中/ }).click();
