@@ -9,6 +9,7 @@ UX 高保真设计已完成（Paper，2026-10-26 按真实资料清单完成一�
 ## 设计稿（唯一 UI 依据）
 
 - Paper 文件 `genyun`（fileId `01M2Q67BPC4B1NJFM36GT8Z33B`），通过 Paper MCP 读取（工具名 `mcp__paper__*`，需先打开 Paper 桌面端）。
+- 项目、设计、系统流程的总结（2026-11-03，15 节，含架构图和流程图）在 Claude 云端文档 https://claude.ai/artifact/C74vpADb9wcmbkuebG2Y4m ，是重写 Paper 01/02/03 页的依据；过往「实现对照」画板的截图留档在 `docs/paper-archive/`。
 - 页面：00 导航；01 Brief 与业务流程；02 信息架构；03 字段对照；04 设计系统 v1.1；**10–16 高保真 = 开发依据**；20–22 线框（仅补高保真未覆盖处）；90–97 归档（不要用）。
 - 取样式用 `get_jsx` / `get_computed_styles` / 设计 token，不要从截图估颜色和尺寸。
 - 代码与设计稿不一致时：细节偏差改代码向设计稿看齐；想改结构、流程或文案**先问 Martin**；所有差异记进 `docs/DESIGN-DIFF.md`，由 Martin 逐条决定改代码 / 改设计稿 / 接受 / 等功能。定为改设计稿的直接改 Paper 画板并留注「日期 按实现更新：原因」。
