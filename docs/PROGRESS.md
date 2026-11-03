@@ -730,6 +730,7 @@ C 线，与 M2、M3 并行；一项一个合并请求，分支名用 `m4-<序号
 ## 预览环境（独立任务）
 
 - 状态：**已上线** https://preview.gengyun.net.cn （10-27）。发布方法、密钥位置、演示账号见 `deploy/preview/README.md`
+- 当前版本：main `d63d4ac`（2026-11-03 发布，迁移 0000–0026 全部应用；部署前已手动备份到服务器 `/opt/genyun/backups/2026-11-03-before-d63d4ac/`）。发布顺序：`deploy.sh` → `seed.sh`（补演示数据，可反复跑）→ `check.sh`
 - 已验证：HTTPS 证书自动申请、HTTP 跳转 HTTPS、演示账号登录、上传与下载、重新发布后数据保留、服务器重启后自动恢复
 - 服务器：阿里云香港轻量 2 核 4G（47.82.104.179，Ubuntu 24.04，加了 2G 交换空间）；只放虚构样例数据，ICP 备案完成后退订。阿里云防火墙只开 22/80/443（另有 ICMP）
 - 域名是 `gengyun.net.cn`（不是 genyun），DNS 在阿里云
