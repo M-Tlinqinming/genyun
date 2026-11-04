@@ -154,7 +154,7 @@ test.describe('官网首页', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('opacity', '1');
     await expect(page.locator('html')).not.toHaveClass(/js-enter/);
     await expect(pressed(page)).toHaveText('AI 风险辨识');
-    for (const label of ['注安师审核', '下载整套 Word', '5 步填报', 'AI 风险辨识']) {
+    for (const label of ['专家审核', '下载整套 Word', '5 步填报', 'AI 风险辨识']) {
       await expect(pressed(page)).toHaveText(label, { timeout: 9000 });
     }
     await page.waitForTimeout(7000);

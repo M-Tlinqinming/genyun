@@ -149,7 +149,7 @@ function AcceptForm({ token, inv, signedInAs }: { token: string; inv: Invitation
       <Heading title={`加入${inv.orgName}`}>{inv.inviterName}邀请您加入耕云工作空间。</Heading>
       <InfoBox
         rows={[
-          // 耕云内部成员（注安师、运营）显示内部的叫法和可见范围
+          // 耕云内部成员（专家、运营）显示内部的叫法和可见范围
           ...(inv.role === 'expert' || inv.role === 'operator'
             ? ([
                 ['身份', INTERNAL_ROLE_LABELS[inv.role]],

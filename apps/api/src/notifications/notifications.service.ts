@@ -9,7 +9,7 @@ import { enterpriseAssignments, memberships, notifications, organizations } from
 
 const RECENT = 20;
 
-// 发给原注安师的改派提醒；原注安师再打开这个任务时，靠它说明「已改派给 X」
+// 发给原专家的改派提醒；原专家再打开这个任务时，靠它说明「已改派给 X」
 export const REASSIGNED_TITLE = '任务已改派';
 
 export interface NotificationInput {

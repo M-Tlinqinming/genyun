@@ -131,7 +131,7 @@ function Round({
     : verifying
       ? {
           title: '补件待核实',
-          sub: '客户已回应，等待注安师核实',
+          sub: '客户已回应，等待专家核实',
           text: `${s.response!.byName}于 ${stamp(s.response!.at)} 提交${s.response!.note ? `：${s.response!.note}` : '。'}${s.response!.note && !/[。！？]$/.test(s.response!.note) ? '。' : ''}当前任务仍采用原资料。`,
           tag: '尚未采用',
           tone: stage.action,

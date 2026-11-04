@@ -57,10 +57,10 @@ interface Entry {
   system?: boolean;
 }
 
-// 任务联系记录（客户不可见）：客户请求、超时、注安师的联系、运营的处理，新的在前
+// 任务联系记录（客户不可见）：客户请求、超时、专家的联系、运营的处理，新的在前
 function timeline(t: OverdueTask, notes: readonly OperatorNote[]): Entry[] {
   const entries: Entry[] = [
-    { at: t.request.requestedAt, line: `客户 ${t.request.requestedBy} · 请注安师电话联系`, detail: t.request.labels.join('、') },
+    { at: t.request.requestedAt, line: `客户 ${t.request.requestedBy} · 请专家电话联系`, detail: t.request.labels.join('、') },
     {
       at: t.request.deadline,
       line: `系统 · 超过 ${CONTACT_WORKING_DAYS} 个工作日未联系上，转运营兜底`,
@@ -71,8 +71,8 @@ function timeline(t: OverdueTask, notes: readonly OperatorNote[]): Entry[] {
       at: c.createdAt,
       line:
         c.method === 'phone'
-          ? `注安师 ${c.createdByName} · 电话联系 · ${c.result ? CONTACT_RESULTS[c.result] : '没填结果'}`
-          : `注安师 ${c.createdByName} · 请客户在任务里补充`,
+          ? `专家 ${c.createdByName} · 电话联系 · ${c.result ? CONTACT_RESULTS[c.result] : '没填结果'}`
+          : `专家 ${c.createdByName} · 请客户在任务里补充`,
       detail: null,
     })),
     ...notes.map((n) => ({ at: n.createdAt, line: `运营 ${n.createdByName} · ${OPERATOR_NOTE_KINDS[n.kind]}`, detail: n.body || null })),
@@ -112,7 +112,7 @@ export function NoteModal({ taskId, open, onClose }: { taskId: string; open: boo
       {
         onSuccess: () => {
           setNote('');
-          void message.success('内部备注已记下，客户和注安师看不到');
+          void message.success('内部备注已记下，客户和专家看不到');
           onClose();
         },
       },
@@ -133,7 +133,7 @@ export function NoteModal({ taskId, open, onClose }: { taskId: string; open: boo
       ]}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <span style={caption}>记在任务的运营记录里，只有运营能看到，客户和注安师都看不到。</span>
+        <span style={caption}>记在任务的运营记录里，只有运营能看到，客户和专家都看不到。</span>
         <Input.TextArea
           aria-label="内部备注"
           autoSize={{ minRows: 3, maxRows: 6 }}
@@ -157,7 +157,7 @@ export function OverdueSections({ task: t, onReassign }: { task: OverdueTask; on
   const called = useAddOperatorNote(t.id);
   const [choice, setChoice] = useState<Choice>('remind');
   const [noting, setNoting] = useState(false);
-  const expert = t.assignedExpertName ?? '负责注安师';
+  const expert = t.assignedExpertName ?? '负责专家';
   const failed = (e: Error) => void message.error(e.message);
 
   const run = () => {
@@ -169,7 +169,7 @@ export function OverdueSections({ task: t, onReassign }: { task: OverdueTask; on
     called.mutate({ kind: 'called_customer' }, { onSuccess: () => void message.success('已记下：运营已致电客户安抚'), onError: failed });
   };
   const pending = choice === 'remind' ? remind.isPending : choice === 'call' ? called.isPending : false;
-  const primary = choice === 'remind' ? `提醒${expert}` : choice === 'reassign' ? '改派其他注安师' : '记下已致电客户';
+  const primary = choice === 'remind' ? `提醒${expert}` : choice === 'reassign' ? '改派其他专家' : '记下已致电客户';
   // 原因：「还没有联系过客户」或「打过 N 次电话都没接通」
   const unreachable = t.contacts.some((c) => c.method === 'phone' && c.result === 'unreachable' && c.createdAt >= t.request.requestedAt);
 
@@ -193,19 +193,19 @@ export function OverdueSections({ task: t, onReassign }: { task: OverdueTask; on
             on={choice === 'remind'}
             onClick={() => setChoice('remind')}
             title={`提醒${expert}`}
-            text="站内提醒注安师今天处理；多数情况这样就够了。"
+            text="站内提醒专家今天处理；多数情况这样就够了。"
           />
           <ChoiceCard
             on={choice === 'reassign'}
             onClick={() => setChoice('reassign')}
-            title="改派其他注安师"
-            text="注安师请假或忙不过来时使用；已整理内容和联系记录全部带给新注安师，客户页面自动换成新负责人。"
+            title="改派其他专家"
+            text="专家请假或忙不过来时使用；已整理内容和联系记录全部带给新专家，客户页面自动换成新负责人。"
           />
           <ChoiceCard
             on={choice === 'call'}
             onClick={() => setChoice('call')}
             title="我先打给客户安抚"
-            text="只说明进度和预计联系时间，不代注安师问专业问题。打完点「记下已致电客户」。"
+            text="只说明进度和预计联系时间，不代专家问专业问题。打完点「记下已致电客户」。"
           />
         </div>
       </Section>
@@ -227,12 +227,12 @@ export function OverdueSections({ task: t, onReassign }: { task: OverdueTask; on
   );
 }
 
-// 其他页签的任务详情里：运营记录（改派、提醒、备注），有记录才显示，客户、注安师看不到
+// 其他页签的任务详情里：运营记录（改派、提醒、备注），有记录才显示，客户、专家看不到
 export function OperatorNotes({ taskId }: { taskId: string }) {
   const notes = useOperatorNotes(taskId);
   if (!notes.data || notes.data.length === 0) return null;
   return (
-    <Section title="运营记录 · 客户、注安师不可见">
+    <Section title="运营记录 · 客户、专家不可见">
       <ul style={{ margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         {notes.data.map((n) => (
           <li key={n.id} style={{ listStyle: 'none', ...caption }}>

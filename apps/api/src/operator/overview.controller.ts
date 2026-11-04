@@ -39,7 +39,7 @@ const EXPIRED_TODO_DAYS = 14;
 
 // 运营概览（Paper 16 页 I01）：四个统计、今天先处理、客户年度服务、最近操作。全部按真实数据算，
 // 复用客户组织（待开通）、邀请、任务中心（待分派、超时兜底、上门工单）、成果发布、操作日志。
-// 只有运营；客户、注安师一律 403。侧栏「客户组织」「任务中心」的角标也用这里的数
+// 只有运营；客户、专家一律 403。侧栏「客户组织」「任务中心」的角标也用这里的数
 @Controller('operator/overview')
 export class OperatorOverviewController {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
@@ -205,9 +205,9 @@ export class OperatorOverviewController {
         id: t.id,
         title: t.enterpriseName,
         subtitle: `${t.number} · ${t.orgName}`,
-        note: '资料已提交，还没有负责注安师',
+        note: '资料已提交，还没有负责专家',
         since: (t.submittedAt ?? now).toISOString(),
-        action: '分派注安师',
+        action: '分派专家',
         link: `/operator/tasks?task=${t.id}`,
       });
     }
@@ -230,8 +230,8 @@ export class OperatorOverviewController {
         kind: 'overdue',
         id: t.id,
         title: t.enterpriseName,
-        subtitle: `${t.number} · 负责注安师 ${t.assignedExpertName ?? '—'}`,
-        note: `客户请注安师电话联系，已等 ${t.waitedDays} 个工作日；${t.reason}`,
+        subtitle: `${t.number} · 负责专家 ${t.assignedExpertName ?? '—'}`,
+        note: `客户请专家电话联系，已等 ${t.waitedDays} 个工作日；${t.reason}`,
         since: t.request.requestedAt.toISOString(),
         action: '处理超时',
         link: `/operator/tasks?tab=overdue&task=${t.id}`,

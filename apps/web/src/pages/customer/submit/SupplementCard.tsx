@@ -19,8 +19,8 @@ export function useOpenSupplement(taskId: string, enabled = true) {
   return list.data?.find((s) => s.status === 'awaiting_customer');
 }
 
-// 客户回应事实补件（15 页 R00a）：注安师请客户确认企业事实，客户提交文件或说明并勾选确认。
-// 提交后由注安师核实、明确采用后才改本任务用的企业事实。等回应的一轮放在任务页上方（标题和状态条下面），
+// 客户回应事实补件（15 页 R00a）：专家请客户确认企业事实，客户提交文件或说明并勾选确认。
+// 提交后由专家核实、明确采用后才改本任务用的企业事实。等回应的一轮放在任务页上方（标题和状态条下面），
 // 不管在哪个页签，1366×768 下不用翻页就能看到
 export function OpenSupplementCard({ task }: { task: Task }) {
   const open = useOpenSupplement(task.id);
@@ -47,7 +47,7 @@ export function SupplementCard({ task }: { task: Task }) {
             第 {s.round} 轮 · {s.title}
             <span style={{ color: gy.secondary }}>
               {'　'}
-              {s.status === 'adopted' ? '注安师已核实' : s.status === 'returned' ? '注安师还需要您补充，请看新一轮' : '等待注安师核实'}
+              {s.status === 'adopted' ? '专家已核实' : s.status === 'returned' ? '专家还需要您补充，请看新一轮' : '等待专家核实'}
             </span>
             {s.files.map((f) => (
               <FileLink key={f.id} id={f.id} name={f.name} />

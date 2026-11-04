@@ -1,6 +1,6 @@
 // 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05、R06）：已交付的三份 Word 按交付版本（V1、V2…）列出，
 // 在线阅读（发布时那一版的 PDF）、单份下载（走 /files/:id/download-url）、整套下载（三份打包成一个压缩包）。
-// 谁能看由 access.ts 的 canViewDeliveries / canViewOrganization 决定；别家客户、其他注安师一律 404，不暴露任务是否存在
+// 谁能看由 access.ts 的 canViewDeliveries / canViewOrganization 决定；别家客户、其他专家一律 404，不暴露任务是否存在
 import { DRAFT_KIND_KEYS, deliveryBundleName, safeFileName, type DeliveredVersion, type DraftKind, type TaskDeliveries } from '@genyun/shared';
 import {
   Controller,

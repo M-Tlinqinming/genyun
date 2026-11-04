@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // M2 第 13 项「发起事实补件」（15 页 R00a、R00b、R00c）：飞宇换了应急联系人，走完一整轮。
-// 注安师发起 → 客户在任务页上传新名册并确认 → 注安师收到提醒、写下本轮采用的值并明确采用 → 原审核结论作废，
+// 专家发起 → 客户在任务页上传新名册并确认 → 专家收到提醒、写下本轮采用的值并明确采用 → 原审核结论作废，
 // 生成进度页、正文编辑页提示「事实已更新」→ 按新事实重新生成，提示消失。
 // 文件名排在 review-proofread.spec 之后：飞宇的三份草稿已生成。整轮走完、不留进行中的一轮，排在后面的用例不受影响
 async function login(page: Page, email: string, home: RegExp) {
@@ -14,7 +14,7 @@ async function login(page: Page, email: string, home: RegExp) {
 
 const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.7\n% ${name}\n`) });
 
-test('飞宇换了应急联系人：注安师发起补件，客户回应，注安师核实并采用后重新生成', async ({ page, browser }) => {
+test('飞宇换了应急联系人：专家发起补件，客户回应，专家核实并采用后重新生成', async ({ page, browser }) => {
   test.setTimeout(360_000);
   await login(page, 'expert@demo.genyun.net.cn', /\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
@@ -50,7 +50,7 @@ test('飞宇换了应急联系人：注安师发起补件，客户回应，注�
   const card = customer.getByRole('region', { name: '本次需要您提供' });
   await expect(card).toContainText('需要确认：联系电话、联系人');
   await expect(customer.getByText('等待您回应 · 第 1 轮')).toBeVisible();
-  await expect(customer.getByText(/请回应注安师的补充问题/)).toBeVisible();
+  await expect(customer.getByText(/请回应专家的补充问题/)).toBeVisible();
   await expect(customer.getByText('耕云整理资料')).toHaveCount(0);
   await expect(card.getByRole('heading', { name: '本次需要您提供' })).toBeInViewport();
   await card.getByRole('button', { name: '提交本轮补充' }).click();
@@ -65,7 +65,7 @@ test('飞宇换了应急联系人：注安师发起补件，客户回应，注�
   await customer.getByRole('region', { name: '请确认企业事实' }).scrollIntoViewIfNeeded();
   await customer.screenshot({ path: 'test-results/acceptance/m2-13-客户回应.png' });
   await card.getByRole('button', { name: '提交本轮补充' }).click();
-  await expect(customer.getByRole('region', { name: '已提交的事实补件' })).toContainText('等待注安师核实');
+  await expect(customer.getByRole('region', { name: '已提交的事实补件' })).toContainText('等待专家核实');
   await expect(customer.getByText('下一步：耕云整理资料并生成初稿')).toBeVisible();
   await customer.close();
 

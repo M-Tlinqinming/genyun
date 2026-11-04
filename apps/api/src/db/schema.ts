@@ -205,9 +205,9 @@ export const tasks = pgTable(
     // 还没选开始方式时为空
     startMethod: startMethod('start_method'),
     status: taskStatus('status').notNull().default('preparing'),
-    // 负责注安师，运营分派前为空
+    // 负责专家，运营分派前为空
     assignedExpertId: uuid('assigned_expert_id').references(() => users.id),
-    // 现在这位负责注安师接手的时间；改派后「客户请电话联系」的期限从这里重新算
+    // 现在这位负责专家接手的时间；改派后「客户请电话联系」的期限从这里重新算
     assignedAt: timestamp('assigned_at', { withTimezone: true }),
     createdBy: uuid('created_by')
       .notNull()
@@ -321,7 +321,7 @@ export const factSupplements = pgTable(
   (t) => [uniqueIndex('fact_supplements_round').on(t.taskId, t.round)],
 );
 
-// 运营在任务上的记录（16 页 I04 超时兜底）：内部备注、提醒注安师、改派、已致电客户安抚。只在运营端显示，客户、注安师都看不到
+// 运营在任务上的记录（16 页 I04 超时兜底）：内部备注、提醒专家、改派、已致电客户安抚。只在运营端显示，客户、专家都看不到
 export const operatorNoteKind = pgEnum('operator_note_kind', ['note', 'remind_expert', 'reassign', 'called_customer']);
 export const taskOperatorNotes = pgTable(
   'task_operator_notes',
@@ -331,7 +331,7 @@ export const taskOperatorNotes = pgTable(
       .notNull()
       .references(() => tasks.id, { onDelete: 'cascade' }),
     kind: operatorNoteKind('kind').notNull(),
-    // 备注正文；提醒注安师、致电客户时是附带的话（可空）；改派时是「周工 → 吴工 · 理由」
+    // 备注正文；提醒专家、致电客户时是附带的话（可空）；改派时是「周工 → 吴工 · 理由」
     body: text('body').notNull().default(''),
     createdBy: uuid('created_by')
       .notNull()
@@ -792,7 +792,7 @@ export const auditLogs = pgTable(
   (t) => [index('audit_logs_at').on(t.at), index('audit_logs_action_at').on(t.action, t.at)],
 );
 
-// 成果发布（M2 第 15 项，15 页 R03–R04b）：负责注安师每点一次「发布」记一行，publish_id 由页面生成，
+// 成果发布（M2 第 15 项，15 页 R03–R04b）：负责专家每点一次「发布」记一行，publish_id 由页面生成，
 // 同一次发布重发（超时、断网后）只记一次。成功时把三份当前稿定稿存成文件（delivery_files），形成交付版本：
 // 同一任务第一次是 V1，以后再发布是 V2、V3。失败的不占版本（重试时用同一个版本号）。
 // 同一批草稿只能形成一个交付版本；同一任务同一时间只有一次发布在进行
@@ -941,10 +941,10 @@ export const feedback = pgTable(
     status: text('status').$type<FeedbackStatus>().notNull().default('new'),
     reply: text('reply'),
     internalNote: text('internal_note'),
-    // 受理的运营（第一次受理或转给注安师时记下）
+    // 受理的运营（第一次受理或转给专家时记下）
     handledBy: uuid('handled_by').references(() => users.id, { onDelete: 'set null' }),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
-    // 转给了哪位注安师（站内提醒）
+    // 转给了哪位专家（站内提醒）
     forwardedTo: uuid('forwarded_to').references(() => users.id, { onDelete: 'set null' }),
     forwardedAt: timestamp('forwarded_at', { withTimezone: true }),
     closedBy: uuid('closed_by').references(() => users.id, { onDelete: 'set null' }),

@@ -868,7 +868,7 @@ const MSDS_TEXT = {
   knowledge_base: { text: '纯物质 · 耕云资料库补全，无需上传', color: source.system.color },
   not_needed: { text: '一般原料 · 不需要', color: '#8A93A3' },
   supplier: { text: '混合物 · 需供应商提供', color: gy.secondary },
-  expert: { text: '是否危化品待注安师核实，先不用传', color: gy.warning },
+  expert: { text: '是否危化品待专家核实，先不用传', color: gy.warning },
 } as const;
 
 function MsdsCard({

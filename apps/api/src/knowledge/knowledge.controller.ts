@@ -56,7 +56,7 @@ const parse = <T>(schema: z.ZodType<T>, body: unknown, fallback: string): T => {
 };
 
 // 知识库（Paper 16 页「知识库 · 属地应急机构」「知识库 · 工艺模板」；节假日没有设计稿）。
-// 只有运营能看、能改；客户、注安师 403。每次修改记操作日志。
+// 只有运营能看、能改；客户、专家 403。每次修改记操作日志。
 // 改动只影响之后的生成和之后选用模板的客户：已生成的草稿、已交付的成果、已选用模板的企业资料都不动
 @Controller('operator/knowledge')
 export class KnowledgeController {

@@ -85,7 +85,7 @@ export class SupplementsService {
 
   async create(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.workup.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责注安师可以发起事实补件');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以发起事实补件');
     const parsed = supplementCreateSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const input = parsed.data;
@@ -126,7 +126,7 @@ export class SupplementsService {
   // R00b「确认事实并采用到本任务」：写下每项本轮采用的值，改专业整理里的企业事实（来源：客户确认 · 事实补件）
   async adopt(user: SessionUser, taskId: string, supplementId: string, body: unknown) {
     const task = await this.workup.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责注安师可以采用补件');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以采用补件');
     const row = await this.row(task.id, supplementId);
     if (row.status !== 'awaiting_expert') {
       throw new ConflictException(row.status === 'adopted' ? ADOPTED : '客户还没有回应这一轮补件');
@@ -175,7 +175,7 @@ export class SupplementsService {
   // R00b「仍需客户补充」：这一轮标为 returned，另起下一轮（同样的事实与资料项，专家写新的说明）
   async returnToCustomer(user: SessionUser, taskId: string, supplementId: string, body: unknown) {
     const task = await this.workup.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责注安师可以发起事实补件');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以发起事实补件');
     const row = await this.row(task.id, supplementId);
     if (row.status !== 'awaiting_expert') throw new ConflictException('只有客户已回应、还没采用的一轮可以请客户再补充');
     const parsed = supplementReturnSchema.safeParse(body);

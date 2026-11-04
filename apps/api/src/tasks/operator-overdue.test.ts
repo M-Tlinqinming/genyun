@@ -77,7 +77,7 @@ beforeAll(async () => {
           submittedAt: at,
           createdBy: by,
           assignedExpertId: zhou,
-          // 刚改派过：期限从新注安师接手重新算
+          // 刚改派过：期限从新专家接手重新算
           assignedAt: k === 'reassigned' ? now : at,
         };
       }),
@@ -160,12 +160,12 @@ describe('超时兜底', () => {
     expect(res.body[0]).toMatchObject({ kind: 'called_customer', body: '', createdByName: '赵运营' });
     // 只能写备注和致电记录，提醒、改派走各自的接口
     expect((await ops.post(`/api/operator/tasks/${task.unreachable}/notes`).send({ kind: 'reassign', body: 'x' })).status).toBe(400);
-    // 运营致电不算注安师联系上客户，任务仍在超时兜底
+    // 运营致电不算专家联系上客户，任务仍在超时兜底
     const overdue = (await ops.get('/api/operator/tasks/overdue')).body as { id: string }[];
     expect(overdue.map((r) => r.id)).toContain(task.unreachable);
   });
 
-  it('客户、注安师都打不开超时兜底列表', async () => {
+  it('客户、专家都打不开超时兜底列表', async () => {
     for (const email of ['admin@test.cn', 'zhou@test.cn']) {
       const other = await as(email);
       expect((await other.get('/api/operator/tasks/overdue')).status).toBe(403);
@@ -175,7 +175,7 @@ describe('超时兜底', () => {
     expect((await request(app.getHttpServer()).get('/api/operator/tasks/overdue')).status).toBe(401);
   });
 
-  it('还没分派注安师的任务不进超时兜底（在待分派里）', async () => {
+  it('还没分派专家的任务不进超时兜底（在待分派里）', async () => {
     await handle.db.update(tasks).set({ assignedExpertId: null }).where(eq(tasks.id, task.reached));
     await handle.db.delete(taskContacts).where(eq(taskContacts.taskId, task.reached));
     const ops = await as('ops@test.cn');
@@ -183,7 +183,7 @@ describe('超时兜底', () => {
     expect(overdue.map((r) => r.id)).not.toContain(task.reached);
   });
 
-  it('提醒注安师：负责注安师收到站内提醒，任务上记一条', async () => {
+  it('提醒专家：负责专家收到站内提醒，任务上记一条', async () => {
     const ops = await as('ops@test.cn');
     const res = await ops.post(`/api/operator/tasks/${task.unreachable}/remind`).send({ body: '客户上午在厂里' });
     expect(res.status).toBe(201);
@@ -195,13 +195,13 @@ describe('超时兜底', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.title).toBe('运营提醒：请尽快联系客户');
     expect(sent[0]!.body.startsWith('运营说明：客户上午在厂里')).toBe(true);
-    // 客户、注安师不能发
+    // 客户、专家不能发
     for (const email of ['admin@test.cn', 'zhou@test.cn']) {
       expect((await (await as(email)).post(`/api/operator/tasks/${task.unreachable}/remind`).send({})).status).toBe(403);
     }
   });
 
-  it('从超时兜底改派：任务上记一条改派，期限从新注安师接手重新算', async () => {
+  it('从超时兜底改派：任务上记一条改派，期限从新专家接手重新算', async () => {
     const ops = await as('ops@test.cn');
     const res = await ops
       .post(`/api/operator/tasks/${task.silent}/assign`)
@@ -215,7 +215,7 @@ describe('超时兜底', () => {
 });
 
 describe('上门工单', () => {
-  it('客户提交的上门需求出现在上门工单；运营写内部备注、转交、关闭；客户、注安师不能处理', async () => {
+  it('客户提交的上门需求出现在上门工单；运营写内部备注、转交、关闭；客户、专家不能处理', async () => {
     const [t] = await handle.db.select().from(tasks).where(eq(tasks.id, task.noCall));
     const [req] = await handle.db
       .insert(onSiteRequests)

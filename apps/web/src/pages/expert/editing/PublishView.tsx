@@ -318,7 +318,7 @@ export function PublishView({
           <span style={{ ...text13, padding: '2px 8px', borderRadius: 4, background: chip.bg, color: chip.color }}>{chip.text}</span>
         </div>
         <span style={{ ...text14, color: gy.secondary }}>
-          {taskNumber} · 注安师：{reviewer}
+          {taskNumber} · 专家：{reviewer}
         </span>
       </header>
 
@@ -443,7 +443,7 @@ export function PublishView({
           <Button onClick={onEdit}>返回修改</Button>
           <span style={{ flex: 1 }} />
           <span style={{ ...text13, color: gy.secondary }}>
-            {view.editable ? (view.canPublish ? '当前客户还不能下载本次稿件' : view.blocker) : '只有负责这个任务的注安师可以发布'}
+            {view.editable ? (view.canPublish ? '当前客户还不能下载本次稿件' : view.blocker) : '只有负责这个任务的专家可以发布'}
           </span>
           {view.editable && (
             <Button type="primary" disabled={!view.canPublish} onClick={() => void send(pending?.publishId ?? crypto.randomUUID())}>

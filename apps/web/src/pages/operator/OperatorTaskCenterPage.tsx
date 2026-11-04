@@ -35,9 +35,9 @@ function Pill({ tone, children }: { tone: { color: string; bg: string }; childre
 
 const stageLabel = (t: OperatorTask) => (t.needsAssignment ? '待分派' : OPERATOR_TASK_STAGES[t.stage]);
 
-// 列表第二行：「编制应急预案 · 新提交 · 未分派注安师」「编制应急预案 · 负责注安师 周工」
+// 列表第二行：「编制应急预案 · 新提交 · 未分派专家」「编制应急预案 · 负责专家 周工」
 function rowLine(t: OperatorTask): string {
-  const who = t.assignedExpertName ? `负责注安师 ${t.assignedExpertName}` : t.needsAssignment ? '新提交 · 未分派注安师' : '客户准备资料中';
+  const who = t.assignedExpertName ? `负责专家 ${t.assignedExpertName}` : t.needsAssignment ? '新提交 · 未分派专家' : '客户准备资料中';
   return `${businessShort(t)} · ${who}`;
 }
 
@@ -147,7 +147,7 @@ function TaskPanel({ taskId, overdue, onAssign }: { taskId: string; overdue?: Ov
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
           <h2 style={{ fontSize: 20, lineHeight: '28px', fontWeight: 500, color: gy.text, margin: 0 }}>{taskTitle(t)}</h2>
           <span style={small}>
-            {t.number} · {t.assignedExpertName ? `负责注安师 ${t.assignedExpertName}` : '未分派注安师'} · 客户组织：
+            {t.number} · {t.assignedExpertName ? `负责专家 ${t.assignedExpertName}` : '未分派专家'} · 客户组织：
             <Link to={`/operator/organizations/${t.orgId}`} style={{ color: gy.tertiary, textDecoration: 'underline' }}>
               {t.orgName}
             </Link>
@@ -177,8 +177,8 @@ function TaskSections({ task: t, canAssign, onAssign }: { task: OperatorTaskDeta
       {t.needsAssignment ? (
         <Section title="为什么出现在这里">
           <Reason
-            title={`客户 ${t.submittedAt ? monthDay(t.submittedAt) : ''} 提交了资料，还没有负责注安师`}
-            text="分派后，任务进入注安师的任务中心，注安师从专业整理开始；客户在任务页看到负责注安师。"
+            title={`客户 ${t.submittedAt ? monthDay(t.submittedAt) : ''} 提交了资料，还没有负责专家`}
+            text="分派后，任务进入专家的任务中心，专家从专业整理开始；客户在任务页看到负责专家。"
           />
         </Section>
       ) : t.assignedExpertName ? (
@@ -199,7 +199,7 @@ function TaskSections({ task: t, canAssign, onAssign }: { task: OperatorTaskDeta
           </div>
           {canAssign && (
             <span style={{ ...caption, color: gy.secondary }}>
-              注安师请假或忙不过来时可以改派：已整理内容和联系记录全部带给新注安师，客户页面直接换成新的负责人。
+              专家请假或忙不过来时可以改派：已整理内容和联系记录全部带给新专家，客户页面直接换成新的负责人。
             </span>
           )}
         </Section>
@@ -207,7 +207,7 @@ function TaskSections({ task: t, canAssign, onAssign }: { task: OperatorTaskDeta
 
       {!canAssign && (
         <Section title="现在不用分派">
-          <Reason tone="neutral" title={t.assignBlockedReason} text={t.stage === 'preparing' ? '客户提交资料后，任务会出现在「待分派」。' : '已交付的任务保留原负责注安师。'} />
+          <Reason tone="neutral" title={t.assignBlockedReason} text={t.stage === 'preparing' ? '客户提交资料后，任务会出现在「待分派」。' : '已交付的任务保留原负责专家。'} />
         </Section>
       )}
 
@@ -228,7 +228,7 @@ function TaskSections({ task: t, canAssign, onAssign }: { task: OperatorTaskDeta
         <Button onClick={() => setNoting(true)}>写内部备注</Button>
         {canAssign && (
           <Button type="primary" onClick={() => onAssign(t)}>
-            {t.assignedExpertId ? '改派注安师' : '分配注安师'}
+            {t.assignedExpertId ? '改派专家' : '分配专家'}
           </Button>
         )}
       </footer>
@@ -280,7 +280,7 @@ export function OperatorTaskCenterPage() {
     <PageHeader
       eyebrow="耕云运营 / 任务中心"
       title="任务中心"
-      description="运营只做三件事：分派负责注安师、处理上门工单、兜底超时任务。客户补充由负责注安师直接联系，不经运营转话。"
+      description="运营只做三件事：分派负责专家、处理上门工单、兜底超时任务。客户补充由负责专家直接联系，不经运营转话。"
     />
   );
 
@@ -398,7 +398,7 @@ export function OperatorTaskCenterPage() {
           )}
           {(tab === 'unassigned' || tab === 'overdue') && (
             <p style={{ ...small, margin: 0, padding: '14px 20px' }}>
-              只列需要运营介入的任务；正常进行中的客户沟通由注安师自己处理，运营不经手。上门工单见「上门工单」页签。
+              只列需要运营介入的任务；正常进行中的客户沟通由专家自己处理，运营不经手。上门工单见「上门工单」页签。
             </p>
           )}
           {tab === 'onsite' && orders.length > 0 && (
@@ -421,7 +421,7 @@ export function OperatorTaskCenterPage() {
         ) : (
           // 列表是空的：右栏不放空白卡片，只写一句说明
           <p style={{ ...caption, flex: 1, minWidth: 0, margin: 0, padding: '16px 0' }}>
-            {tab === 'unassigned' ? '有待分派的任务时，选中后在这里分配注安师。' : '选中任务后，在这里查看情况、分派或改派注安师。'}
+            {tab === 'unassigned' ? '有待分派的任务时，选中后在这里分配专家。' : '选中任务后，在这里查看情况、分派或改派专家。'}
           </p>
         )}
       </div>

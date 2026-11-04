@@ -19,7 +19,7 @@ export function TaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
   const [search, setSearch] = useSearchParams();
-  // 注安师发起、等客户回应的事实补件
+  // 专家发起、等客户回应的事实补件
   const ask = useOpenSupplement(taskId, task.data !== undefined && task.data.status !== 'preparing');
 
   if (task.isPending) return <Loading rows={6} />;

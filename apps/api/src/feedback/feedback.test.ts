@@ -178,7 +178,7 @@ describe('客户提交反馈', () => {
     expect((await other.get(`/api/orgs/${id.orgA}/feedback`)).status).toBe(404);
     // 别家客户拿自己组织提交，却挂上 A 组织的任务
     expect((await other.post(`/api/orgs/${id.orgB}/feedback`).send({ content: '挂别家任务', taskId: id.task })).status).toBe(404);
-    // 运营、注安师不替客户提交
+    // 运营、专家不替客户提交
     expect((await (await as('ops@test.cn')).post(`/api/orgs/${id.orgA}/feedback`).send({ content: '运营' })).status).toBe(404);
     expect((await request(app.getHttpServer()).post(`/api/orgs/${id.orgA}/feedback`).send({ content: '未登录' })).status).toBe(401);
     expect((await request(app.getHttpServer()).get(`/api/orgs/${id.orgA}/feedback`)).status).toBe(401);
@@ -203,7 +203,7 @@ describe('客户提交反馈', () => {
 });
 
 describe('运营受理反馈', () => {
-  it('只有运营能看、能处理：客户、注安师 403，未登录 401', async () => {
+  it('只有运营能看、能处理：客户、专家 403，未登录 401', async () => {
     for (const email of ['admin@a.cn', 'member@a.cn', 'zhou@test.cn']) {
       const agent = await as(email);
       expect((await agent.get('/api/operator/feedback')).status).toBe(403);
@@ -213,7 +213,7 @@ describe('运营受理反馈', () => {
     expect((await request(app.getHttpServer()).patch(`/api/operator/feedback/${id.fb}`).send({ action: 'accept' })).status).toBe(401);
   });
 
-  it('列表：待受理在前，带企业、任务、附件、负责注安师', async () => {
+  it('列表：待受理在前，带企业、任务、附件、负责专家', async () => {
     const ops = await as('ops@test.cn');
     const view = (await ops.get('/api/operator/feedback').expect(200)).body as OperatorFeedbackView;
     expect(view.counts).toEqual({ new: 2, processing: 0, closed: 0 });
@@ -247,7 +247,7 @@ describe('运营受理反馈', () => {
     expect(logs.map((l) => l.target)).toEqual(['示例安全咨询机构 · 希望更容易找到整套下载']);
   });
 
-  it('转给注安师：只限成果内容、有负责注安师的任务；注安师收到站内提醒', async () => {
+  it('转给专家：只限成果内容、有负责专家的任务；专家收到站内提醒', async () => {
     const ops = await as('ops@test.cn');
     expect((await ops.patch(`/api/operator/feedback/${id.fb}`).send({ action: 'forward', category: 'platform' })).status).toBe(400);
     expect((await ops.patch(`/api/operator/feedback/${id.fbAdmin}`).send({ action: 'forward', category: 'content' })).status).toBe(400);
@@ -257,7 +257,7 @@ describe('运营受理反馈', () => {
     expect(notes).toHaveLength(1);
     expect(notes[0]).toMatchObject({ title: '客户反馈了成果内容', link: `/expert/tasks/${id.task}` });
     expect(notes[0]!.body).toContain('已交付版本保持不变');
-    // 注安师看不到附件，提醒里说明有几个、找运营要
+    // 专家看不到附件，提醒里说明有几个、找运营要
     expect(notes[0]!.body).toContain('客户附了 1 个文件，需要查看请联系运营。');
     expect(await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'feedback_forward'))).toHaveLength(1);
   });
@@ -333,7 +333,7 @@ describe('两位运营同时受理', () => {
     const after = (await (await as('ops@test.cn')).get('/api/operator/feedback').expect(200)).body as OperatorFeedbackView;
     expect(after.items.find((f) => f.id === fb.id)).toMatchObject({ status: 'processing', handlerName: [...handlers][0] });
 
-    // 没附文件的转给注安师：提醒里不提附件
+    // 没附文件的转给专家：提醒里不提附件
     const zhouBefore = (await notesOf('zhou@test.cn')).length;
     await a.patch(`/api/operator/feedback/${fb.id}`).send({ action: 'forward', category: 'content' }).expect(200);
     const zhouNotes = (await notesOf('zhou@test.cn')).slice(zhouBefore);

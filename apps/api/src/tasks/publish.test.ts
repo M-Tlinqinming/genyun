@@ -16,7 +16,7 @@ import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
 import { complete, testDocument } from './test-workup.ts';
 
-// 成果发布（M2 第 15 项）：审核结论有效才能发布、只有负责注安师能发布、同一次发布重发只算一次、
+// 成果发布（M2 第 15 项）：审核结论有效才能发布、只有负责专家能发布、同一次发布重发只算一次、
 // 存储出错不形成交付可以重试、发布后任务已交付并提醒客户、正文只读、Word 文件属性写 AI 标识和审核人
 const PASSWORD = 'correct horse battery staple';
 
@@ -196,7 +196,7 @@ const VERSIONS = { plan: 0, risk: 0, resource: 0 };
 const body = (publishId: string = randomUUID(), versions = VERSIONS) => ({ publishId, batchId, versions });
 
 describe('发布', () => {
-  it('审核结论确认前不能发布；运营只能看，别的注安师、客户都不能发布', async () => {
+  it('审核结论确认前不能发布；运营只能看，别的专家、客户都不能发布', async () => {
     const zhou = await as('zhou@test.cn');
     const view: PublishView = (await zhou.get(publishUrl()).expect(200)).body;
     expect(view).toMatchObject({ batchId, canPublish: false, editable: true, nextVersion: 1, attempt: null, deliveries: [] });
@@ -214,7 +214,7 @@ describe('发布', () => {
     const ready: PublishView = (await zhou.get(publishUrl()).expect(200)).body;
     expect(ready).toMatchObject({ canPublish: true, blocker: null, review: { byName: '周工', valid: true } });
 
-    // 越权：运营能看不能发；别的注安师、别家客户、本组织客户都当作不存在
+    // 越权：运营能看不能发；别的专家、别家客户、本组织客户都当作不存在
     const ops = await as('ops@test.cn');
     expect((await ops.get(publishUrl()).expect(200)).body).toMatchObject({ editable: false, canPublish: false });
     await ops.post(publishUrl()).send(body()).expect(403);
@@ -296,7 +296,7 @@ describe('发布', () => {
     const custom = await zip.file('docProps/custom.xml')!.async('string');
     expect(custom).toContain('审核人');
 
-    // 客户：站内提醒，不带注安师电话
+    // 客户：站内提醒，不带专家电话
     const feiyu = await as('feiyu@test.cn');
     const notes = (await feiyu.get('/api/notifications').expect(200)).body.items as { title: string; body: string; link: string }[];
     const note = notes.find((n) => n.title.includes('成果已交付'))!;
@@ -306,7 +306,7 @@ describe('发布', () => {
     // 交付的 Word 本组织客户能取，别家客户不能
     await feiyu.get(`/api/files/${plan.id}`).expect(200);
     await (await as('other@test.cn')).get(`/api/files/${plan.id}`).expect(404);
-    // 负责注安师能看、能下载交付文件；别的注安师当作不存在
+    // 负责专家能看、能下载交付文件；别的专家当作不存在
     expect((await handle.db.select().from(deliveryFiles)).map((f) => f.fileId)).toContain(plan.id);
     await zhou.get(`/api/files/${plan.id}`).expect(200);
     expect((await zhou.get(`/api/files/${plan.id}/download-url`).expect(200)).body.url).toBeTruthy();

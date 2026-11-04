@@ -111,7 +111,7 @@ export const PROCESS_TEMPLATES = {
 export type ProcessTemplateId = keyof typeof PROCESS_TEMPLATES;
 export const PROCESS_TEMPLATE_IDS = Object.keys(PROCESS_TEMPLATES) as [ProcessTemplateId, ...ProcessTemplateId[]];
 
-// 客户选用的工艺模板（知识库里已发布的那一版）：只有工序名称和常见设备，风险提示等只给注安师看
+// 客户选用的工艺模板（知识库里已发布的那一版）：只有工序名称和常见设备，风险提示等只给专家看
 export interface ProcessTemplate {
   id: string;
   label: string;

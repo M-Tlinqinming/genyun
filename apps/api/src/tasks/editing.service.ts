@@ -108,7 +108,7 @@ export class EditingService {
 
   async save(user: SessionUser, taskId: string, kind: string, sectionId: string, body: unknown): Promise<SectionView & { version: number }> {
     const d = await this.draft(user, taskId, kind);
-    if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责这个任务的注安师可以修改正文');
+    if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责这个任务的专家可以修改正文');
     const parsed = sectionSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const { saveId, batchId, baseRev, blocks, note, aiPromptVersion } = parsed.data;
@@ -197,7 +197,7 @@ export class EditingService {
 
   async rewrite(user: SessionUser, taskId: string, kind: string, sectionId: string, body: unknown): Promise<RewriteResult> {
     const d = await this.draft(user, taskId, kind);
-    if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责这个任务的注安师可以使用 AI 改写');
+    if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责这个任务的专家可以使用 AI 改写');
     throwIfLocked(await batchLock(this.db, d.batch.id));
     const parsed = rewriteRequestSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');

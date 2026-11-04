@@ -6,7 +6,7 @@ export function byChecklistOrder<T extends { itemKey: string }>(items: readonly 
   return [...items].sort((a, b) => (ITEM_ORDER.get(a.itemKey) ?? Infinity) - (ITEM_ORDER.get(b.itemKey) ?? Infinity));
 }
 
-// 客户请专家电话联系：从提交（或提交后才点的那一刻）起算 2 个工作日；改派后从新注安师接手时重新算
+// 客户请专家电话联系：从提交（或提交后才点的那一刻）起算 2 个工作日；改派后从新专家接手时重新算
 export interface ContactRequest {
   requestedAt: Date;
   requestedBy: string;
@@ -35,7 +35,7 @@ export function pendingContactRequest(
 ): ContactRequest | null {
   if (t.submittedAt === null || t.closedAt !== null || calls.length === 0) return null;
   const first = calls.reduce((a, b) => (a.updatedAt <= b.updatedAt ? a : b));
-  // 原注安师的联系记录不算：期限和「联系上」都从现在这位接手起算
+  // 原专家的联系记录不算：期限和「联系上」都从现在这位接手起算
   const requestedAt = new Date(
     Math.max(first.updatedAt.getTime(), t.submittedAt.getTime(), t.assignedAt?.getTime() ?? 0),
   );

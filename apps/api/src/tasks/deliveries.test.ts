@@ -18,7 +18,7 @@ import { attachment } from './deliveries.service.ts';
 import { complete, testDocument } from './test-workup.ts';
 
 // 客户成果文档（M2 第 16 项）：同组织客户能看、下载三份 Word 与整套压缩包、在线阅读发布时的 PDF；
-// 别家客户、没负责这项任务的注安师一律 404；运营和负责注安师按原规则能看；多次交付按 V2、V1 列出
+// 别家客户、没负责这项任务的专家一律 404；运营和负责专家按原规则能看；多次交付按 V2、V1 列出
 const PASSWORD = 'correct horse battery staple';
 
 let handle: DatabaseHandle;
@@ -226,7 +226,7 @@ describe('成果文档', () => {
     await feiyu.get(`${base()}/2/plan/pdf`).expect(404);
   });
 
-  it('越权：别家客户、没负责的注安师一律 404；运营、负责注安师、同组织成员能看', async () => {
+  it('越权：别家客户、没负责的专家一律 404；运营、负责专家、同组织成员能看', async () => {
     for (const email of ['other@test.cn', 'wu@test.cn']) {
       const agent = await as(email);
       await agent.get(base()).expect(404);

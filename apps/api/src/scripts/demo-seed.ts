@@ -131,7 +131,7 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
     items: { fire_pool: { status: 'later', fileIds: [], callRequested: true } },
     submittedAt,
   });
-  // 塑胶：两周前提交、分派给吴工，客户请注安师电话联系两项，吴工第二天打过一次未接通 → 进运营的超时兜底。
+  // 塑胶：两周前提交、分派给吴工，客户请专家电话联系两项，吴工第二天打过一次未接通 → 进运营的超时兜底。
   // 两周前保证不论哪天跑都超过 2 个工作日（春节、国庆长假也够）
   const overdueAt = new Date(now.getTime() - 14 * 86_400_000);
   await ensureSubmittedTask(db, report, {
@@ -281,7 +281,7 @@ async function ensureSubmittedTask(
     customerId: string;
     items: ChecklistState;
     submittedAt: Date;
-    // 负责注安师打过一次电话没接通（未接通不停 2 个工作日的计算）
+    // 负责专家打过一次电话没接通（未接通不停 2 个工作日的计算）
     unreachableCallAt?: Date;
   },
 ) {
@@ -342,7 +342,7 @@ async function ensureSubmittedTask(
       await tx.insert(taskContacts).values({
         taskId: task!.id,
         method: 'phone',
-        questions: [{ id: 'q1', itemKey: 'fire_pool', label: '消防水池', question: '客户请注安师电话联系，问清「消防水池」的实际情况。' }],
+        questions: [{ id: 'q1', itemKey: 'fire_pool', label: '消防水池', question: '客户请专家电话联系，问清「消防水池」的实际情况。' }],
         target: { name: '陈志刚', role: '主要负责人', phone: '139 0000 3388' },
         result: 'unreachable',
         createdBy: t.expertId,

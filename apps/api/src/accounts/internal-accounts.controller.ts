@@ -38,15 +38,15 @@ import { MAILER, type Mailer } from '../mail/mailer.ts';
 import { createInvitation, EMAIL_HAS_ACCOUNT } from '../orgs/invitations.ts';
 
 const NOT_FOUND = '找不到这个内部账号';
-const LAST_OPERATOR = '这是最后一位能登录的运营管理员，停用或改成注安师后就没人能管理客户组织和内部账号了。请先邀请或恢复另一位运营管理员';
+const LAST_OPERATOR = '这是最后一位能登录的运营管理员，停用或改成专家后就没人能管理客户组织和内部账号了。请先邀请或恢复另一位运营管理员';
 const RESENT_JUST_NOW = '这封邀请刚刚已经重新发送过了，请刷新页面查看最新的一封';
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Outcome = { busy: number } | 'last_operator' | 'unchanged' | 'ok';
 
 const isInternalRole = (r: string): r is InternalRole => (INTERNAL_ROLES as readonly string[]).includes(r);
 
-// 内部账号与权限（Paper 16 页 I06）：耕云员工（运营管理员、注安师）的账号列表、邮件邀请、停用 / 恢复、改角色。
-// 只有运营；客户、注安师一律 403。不能停用自己、不能改自己的角色（免得把自己锁在外面）。
+// 内部账号与权限（Paper 16 页 I06）：耕云员工（运营管理员、专家）的账号列表、邮件邀请、停用 / 恢复、改角色。
+// 只有运营；客户、专家一律 403。不能停用自己、不能改自己的角色（免得把自己锁在外面）。
 // 停用：不能登录、已有会话全部退出、不出现在分派名单（operator-tasks.controller.ts 的 assignableExpert）
 @Controller('operator/accounts')
 export class InternalAccountsController {
@@ -148,7 +148,7 @@ export class InternalAccountsController {
     return result;
   }
 
-  // 停用：注安师手上还有没结束的任务时不能停用，先在任务中心改派（不然客户的任务没人管）
+  // 停用：专家手上还有没结束的任务时不能停用，先在任务中心改派（不然客户的任务没人管）
   @Post(':id/disable')
   @HttpCode(200)
   async disable(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
@@ -179,7 +179,7 @@ export class InternalAccountsController {
     if (outcome === 'last_operator') throw new ConflictException(LAST_OPERATOR);
     if (outcome === 'unchanged') throw new ConflictException(`${target.name}的账号已经停用了`);
     if (typeof outcome === 'object') {
-      throw new ConflictException(`${target.name}还有 ${outcome.busy} 个在办任务，请先在任务中心改派给其他注安师，再停用`);
+      throw new ConflictException(`${target.name}还有 ${outcome.busy} 个在办任务，请先在任务中心改派给其他专家，再停用`);
     }
     await this.audit.record({
       action: 'account_disable',
@@ -191,7 +191,7 @@ export class InternalAccountsController {
     return this.list(user);
   }
 
-  // 恢复：可以重新登录（密码不变），注安师重新出现在分派名单
+  // 恢复：可以重新登录（密码不变），专家重新出现在分派名单
   @Post(':id/enable')
   @HttpCode(200)
   async enable(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
@@ -216,7 +216,7 @@ export class InternalAccountsController {
     return this.list(user);
   }
 
-  // 改角色（注安师 ↔ 运营管理员）。注安师手上还有任务时不能改成运营，先改派
+  // 改角色（专家 ↔ 运营管理员）。专家手上还有任务时不能改成运营，先改派
   @Put(':id/role')
   async changeRole(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown, @Req() req: Request) {
     this.guard(user);
@@ -245,7 +245,7 @@ export class InternalAccountsController {
     if (outcome === 'last_operator') throw new ConflictException(LAST_OPERATOR);
     if (outcome === 'unchanged') throw new ConflictException(`${target.name}的角色刚刚被改过了，请刷新页面查看`);
     if (typeof outcome === 'object') {
-      throw new ConflictException(`${target.name}还有 ${outcome.busy} 个在办任务，请先在任务中心改派给其他注安师，再改角色`);
+      throw new ConflictException(`${target.name}还有 ${outcome.busy} 个在办任务，请先在任务中心改派给其他专家，再改角色`);
     }
     await this.audit.record({
       action: 'account_role_change',

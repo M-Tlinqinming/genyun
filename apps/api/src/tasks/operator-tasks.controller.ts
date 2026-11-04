@@ -140,12 +140,12 @@ function selectTasks(db: Database) {
     .leftJoin(expert, eq(expert.id, tasks.assignedExpertId));
 }
 
-// 能被分派的注安师：耕云内部组织里有 expert 角色、没有停用的人。客户组织里就算有人挂了 expert 角色也不算。
+// 能被分派的专家：耕云内部组织里有 expert 角色、没有停用的人。客户组织里就算有人挂了 expert 角色也不算。
 // 名单和分派校验都用这一条，停用的账号两边都排除（第 8 项）
 const assignableExpert = and(eq(memberships.role, 'expert'), eq(organizations.kind, 'internal'), isNull(users.disabledAt));
 
-// 运营任务中心（Paper 16 页 I04「待分派」「全部任务」、分配注安师弹窗）。
-// 只有运营能看和分派；客户、注安师一律 403。超时兜底、上门工单在第 4 项
+// 运营任务中心（Paper 16 页 I04「待分派」「全部任务」、分配专家弹窗）。
+// 只有运营能看和分派；客户、专家一律 403。超时兜底、上门工单在第 4 项
 @Controller('operator/tasks')
 export class OperatorTasksController {
   constructor(
@@ -182,7 +182,7 @@ export class OperatorTasksController {
     return { ...task, contactCount: contacts?.n ?? 0, workupStartedAt: workup?.updatedAt ?? null };
   }
 
-  // 分配弹窗里的注安师：在办任务数，以及正在处理这家客户的其他几家企业（同一客户交给同一人更顺）
+  // 分配弹窗里的专家：在办任务数，以及正在处理这家客户的其他几家企业（同一客户交给同一人更顺）
   @Get(':id/experts')
   async experts(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     this.guard(user);
@@ -208,7 +208,7 @@ export class OperatorTasksController {
     });
   }
 
-  // 分派或改派。专业整理、联系记录都挂在任务上，改派后自动归新注安师；原注安师从此打不开这个任务（404）
+  // 分派或改派。专业整理、联系记录都挂在任务上，改派后自动归新专家；原专家从此打不开这个任务（404）
   @Post(':id/assign')
   async assign(
     @CurrentUser() user: SessionUser,
@@ -223,7 +223,7 @@ export class OperatorTasksController {
     const task = await this.load(id);
     const blocked = assignmentBlockedReason(task);
     if (blocked) throw new ConflictException(blocked);
-    if (expertId === task.assignedExpertId) throw new ConflictException(`${task.assignedExpertName ?? '这位注安师'}已经是负责注安师`);
+    if (expertId === task.assignedExpertId) throw new ConflictException(`${task.assignedExpertName ?? '这位专家'}已经是负责专家`);
 
     const [target] = await this.db
       .select({ id: users.id, name: users.name })
@@ -232,7 +232,7 @@ export class OperatorTasksController {
       .innerJoin(organizations, eq(organizations.id, memberships.orgId))
       .where(and(eq(users.id, expertId), assignableExpert))
       .limit(1);
-    if (!target) throw new BadRequestException('请选择注安师');
+    if (!target) throw new BadRequestException('请选择专家');
 
     const what = `${task.enterpriseName} · ${task.name}`;
     const previous = task.assignedExpertId;
@@ -241,7 +241,7 @@ export class OperatorTasksController {
     // 改任务和发提醒在同一个事务里：不会出现分派生效、提醒却没发的情况
     const updated = await this.db.transaction(async (tx) => {
       // 锁住接手人的账号行，和停用、改角色排队（两者也锁这一行），锁住后再按分派名单的条件查一遍：
-      // 仍是耕云内部的注安师、没有停用
+      // 仍是耕云内部的专家、没有停用
       const [active] = await tx
         .select({ id: users.id })
         .from(users)
@@ -249,8 +249,8 @@ export class OperatorTasksController {
         .innerJoin(organizations, eq(organizations.id, memberships.orgId))
         .where(and(eq(users.id, expertId), assignableExpert))
         .for('update', { of: users });
-      if (!active) throw new BadRequestException(`${target.name}已停用或不再是注安师，请选择其他注安师`);
-      // 只在负责注安师仍是运营打开弹窗时看到的那位时才改，别人刚分派过就提示刷新
+      if (!active) throw new BadRequestException(`${target.name}已停用或不再是专家，请选择其他专家`);
+      // 只在负责专家仍是运营打开弹窗时看到的那位时才改，别人刚分派过就提示刷新
       const [row] = await tx
         .update(tasks)
         .set({ assignedExpertId: expertId, assignedAt: new Date(), updatedAt: new Date() })
@@ -276,7 +276,7 @@ export class OperatorTasksController {
         tx,
       );
       if (previous) {
-        // 原注安师点开会看到「这个任务已改派给 X」
+        // 原专家点开会看到「这个任务已改派给 X」
         await this.notifications.notify(
           [previous],
           {
@@ -291,7 +291,7 @@ export class OperatorTasksController {
         await tx.insert(taskOperatorNotes).values({
           taskId: id,
           kind: 'reassign',
-          body: [`${task.assignedExpertName ?? '原注安师'} → ${target.name}`, reason ? REASSIGN_REASONS[reason] : null, note]
+          body: [`${task.assignedExpertName ?? '原专家'} → ${target.name}`, reason ? REASSIGN_REASONS[reason] : null, note]
             .filter(Boolean)
             .join(' · '),
           createdBy: user.id,
@@ -302,23 +302,23 @@ export class OperatorTasksController {
     if (!updated) {
       const now = await this.load(id);
       throw new ConflictException(
-        now.assignedExpertName ? `这个任务刚被分派给${now.assignedExpertName}，请看最新情况再决定` : '这个任务的负责注安师刚有变化，请刷新后再试',
+        now.assignedExpertName ? `这个任务刚被分派给${now.assignedExpertName}，请看最新情况再决定` : '这个任务的负责专家刚有变化，请刷新后再试',
       );
     }
-    // 操作日志：对象写任务编号和接手的注安师；改派时带上原来的注安师
+    // 操作日志：对象写任务编号和接手的专家；改派时带上原来的专家
     await this.audit.record({
       action: previous ? 'task_reassign' : 'task_assign',
       actorId: user.id,
       actorEmail: user.email,
       ip: clientIp(req),
       target: previous
-        ? `${task.number} · ${task.assignedExpertName ?? '原注安师'} → ${target.name}`
+        ? `${task.number} · ${task.assignedExpertName ?? '原专家'} → ${target.name}`
         : `${task.number} · ${target.name}`,
     });
     return withStage(await this.load(id));
   }
 
-  // 运营在任务上的记录：内部备注、提醒注安师、改派（新的在前）
+  // 运营在任务上的记录：内部备注、提醒专家、改派（新的在前）
   @Get(':id/notes')
   async notes(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string): Promise<OperatorNote[]> {
     this.overdueGuard(user);
@@ -349,7 +349,7 @@ export class OperatorTasksController {
     return this.notes(user, id);
   }
 
-  // 提醒注安师：给负责注安师发站内提醒，同时记在任务上
+  // 提醒专家：给负责专家发站内提醒，同时记在任务上
   @Post(':id/remind')
   async remind(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     this.overdueGuard(user);
@@ -357,7 +357,7 @@ export class OperatorTasksController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '提醒内容不对');
     const task = await this.load(id);
     if (task.closedAt) throw new ConflictException('任务已结束，不用再提醒');
-    if (!task.assignedExpertId) throw new ConflictException('这个任务还没有负责注安师，请先分派');
+    if (!task.assignedExpertId) throw new ConflictException('这个任务还没有负责专家，请先分派');
     const said = parsed.data.body || null;
     await this.db.transaction(async (tx) => {
       await this.notifications.notify(

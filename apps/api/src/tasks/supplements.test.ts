@@ -170,7 +170,7 @@ describe('事实补件', () => {
     expect(JSON.stringify(notes.body)).toContain('请确认应急联系人');
   });
 
-  it('越权：别家客户、注安师、运营调用客户接口，吴工采用或退回，补件编号不属于这个任务，都当作不存在', async () => {
+  it('越权：别家客户、专家、运营调用客户接口，吴工采用或退回，补件编号不属于这个任务，都当作不存在', async () => {
     const zhou = await as('zhou@test.cn');
     const [round] = (await zhou.get(`/api/tasks/${taskId}/supplements`).expect(200)).body as { id: string }[];
     const respond = `/api/tasks/${taskId}/supplement-requests/${round!.id}/response`;
@@ -179,13 +179,13 @@ describe('事实补件', () => {
     expect((await other.get(`/api/tasks/${taskId}/supplement-requests`)).status).toBe(404);
     expect((await other.post(respond).send(reply)).status).toBe(404);
     expect((await other.get(`/api/tasks/${taskId}/supplements`)).status).toBe(404);
-    // 负责注安师、运营都不能替客户回应
+    // 负责专家、运营都不能替客户回应
     const ops = await as('ops@test.cn');
     for (const agent of [zhou, ops]) {
       expect((await agent.get(`/api/tasks/${taskId}/supplement-requests`)).status).toBe(404);
       expect((await agent.post(respond).send(reply)).status).toBe(404);
     }
-    // 不负责的注安师采用、退回：看不到这个任务；运营退回：没有权限
+    // 不负责的专家采用、退回：看不到这个任务；运营退回：没有权限
     const wu = await as('wu@test.cn');
     const facts = { facts: [{ key: 'contactPerson', value: '王建国' }], confirmed: true };
     expect((await wu.post(`/api/tasks/${taskId}/supplements/${round!.id}/adopt`).send(facts)).status).toBe(404);
@@ -346,7 +346,7 @@ describe('事实补件', () => {
     expect(passed.body.factsChangedAt).toBeNull();
     expect(reviewValid(passed.body)).toBe(true);
 
-    // 第 3 轮：客户回应、注安师采用
+    // 第 3 轮：客户回应、专家采用
     const [round] = (await zhou.get(`/api/tasks/${taskId}/supplements`).expect(200)).body;
     expect(round).toMatchObject({ round: 3, status: 'awaiting_customer' });
     await (await as('feiyu@test.cn'))

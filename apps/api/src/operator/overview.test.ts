@@ -74,7 +74,7 @@ beforeAll(async () => {
     .returning();
   id.unassigned = rows[1]!.id;
   id.overdue = rows[3]!.id;
-  // 超时：客户 10.27 请注安师电话联系，一直没联系
+  // 超时：客户 10.27 请专家电话联系，一直没联系
   await db.insert(checklistItems).values({
     taskId: id.overdue,
     itemKey: 'fire_pool',
@@ -213,7 +213,7 @@ describe('运营概览', () => {
     expect(body.recent[0]).toMatchObject({ actorName: '赵运营', target: 'GY-2026-003 · 周工' });
   });
 
-  it('只有运营能看：客户、注安师 403，没登录 401', async () => {
+  it('只有运营能看：客户、专家 403，没登录 401', async () => {
     for (const email of ['admin@test.cn', 'zhou@test.cn']) {
       expect((await (await as(email)).get('/api/operator/overview')).status).toBe(403);
     }

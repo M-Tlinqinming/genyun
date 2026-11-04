@@ -291,7 +291,7 @@ export function ExpertTaskPage() {
   );
   if (task.isPending || workup.isPending || generation.isPending) return <Loading rows={6} />;
   if (task.isError) {
-    // 原负责注安师打开旧链接：接口说明已改派给谁
+    // 原负责专家打开旧链接：接口说明已改派给谁
     const moved = task.error.message.startsWith('这个任务已改派给');
     return moved ? (
       <Result status="info" title={task.error.message} subTitle="您不用再处理。已整理的内容和联系记录都随任务交给了对方。" extra={back} />
@@ -344,7 +344,7 @@ export function ExpertTaskPage() {
     );
   }
 
-  // 成果发布（R03–R04b）：审核结论有效时由负责注安师发布，形成交付版本
+  // 成果发布（R03–R04b）：审核结论有效时由负责专家发布，形成交付版本
   if (requested === 'publish' && current && phaseOf(current) === 'done') {
     return (
       <PublishView
@@ -394,7 +394,7 @@ export function ExpertTaskPage() {
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 500, lineHeight: '32px', color: gy.text }}>{task.data.enterpriseName}</h1>
             <span style={{ ...text14, color: gy.secondary }}>
               {task.data.number}
-              {view === 'supplement' && round ? `　·　第 ${round.round} 轮事实补件　·　负责注安师：${round.createdByName}` : ''}
+              {view === 'supplement' && round ? `　·　第 ${round.round} 轮事实补件　·　负责专家：${round.createdByName}` : ''}
             </span>
             <span style={{ flex: 1 }} />
             <span role="status" style={{ ...text14, padding: '2px 10px', borderRadius: 4, background: chip.bg, color: chip.color }}>

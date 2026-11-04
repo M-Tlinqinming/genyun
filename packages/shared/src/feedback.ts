@@ -3,7 +3,7 @@
 // 不改任务状态、不触发重新生成、不改已交付版本。前后端共用。
 import { z } from 'zod';
 
-// new = 待受理；processing = 处理中（运营已受理或已转给注安师）；closed = 已关闭（已回复客户）
+// new = 待受理；processing = 处理中（运营已受理或已转给专家）；closed = 已关闭（已回复客户）
 export const FEEDBACK_STATUSES = ['new', 'processing', 'closed'] as const;
 export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
 export const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = { new: '待受理', processing: '处理中', closed: '已关闭' };
@@ -42,7 +42,7 @@ export const feedbackCreateSchema = z
   .refine((v) => v.deliveryVersion === undefined || v.taskId !== undefined, { message: '交付版本要和任务一起提交', path: ['deliveryVersion'] });
 export type FeedbackCreateInput = z.input<typeof feedbackCreateSchema>;
 
-// 运营处理：accept = 受理，稍后回复；forward = 转给原任务的注安师（只限成果内容、有负责注安师的任务）；
+// 运营处理：accept = 受理，稍后回复；forward = 转给原任务的专家（只限成果内容、有负责专家的任务）；
 // save = 处理中保存类型、回复草稿、内部备注；close = 回复并关闭（回复必填，客户在站内提醒里看到）
 export const FEEDBACK_ACTIONS = ['accept', 'forward', 'save', 'close'] as const;
 export type FeedbackAction = (typeof FEEDBACK_ACTIONS)[number];
@@ -96,7 +96,7 @@ export interface OperatorFeedback extends Omit<CustomerFeedback, 'reply'> {
   reply: string | null;
   internalNote: string | null;
   handlerName: string | null;
-  // 关联任务现在的负责注安师（转给注安师用）；没有关联任务或还没分派为空
+  // 关联任务现在的负责专家（转给专家用）；没有关联任务或还没分派为空
   taskExpertName: string | null;
   forwardedToName: string | null;
   forwardedAt: string | null;
