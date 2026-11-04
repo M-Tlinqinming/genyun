@@ -791,8 +791,10 @@ Martin 11-01 晚授权通宵先按合理方案做、逐条记下，下面各条�
 
 **04 页令牌**：删掉 38 个标了 DEPRECATED 的旧令牌（`--color-primary` 系、`--color-canvas` / `surface` / `text` / `border` 系、`--color-brand-blue` 系、`--font-sans` / `ui` / `hifi`、`--text-caption` 到 `--text-display`、旧字重 / 行高 / 断点 / 间距 / 圆角）。Martin 说的是 36 个，实际标废弃的是 38 个，全删。保留：`gy-v1-*`、`gy-brand-*`、`gy-stage-*`、`gy-source-*` 四组，以及官网专用的 `--color-marketing-navy` / `gold` / `muted`（没标废弃，官网 Astro 还在用）。
 
-要 Martin 看的：
+Martin 11-04 定的三件：
 
-- 98 页的页名现在还是旧名，建议改成「98 · 归档区」，Paper 页名我不改，Martin 定。
-- 00 页「迭代 1 待拍板」那栏列了 6 项 + 3 件，等您定完要回来改这块，不然又是杂音。
-- 10 页 A01–A04 / W01–W07 的编号写法（上次梳理时留下的问题）还没定，00 页先按现有画板名写。
+- 98 页页名已改「98 · 归档区」（原「通宵验收」），图标换成废纸。
+- 10 页官网章节小标题用「一、二、三」编号，按现状不动。
+- e2e `operator-organizations.spec.ts` 出错提示间距门槛从 8 放宽到 7.5，避免亚像素取整偶发红（随 PR #88）。
+
+还要回来改的：00 页「迭代 1 待拍板」那栏列了 6 项 + 3 件（其中 10 页编号已定，可从「另有三件」里去掉），等 Martin 定完其余项后同步这块。
