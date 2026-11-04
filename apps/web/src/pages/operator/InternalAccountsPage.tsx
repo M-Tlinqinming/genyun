@@ -26,7 +26,7 @@ import { PageHeader } from '../../components/PageHeader';
 import { linkButton, Loading, Notice, panel, requiredAfter } from '../../components/ui';
 import { gy, stage } from '../../theme/tokens';
 
-// 内部账号与权限（Paper 16 页 I06）：耕云员工（运营管理员、注安师）的账号、角色和可见范围。
+// 内部账号与权限（Paper 16 页 I06）：耕云员工（运营管理员、专家）的账号、角色和可见范围。
 // 邀请走邮件；停用后不能登录、已登录的地方退出、不出现在分派名单。不能停用自己
 
 type RoleFilter = 'all' | InternalRole;
@@ -220,7 +220,7 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
         <Form.Item label="邮箱" name="email" rules={[{ required: true, whitespace: true, message: '请填写邮箱' }]}>
           <Input placeholder="name@genyun.net.cn" />
         </Form.Item>
-        <Form.Item label="角色" name="role" rules={[{ required: true, message: '请选择角色' }]} extra="注安师只看到分配给本人的任务；运营管理员看到全部客户组织。">
+        <Form.Item label="角色" name="role" rules={[{ required: true, message: '请选择角色' }]} extra="专家只看到分配给本人的任务；运营管理员看到全部客户组织。">
           <Radio.Group options={INTERNAL_ROLES.map((r) => ({ value: r, label: INTERNAL_ROLE_LABELS[r] }))} />
         </Form.Item>
       </Form>
@@ -280,7 +280,7 @@ function RoleModal({ account, onClose }: { account: InternalAccount | null; onCl
           </Radio.Group>
           {busy && (
             <p style={{ ...small, color: gy.warning, margin: '16px 0 0' }}>
-              {account.name}还有 {account.openTasks} 个在办任务，请先在<Link to="/operator/tasks">任务中心</Link>改派给其他注安师，再改角色。
+              {account.name}还有 {account.openTasks} 个在办任务，请先在<Link to="/operator/tasks">任务中心</Link>改派给其他专家，再改角色。
             </p>
           )}
         </>
@@ -316,7 +316,7 @@ export function InternalAccountsPage() {
     if (a.openTasks > 0) {
       modal.warning({
         title: `${a.name}还有 ${a.openTasks} 个在办任务`,
-        content: '停用前请先在任务中心把这些任务改派给其他注安师，不然客户的任务没人跟进。',
+        content: '停用前请先在任务中心把这些任务改派给其他专家，不然客户的任务没人跟进。',
         okText: '知道了',
       });
       return;
@@ -365,7 +365,7 @@ export function InternalAccountsPage() {
     <PageHeader
       eyebrow="耕云运营 / 内部账号"
       title="内部账号与权限"
-      description="耕云员工的账号、角色和可见客户范围。注安师只看到分配给自己的任务。"
+      description="耕云员工的账号、角色和可见客户范围。专家只看到分配给自己的任务。"
       extra={
         <Button type="primary" onClick={() => setInviting(true)}>
           邀请内部成员

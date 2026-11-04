@@ -24,7 +24,7 @@ export interface ChecklistItemDef {
   startPart?: string;
   // 「有则提供」的项先问有没有：允许客户回答「没有」
   allowNone: boolean;
-  // 拿不准有没有时可「拍照给耕云看」，由注安师判断
+  // 拿不准有没有时可「拍照给耕云看」，由专家判断
   allowPhoto: boolean;
 }
 

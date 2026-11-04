@@ -266,7 +266,7 @@ function TemplateEditor({ template }: { template: KnowledgeTemplate }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '10px 12px', borderRadius: 6, background: source.system.bg }}>
           <span style={{ fontSize: 12, lineHeight: '20px', color: source.system.color }}>发布规则</span>
           <span style={{ ...label13, color: gy.text }}>
-            修改后存为新版本，只影响之后选用模板的客户；已选用的任务不变。风险提示仅供注安师参考，不展示给客户。
+            修改后存为新版本，只影响之后选用模板的客户；已选用的任务不变。风险提示仅供专家参考，不展示给客户。
           </span>
         </div>
       </div>

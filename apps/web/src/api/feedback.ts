@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { operatorOverviewKey } from './operatorOverview';
 import { request } from './request';
 
-// 反馈受理：客户提交、查看自己的反馈；运营列表、受理、转给注安师、回复并关闭
+// 反馈受理：客户提交、查看自己的反馈；运营列表、受理、转给专家、回复并关闭
 
 const customerKey = (orgId: string) => ['feedback', 'customer', orgId] as const;
 const operatorKey = ['feedback', 'operator'] as const;

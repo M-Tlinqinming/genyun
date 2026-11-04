@@ -7,7 +7,7 @@ const bullets = [
 ];
 const rows = [
   { label: '员工人数', value: '120 人', source: '客户提供 · 花名册', bg: '#EFF4FF', fg: '#245BDB' },
-  { label: '主要危险源', value: '喷涂车间 · 可燃液体储存', source: 'AI 辨识 · 注安师确认', bg: '#F3F1FC', fg: '#5B4BB7' },
+  { label: '主要危险源', value: '喷涂车间 · 可燃液体储存', source: 'AI 辨识 · 专家确认', bg: '#F3F1FC', fg: '#5B4BB7' },
   { label: '属地应急管理局', value: '惠州市惠城区应急管理局', source: '系统引用 · 知识库', bg: '#ECF8FA', fg: '#0E7490' },
   { label: '是否出租厂房', value: '否', source: '客户确认 · 09.28', bg: '#F0F2F5', fg: '#596170' },
 ];
@@ -19,7 +19,7 @@ const rows = [
       <p class="eyebrow">04 — 有据可查</p>
       <h2 id="trace-title" class="h2">每一个数字，<br />都知道从哪来。</h2>
       <p class="lead">
-        预案里的每一项企业信息都标明来源：您提供的、AI 辨识的、注安师确认的、知识库引用的。检查时被问到，答得上来。
+        预案里的每一项企业信息都标明来源：您提供的、AI 辨识的、专家确认的、知识库引用的。检查时被问到，答得上来。
       </p>
       <ul class="trace__bullets">
         {bullets.map(([color, text]) => <li><i style={`background:${color}`} />{text}</li>)}

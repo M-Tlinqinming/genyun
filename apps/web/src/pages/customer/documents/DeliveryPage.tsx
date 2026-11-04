@@ -26,7 +26,7 @@ export function DeliveryPage() {
       <Result
         status="info"
         title="这项任务还没有交付成果"
-        subTitle="注安师审核并发布后，三份 Word 会出现在这里。"
+        subTitle="专家审核并发布后，三份 Word 会出现在这里。"
         extra={<Link to={`/customer/tasks/${taskId}`}>查看任务进度</Link>}
       />
     );
@@ -91,7 +91,7 @@ function Delivery({ data, current, isLatest, missing }: { data: TaskDeliveries; 
           </span>
           <span style={{ ...text14, color: gy.text }}>
             {isLatest ? (
-              '注安师已审核通过，可直接阅读与下载。'
+              '专家已审核通过，可直接阅读与下载。'
             ) : (
               <>
                 已有更新的交付版本 {versionText(data.versions[0]!.version)}，请以最新版本为准。{' '}
@@ -174,7 +174,7 @@ function Delivery({ data, current, isLatest, missing }: { data: TaskDeliveries; 
               orgId={orgId}
               source="delivery"
               title="反馈文稿问题"
-              intro="请告诉耕云是哪份文档、哪一处需要更正。耕云受理后会安排注安师核实，需要更正时发布新的交付版本，当前版本照常可用。"
+              intro="请告诉耕云是哪份文档、哪一处需要更正。耕云受理后会安排专家核实，需要更正时发布新的交付版本，当前版本照常可用。"
               context={{ taskId: data.taskId, deliveryVersion: current.version, label: `${data.enterpriseName} · ${data.taskNumber} · ${deliveryLabel(current.version)}` }}
               trigger={(open) => (
                 <button type="button" style={textLink} onClick={open}>

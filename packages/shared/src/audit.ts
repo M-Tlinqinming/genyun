@@ -36,8 +36,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   logout: '退出登录',
   password_change: '修改密码',
   password_reset: '找回密码并重设',
-  task_assign: '分派注安师',
-  task_reassign: '改派注安师',
+  task_assign: '分派专家',
+  task_reassign: '改派专家',
   publish: '发布',
   account_invite: '邀请内部成员',
   account_disable: '停用账号',
@@ -53,7 +53,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   knowledge_holiday_change: '维护节假日',
   knowledge_template_change: '维护工艺模板',
   feedback_accept: '受理反馈',
-  feedback_forward: '反馈转给注安师',
+  feedback_forward: '反馈转给专家',
   feedback_close: '回复并关闭反馈',
 };
 

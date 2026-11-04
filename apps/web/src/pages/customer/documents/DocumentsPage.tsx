@@ -41,7 +41,7 @@ export function DocumentsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <h1 style={{ margin: 0, fontSize: 28, lineHeight: '40px', fontWeight: 500, color: gy.text }}>成果文档</h1>
-        <span style={{ ...text14, color: gy.secondary }}>注安师审核后交付的成果。同一次交付的三份 Word 始终放在一起，避免混用版本。</span>
+        <span style={{ ...text14, color: gy.secondary }}>专家审核后交付的成果。同一次交付的三份 Word 始终放在一起，避免混用版本。</span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -77,7 +77,7 @@ export function DocumentsPage() {
       ) : list.isError ? (
         <Result status="error" title="成果加载失败" subTitle={list.error.message} />
       ) : all.length === 0 ? (
-        <div style={{ ...card, padding: '24px 24px', ...text14, color: gy.secondary }}>还没有已交付的成果。注安师审核并发布后，三份 Word 会出现在这里。</div>
+        <div style={{ ...card, padding: '24px 24px', ...text14, color: gy.secondary }}>还没有已交付的成果。专家审核并发布后，三份 Word 会出现在这里。</div>
       ) : cards.length === 0 ? (
         <div style={{ ...card, padding: '24px 24px', ...text14, color: gy.secondary }}>没有符合条件的成果。</div>
       ) : (
@@ -88,7 +88,7 @@ export function DocumentsPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderRadius: 8, background: gy.selected }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ ...text14, fontWeight: 500, color: gy.text }}>还有 {inProgress} 项任务在办理中</span>
-            <span style={{ ...text14, color: gy.secondary }}>成果经注安师审核并发布后才会出现在这里。办理进度请在业务任务中查看。</span>
+            <span style={{ ...text14, color: gy.secondary }}>成果经专家审核并发布后才会出现在这里。办理进度请在业务任务中查看。</span>
           </div>
           <Link to="/customer/tasks" style={textLink}>
             查看业务任务 →
@@ -135,7 +135,7 @@ function DeliveryCard({ task, version, latest }: { task: TaskDeliveries; version
             </span>
           </div>
           <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
-            {task.taskName} · {task.taskNumber} · {stampShort(version.publishedAt)} 发布 · 注安师审核通过
+            {task.taskName} · {task.taskNumber} · {stampShort(version.publishedAt)} 发布 · 专家审核通过
           </span>
         </div>
         <Button onClick={() => navigate(detail)}>查看交付详情</Button>

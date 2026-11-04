@@ -138,7 +138,7 @@ export class TasksService {
     const [found] = await this.selectTasks().where(eq(tasks.id, id)).limit(1);
     if (!found) throw new NotFoundException(NOT_FOUND);
     if (!canViewTask(user, found)) {
-      // 原负责注安师打开旧链接：说明已改派给谁（他收到过这个任务的改派提醒才说，别人一律「找不到」）
+      // 原负责专家打开旧链接：说明已改派给谁（他收到过这个任务的改派提醒才说，别人一律「找不到」）
       if (isExpert(user) && found.assignedExpertName && (await this.wasReassignedFrom(user, id))) {
         throw new NotFoundException(`这个任务已改派给${found.assignedExpertName}`);
       }

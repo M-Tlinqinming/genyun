@@ -185,7 +185,7 @@ export class InvitationsController {
       hourCycle: 'h23',
     }).format(inv.expiresAt);
     const body = `${inv.orgName}：发给 ${inv.email} 的邀请已于 ${expired} 过期，对方请您重新发送。`;
-    // 内部成员（注安师、运营）的邀请在「内部账号」里重发
+    // 内部成员（专家、运营）的邀请在「内部账号」里重发
     const internal = inv.role === 'expert' || inv.role === 'operator';
     const link = internal
       ? '/operator/accounts'

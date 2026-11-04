@@ -7,7 +7,7 @@ import { feiyuProfile } from '../packages/shared/src/fixtures/feiyu-profile';
 
 // 整体验收（M2 第 17 项，覆盖 M1–M4 主流程）。两条测试，各自都能单独跑：
 // A：运营登记并开通新组织、登记合同 → 首位机构管理员从邀请邮件设密码进入 → 新建企业、按提示填完五步 → 提交。
-// B：用飞宇样例从运营分派走到客户下载三份 Word：注安师接单、电话联系、专业整理、事实补件（客户补交、注安师采用）→
+// B：用飞宇样例从运营分派走到客户下载三份 Word：专家接单、电话联系、专业整理、事实补件（客户补交、专家采用）→
 //    生成 → 审阅编辑 → 校对 → 发布 → 客户下载并检查三份 Word → 客户就这次交付提交反馈 → 运营受理并回复关闭 → 客户看到回复。
 // B 不碰演示账号和演示数据里的飞宇任务（别的测试文件按顺序接着用它们）：运营先开通一家本测试专用的客户组织，
 // 它的首位管理员按飞宇样例建企业、提交、下载、提反馈，提醒和反馈都只落在这个新账号上。
@@ -339,7 +339,7 @@ test('A 新客户：运营开通组织并登记合同 → 首位管理员接受�
     // 测试环境的营业执照识别固定返回飞宇的执照，企业名称会被识别结果填成飞宇；这里按客户组织认任务
     await expect(detail.getByRole('heading', { name: /编制应急预案$/ })).toBeVisible();
     await expect(detail.getByRole('link', { name: ORG })).toBeVisible();
-    await expect(detail).toContainText('还没有负责注安师');
+    await expect(detail).toContainText('还没有负责专家');
     await expect(ops.locator('main')).not.toContainText(INTERNAL_CODE);
   } finally {
     await customerCtx.close();
@@ -347,7 +347,7 @@ test('A 新客户：运营开通组织并登记合同 → 首位管理员接受�
   }
 });
 
-test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补件 → 生成、审阅、校对、发布 → 客户下载三份 Word → 反馈与回复', async ({ browser }) => {
+test('B 飞宇全程：运营分派 → 专家接单、联系、整理、补件 → 生成、审阅、校对、发布 → 客户下载三份 Word → 反馈与回复', async ({ browser }) => {
   await mkdir(`${OUT}/screens`, { recursive: true });
   const contexts: BrowserContext[] = [];
   const as = async (email: string, home: RegExp) => {
@@ -377,22 +377,22 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
     await ops.goto(`/operator/tasks?task=${taskId}`);
     const detail = ops.getByRole('region', { name: '任务详情' });
     await expect(detail.getByRole('heading', { name: `${COMPANY} · 编制应急预案` })).toBeVisible();
-    await expect(detail).toContainText('还没有负责注安师');
-    await detail.getByRole('button', { name: '分配注安师' }).click();
-    const assign = ops.getByRole('dialog', { name: /分配注安师/ });
+    await expect(detail).toContainText('还没有负责专家');
+    await detail.getByRole('button', { name: '分配专家' }).click();
+    const assign = ops.getByRole('dialog', { name: /分配专家/ });
     await assign.getByRole('radio', { name: /吴工/ }).check();
-    await assign.getByLabel('给注安师的说明（选填）').fill('M2 整体验收：飞宇全程');
+    await assign.getByLabel('给专家的说明（选填）').fill('M2 整体验收：飞宇全程');
     await shot(ops, 'I04-分派');
     await assign.getByRole('button', { name: '分配给吴工' }).click();
     await expect(ops.getByText('已分配给吴工，已通知对方')).toBeVisible();
-    await expect(detail).toContainText('负责注安师 吴工');
+    await expect(detail).toContainText('负责专家 吴工');
 
-    // ── 注安师吴工：任务中心看到新任务，进入（接单） ──
+    // ── 专家吴工：任务中心看到新任务，进入（接单） ──
     const expert = await as('expert2@demo.genyun.net.cn', /\/expert$/);
     const row = expert.getByRole('row', { name: new RegExp(COMPANY) }).filter({ hasText: number });
     await expect(row).toContainText(CUSTOMER_ORG);
     await expect(row).toContainText('电话联系客户问清 2 项');
-    await shot(expert, 'I04-注安师任务中心');
+    await shot(expert, 'I04-专家任务中心');
     await row.click();
     await expect(expert).toHaveURL(new RegExp(`/expert/tasks/${taskId}$`));
     await expect(expert.getByRole('heading', { name: COMPANY })).toBeVisible();
@@ -493,7 +493,7 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
     await expect(expert.getByRole('region', { name: '整理进度' })).toContainText('专业整理的必需项已齐');
     await shot(expert, 'E18-00F-图件');
 
-    // ── 事实补件：飞宇换了应急联系人。注安师发起 → 客户在任务页补交新名册 → 注安师核实后采用 ──
+    // ── 事实补件：飞宇换了应急联系人。专家发起 → 客户在任务页补交新名册 → 专家核实后采用 ──
     await expert.getByRole('button', { name: '发起事实补件' }).click();
     const sup = expert.getByRole('dialog', { name: '发起事实补件' });
     const facts = sup.getByRole('combobox', { name: '要核对的企业事实' });
@@ -523,7 +523,7 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
     await card.getByRole('checkbox').check();
     await shot(customer, 'R00a-客户补交');
     await card.getByRole('button', { name: '提交本轮补充' }).click();
-    await expect(customer.getByRole('region', { name: '已提交的事实补件' })).toContainText('等待注安师核实');
+    await expect(customer.getByRole('region', { name: '已提交的事实补件' })).toContainText('等待专家核实');
 
     await expert.goto(`/expert/tasks/${taskId}?view=supplement`);
     await expect(expert.getByRole('status')).toHaveText('补件待核实');
@@ -532,7 +532,7 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
     await table.getByLabel('联系电话本轮采用').fill('139 0000 3102');
     await table.getByLabel('联系人核实依据').fill('新名册第 1 页');
     await expert.getByRole('checkbox', { name: /已核对原件与客户确认/ }).check();
-    await shot(expert, 'R00b-注安师核实', true);
+    await shot(expert, 'R00b-专家核实', true);
     await expert.getByRole('button', { name: '确认事实并采用到本任务' }).click();
     await expect(expert.getByText('已采用到本任务')).toBeVisible();
     await expert.goto(`/expert/tasks/${taskId}?view=workup`);
@@ -633,7 +633,7 @@ test('B 飞宇全程：运营分派 → 注安师接单、联系、整理、补�
 
     // ── 反馈：客户就这次交付提交一条意见 → 运营受理、回复并关闭 → 客户在「我的反馈」看到回复 ──
     const TITLE = `应急预案值班电话请再核对一下 ${Date.now() % 10000}`;
-    const REPLY = '已转注安师核对，值班电话以贵司确认的 0752-3324567 为准，如需更正可在 3 天内免费修订。';
+    const REPLY = '已转专家核对，值班电话以贵司确认的 0752-3324567 为准，如需更正可在 3 天内免费修订。';
     await customer.goto(`/customer/documents/${taskId}`);
     await customer.getByRole('button', { name: '反馈文稿问题' }).click();
     const feedback = customer.getByRole('dialog', { name: '反馈文稿问题' });

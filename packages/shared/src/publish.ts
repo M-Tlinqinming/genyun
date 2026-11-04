@@ -1,4 +1,4 @@
-// 成果发布（M2 第 15 项，15 页 R03、R04、R04a、R04b）：审核结论有效时，负责注安师把三份当前稿定稿存档，
+// 成果发布（M2 第 15 项，15 页 R03、R04、R04a、R04b）：审核结论有效时，负责专家把三份当前稿定稿存档，
 // 形成一个交付版本（同一任务第一次是 V1，以后再发布是 V2、V3）。
 // 发布带页面生成的 publishId：同一次发布重发（超时、断网后）只算一次；结果不确定时先按 publishId 查询，再决定要不要重试。
 import { z } from 'zod';
@@ -12,7 +12,7 @@ export interface PublishAttempt {
   status: PublishStatus;
   /** 这次发布要形成的交付版本号（V1 = 1） */
   version: number;
-  /** 没有成功时给注安师看的原因 */
+  /** 没有成功时给专家看的原因 */
   error: string | null;
   byName: string;
   startedAt: string;
@@ -44,7 +44,7 @@ export interface PublishView {
   docs: PublishDocView[];
   /** 审核结论（有效时才能发布）；没有确认过为 null */
   review: { byName: string; at: string; valid: boolean } | null;
-  /** 当前账号是负责注安师（运营只能看） */
+  /** 当前账号是负责专家（运营只能看） */
   editable: boolean;
   /** 现在能不能发布；不能时 blocker 写原因 */
   canPublish: boolean;

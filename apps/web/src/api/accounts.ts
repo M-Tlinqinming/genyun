@@ -12,7 +12,7 @@ export interface SentInternalInvitation {
   simulated: boolean;
 }
 
-// 内部账号与权限：耕云员工（运营管理员、注安师）的账号和待接受的邀请
+// 内部账号与权限：耕云员工（运营管理员、专家）的账号和待接受的邀请
 export function useInternalAccounts() {
   return useQuery({ queryKey: accountsKey, queryFn: () => request<InternalAccountsView>('/operator/accounts') });
 }
@@ -23,7 +23,7 @@ function useAccountsMutation<T, R>(fn: (input: T) => Promise<R>) {
     mutationFn: fn,
     onSettled: () => {
       void client.invalidateQueries({ queryKey: accountsKey });
-      // 概览里的「邀请未接受」、任务中心的注安师名单跟着变
+      // 概览里的「邀请未接受」、任务中心的专家名单跟着变
       void client.invalidateQueries({ queryKey: operatorOverviewKey });
       void client.invalidateQueries({ queryKey: ['operator', 'tasks'] });
     },

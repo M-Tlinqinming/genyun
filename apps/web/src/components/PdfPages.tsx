@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { gy } from '../theme/tokens';
 
-// PDF 逐页显示（注安师 Word 校对页、客户成果在线阅读）：先按每页尺寸放好空白页，滚到附近才画，一百多页也不卡。
+// PDF 逐页显示（专家 Word 校对页、客户成果在线阅读）：先按每页尺寸放好空白页，滚到附近才画，一百多页也不卡。
 // pdf.js 按需加载，不进首屏包
 
 export interface PdfPagesHandle {

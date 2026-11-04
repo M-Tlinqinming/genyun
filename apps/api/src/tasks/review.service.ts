@@ -55,7 +55,7 @@ import { batchLock, throwIfLocked } from './delivery-lock.ts';
 import { EditingService } from './editing.service.ts';
 
 const NOT_FOUND = '找不到该任务';
-const ONLY_EXPERT = '只有负责这个任务的注安师可以核对和确认审核结论';
+const ONLY_EXPERT = '只有负责这个任务的专家可以核对和确认审核结论';
 const STALE_CHECK = '这份刚保存了新的修订，请看最新稿后再核对';
 const STALE_REVIEW = '有文稿在核对后又保存了修订，请重新核对后再确认审核结论';
 const FACTS_CHANGED = '事实已更新，草稿还没有重新生成。请先按新事实重新生成，再核对和确认审核结论';

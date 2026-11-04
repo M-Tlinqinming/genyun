@@ -85,8 +85,8 @@ test('运营受理、改类型、回复并关闭；内部备注客户看不到',
   await expect(detail).toContainText('林管理员 · 示例安全咨询机构');
   await expect(detail).toContainText('从顶栏「意见反馈」提交');
   await expect(detail).toContainText('下载页截图.png');
-  // 没有关联任务：不能转给注安师
-  await expect(detail.getByRole('button', { name: '转给注安师' })).toBeDisabled();
+  // 没有关联任务：不能转给专家
+  await expect(detail.getByRole('button', { name: '转给专家' })).toBeDisabled();
   expect(await noHorizontalScroll(ops)).toBe(true);
   await ops.screenshot({ path: 'out/m3-6-I08-feedback-1366.png', fullPage: true });
 
@@ -126,7 +126,7 @@ test('客户在站内提醒和「我的反馈」里看到处理结果', async ()
   await customer.screenshot({ path: 'out/m3-6-my-feedback.png', fullPage: true });
 });
 
-test('注安师打不开反馈受理', async ({ browser }) => {
+test('专家打不开反馈受理', async ({ browser }) => {
   const p = await browser.newPage();
   await login(p, 'expert@demo.genyun.net.cn');
   await expect(p).toHaveURL(/\/expert/);

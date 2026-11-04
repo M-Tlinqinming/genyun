@@ -10,7 +10,7 @@ import { submittedLine, taskTitle } from './taskCenterText';
 const body = { fontSize: 14, lineHeight: '22px', color: gy.text } as const;
 const small = { fontSize: 12, lineHeight: '20px', color: gy.secondary } as const;
 
-// 分配注安师（Paper 16 页「I01 运营概览 · 分配专业人员弹窗」）；已有负责注安师时就是改派。
+// 分配专家（Paper 16 页「I01 运营概览 · 分配专业人员弹窗」）；已有负责专家时就是改派。
 // open 控制显隐：关掉时先播完动画，再由页面卸载，焦点回到打开它的按钮
 export function AssignExpertModal({
   task,
@@ -44,7 +44,7 @@ export function AssignExpertModal({
           onClose();
         },
         onError: (err) => {
-          // 别的运营刚分派或改派过：弹窗里的「当前负责注安师」已经过时，再提交也只会被拒，直接关掉看最新情况
+          // 别的运营刚分派或改派过：弹窗里的「当前负责专家」已经过时，再提交也只会被拒，直接关掉看最新情况
           if (err instanceof ApiError && err.status === 409) {
             void message.warning(`已被其他运营处理：${err.message}`);
             onClose();
@@ -64,9 +64,9 @@ export function AssignExpertModal({
       afterClose={afterClose}
       title={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500 }}>{reassign ? '改派注安师' : '分配注安师'}</span>
+          <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500 }}>{reassign ? '改派专家' : '分配专家'}</span>
           <span style={{ ...body, color: gy.secondary, fontWeight: 400 }}>
-            {reassign ? '改派后，任务转到新注安师的任务中心并通知双方。' : '分配后，任务进入注安师的任务中心并通知对方。'}
+            {reassign ? '改派后，任务转到新专家的任务中心并通知双方。' : '分配后，任务进入专家的任务中心并通知对方。'}
           </span>
         </div>
       }
@@ -97,7 +97,7 @@ export function AssignExpertModal({
 
         <div role="group" aria-labelledby="assign-expert-label" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span id="assign-expert-label" style={body}>
-            {requiredAfter('选择注安师', { required: true })}
+            {requiredAfter('选择专家', { required: true })}
           </span>
           {experts.isPending ? (
             <Skeleton active paragraph={{ rows: 2 }} title={false} />
@@ -105,7 +105,7 @@ export function AssignExpertModal({
             <Alert
               type="error"
               showIcon
-              message="注安师名单没有取到"
+              message="专家名单没有取到"
               action={
                 <Button size="small" onClick={() => void experts.refetch()}>
                   重试
@@ -113,7 +113,7 @@ export function AssignExpertModal({
               }
             />
           ) : experts.data.length === 0 ? (
-            <span style={small}>还没有注安师账号，请先在「内部账号」里添加。</span>
+            <span style={small}>还没有专家账号，请先在「内部账号」里添加。</span>
           ) : (
             // 人多时名单在框里滚动，说明和按钮始终看得见
             <Radio.Group
@@ -160,7 +160,7 @@ export function AssignExpertModal({
                       </span>
                       <span style={{ display: 'flex', flexDirection: 'column' }}>
                         <span style={body}>{e.name}</span>
-                        <span style={small}>{e.current ? '当前负责注安师' : expertLoadLine(e)}</span>
+                        <span style={small}>{e.current ? '当前负责专家' : expertLoadLine(e)}</span>
                       </span>
                     </span>
                   </Radio>
@@ -194,7 +194,7 @@ export function AssignExpertModal({
         )}
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={body}>给注安师的说明（选填）</span>
+          <span style={body}>给专家的说明（选填）</span>
           <Input.TextArea
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -213,7 +213,7 @@ export function AssignExpertModal({
           }}
         >
           {reassign
-            ? `改派后，已整理的内容和联系记录都带给新注安师，客户页面直接换成新的负责人（不另外通知客户）；${task.assignedExpertName}不再能打开这个任务。`
+            ? `改派后，已整理的内容和联系记录都带给新专家，客户页面直接换成新的负责人（不另外通知客户）；${task.assignedExpertName}不再能打开这个任务。`
             : '之后可以改派。改派保留已有的整理和处理记录，客户页面直接换成新的负责人。'}
         </div>
 

@@ -172,7 +172,7 @@ export interface KnowledgeHolidaysView {
 
 // ---------- 工艺模板 ----------
 
-// 运营维护的一道工序：常见物料、风险提示只给注安师参考，客户选模板时只带出工序和设备
+// 运营维护的一道工序：常见物料、风险提示只给专家参考，客户选模板时只带出工序和设备
 export const templateStepSchema = z.object({
   name: name('工序名称', 20),
   equipment: z.array(z.string().trim().min(1).max(50)).max(10, '每道工序最多 10 种设备').default([]),

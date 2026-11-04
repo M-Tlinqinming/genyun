@@ -1,4 +1,4 @@
-// 成果发布（M2 第 15 项，15 页 R03、R04、R04a、R04b）：审核结论有效时，负责注安师发布三份当前稿。
+// 成果发布（M2 第 15 项，15 页 R03、R04、R04a、R04b）：审核结论有效时，负责专家发布三份当前稿。
 // 发布时把三份 Word 定稿（文件属性写上「AI 辅助起草、注册安全工程师审核」和审核人）存成文件，形成交付版本
 // （同一任务第一次 V1，以后 V2、V3），任务进入已交付，给客户发一条站内提醒。
 // 防重复：页面每次发布带一个 publishId；同一个 publishId 重发只返回那一次的结果。结果不确定时页面先按 publishId 查，
@@ -60,7 +60,7 @@ import { EditingService } from './editing.service.ts';
 import { ReviewService } from './review.service.ts';
 
 const NOT_FOUND = '找不到该任务';
-const ONLY_EXPERT = '只有负责这个任务的注安师可以发布';
+const ONLY_EXPERT = '只有负责这个任务的专家可以发布';
 const FAILED = '三份 Word 没能全部存好，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新发布';
 const INTERRUPTED = '发布中断，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新发布';
 const CHANGED_WHILE_PUBLISHING = '发布期间有文稿又保存了修订，本次没有形成交付。请重新核对并确认审核结论后再发布';
@@ -211,7 +211,7 @@ export class PublishService {
       // 任务进入已交付（以后再发布 V2 时已经是已交付，只更新时间）
       await tx.update(tasks).set({ updatedAt: now }).where(eq(tasks.id, task.id));
       await tx.update(tasks).set({ closedAt: now }).where(and(eq(tasks.id, task.id), isNull(tasks.closedAt)));
-      // 只在站内提醒，不发邮件；不写注安师电话。只提醒机构管理员和负责这家企业的成员
+      // 只在站内提醒，不发邮件；不写专家电话。只提醒机构管理员和负责这家企业的成员
       await this.notifications.notify(
         await enterpriseCustomerIds(tx, task),
         {
@@ -299,7 +299,7 @@ export class PublishService {
     const passed = reviewValid(review);
     const inFlight = attemptRow?.d.status === 'publishing';
     const blocker = !editable
-      ? '只有负责这个任务的注安师可以发布'
+      ? '只有负责这个任务的专家可以发布'
       : review.published
         ? `这批文稿已发布为${deliveryLabel(review.published.version)}`
         : inFlight
@@ -340,7 +340,7 @@ export class PublishService {
     };
   }
 
-  // 负责注安师和运营能看发布页，其他人一律当作不存在
+  // 负责专家和运营能看发布页，其他人一律当作不存在
   private async task(user: SessionUser, taskId: string): Promise<Task> {
     const [task] = await this.db
       .select({

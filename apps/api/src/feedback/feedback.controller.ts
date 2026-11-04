@@ -1,6 +1,6 @@
 // 反馈受理（M3 第 6 项，Paper 16 页「反馈受理」）。
 // 客户（机构管理员、成员）从成果文档页「反馈文稿问题」或顶栏「意见反馈」提交意见，可附文件、关联任务和交付版本；
-// 运营在反馈受理页受理、转给注安师、写回复并关闭，客户在站内提醒和「我的反馈」里看到处理状态与结果（不发邮件）。
+// 运营在反馈受理页受理、转给专家、写回复并关闭，客户在站内提醒和「我的反馈」里看到处理状态与结果（不发邮件）。
 // 与编制交付分开：这里不改任务状态、不触发重新生成、不改已交付版本。权限都在 access.ts
 import {
   compareFeedback,
@@ -215,7 +215,7 @@ export class FeedbackController {
   }
 }
 
-// 运营：反馈列表、受理、转给注安师、保存、回复并关闭
+// 运营：反馈列表、受理、转给专家、保存、回复并关闭
 @Controller('operator/feedback')
 export class OperatorFeedbackController {
   constructor(
@@ -247,10 +247,10 @@ export class OperatorFeedbackController {
     const now = new Date();
     const nextCategory = category ?? current.category;
     if (action === 'forward') {
-      if (nextCategory !== 'content') throw new BadRequestException('只有「成果内容」类的反馈可以转给注安师');
-      if (!current.taskId || !current.taskExpertId) throw new BadRequestException('这条反馈没有关联已分派注安师的任务，不能转给注安师');
+      if (nextCategory !== 'content') throw new BadRequestException('只有「成果内容」类的反馈可以转给专家');
+      if (!current.taskId || !current.taskExpertId) throw new BadRequestException('这条反馈没有关联已分派专家的任务，不能转给专家');
     }
-    // 第一次受理（待受理的受理、转给注安师、直接回复并关闭）：同时记受理人和受理时间
+    // 第一次受理（待受理的受理、转给专家、直接回复并关闭）：同时记受理人和受理时间
     const wantAccept = current.status === 'new' && action !== 'save';
     const set = {
       category: nextCategory,
@@ -297,7 +297,7 @@ export class OperatorFeedbackController {
       }
       if (action === 'forward') {
         const note = internalNote ?? current.internalNote;
-        // 注安师现在看不到反馈附件（附件只给运营和提交方看），提醒里说明有几个、找运营要
+        // 专家现在看不到反馈附件（附件只给运营和提交方看），提醒里说明有几个、找运营要
         const attached = current.fileIds.length > 0 ? `客户附了 ${current.fileIds.length} 个文件，需要查看请联系运营。` : '';
         await this.notifications.notify(
           [current.taskExpertId!],
@@ -317,7 +317,7 @@ export class OperatorFeedbackController {
     const ip = clientIp(req);
     if (firstAccept && action !== 'close') await this.audit.record({ action: 'feedback_accept', actorId: user.id, actorEmail: user.email, ip, target });
     if (action === 'forward') {
-      await this.audit.record({ action: 'feedback_forward', actorId: user.id, actorEmail: user.email, ip, target: `${target} → ${current.taskExpertName ?? '注安师'}` });
+      await this.audit.record({ action: 'feedback_forward', actorId: user.id, actorEmail: user.email, ip, target: `${target} → ${current.taskExpertName ?? '专家'}` });
     }
     if (action === 'close') await this.audit.record({ action: 'feedback_close', actorId: user.id, actorEmail: user.email, ip, target: `${target}（${FEEDBACK_CATEGORY_LABELS[nextCategory]}）` });
 

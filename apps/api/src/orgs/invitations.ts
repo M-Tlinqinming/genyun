@@ -26,7 +26,7 @@ export interface NewInvitation {
 const INVITE_ROLE_LABELS: Record<Role, string> = {
   customer_admin: '机构管理员',
   customer_member: '成员',
-  expert: '注安师',
+  expert: '专家',
   operator: '运营管理员',
 };
 

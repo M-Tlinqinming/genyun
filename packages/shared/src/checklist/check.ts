@@ -16,7 +16,7 @@ export interface ChecklistCheck {
   blocking: BlockingItem[];
   // 交付前补齐、还没给的项：界面只说「还有 N 项可让预案更准确」，不算错误
   improvable: ChecklistItemKey[];
-  // 已拍照、等注安师判断的项
+  // 已拍照、等专家判断的项
   awaitingExpert: ChecklistItemKey[];
   laterOrCallCount: number;
   suggestOnSiteVisit: boolean;

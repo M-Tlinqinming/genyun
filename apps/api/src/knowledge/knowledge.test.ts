@@ -106,7 +106,7 @@ describe('知识库 · 初始数据', () => {
 });
 
 describe('知识库 · 权限', () => {
-  it('只有运营能看、能改：客户、注安师 403，没登录 401；客户能读已发布的模板', async () => {
+  it('只有运营能看、能改：客户、专家 403，没登录 401；客户能读已发布的模板', async () => {
     const view = (await (await as('ops@test.cn')).get('/api/operator/knowledge/agencies').expect(200)).body as KnowledgeAgenciesView;
     const region = view.regions[0]!;
     const agency = region.agencies[0]!;

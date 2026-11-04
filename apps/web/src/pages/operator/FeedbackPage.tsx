@@ -21,7 +21,7 @@ import { Loading, Notice } from '../../components/ui';
 import { gy, stage } from '../../theme/tokens';
 
 // 反馈受理（Paper 16 页「反馈受理」）：左侧按状态分的反馈列表，右侧选中的一条：意见原文、关联成果、
-// 反馈类型、回复客户、内部备注；受理 / 转给注安师 / 回复并关闭。与编制交付分开：不改任务状态、不改已交付版本。
+// 反馈类型、回复客户、内部备注；受理 / 转给专家 / 回复并关闭。与编制交付分开：不改任务状态、不改已交付版本。
 // ?id= 打开某一条（概览「今天先处理」和站内提醒从这里进来）
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
@@ -228,11 +228,11 @@ function Detail({ item: f }: { item: OperatorFeedback }) {
 
   const canForward = category === 'content' && Boolean(f.taskId && f.taskExpertName);
   const forwardHint = !f.taskId
-    ? '这条反馈没有关联任务，不能转给注安师'
+    ? '这条反馈没有关联任务，不能转给专家'
     : !f.taskExpertName
-      ? '关联的任务还没有分派注安师'
+      ? '关联的任务还没有分派专家'
       : category !== 'content'
-        ? '选「成果内容」后才能转给注安师'
+        ? '选「成果内容」后才能转给专家'
         : `站内提醒 ${f.taskExpertName}，由其决定是否另建修订任务`;
 
   return (
@@ -286,7 +286,7 @@ function Detail({ item: f }: { item: OperatorFeedback }) {
           </div>
           {f.forwardedToName && (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={small}>已转给注安师</span>
+              <span style={small}>已转给专家</span>
               <span style={{ ...text14, color: gy.text }}>
                 {f.forwardedToName}
                 {f.forwardedAt && ` · ${beijing(f.forwardedAt).full}`}
@@ -313,7 +313,7 @@ function Detail({ item: f }: { item: OperatorFeedback }) {
           </>
         ) : (
           <>
-            <Field title="反馈类型" hint="选「成果内容」时可转给原任务的注安师，由其决定是否另建修订任务。">
+            <Field title="反馈类型" hint="选「成果内容」时可转给原任务的专家，由其决定是否另建修订任务。">
               <div role="radiogroup" aria-label="反馈类型" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {FEEDBACK_CATEGORIES.map((c) => {
                   const on = c === category;
@@ -371,7 +371,7 @@ function Detail({ item: f }: { item: OperatorFeedback }) {
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 24px', borderTop: `1px solid ${gy.split}` }}>
           <Tooltip title={forwardHint}>
             <Button disabled={!canForward || pending !== null} loading={pending === 'forward'} onClick={() => run('forward', `已转给 ${f.taskExpertName}`)}>
-              {f.forwardedToName ? '再次转给注安师' : '转给注安师'}
+              {f.forwardedToName ? '再次转给专家' : '转给专家'}
             </Button>
           </Tooltip>
           {f.status === 'new' ? (

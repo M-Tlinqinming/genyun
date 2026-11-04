@@ -3,7 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 // M3 第 8 项：运营概览（Paper 16 页 I01）、内部账号与权限（I06）。
-// 邀请一位新注安师 → 接受 → 停用（不能登录）→ 恢复。不动演示数据里的周工、吴工
+// 邀请一位新专家 → 接受 → 停用（不能登录）→ 恢复。不动演示数据里的周工、吴工
 test.describe.configure({ mode: 'serial' });
 
 const OUTBOX = join('apps', 'api', '.data', 'e2e-mail-outbox');
@@ -52,7 +52,7 @@ test('运营概览：四个统计、今天先处理、年度服务、最近操�
   await page.screenshot({ path: 'out/m3-8-I01-overview.png', fullPage: true });
 });
 
-test('内部账号：列出运营和注安师，自己不能停用', async () => {
+test('内部账号：列出运营和专家，自己不能停用', async () => {
   await page.getByRole('menuitem', { name: /内部账号/ }).click();
   await expect(page).toHaveURL(/\/operator\/accounts$/);
   await expect(page.getByRole('heading', { name: '内部账号与权限' })).toBeVisible();
@@ -67,7 +67,7 @@ test('内部账号：列出运营和注安师，自己不能停用', async () =>
   await page.screenshot({ path: 'out/m3-8-I06-accounts.png', fullPage: true });
 });
 
-test('邀请注安师：发邀请邮件，列表显示待接受；对方接受后以注安师进入', async ({ browser }) => {
+test('邀请专家：发邀请邮件，列表显示待接受；对方接受后以专家进入', async ({ browser }) => {
   await page.getByRole('button', { name: '邀请内部成员' }).click();
   const dialog = page.getByRole('dialog', { name: '邀请内部成员' });
   // 已有账号的邮箱
@@ -83,12 +83,12 @@ test('邀请注安师：发邀请邮件，列表显示待接受；对方接受�
   await expect(dialog).toBeHidden();
   const row = page.getByRole('listitem').filter({ hasText: EMAIL });
   await expect(row).toContainText('待接受');
-  await expect(row).toContainText('注安师');
+  await expect(row).toContainText('专家');
 
   const other = await browser.newPage();
   await other.goto(await inviteLink(EMAIL));
   const info = other.locator('dl');
-  await expect(info).toContainText('身份注安师');
+  await expect(info).toContainText('身份专家');
   await expect(info).toContainText('可见范围分配给本人的任务');
   await other.getByLabel('设置密码').fill(PASSWORD);
   await other.getByRole('checkbox').check();
@@ -129,7 +129,7 @@ test('操作日志里有邀请、停用、恢复', async () => {
   }
 });
 
-test('注安师打不开运营概览和内部账号', async ({ browser }) => {
+test('专家打不开运营概览和内部账号', async ({ browser }) => {
   const other = await browser.newPage();
   await login(other, 'expert@demo.genyun.net.cn');
   await expect(other).toHaveURL(/\/expert$/);

@@ -262,7 +262,7 @@ export function useOverdueTasks() {
   return useQuery({ queryKey: operatorTaskKeys.overdue, queryFn: () => request<OverdueTask[]>('/operator/tasks/overdue') });
 }
 
-// 运营在任务上的记录（内部备注、提醒注安师、改派），客户和注安师看不到
+// 运营在任务上的记录（内部备注、提醒专家、改派），客户和专家看不到
 export function useOperatorNotes(taskId: string) {
   return useQuery({ queryKey: operatorTaskKeys.notes(taskId), queryFn: () => request<OperatorNote[]>(`/operator/tasks/${taskId}/notes`) });
 }

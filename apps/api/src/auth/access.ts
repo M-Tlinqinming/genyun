@@ -110,7 +110,7 @@ export function canAssignTasks(user: SessionUser): boolean {
   return isOperator(user);
 }
 
-// 超时兜底（提醒注安师、致电客户、内部备注）：只有运营；内部备注和运营记录客户、注安师都看不到
+// 超时兜底（提醒专家、致电客户、内部备注）：只有运营；内部备注和运营记录客户、专家都看不到
 export function canHandleOverdue(user: SessionUser): boolean {
   return isOperator(user);
 }
@@ -135,23 +135,23 @@ export function canManageOrganizations(user: SessionUser): boolean {
   return isOperator(user);
 }
 
-// 已交付的成果（交付版本列表、在线阅读、下载整套）：能看到这家企业的客户、运营管理员，以及负责这个任务的注安师。
-// 别家客户、其他注安师、没分配到这家企业的成员一律当作不存在。规则与单个任务相同
+// 已交付的成果（交付版本列表、在线阅读、下载整套）：能看到这家企业的客户、运营管理员，以及负责这个任务的专家。
+// 别家客户、其他专家、没分配到这家企业的成员一律当作不存在。规则与单个任务相同
 export function canViewDeliveries(user: SessionUser, task: { orgId: string; enterpriseId: string; assignedExpertId: string | null }): boolean {
   return canViewTask(user, task);
 }
 
-// 发布成果（形成交付版本）：只有负责这个任务的注安师。运营、其他注安师、客户一律不行
+// 发布成果（形成交付版本）：只有负责这个任务的专家。运营、其他专家、客户一律不行
 export function canPublishTask(user: SessionUser, task: { assignedExpertId: string | null }): boolean {
   return task.assignedExpertId === user.id && isExpert(user);
 }
 
-// 运营概览（今天先处理、统计）：只有运营。客户、注安师一律不行
+// 运营概览（今天先处理、统计）：只有运营。客户、专家一律不行
 export function canViewOperatorOverview(user: SessionUser): boolean {
   return isOperator(user);
 }
 
-// 内部账号（邀请注安师 / 运营、停用、恢复、改角色）：只有运营；不能停用自己、不能改自己的角色
+// 内部账号（邀请专家 / 运营、停用、恢复、改角色）：只有运营；不能停用自己、不能改自己的角色
 export function canManageInternalAccounts(user: SessionUser): boolean {
   return isOperator(user);
 }
@@ -163,7 +163,7 @@ export function canManageKnowledge(user: SessionUser): boolean {
 
 // ---------- 反馈受理（M3 第 6 项） ----------
 
-// 提交反馈：本组织客户账号（机构管理员、成员）。运营、注安师不替客户提交
+// 提交反馈：本组织客户账号（机构管理员、成员）。运营、专家不替客户提交
 export function canSubmitFeedback(user: SessionUser, orgId: string): boolean {
   return isCustomerOf(user, orgId);
 }
@@ -180,7 +180,7 @@ export function feedbackScope(user: SessionUser, orgId: string): 'all' | 'own' |
   return m.role === 'customer_admin' ? 'all' : 'own';
 }
 
-// 受理反馈（列表、受理、转给注安师、回复并关闭、内部备注）：只有运营。客户、注安师一律不行
+// 受理反馈（列表、受理、转给专家、回复并关闭、内部备注）：只有运营。客户、专家一律不行
 export function canHandleFeedback(user: SessionUser): boolean {
   return isOperator(user);
 }

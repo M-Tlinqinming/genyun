@@ -56,7 +56,7 @@ const slides = [
                     <div class="main__title">AI 已辨识 5 项主要风险</div>
                     <div class="main__sub">依据您填写的设备、物料与作业场所 · 风险评分（LEC 法）</div>
                   </div>
-                  <span class="tag tag--teal">AI 辨识 · 待注安师审核</span>
+                  <span class="tag tag--teal">AI 辨识 · 待专家审核</span>
                 </div>
                 <div class="table">
                   <div class="row row--head"><span class="c-grow">风险类型</span><span class="c-90">涉及场所</span><span class="c-44">D 值</span><span class="c-58">等级</span></div>
@@ -77,10 +77,10 @@ const slides = [
               <Fragment>
                 <div class="main__head">
                   <div>
-                    <div class="main__title">注安师审核中 · 已核对 4 / 6 项</div>
+                    <div class="main__title">专家审核中 · 已核对 4 / 6 项</div>
                     <div class="main__sub">持证注册安全工程师逐项核对，需要补充时在线告诉您</div>
                   </div>
-                  <span class="tag tag--purple">注安师审核</span>
+                  <span class="tag tag--purple">专家审核</span>
                 </div>
                 <div class="table">
                   <div class="row row--head"><span class="c-grow">审核项</span><span class="c-110">说明</span><span class="c-58">状态</span></div>
@@ -95,7 +95,7 @@ const slides = [
                     <div class="row"><span class="c-grow">{item}</span><span class="c-110 muted">{note}</span><span class="c-58"><span class={`level level--${tone}`}>{state}</span></span></div>
                   ))}
                 </div>
-                <div class="note note--warn"><b>需补充</b><span>注安师已留言：请补 2 位应急联络人的电话</span></div>
+                <div class="note note--warn"><b>需补充</b><span>专家已留言：请补 2 位应急联络人的电话</span></div>
               </Fragment>
             )}
             {slide.id === 'download' && (
@@ -103,7 +103,7 @@ const slides = [
                 <div class="main__head">
                   <div>
                     <div class="main__title">三份文档已发布 · 同一版本</div>
-                    <div class="main__sub">注安师审核通过，直接下载即可使用</div>
+                    <div class="main__sub">专家审核通过，直接下载即可使用</div>
                   </div>
                   <span class="tag tag--green">V1 · 已发布</span>
                 </div>

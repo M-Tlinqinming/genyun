@@ -81,7 +81,7 @@ test('客户在成果文档里看到交付 V1，在线阅读，下载三份 Word
     ['惠阳飞宇电器有限公司应急预案.docx', '惠阳飞宇电器有限公司应急资源调查报告.docx', '惠阳飞宇电器有限公司风险评估报告.docx'].sort(),
   );
 
-  // 反馈入口：提交给耕云受理（带上这个任务和交付版本），不显示注安师电话
+  // 反馈入口：提交给耕云受理（带上这个任务和交付版本），不显示专家电话
   await page.getByRole('button', { name: '反馈文稿问题' }).click();
   const feedback = page.getByRole('dialog', { name: '反馈文稿问题' });
   await expect(feedback).toContainText('惠阳飞宇电器有限公司 · ');

@@ -122,7 +122,7 @@ test('维护操作记进操作日志', async () => {
   await expect(page.getByRole('row').filter({ hasText: '维护节假日' }).first()).toContainText('2027-01-01');
 });
 
-test('注安师进不来：接口 403，菜单里也没有知识库', async ({ browser }) => {
+test('专家进不来：接口 403，菜单里也没有知识库', async ({ browser }) => {
   const other = await browser.newPage();
   await login(other, 'expert@demo.genyun.net.cn');
   await expect(other).not.toHaveURL(/\/login/);

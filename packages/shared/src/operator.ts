@@ -4,10 +4,10 @@ import type { InvitationState } from './invitation.ts';
 import type { AuditAction } from './audit.ts';
 import { chinaToday } from './task.ts';
 
-// 耕云内部只有两种角色（CLAUDE.md）：运营管理员、注安师。界面统一叫「注安师」
+// 耕云内部只有两种角色（CLAUDE.md）：运营管理员、专家。界面统一叫「专家」
 export const INTERNAL_ROLES = ['expert', 'operator'] as const;
 export type InternalRole = (typeof INTERNAL_ROLES)[number];
-export const INTERNAL_ROLE_LABELS: Record<InternalRole, string> = { expert: '注安师', operator: '运营管理员' };
+export const INTERNAL_ROLE_LABELS: Record<InternalRole, string> = { expert: '专家', operator: '运营管理员' };
 
 // 每种角色能看到的范围（I06 表格「可见范围」列、角色说明卡片）
 export const INTERNAL_ROLE_SCOPES: Record<InternalRole, string> = { expert: '分配给本人的任务', operator: '全部客户组织' };
@@ -36,7 +36,7 @@ export interface InternalAccount {
   disabledAt: string | null;
   // 最近一次登录成功（来自操作日志）；从没登录过为空
   lastLoginAt: string | null;
-  // 负责的、还没结束的任务（只有注安师有）
+  // 负责的、还没结束的任务（只有专家有）
   openTasks: number;
   self: boolean;
 }
