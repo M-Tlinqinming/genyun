@@ -97,7 +97,7 @@ export interface FactsPanelProps {
   onSave: (fact: Fact, value: FactValue | null, mode: EditMode, contactId?: string) => Promise<void>;
   // 客户已回答、还没采用的项
   awaiting: Map<string, Adoption>;
-  // 发起补件：打开联系客户
+  // 联系客户：打开联系客户对话框，只带这一项
   onContact: (key: string) => void;
   onSourceClick?: (fact: Fact) => (() => void) | undefined;
   // 当前右侧打开的原件名称：专家直接填写时记作对照的原件
@@ -335,8 +335,9 @@ function MissingRow({
         <span style={{ width: 96, flexShrink: 0, fontSize: 14, lineHeight: '22px', color: gy.text }}>{fact.label} *</span>
         <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '22px', color: stage.action.color }}>{status}</span>
         <Space size={16}>
-          <button type="button" style={linkButton} onClick={() => onContact(fact.key)}>
-            发起补件
+          {/* 页面顶部也有「联系客户」（带全部缺失项），这里的读屏名称带上字段名以区分 */}
+          <button type="button" style={linkButton} aria-label={`联系客户：${fact.label}`} onClick={() => onContact(fact.key)}>
+            联系客户
           </button>
           <button type="button" style={linkButton} onClick={() => onEdit(fact.key, 'customer')}>
             标为客户确认
