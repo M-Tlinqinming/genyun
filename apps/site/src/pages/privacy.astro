@@ -1,5 +1,5 @@
 ---
-// 隐私说明（Paper「10 · 官网与账户」/ W06）。正文是草案，待法务审定，正式发布前不让搜索引擎收录。
+// 隐私政策（Paper「10 · 官网与账户」/ W06）。正文是草案，待法务审定，正式发布前不让搜索引擎收录。
 import LegalPage from '../components/LegalPage.astro';
 import { EMAIL, PHONE, PHONE_HREF } from '../site';
 
@@ -23,7 +23,7 @@ const summary = [
 ---
 
 <LegalPage
-  title="隐私说明"
+  title="隐私政策"
   description="耕云如何收集、使用、存储和保护您提供的企业资料与账号信息（草案，待法务审定）。"
   pill="正文待法务审定"
   toc={toc}
@@ -57,7 +57,6 @@ const summary = [
   <section id="store">
     <h2>3　如何存储与保护</h2>
     <p>您上传的文件私有存储，需登录后按权限查看，下载链接 5 分钟内有效；传输全程加密（HTTPS）。本组织成员、负责该任务的专家，以及耕云运营人员按职责查看。</p>
-    <p>AI 起草由阿里云百炼大模型服务处理，仅用于生成本任务的文件。发给模型的只有场所、设备、物料名称，不含人员姓名和联系方式。</p>
   </section>
 
   <section id="share">
@@ -72,7 +71,7 @@ const summary = [
 
   <section id="contact-us">
     <h2>6　联系我们</h2>
-    <p>对本说明或您的资料有任何问题，或需要导出、删除资料，请致电 <a href={PHONE_HREF}>{PHONE}</a>，或发邮件到 <a href={`mailto:${EMAIL}`}>{EMAIL}</a>。</p>
+    <p>对本政策或您的资料有任何问题，或需要导出、删除资料，请致电 <a href={PHONE_HREF}>{PHONE}</a>，或发邮件到 <a href={`mailto:${EMAIL}`}>{EMAIL}</a>。</p>
   </section>
 </LegalPage>
 
