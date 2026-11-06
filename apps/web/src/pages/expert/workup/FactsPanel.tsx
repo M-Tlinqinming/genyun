@@ -335,7 +335,8 @@ function MissingRow({
         <span style={{ width: 96, flexShrink: 0, fontSize: 14, lineHeight: '22px', color: gy.text }}>{fact.label} *</span>
         <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '22px', color: stage.action.color }}>{status}</span>
         <Space size={16}>
-          <button type="button" style={linkButton} onClick={() => onContact(fact.key)}>
+          {/* 页面顶部也有「联系客户」（带全部缺失项），这里的读屏名称带上字段名以区分 */}
+          <button type="button" style={linkButton} aria-label={`联系客户：${fact.label}`} onClick={() => onContact(fact.key)}>
             联系客户
           </button>
           <button type="button" style={linkButton} onClick={() => onEdit(fact.key, 'customer')}>
