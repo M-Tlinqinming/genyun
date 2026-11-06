@@ -93,7 +93,7 @@ docker compose --env-file /opt/genyun/.env logs app | grep 模拟发信
 
 ## 健康检查和日志
 
-- `GET /api/health` 返回 `{"status":"ok|degraded|down","checks":{"database":…,"redis":…,"disk":…}}`。
+- `GET /api/health` 不用登录，只返回总状态 `{"status":"ok|degraded|down"}`；各项 `{"status":…,"checks":{"database":…,"redis":…,"disk":…}}` 在 `GET /api/health/details`，只有运营登录后能看。
   - 每项最多等 2 秒。
   - 数据库或 Redis 连不上时是 `down`，返回 503。容器会被判为不健康，`deploy.sh` 等不到 healthy 就会报错。
   - 上传文件所在分区的剩余空间低于 10% 时是 `degraded`，仍返回 200：服务照常可用，但该清理或扩容了。

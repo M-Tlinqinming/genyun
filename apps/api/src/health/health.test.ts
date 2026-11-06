@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
+import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
+import { memberships, organizations, users } from '../db/schema.ts';
 import { defaultProbes, diskFreeRatio, type HealthProbes, pingRedis, runHealthChecks } from './health.ts';
 
 const ok = async () => {};
@@ -57,8 +59,26 @@ describe('GET /api/health', () => {
   let handle: DatabaseHandle;
   const apps: INestApplication[] = [];
 
+  const PASSWORD = 'correct horse battery staple';
+
   beforeAll(async () => {
     handle = await openDatabase('memory://');
+    const passwordHash = await hashPassword(PASSWORD);
+    const [customer, internal] = await handle.db
+      .insert(organizations)
+      .values([
+        { name: '示例安全咨询机构', kind: 'customer', contractStartsAt: '2026-01-01', contractEndsAt: '2099-12-31', activatedAt: new Date() },
+        { name: '耕云', kind: 'internal' },
+      ])
+      .returning();
+    for (const p of [
+      { email: 'admin@test.cn', orgId: customer!.id, role: 'customer_admin' as const },
+      { email: 'zhou@test.cn', orgId: internal!.id, role: 'expert' as const },
+      { email: 'ops@test.cn', orgId: internal!.id, role: 'operator' as const },
+    ]) {
+      const [u] = await handle.db.insert(users).values({ email: p.email, name: p.email, passwordHash }).returning();
+      await handle.db.insert(memberships).values({ userId: u!.id, orgId: p.orgId, role: p.role });
+    }
   });
   afterAll(async () => {
     for (const a of apps) await a.close();
@@ -72,10 +92,19 @@ describe('GET /api/health', () => {
     return request(app.getHttpServer()).get('/api/health');
   }
 
+  async function details(email: string | null, health?: HealthProbes) {
+    const app = await createApp(handle.db, { health });
+    await app.init();
+    apps.push(app);
+    const agent = request.agent(app.getHttpServer());
+    if (email) expect((await agent.post('/api/auth/login').send({ email, password: PASSWORD })).status).toBe(200);
+    return agent.get('/api/health/details');
+  }
+
   it('真实数据库，没配 Redis：200 ok，不用登录，不缓存', async () => {
     const res = await get(defaultProbes(handle.db, { FILE_STORAGE_DIR: tmpdir() }));
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: 'ok', checks: { database: 'ok', redis: 'off' } });
+    expect(res.body).toEqual({ status: 'ok' });
     expect(res.headers['cache-control']).toBe('no-store');
   });
 
@@ -86,15 +115,28 @@ describe('GET /api/health', () => {
     expect(degraded.body.status).toBe('degraded');
   });
 
-  it('返回体只有状态：不带路径、地址、版本号、错误原文', async () => {
+  it('不登录只返回总状态，不带各项、路径、地址、错误原文', async () => {
     const res = await get(probes({ redis: fail }));
-    expect(Object.keys(res.body).sort()).toEqual(['checks', 'status']);
-    expect(Object.keys(res.body.checks).sort()).toEqual(['database', 'disk', 'redis']);
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ status: 'down' });
+  });
+
+  it('各项检查结果只给运营看：不登录 401，客户和专家 403', async () => {
+    expect((await details(null)).status).toBe(401);
+    expect((await details('admin@test.cn', probes({}))).status).toBe(403);
+    expect((await details('zhou@test.cn', probes({}))).status).toBe(403);
+  });
+
+  it('运营看到各项，down 时也是 503；同样不带路径、地址、版本号、错误原文', async () => {
+    const res = await details('ops@test.cn', probes({ redis: fail }));
+    expect(res.status).toBe(503);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body).toEqual({ status: 'down', checks: { database: 'ok', redis: 'down', disk: 'ok' } });
     expect(JSON.stringify(res.body)).not.toMatch(/ECONNREFUSED|6379|\/var|secret|version|\d+\.\d+\.\d+/);
   });
 
   it('Redis 地址连不上时按超时报 down，不卡住', async () => {
-    const res = await get(defaultProbes(handle.db, { REDIS_URL: 'redis://127.0.0.1:1', FILE_STORAGE_DIR: tmpdir() }));
+    const res = await details('ops@test.cn', defaultProbes(handle.db, { REDIS_URL: 'redis://127.0.0.1:1', FILE_STORAGE_DIR: tmpdir() }));
     expect(res.status).toBe(503);
     expect(res.body.checks).toMatchObject({ database: 'ok', redis: 'down' });
   });
