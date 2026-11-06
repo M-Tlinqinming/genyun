@@ -25,9 +25,25 @@ const PENDING_ROW = '#FFFCF5';
 
 const pending = (a: KnowledgeAgency) => !a.disabled && !a.verifiedAt;
 
+// 列表第二行没写备注时的说明，和新增弹窗里机构名称的示例
+const CATEGORY_HINT: Record<AgencyCategory, string> = {
+  emergency: '区县应急管理部门',
+  street: '镇街应急办',
+  fire: '辖区消防救援',
+  medical: '就近医院',
+  environment: '区县生态环境部门',
+};
+const NAME_PLACEHOLDER: Record<AgencyCategory, string> = {
+  emergency: '例如：惠州市仲恺高新区应急管理局',
+  street: '例如：陈江街道应急管理办公室',
+  fire: '例如：仲恺高新区消防救援大队',
+  medical: '例如：惠州市中心人民医院',
+  environment: '例如：惠州市生态环境局仲恺分局',
+};
+
 function subtitle(a: KnowledgeAgency): string {
   if (a.category === 'street') return [`适用：${a.area ?? '—'}`, a.aliases.length ? `也认：${a.aliases.join('、')}` : ''].filter(Boolean).join(' · ');
-  return a.note ?? (a.category === 'emergency' ? '区县应急管理部门' : '辖区消防救援');
+  return a.note ?? CATEGORY_HINT[a.category];
 }
 
 export function AgenciesTab({ regions, adding, onAdded }: { regions: KnowledgeRegion[]; adding: boolean; onAdded: () => void }) {
@@ -422,7 +438,7 @@ function AgencyModal({
           </Form.Item>
         </div>
         <Form.Item label="机构名称" name="name" rules={[{ required: true, whitespace: true, message: '请填写机构名称' }]}>
-          <Input maxLength={60} placeholder={category === 'street' ? '例如：陈江街道应急管理办公室' : '例如：惠州市仲恺高新区应急管理局'} />
+          <Input maxLength={60} placeholder={NAME_PLACEHOLDER[category ?? 'emergency']} />
         </Form.Item>
         <Form.Item label="联系电话" name="phone" extra="几个号码用顿号分开。">
           <Input maxLength={40} placeholder="例如：0752-3271385" />

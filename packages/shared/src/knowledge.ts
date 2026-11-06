@@ -15,13 +15,16 @@ export const KNOWLEDGE_TAB_LABELS: Record<KnowledgeTab, string> = {
 
 // ---------- 属地应急机构 ----------
 
-// 生成文档用到的三类：应急管理局、镇街应急办（含园区）、消防救援大队
-export const AGENCY_CATEGORIES = ['emergency', 'street', 'fire'] as const;
+// 生成文档用到前三类：应急管理局、镇街应急办（含园区）、消防救援大队。
+// 医疗（就近医院）、环保（生态环境分局）11-02 补上（决定 32），先由运营维护，还没接进生成
+export const AGENCY_CATEGORIES = ['emergency', 'street', 'fire', 'medical', 'environment'] as const;
 export type AgencyCategory = (typeof AGENCY_CATEGORIES)[number];
 export const AGENCY_CATEGORY_LABELS: Record<AgencyCategory, string> = {
   emergency: '应急管理',
   street: '街道 / 园区',
   fire: '消防',
+  medical: '医疗',
+  environment: '环保',
 };
 
 const name = (label: string, max = 60) => z.string().trim().min(1, `请填写${label}`).max(max, `${label}最多 ${max} 个字`);
