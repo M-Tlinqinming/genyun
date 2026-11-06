@@ -99,7 +99,7 @@ export function ExpertTaskPage() {
   const [onlyMissing, setOnlyMissing] = useState(false);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
-  // 联系客户对话框：从顶部打开带全部缺失项和客户请求电话联系的项，从某一项「发起补件」只带这一项；
+  // 联系客户对话框：从顶部打开带全部缺失项和客户请求电话联系的项，从某一项「联系客户」只带这一项；
   // 生产设备与物料里的「联系客户」带一个资料项的问题
   const [contact, setContact] = useState<{ keys: string[]; withCalls: boolean; ask?: AskItem } | null>(null);
   const [showRecords, setShowRecords] = useState(false);
