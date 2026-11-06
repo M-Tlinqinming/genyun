@@ -205,8 +205,8 @@ test.describe('官网内页', () => {
   const pages = [
     { path: '/product/', title: '服务内容 · 耕云', h1: /一份企业档案，\s*一整套迎检文件。/, nav: '服务内容', noindex: false },
     { path: '/expertise/', title: '交付样例 · 耕云', h1: /先看成果，\s*再做决定。/, nav: '交付样例', noindex: false },
-    { path: '/privacy/', title: '隐私说明 · 耕云', h1: '隐私说明', nav: null, noindex: true },
-    { path: '/terms/', title: '服务说明 · 耕云', h1: '服务说明', nav: null, noindex: true },
+    { path: '/privacy/', title: '隐私政策 · 耕云', h1: '隐私政策', nav: null, noindex: true },
+    { path: '/terms/', title: '服务协议 · 耕云', h1: '服务协议', nav: null, noindex: true },
   ];
 
   for (const p of pages) {
@@ -379,11 +379,11 @@ test.describe('官网内页', () => {
     await expect(note).toHaveText('全部行业：3 份（其中 2 份整理中）');
   });
 
-  test('服务内容：常见问题第 5 条链到隐私说明', async ({ page }) => {
+  test('服务内容：常见问题第 5 条链到隐私政策', async ({ page }) => {
     await page.goto(`${SITE}/product/`);
     const last = page.locator('details').nth(4);
     await last.locator('summary').click();
-    await last.getByRole('link', { name: '隐私说明' }).click();
+    await last.getByRole('link', { name: '隐私政策' }).click();
     await expect(page).toHaveURL(/\/privacy\/$/);
   });
 
