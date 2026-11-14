@@ -5,13 +5,12 @@ import PageHeader from '../components/PageHeader.astro';
 import ContactTrigger from '../components/ContactTrigger.astro';
 import { PHONE, PHONE_HREF } from '../site';
 
-// 「您提供」照产品里真实的填报 5 步（apps/web FILL_STEPS）；Paper 画的是 4 步，见 DESIGN-DIFF
+// 「您提供」照 Paper W02 的 4 项（2026-11-14 按 11-09 新流程改：客户填一份 Excel 表格上传，不再是 5 步填报）
 const inputs = [
-  ['企业基本信息', '上传营业执照，自动识别（识别不了时可以手动填）'],
-  ['人员与应急组织', '谁负责、怎么联系；也可直接上传花名册'],
-  ['生产情况', '场所、设备、物料与工艺；拿不准有没有的拍照给耕云看'],
-  ['应急资源与图纸', '应急物资、急救药箱，以及厂区平面图等图纸'],
-  ['核对并提交', '核对无误后交给耕云，审核完成后直接下载'],
+  ['企业基本信息', '名称、信用代码、地址、面积、人数等，照着营业执照填'],
+  ['人员与应急分工', '总指挥、各应急小组的姓名和手机'],
+  ['设备、物料与作业场所', '有哪些设备、原辅料和建筑；专业参数不用填'],
+  ['上传并提交', '签约付款后开通，审核完成直接下载'],
 ];
 const work = ['风险评分（LEC 法）', '法规与标准匹配', '专项预案推荐', '属地机构自动引用', '注册安全工程师审核'];
 const outputs = [
@@ -25,7 +24,7 @@ const plans = [
     who: 'FOR 企业',
     title: '按次编制',
     body: '一家企业、一次编制。签约付款后开通，审核完成后直接下载。',
-    points: ['5 步填报，或上传已有资料', '注册安全工程师审核', '三份 Word，同一版本', '签约付款后开通，可开增值税发票'],
+    points: ['填一份表格上传', '注册安全工程师审核', '三份 Word，同一版本', '签约付款后开通，可开增值税发票'],
     price: '价格以演示时报价为准',
   },
   {
@@ -38,11 +37,11 @@ const plans = [
   },
 ];
 // 第 1 条照 Paper；其余四条 Paper 只画了问题，答案是自拟的，待 Martin 审定（见 DESIGN-DIFF）
-// 只写系统现在真能做到的（代码审查 #59）
+// 只写系统现在真能做到的（代码审查 #59）。第 3 条 2026-11-14 按新流程改：不再有在线补件，客服联系
 const faqs: { q: string; a: string; link?: { href: string; label: string } }[] = [
   {
     q: '我们没有专职安全工程师，能用吗？',
-    a: '能。表单只问您清楚的事实，比如有多少人、有哪些设备。风险评分、法规匹配这些专业判断由耕云的注册安全工程师完成；一时查不到的先选「稍后补」，拿不准有没有的拍照给耕云看。',
+    a: '能。表格只问您清楚的事实，比如有多少人、有哪些设备。风险评分、法规匹配这些专业判断由耕云的注册安全工程师完成；专业的项目不用您填，资料有疑问时客服会联系您。',
   },
   {
     q: '生成的文件符合要求吗？',
@@ -50,7 +49,7 @@ const faqs: { q: string; a: string; link?: { href: string; label: string } }[] =
   },
   {
     q: '提交后多久能拿到文件？',
-    a: '按资料情况安排：资料齐全时更快，需要补充时专家会在线告诉您缺什么。审核进度在工作台随时可查，具体时间在演示时约定。',
+    a: '按资料情况安排：资料齐全时更快，需要核实时客服会联系您。进度在工作台随时可查，具体时间在演示时约定。',
   },
   {
     q: '交付后发现要改怎么办？',
@@ -70,7 +69,6 @@ const faqs: { q: string; a: string; link?: { href: string; label: string } }[] =
 >
   <PageHeader slot="header" active="product" eyebrow="产品与服务">
     一份企业档案，<br />一整套迎检文件。
-    <Fragment slot="aside">从应急预案开始。同一份企业信息，之后还能生成安全台账、培训课件，识别现场隐患。</Fragment>
   </PageHeader>
 
   <section class="io" aria-labelledby="io-title">
@@ -87,7 +85,7 @@ const faqs: { q: string; a: string; link?: { href: string; label: string } }[] =
         <div class="io__col io__col--in">
           <div class="io__head">
             <h3>您提供</h3>
-            <span>可分次保存，随时继续</span>
+            <span>一份 Excel 表格，填好上传</span>
           </div>
           <ol class="io__steps">
             {
