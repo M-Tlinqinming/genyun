@@ -2,6 +2,8 @@
 
 每个会话开始先读本文件，结束前更新本文件。**状态只看、只改下面的「总表」。**只记录「现在做到哪、下一步做什么、卡在哪」；决定写进 TECH-PLAN，规则写进 CLAUDE.md。
 
+> **2026-11-04 起进入 UXD v2 设计迭代：先设计、后写代码，按区块循环。当前进度和下一步看 `docs/design-v2.md`（在 `design/uxd-v2` 分支）。** 下面的迭代 1 清单里，还没做的项分别并进各区块处理。
+
 ## 里程碑
 
 | 里程碑 | 状态 | 说明 |
@@ -445,7 +447,7 @@
 - 已做好、第 10 / 12 项直接用：`apps/api/src/generation/word/pdf.ts` 的 `convertToPdf(docx)`，调用 `soffice-pdf.py`（LibreOffice 排版后更新目录页码再导出；直接 `--convert-to` 目录没有页码）。转换放进第 10 项生成草稿的后台队列，PDF 和 Word 一起存，专家打开校对页时不用等；正文改过后该份重新转。
 - 排版规范改了一处：行距写进 Word 时换成同样高度的固定值（`layout.ts` 的 `exactLine`，四号 1.5 倍 = 27.25 磅）。Word 里外观和页数不变（130 页），LibreOffice 按倍数算会少 16 页、目录页码全错。图所在段落改回自动行距，否则图被裁成一行高。
 - 第 12 项校对页逐页显示 PDF 用 pdf.js（`pdfjs-dist`，小样里验证过：先按页尺寸放空白画布，滚到附近再画，一百多页不卡）；页码、缩放、适合宽度按 E18-05 工具栏做。
-- 本机：LibreOffice 25.8.7 解包在 `D:\001-Project\tools\LibreOffice`（没有安装进系统），`apps/api/.env` 加 `SOFFICE_PATH=D:\001-Project\tools\LibreOffice\program\soffice.exe`；没设时转 PDF 的测试自动跳过。
+- 本机：LibreOffice 25.8.7 解包在本机工具目录（没有安装进系统），`apps/api/.env` 加 `SOFFICE_PATH=<解包目录>\program\soffice.exe`；没设时转 PDF 的测试自动跳过。
 - 服务器：Dockerfile 已加 `libreoffice-writer-nogui`、`python3-uno`，并把 `soffice-pdf.py` 复制进镜像。本机没有 Docker，镜像没实际构建过；**下次部署预览时**看一眼镜像能否构建、转出的 PDF 中文字体（服务器没有仿宋，用思源宋体代替；行距固定后分页应基本不变）。
 - 顺带发现（第 9c 项已处理：表头最多按 8 个字算最小宽度，长表头折行，`layout.ts` 的 `maxHeaderChars`）：综合预案「响应分级」表的「指挥权」「上报对象」两列分得太窄，Word 里已经挤，PDF 里「上报对象」只剩一个字宽。列宽按内容长度分配（`render.ts` 的 `columnWidths`），这类长文字列要设最小宽度。
 
