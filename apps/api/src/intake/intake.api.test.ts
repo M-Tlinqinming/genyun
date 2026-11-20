@@ -49,13 +49,20 @@ beforeAll(async () => {
     ])
     .returning();
   orgId = customer!.id;
+  const [strangerOrg] = await db
+    .insert(organizations)
+    .values({ name: '别家组织', kind: 'customer', contractStartsAt: '2026-01-01', contractEndsAt: '2099-12-31' })
+    .returning();
   for (const p of [
     { email: 'admin@test.cn', name: '林管理员', orgId: customer!.id, role: 'customer_admin' as const },
     { email: 'member@test.cn', name: '王成员', orgId: customer!.id, role: 'customer_member' as const },
     { email: 'ops@test.cn', name: '赵运营', orgId: internal!.id, role: 'operator' as const },
+    { email: 'zhou@test.cn', name: '周工', orgId: internal!.id, role: 'expert' as const },
+    { email: 'wu@test.cn', name: '吴工', orgId: internal!.id, role: 'expert' as const },
+    { email: 'stranger@test.cn', name: '别家管理员', orgId: '', role: 'customer_admin' as const },
   ]) {
     const [u] = await db.insert(users).values({ email: p.email, name: p.name, passwordHash }).returning();
-    await db.insert(memberships).values({ userId: u!.id, orgId: p.orgId, role: p.role });
+    await db.insert(memberships).values({ userId: u!.id, orgId: p.orgId || strangerOrg!.id, role: p.role });
     uid[p.email] = u!.id;
   }
   storageDir = mkdtempSync(join(tmpdir(), 'genyun-intake-'));
@@ -280,6 +287,98 @@ describe('权限', () => {
     expect((await agent.get(`/api/tasks/${taskId}`)).body.flow).toBe('legacy');
     expect((await agent.get(`/api/tasks/${taskId}/intake`)).status).toBe(404);
     expect((await put(taskId, 'site_plan', PNG, '图.png')).status).toBe(404);
+  });
+});
+
+describe('同时到的请求', () => {
+  const missingFields = (v: IntakeView) => v.requiredCheck!.missing.map((m) => m.field);
+
+  it('传新表和删疏散图同时到：必填检查按最后的文件算', async () => {
+    const name = '耕云测试并发表格有限公司';
+    const { taskId } = await newTask(name);
+    const agent = await as();
+    // 先传一份缺项的表和两张图；再同时传改好的表、删掉疏散图
+    ok(await put(taskId, 'data_sheet', await newMissing(name), '缺项.xlsx'));
+    ok(await put(taskId, 'site_plan', PDF, '总平面图.pdf'));
+    const withMap = ok(await put(taskId, 'evacuation_map', PNG, '疏散图.png'));
+    const sheet = await renamed(name);
+    const [up, del] = await Promise.all([
+      put(taskId, 'data_sheet', sheet, '改好.xlsx'),
+      agent.delete(`/api/tasks/${taskId}/intake/files/${withMap.evacuationMaps[0]!.id}`),
+    ]);
+    expect(up.status).toBe(201);
+    expect(del.status).toBe(200);
+    const v = (await agent.get(`/api/tasks/${taskId}/intake`)).body as IntakeView;
+    expect(v.dataSheet!.file.originalName).toBe('改好.xlsx');
+    expect(v.evacuationMaps).toEqual([]);
+    expect(missingFields(v)).toEqual(['drawing.evacuation_plan']);
+  });
+
+  it('传疏散图和设「这张图我们没有」同时到：两者不会同时成立', async () => {
+    const name = '耕云测试并发疏散图有限公司';
+    const { taskId } = await newTask(name);
+    const agent = await as();
+    ok(await put(taskId, 'data_sheet', await renamed(name), '资料表格.xlsx'));
+    ok(await put(taskId, 'site_plan', PDF, '总平面图.pdf'));
+    const [up, no] = await Promise.all([
+      put(taskId, 'evacuation_map', PNG, '疏散图.png'),
+      agent.put(`/api/tasks/${taskId}/intake/no-evacuation-map`).send({ value: true }),
+    ]);
+    expect(up.status).toBe(201);
+    expect([200, 409]).toContain(no.status);
+    const v = (await agent.get(`/api/tasks/${taskId}/intake`)).body as IntakeView;
+    expect(v.evacuationMaps).toHaveLength(1);
+    expect(v.noEvacuationMap).toBe(false);
+    expect(missingFields(v)).toEqual([]);
+  });
+});
+
+describe('删除和「这张图我们没有」的权限', () => {
+  it('看得到不能改 403；看不到 404；已提交 409', async () => {
+    const { taskId, enterpriseId } = await newTask('耕云测试删除权限有限公司');
+    const v = ok(await put(taskId, 'site_plan', PNG, '总平面图.png'));
+    const recordId = v.sitePlan!.id;
+    const del = (email: string) => as(email).then((a) => a.delete(`/api/tasks/${taskId}/intake/files/${recordId}`));
+    const no = (email: string) => as(email).then((a) => a.put(`/api/tasks/${taskId}/intake/no-evacuation-map`).send({ value: true }));
+
+    for (const res of [await del('ops@test.cn'), await no('ops@test.cn')]) {
+      expect(res.status).toBe(403);
+      expect(res.body.message).toBe('资料由客户自己上传');
+    }
+    for (const email of ['stranger@test.cn', 'zhou@test.cn']) {
+      expect((await del(email)).status).toBe(404);
+      expect((await no(email)).status).toBe(404);
+    }
+    // 没分到这家企业的成员
+    const member = await newTask('耕云测试删除权限二有限公司');
+    const mv = ok(await put(member.taskId, 'site_plan', PNG, '总平面图.png'));
+    const memberAgent = await as('member@test.cn');
+    expect((await memberAgent.delete(`/api/tasks/${member.taskId}/intake/files/${mv.sitePlan!.id}`)).status).toBe(404);
+    expect((await memberAgent.put(`/api/tasks/${member.taskId}/intake/no-evacuation-map`).send({ value: true })).status).toBe(404);
+
+    await handle.db.update(tasks).set({ status: 'submitted' }).where(eq(tasks.id, taskId));
+    for (const res of [await del('admin@test.cn'), await no('admin@test.cn')]) {
+      expect(res.status).toBe(409);
+      expect(res.body.message).toBe(SUBMITTED_MESSAGE);
+    }
+    // 文件还在
+    const [rec] = await handle.db.select().from(taskIntakeFiles).where(eq(taskIntakeFiles.id, recordId));
+    expect(rec!.removedAt).toBeNull();
+    void enterpriseId;
+  });
+});
+
+describe('准备资料文件的下载地址', () => {
+  it('别的组织 404；没派这个任务的专家 404；已派的专家能下；没分到这家企业的成员 404', async () => {
+    const { taskId } = await newTask('耕云测试下载权限有限公司');
+    const v = ok(await put(taskId, 'site_plan', PNG, '总平面图.png'));
+    const url = `/api/files/${v.sitePlan!.fileId}/download-url`;
+    expect((await (await as('stranger@test.cn')).get(url)).status).toBe(404);
+    expect((await (await as('zhou@test.cn')).get(url)).status).toBe(404);
+    expect((await (await as('member@test.cn')).get(url)).status).toBe(404);
+    await handle.db.update(tasks).set({ assignedExpertId: uid['zhou@test.cn']! }).where(eq(tasks.id, taskId));
+    expect((await (await as('zhou@test.cn')).get(url)).status).toBe(200);
+    expect((await (await as('wu@test.cn')).get(url)).status).toBe(404);
   });
 });
 

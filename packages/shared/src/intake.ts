@@ -87,6 +87,8 @@ export interface IntakeOptionalItem {
   cell?: string;
   count?: number;
   unitWord?: string;
+  /** 给客户看的提示；不写就按「没填。」（按列算的是「2 栋没填。」）显示 */
+  note?: string;
 }
 
 /**

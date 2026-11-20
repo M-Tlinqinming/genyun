@@ -38,6 +38,7 @@ export const NOTES = {
   materialUnit: '没填。从下拉里选一个单位。',
   materialLocation: '没填。如：危化品仓库。',
   personBoth: '没填。姓名和手机都要填。',
+  bigOrgLeader: '员工 100 人以上，5 个组都要有组长。不清楚的可以留空，专家核对时补。',
   personName: '没填。手机填了，姓名也要填。',
   personPhone: '没填。要 24 小时能打通的手机。',
   // 格式不对
@@ -244,6 +245,23 @@ export function checkSheet(read: WorkbookRead): SheetCheck {
   person('organization.deputy', '副总指挥', org.deputy, true);
   for (const kind of REQUIRED_GROUPS) person(`organization.${kind}`, `${PRESET_GROUPS[kind]}组长`, org.groups[kind].leader, true);
   for (const kind of OPTIONAL_GROUPS) person(`organization.${kind}`, `${PRESET_GROUPS[kind]}组长`, org.groups[kind].leader, false);
+  // 员工 100 人以上：业务方要求 5 个组都有组长。模板只给前 3 个组长打了 *，所以不拦提交，只在选填里提醒
+  const headcount = parseInteger(employees.text);
+  if (headcount !== null && headcount >= 100) {
+    for (const kind of OPTIONAL_GROUPS) {
+      const leader = org.groups[kind].leader;
+      if (leader.name.text || leader.phone.text) continue;
+      const v = leader.name;
+      optional.push({
+        field: `organization.${kind}`,
+        label: `${PRESET_GROUPS[kind]}组长`,
+        sheet: v.sheet,
+        row: v.row,
+        cell: v.cell,
+        note: NOTES.bigOrgLeader,
+      });
+    }
+  }
 
   const hospital = read.contacts.rows.find((r) => normalizeLabel(r.cells.type.text) === '就近医院');
   if (hospital && !hospital.cells.name.text && !hospital.cells.phone.text) opt('hospital', '就近医院', hospital.cells.name);

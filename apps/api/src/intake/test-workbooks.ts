@@ -85,9 +85,17 @@ export function normalFill(name = SAMPLE_NAME): SheetCells {
 
 export const newNormal = () => fromTemplate(normalFill());
 
-/** 新版、缺三项（对上缺项清单那块板）：第 5 行建筑面积空、值班电话空、总指挥手机填座机 */
-export function newMissing(): Promise<Buffer> {
+/** 新版、必填全齐，改员工人数；leaders = true 时医疗救护组、警戒疏散组的组长也填上 */
+export function newWithEmployees(count: number, leaders = false): Promise<Buffer> {
   const fill = normalFill();
+  fill.企业信息!.B22 = count;
+  if (leaders) Object.assign(fill.应急组织!, { C21: '郑组长', E21: '13800000009', C25: '冯组长' });
+  return fromTemplate(fill);
+}
+
+/** 新版、缺三项（对上缺项清单那块板）：第 5 行建筑面积空、值班电话空、总指挥手机填座机 */
+export function newMissing(name = SAMPLE_NAME): Promise<Buffer> {
+  const fill = normalFill(name);
   delete fill.建筑与场所!.C5;
   delete fill.应急组织!.B2;
   fill.应急组织!.E7 = '0752-2345679';

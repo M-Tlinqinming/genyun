@@ -11,7 +11,7 @@ import { Loading } from '../../components/ui';
 const STAGES = ['资料准备', '耕云编制', '专家审核', '成果交付'];
 
 // 任务详情（12 页 P03；13 页 F03）。「资料与检查」：上传、关联企业原始资料。提交以后默认看「处理记录」。
-// 选择开始方式、按提示填写、资料检查、补件、成果版本已取消；新流程的任务在准备资料时转到准备资料页
+// 选择开始方式、按提示填写、资料检查、补充资料、成果版本已取消；新流程的任务在准备资料时转到准备资料页
 export function TaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);

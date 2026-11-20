@@ -100,7 +100,7 @@ export function ItemRow({
       aria-label={label}
       style={{
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         gap: 16,
         padding: '14px 24px',
         borderTop: `1px solid ${gy.split}`,
@@ -147,7 +147,7 @@ export function TitledNotice({
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       data-tone={tone}
-      style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px', borderRadius: 8, background: t.bg }}
+      style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px 12px 24px', borderRadius: 8, background: t.bg }}
     >
       <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {title && <div style={{ ...type.body, fontWeight: weight.strong, color: t.title }}>{title}</div>}

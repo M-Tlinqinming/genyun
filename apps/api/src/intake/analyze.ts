@@ -33,7 +33,7 @@ export async function analyzeSheet(
   buf: Buffer,
   ctx: { enterprise: EnterpriseRef; others: EnterpriseRef[]; now?: Date },
 ): Promise<SheetAnalysis> {
-  const zip = checkZip(buf);
+  const zip = await checkZip(buf);
   if (!zip.ok) throw new SheetRejectedError(zip.reason === 'too_large' ? TOO_LARGE_MESSAGE : UNREADABLE_MESSAGE);
   let wb;
   try {

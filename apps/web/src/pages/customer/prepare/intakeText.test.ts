@@ -132,6 +132,8 @@ describe('准备资料页：选填和其他文字', () => {
   it('按列算的选填带数量和量词', () => {
     const item = { field: 'b', label: '结构类型', sheet: '建筑与场所', count: 2, unitWord: '栋' };
     expect(optionalNote(item)).toBe('2 栋没填。');
+    expect(optionalNote({ field: 'organization.medical', label: '医疗救护组组长', sheet: '应急组织', note: '员工 100 人以上，5 个组都要有组长。' })).toBe('员工 100 人以上，5 个组都要有组长。');
+    expect(optionalNote({ field: 'x', label: 'x', sheet: '企业信息' })).toBe('没填。');
     expect(optionalLine(item)).toBe('建筑与场所：结构类型（2 栋没填）');
     expect(optionalNote({ field: 'c', label: '注册资本', sheet: '企业信息' })).toBe('没填。');
   });

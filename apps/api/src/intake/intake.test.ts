@@ -5,14 +5,15 @@ import {
   resourcesStepSchema,
 } from '@genyun/shared';
 import ExcelJS from 'exceljs';
+import { deflateRawSync } from 'node:zlib';
 import { describe, expect, test } from 'vitest';
-import { analyzeSheet, SheetRejectedError, type SheetAnalysis } from './analyze.ts';
+import { analyzeSheet, SheetRejectedError, TOO_LARGE_MESSAGE, type SheetAnalysis } from './analyze.ts';
 import { cellText, formatNumber } from './cell-text.ts';
 import { composeCheck, recheckDrawings } from './check.ts';
 import { layoutFor, LAYOUT_OLD } from './layout.ts';
 import * as S from './test-workbooks.ts';
 import { isLandline, isMobile, isSameAsRegistered, parseNumber, phoneKind } from './values.ts';
-import { checkZip, ZIP_MAX_ENTRIES } from './zip-guard.ts';
+import { checkZip, ZIP_MAX_ENTRIES, ZIP_MAX_UNCOMPRESSED } from './zip-guard.ts';
 
 const enterprise = { id: 'e1', name: S.SAMPLE_NAME };
 const analyze = (buf: Buffer, others = [enterprise]) => analyzeSheet(buf, { enterprise, others });
@@ -75,41 +76,91 @@ describe('电话、数字、同注册地址', () => {
 });
 
 describe('防压缩炸弹', () => {
-  // 只拼中央目录和结尾记录，够 checkZip 看的
-  function fakeZip(entries: number, sizeEach: number): Buffer {
-    const parts: Buffer[] = [];
+  // 拼一份完整的 zip：本地头 + 数据 + 中央目录 + 结尾记录。declared 是目录里声明的解压后大小，
+  // actual 是每个条目真实解开的字节数（全是 0，压缩后很小）；method 8 = deflate、0 = stored
+  function fakeZip(entries: number, declared: number, actual = declared, method = 8): Buffer {
+    const locals: Buffer[] = [];
+    const central: Buffer[] = [];
+    let offset = 0;
+    const raw = Buffer.alloc(actual);
+    const data = method === 0 ? raw : deflateRawSync(raw);
     for (let i = 0; i < entries; i++) {
       const name = Buffer.from(`f${i}.xml`);
+      const l = Buffer.alloc(30);
+      l.writeUInt32LE(0x04034b50, 0);
+      l.writeUInt16LE(0x08, 6); // 带 data descriptor：本地头里的大小写 0
+      l.writeUInt16LE(method, 8);
+      l.writeUInt16LE(name.length, 26);
+      locals.push(l, name, data);
       const h = Buffer.alloc(46);
       h.writeUInt32LE(0x02014b50, 0);
-      h.writeUInt32LE(sizeEach, 24);
+      h.writeUInt16LE(method, 10);
+      h.writeUInt32LE(data.length, 20);
+      h.writeUInt32LE(declared, 24);
       h.writeUInt16LE(name.length, 28);
-      parts.push(h, name);
+      h.writeUInt32LE(offset, 42);
+      central.push(h, name);
+      offset += l.length + name.length + data.length;
     }
-    const cd = Buffer.concat(parts);
+    const cd = Buffer.concat(central);
     const end = Buffer.alloc(22);
     end.writeUInt32LE(0x06054b50, 0);
     end.writeUInt16LE(Math.min(entries, 0xffff), 8);
     end.writeUInt16LE(Math.min(entries, 0xffff), 10);
     end.writeUInt32LE(cd.length, 12);
-    end.writeUInt32LE(0, 16);
-    return Buffer.concat([cd, end]);
+    end.writeUInt32LE(offset, 16);
+    return Buffer.concat([...locals, cd, end]);
   }
   test('正常的表格过得去', async () => {
-    const r = checkZip(await S.newNormal());
+    const r = await checkZip(await S.newNormal());
     expect(r.ok).toBe(true);
   });
-  test('不是 zip', () => {
-    expect(checkZip(Buffer.from('就是一段字'))).toEqual({ ok: false, reason: 'not_zip' });
+  test('不是 zip', async () => {
+    expect(await checkZip(Buffer.from('就是一段字'))).toEqual({ ok: false, reason: 'not_zip' });
   });
-  test('文件太多、解开太大都拦', () => {
-    expect(checkZip(fakeZip(ZIP_MAX_ENTRIES + 1, 1))).toEqual({ ok: false, reason: 'too_large' });
-    expect(checkZip(fakeZip(3, 100 * 1024 * 1024))).toEqual({ ok: false, reason: 'too_large' });
-    expect(checkZip(fakeZip(3, 1024)).ok).toBe(true);
+  test('文件太多、解开太大都拦', async () => {
+    expect(await checkZip(fakeZip(ZIP_MAX_ENTRIES + 1, 1))).toEqual({ ok: false, reason: 'too_large' });
+    expect(await checkZip(fakeZip(3, 100 * 1024 * 1024))).toEqual({ ok: false, reason: 'too_large' });
+    expect(await checkZip(fakeZip(3, 1024))).toEqual({ ok: true, entries: 3, uncompressed: 3072 });
+    expect(await checkZip(fakeZip(3, 1024, 1024, 0))).toEqual({ ok: true, entries: 3, uncompressed: 3072 });
+    }, 60_000);
+  test('目录里声明得很小、实际解开很大的，按真解开的字节数拦', async () => {
+    const bomb = fakeZip(1, 10, ZIP_MAX_UNCOMPRESSED + 1024);
+    expect(bomb.length).toBeLessThan(1024 * 1024);
+    expect(await checkZip(bomb)).toEqual({ ok: false, reason: 'too_large' });
+    await expect(analyze(bomb)).rejects.toThrow(TOO_LARGE_MESSAGE);
+  }, 60_000);
+  test('解压出错、不认识的压缩方式都当打不开', async () => {
+    const broken = fakeZip(1, 1024);
+    broken.fill(0xff, 36, 40); // 弄坏压缩数据（本地头 30 字节 + 文件名 6 字节之后）
+    expect(await checkZip(broken)).toEqual({ ok: false, reason: 'not_zip' });
+    expect(await checkZip(fakeZip(1, 1024, 1024, 12))).toEqual({ ok: false, reason: 'not_zip' });
   });
   test('打不开的表格直接拒收', async () => {
     await expect(analyze(Buffer.from('not a zip'))).rejects.toBeInstanceOf(SheetRejectedError);
-    await expect(analyze(fakeZip(3, 1024))).rejects.toBeInstanceOf(SheetRejectedError);
+    const broken = fakeZip(1, 1024);
+    broken.fill(0xff, 36, 40);
+    await expect(analyze(broken)).rejects.toBeInstanceOf(SheetRejectedError);
+    // 压缩包本身没毛病、只是里面不是表格的，按「不是资料模板」处理
+    expect((await analyze(fakeZip(3, 1024))).kind).toBe('not_template');
+  });
+});
+
+describe('员工 100 人以上，5 个组都要有组长（只提醒，不拦）', () => {
+  const leaders = (a: ReturnType<typeof read>) => a.sheet.optional.filter((o) => o.field === 'organization.medical' || o.field === 'organization.evacuation');
+  test('99 人不提醒', async () => {
+    expect(leaders(read(await analyze(await S.newWithEmployees(99))))).toEqual([]);
+  });
+  test('100 人：医疗救护组、警戒疏散组组长都空，放进选填，带提示', async () => {
+    const a = read(await analyze(await S.newWithEmployees(100)));
+    expect(a.sheet.missing).toEqual([]);
+    expect(leaders(a)).toEqual([
+      expect.objectContaining({ label: '医疗救护组组长', sheet: '应急组织', row: 21, cell: 'C21', note: '员工 100 人以上，5 个组都要有组长。不清楚的可以留空，专家核对时补。' }),
+      expect.objectContaining({ label: '警戒疏散组组长', sheet: '应急组织', row: 25, cell: 'C25' }),
+    ]);
+  });
+  test('组长填了（只填姓名也算）就不提醒', async () => {
+    expect(leaders(read(await analyze(await S.newWithEmployees(150, true))))).toEqual([]);
   });
 });
 

@@ -124,6 +124,7 @@ export function optionalSummary(items: IntakeOptionalItem[]): string | null {
 
 /** 一项选填：「没填。」或「2 栋没填。」 */
 export function optionalNote(item: IntakeOptionalItem): string {
+  if (item.note) return item.note;
   return item.count ? `${item.count} ${item.unitWord ?? '处'}没填。` : '没填。';
 }
 

@@ -14,7 +14,7 @@ import {
   type IntakeView,
   type IntakeWarning,
 } from '@genyun/shared';
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
 import { canEditEnterpriseData, canViewEnterprise } from '../auth/access.ts';
@@ -60,6 +60,8 @@ interface Ctx {
 
 @Injectable()
 export class IntakeService {
+  private readonly logger = new Logger(IntakeService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
@@ -83,6 +85,17 @@ export class IntakeService {
       if (task.status !== 'preparing') throw new ConflictException(SUBMITTED_MESSAGE);
     }
     return { task, intake: row.intake, canEdit: mayEdit && task.status === 'preparing' };
+  }
+
+  // 写操作在事务里先锁住这一行 task_intakes，再重读任务状态：同一任务的上传、删除、「这张图我们没有」排队执行，
+  // 必填检查、noEvacuationMap 都按锁里读到的最新情况重算，后到的请求不会拿旧结果盖掉先到的
+  private async lockIntake(tx: Tx, taskId: string): Promise<typeof taskIntakes.$inferSelect> {
+    const [intake] = await tx.select().from(taskIntakes).where(eq(taskIntakes.taskId, taskId)).for('update');
+    if (!intake) throw new NotFoundException(NOT_FOUND);
+    const [task] = await tx.select({ status: tasks.status, deletedAt: tasks.deletedAt }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    if (!task || task.deletedAt) throw new NotFoundException(NOT_FOUND);
+    if (task.status !== 'preparing') throw new ConflictException(SUBMITTED_MESSAGE);
+    return intake;
   }
 
   async assertWritable(user: SessionUser, taskId: string): Promise<void> {
@@ -124,6 +137,7 @@ export class IntakeService {
     const now = new Date();
     try {
       await this.db.transaction(async (tx) => {
+        const intake = await this.lockIntake(tx, taskId);
         await tx.insert(files).values({
           id,
           orgId: ctx.task.orgId,
@@ -150,15 +164,17 @@ export class IntakeService {
           lastUploadedSide: 'customer',
         };
         if (slot === 'evacuation_map') patch.noEvacuationMap = false;
-        const drawings = await this.drawingState(tx, taskId, patch.noEvacuationMap ?? ctx.intake.noEvacuationMap);
+        const drawings = await this.drawingState(tx, taskId, patch.noEvacuationMap ?? intake.noEvacuationMap);
         if (analysis) {
           Object.assign(patch, await this.applySheet(tx, ctx, analysis, id, drawings, now));
         } else {
-          patch.requiredCheck = recheckDrawings(ctx.intake.requiredCheck, drawings, now);
+          patch.requiredCheck = recheckDrawings(intake.requiredCheck, drawings, now);
         }
         await tx.update(taskIntakes).set(patch).where(eq(taskIntakes.taskId, taskId));
       });
     } catch (err) {
+      // 记录没写成，存好的文件就没人引用了：尽量删掉，删不掉只记日志
+      await this.discardStored(storageKey);
       // 两个人同时传资料表格：后到的那份撞上「只有一份当前表格」的唯一索引
       if (isUniqueViolation(err, 'task_intake_files_one_data_sheet')) throw new ConflictException(CONCURRENT_SHEET_MESSAGE);
       throw err;
@@ -195,38 +211,49 @@ export class IntakeService {
   }
 
   async remove(user: SessionUser, taskId: string, recordId: string): Promise<IntakeView> {
-    const ctx = await this.context(user, taskId, true);
-    const [rec] = await this.db
-      .select()
-      .from(taskIntakeFiles)
-      .where(and(eq(taskIntakeFiles.id, recordId), eq(taskIntakeFiles.taskId, taskId), isNull(taskIntakeFiles.removedAt)))
-      .limit(1);
-    if (!rec) throw new NotFoundException(FILE_NOT_FOUND);
-    if (rec.slot === 'data_sheet') throw new BadRequestException(SHEET_UNDELETABLE_MESSAGE);
+    await this.context(user, taskId, true);
     const now = new Date();
     await this.db.transaction(async (tx) => {
+      const intake = await this.lockIntake(tx, taskId);
+      const [rec] = await tx
+        .select()
+        .from(taskIntakeFiles)
+        .where(and(eq(taskIntakeFiles.id, recordId), eq(taskIntakeFiles.taskId, taskId), isNull(taskIntakeFiles.removedAt)))
+        .limit(1);
+      if (!rec) throw new NotFoundException(FILE_NOT_FOUND);
+      if (rec.slot === 'data_sheet') throw new BadRequestException(SHEET_UNDELETABLE_MESSAGE);
       await tx.update(taskIntakeFiles).set({ removedAt: now }).where(eq(taskIntakeFiles.id, recordId));
-      const drawings = await this.drawingState(tx, taskId, ctx.intake.noEvacuationMap);
+      const drawings = await this.drawingState(tx, taskId, intake.noEvacuationMap);
       await tx
         .update(taskIntakes)
-        .set({ requiredCheck: recheckDrawings(ctx.intake.requiredCheck, drawings, now), updatedAt: now, updatedBy: user.id })
+        .set({ requiredCheck: recheckDrawings(intake.requiredCheck, drawings, now), updatedAt: now, updatedBy: user.id })
         .where(eq(taskIntakes.taskId, taskId));
     });
     return this.get(user, taskId);
   }
 
   async setNoEvacuationMap(user: SessionUser, taskId: string, value: boolean): Promise<IntakeView> {
-    const ctx = await this.context(user, taskId, true);
+    await this.context(user, taskId, true);
     const now = new Date();
     await this.db.transaction(async (tx) => {
+      const intake = await this.lockIntake(tx, taskId);
       const drawings = await this.drawingState(tx, taskId, value);
       if (value && drawings.evacuationPlan) throw new ConflictException(HAS_EVACUATION_MAP_MESSAGE);
       await tx
         .update(taskIntakes)
-        .set({ noEvacuationMap: value, requiredCheck: recheckDrawings(ctx.intake.requiredCheck, drawings, now), updatedAt: now, updatedBy: user.id })
+        .set({ noEvacuationMap: value, requiredCheck: recheckDrawings(intake.requiredCheck, drawings, now), updatedAt: now, updatedBy: user.id })
         .where(eq(taskIntakes.taskId, taskId));
     });
     return this.get(user, taskId);
+  }
+
+  private async discardStored(key: string): Promise<void> {
+    if (!this.storage.remove) return;
+    try {
+      await this.storage.remove(key);
+    } catch (e) {
+      this.logger.warn(`没删掉没有记录的上传文件 ${key}：${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   private async drawingState(db: Database | Tx, taskId: string, noEvacuationMap: boolean): Promise<DrawingState> {
