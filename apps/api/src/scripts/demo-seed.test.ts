@@ -178,6 +178,9 @@ describe('演示数据', () => {
     expect((await db.select().from(organizations).where(eq(organizations.id, agency!.id)))[0]).toMatchObject({
       activatedAt: new Date('2026-10-23'),
       region: '广东省惠州市',
+      regionProvince: '广东省',
+      regionCity: '惠州市',
+      regionDistrict: null,
       contactName: '林管理员',
     });
   }, 60_000);

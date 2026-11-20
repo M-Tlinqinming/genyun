@@ -1,3 +1,4 @@
+import { addDays, chinaToday } from '@genyun/shared';
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -9,6 +10,7 @@ import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import {
+  auditLogs,
   creditEntries,
   enterprises,
   memberships,
@@ -101,7 +103,7 @@ async function as(email: string) {
 
 const registration = {
   name: '华东安评服务有限公司',
-  region: '上海市闵行区',
+  region: { province: '上海市', city: '上海市', district: '闵行区' },
   socialCreditCode: '91310112MA1XXXXXX3',
   contactName: '孙经理',
   contactPhone: '136 2254 1234',
@@ -121,8 +123,7 @@ async function uploadContract(orgId: string, buf = PDF, name = '合同-盖章版
 function opening(fileId: string) {
   return {
     contractNumber: 'GY-HT-2026-018',
-    scopeKind: 'annual',
-    scopeEnterprises: 5,
+    purchasedCredits: 0,
     startsAt: '2026-11-01',
     endsAt: '2027-10-31',
     contractFileId: fileId,
@@ -156,6 +157,29 @@ describe('登记客户组织', () => {
     const res = await (await as('ops@test.cn')).post('/api/operator/organizations').send({ name: 'x', region: '' });
     expect(res.status).toBe(400);
     expect(res.body.message).toContain('所在地区');
+  });
+
+  it('所在地区按省、市、区县登记：存三列和全称，列表和详情带 regionParts', async () => {
+    const ops = await as('ops@test.cn');
+    const created = await register({ ...registration, name: '地区测试', region: { province: '江苏省', city: '苏州市', district: '吴中区' } });
+    const [o] = await handle.db.select().from(organizations).where(eq(organizations.id, created.id));
+    expect(o).toMatchObject({ region: '江苏省苏州市吴中区', regionProvince: '江苏省', regionCity: '苏州市', regionDistrict: '吴中区' });
+    const detail = (await ops.get(`/api/operator/organizations/${created.id}`).expect(200)).body;
+    expect(detail.regionParts).toEqual({ province: '江苏省', city: '苏州市', district: '吴中区' });
+    expect(detail.regionProvince).toBeUndefined();
+    const list = (await ops.get('/api/operator/organizations').expect(200)).body as { id: string; regionParts: unknown }[];
+    expect(list.find((r) => r.id === created.id)!.regionParts).toEqual({ province: '江苏省', city: '苏州市', district: '吴中区' });
+    // 老组织只有文字：regionParts 为 null
+    expect(list.find((r) => r.id === org.a)!.regionParts).toBeNull();
+  });
+
+  it('地区要在全国区划里、上下级对得上，有区县的市要选到区县', async () => {
+    const ops = await as('ops@test.cn');
+    const send = (region: object) => ops.post('/api/operator/organizations').send({ ...registration, name: '地区校验', region });
+    expect((await send({ province: '江苏省', city: '惠州市', district: '惠城区' })).body.message).toBe('所在地区不在全国区划里，请重新选择');
+    expect((await send({ province: '江苏省', city: '苏州市', district: '惠城区' })).body.message).toBe('所在地区不在全国区划里，请重新选择');
+    expect((await send({ province: '江苏省', city: '苏州市' })).body.message).toBe('请选到区县');
+    expect((await send({ province: '广东省' })).body.message).toBe('请选到市');
   });
 
   it('可以修改登记资料', async () => {
@@ -198,13 +222,25 @@ describe('上传合同原件', () => {
 });
 
 describe('开通', () => {
-  it('缺合同原件或没确认到账不能开通，并列出缺项', async () => {
+  it('没填购买次数、没确认到账不能开通，并列出缺项；合同原件选填', async () => {
     const created = await register({ ...registration, name: '缺项测试' });
     const res = await (await as('ops@test.cn'))
       .post(`/api/operator/organizations/${created.id}/open`)
-      .send({ ...opening(MISSING), contractFileId: null, paymentReceived: false });
+      .send({ ...opening(MISSING), purchasedCredits: undefined, contractFileId: null, paymentReceived: false });
     expect(res.status).toBe(400);
-    expect(res.body.gaps).toEqual(['已签合同原件', '合同款已到账']);
+    expect(res.body.gaps).toEqual(['合同购买次数', '合同款已到账']);
+  });
+
+  it('不传合同原件也能开通，记一条操作日志', async () => {
+    const created = await register({ ...registration, name: '无原件开通' });
+    const res = await (await as('ops@test.cn'))
+      .post(`/api/operator/organizations/${created.id}/open`)
+      .send({ ...opening(MISSING), contractFileId: undefined, adminEmail: 'noscan@test.cn', purchasedCredits: 5 });
+    expect(res.status).toBe(200);
+    const [c] = await handle.db.select().from(organizationContracts).where(eq(organizationContracts.orgId, created.id));
+    expect(c).toMatchObject({ fileId: null, scopeKind: null, scopeEnterprises: null });
+    const logs = await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'org_open'));
+    expect(logs.some((l) => l.target === '无原件开通 · 合同 GY-HT-2026-018')).toBe(true);
   });
 
   it('不能用别家组织的合同原件', async () => {
@@ -231,8 +267,8 @@ describe('开通', () => {
     expect(o!.activatedAt).not.toBeNull();
     const contracts = await db.select().from(organizationContracts).where(eq(organizationContracts.orgId, created.id));
     expect(contracts).toHaveLength(1);
-    expect(contracts[0]).toMatchObject({ number: 'GY-HT-2026-018', scopeKind: 'annual', scopeEnterprises: 5, fileId: up.body.id });
-    // 没带次数时不记台账
+    expect(contracts[0]).toMatchObject({ number: 'GY-HT-2026-018', scopeKind: null, scopeEnterprises: null, fileId: up.body.id });
+    // 购买次数为 0、没有赠送时不记台账
     expect(await db.select().from(creditEntries).where(eq(creditEntries.orgId, created.id))).toEqual([]);
     const invites = await db.select().from(organizationInvitations).where(eq(organizationInvitations.orgId, created.id));
     expect(invites).toHaveLength(1);
@@ -249,6 +285,9 @@ describe('开通', () => {
     // 已开通的不能再开通一次
     const again = await (await as('ops@test.cn')).post(`/api/operator/organizations/${created.id}/open`).send(opening(up.body.id));
     expect(again.status).toBe(409);
+    expect(again.body.message).toBe('这个组织已经开通了，续约请到组织详情里点「登记续约」');
+    // 挂到合同上的原件不再带进开通、续约弹窗
+    expect((await (await as('ops@test.cn')).get(`/api/operator/organizations/${created.id}`)).body.contractFile).toBeNull();
   });
 });
 
@@ -259,7 +298,7 @@ describe('开通时登记次数', () => {
     const ops = await as('ops@test.cn');
     const body = { ...opening(up.body.id), adminEmail: 'li@huanan-anping.cn', purchasedCredits: 20, giftCredits: 2 };
     // 有赠送时要写活动名称
-    expect((await ops.post(`/api/operator/organizations/${created.id}/open`).send(body)).body.message).toBe('有赠送时请填活动名称');
+    expect((await ops.post(`/api/operator/organizations/${created.id}/open`).send(body)).body.message).toBe('开通前还要填：活动名称');
     const res = await ops.post(`/api/operator/organizations/${created.id}/open`).send({ ...body, giftCampaign: ' 开通赠送 ' });
     expect(res.status).toBe(200);
     const { db } = handle;
@@ -325,5 +364,138 @@ describe('越权', () => {
 
   it('没登录不能访问', async () => {
     expect((await request(app.getHttpServer()).get('/api/operator/organizations')).status).toBe(401);
+  });
+});
+
+describe('组织详情的合同列表', () => {
+  it('新的在前，次数按类型相加，带原件和登记人', async () => {
+    const ops = await as('ops@test.cn');
+    const created = await register({ ...registration, name: '合同列表测试' });
+    const up = await uploadContract(created.id);
+    const today = chinaToday();
+    await ops
+      .post(`/api/operator/organizations/${created.id}/open`)
+      .send({
+        ...opening(up.body.id),
+        startsAt: addDays(today, -30),
+        endsAt: addDays(today, 100),
+        adminEmail: 'list@test.cn',
+        purchasedCredits: 20,
+        giftCredits: 2,
+        giftCampaign: '开通赠送',
+      })
+      .expect(200);
+    await ops
+      .post(`/api/operator/organizations/${created.id}/credits`)
+      .send({ type: 'top_up', delta: 3, reason: '加买' })
+      .expect(200);
+    const detail = (await ops.get(`/api/operator/organizations/${created.id}`).expect(200)).body;
+    expect(detail.contracts).toHaveLength(1);
+    expect(detail.contracts[0]).toMatchObject({
+      number: 'GY-HT-2026-018',
+      state: 'active',
+      credits: { purchase: 20, gift: 2, topUp: 3, compensation: 0 },
+      file: { id: up.body.id, originalName: '合同-盖章版.pdf' },
+      paymentConfirmedByName: expect.any(String),
+    });
+  });
+});
+
+describe('登记续约', () => {
+  async function opened(name: string, startsAt: string, endsAt: string, email: string) {
+    const created = await register({ ...registration, name });
+    await (await as('ops@test.cn'))
+      .post(`/api/operator/organizations/${created.id}/open`)
+      .send({ ...opening(MISSING), contractFileId: null, startsAt, endsAt, adminEmail: email, purchasedCredits: 1 })
+      .expect(200);
+    return created.id;
+  }
+  const renewal = (v: object = {}) => ({ contractNumber: 'GY-XY-2027-001', purchasedCredits: 10, paymentReceived: true, ...v });
+
+  it('没到期的：接着现在的合同，只延长到期日，记次数和操作日志', async () => {
+    const today = chinaToday();
+    const end = addDays(today, 20);
+    const id = await opened('续约没到期', addDays(today, -300), end, 'renew1@test.cn');
+    const ops = await as('ops@test.cn');
+    const url = `/api/operator/organizations/${id}/renewal`;
+    // 开始日晚于现在到期日的后一天
+    const late = await ops.post(url).send(renewal({ contractStartsAt: addDays(end, 2), contractEndsAt: addDays(end, 300) }));
+    expect(late.status).toBe(400);
+    expect(late.body.message).toBe(`新合同要接着现在的合同：开始日不能晚于 ${addDays(end, 1).replaceAll('-', '.')}`);
+    // 到期日不晚于现在的
+    const short = await ops.post(url).send(renewal({ contractStartsAt: addDays(end, 1), contractEndsAt: end }));
+    expect(short.body.message).toBe('合同到期日不能早于开始日');
+    const same = await ops.post(url).send(renewal({ contractStartsAt: today, contractEndsAt: end }));
+    expect(same.body.message).toBe(`新合同的到期日要晚于现在的合同（${end.replaceAll('-', '.')}）`);
+    // 早于上一份合同的开始日
+    const early = await ops.post(url).send(renewal({ contractStartsAt: addDays(today, -400), contractEndsAt: addDays(end, 30) }));
+    expect(early.body.message).toBe(`新合同的开始日不能早于上一份合同（${addDays(today, -300).replaceAll('-', '.')}）`);
+    // 没确认到账
+    expect((await ops.post(url).send(renewal({ paymentReceived: false, contractStartsAt: addDays(end, 1), contractEndsAt: addDays(end, 365) }))).body.message).toBe(
+      '合同款到账后才能登记续约',
+    );
+    // 同编号
+    const dup = await ops.post(url).send(renewal({ contractNumber: 'GY-HT-2026-018', contractStartsAt: addDays(end, 1), contractEndsAt: addDays(end, 365) }));
+    expect(dup.status).toBe(409);
+    expect(dup.body.message).toBe('这个合同编号已经登记过了');
+
+    const ok = await ops.post(url).send(renewal({ giftCredits: 2, giftCampaign: '续约赠送', contractStartsAt: addDays(end, 1), contractEndsAt: addDays(end, 365) }));
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual({ released: 0 });
+    const [o] = await handle.db.select().from(organizations).where(eq(organizations.id, id));
+    expect(o).toMatchObject({ contractStartsAt: addDays(today, -300), contractEndsAt: addDays(end, 365) });
+    const contracts = await handle.db.select().from(organizationContracts).where(eq(organizationContracts.orgId, id));
+    const next = contracts.find((c) => c.number === 'GY-XY-2027-001')!;
+    expect(next).toMatchObject({ startsAt: addDays(end, 1), endsAt: addDays(end, 365), fileId: null, scopeKind: null });
+    const rows = await handle.db.select().from(creditEntries).where(eq(creditEntries.contractId, next.id));
+    expect(rows.map((r) => [r.type, r.delta, r.campaign, r.reason]).sort()).toEqual([
+      ['contract_purchase', 10, null, '续约时按合同登记。'],
+      ['gift', 2, '续约赠送', '续约时按活动规则赠送，跟合同一起到期。'],
+    ]);
+    const logs = await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'contract_renew'));
+    expect(logs.some((l) => l.target === `续约没到期 · 合同 GY-XY-2027-001，到 ${addDays(end, 365).replaceAll('-', '.')}`)).toBe(true);
+  });
+
+  it('已到期的：开始和到期都换成新合同的，放开等续约的成果', async () => {
+    const today = chinaToday();
+    const id = await opened('续约已到期', addDays(today, -10), addDays(today, 1), 'renew2@test.cn');
+    // 改成已经到期
+    await handle.db.update(organizations).set({ contractStartsAt: addDays(today, -400), contractEndsAt: addDays(today, -5) }).where(eq(organizations.id, id));
+    await handle.db.update(organizationContracts).set({ startsAt: addDays(today, -400), endsAt: addDays(today, -5) }).where(eq(organizationContracts.orgId, id));
+    const ops = await as('ops@test.cn');
+    const res = await ops.post(`/api/operator/organizations/${id}/renewal`).send(renewal({ contractStartsAt: today, contractEndsAt: addDays(today, 364) }));
+    expect(res.status).toBe(200);
+    const [o] = await handle.db.select().from(organizations).where(eq(organizations.id, id));
+    expect(o).toMatchObject({ contractStartsAt: today, contractEndsAt: addDays(today, 364) });
+    const list = (await ops.get('/api/operator/organizations').expect(200)).body as { id: string; state: string }[];
+    expect(list.find((r) => r.id === id)!.state).toBe('active');
+  });
+
+  it('还没开通的不能续约；客户、专家 403', async () => {
+    const created = await register({ ...registration, name: '续约没开通' });
+    const today = chinaToday();
+    const body = renewal({ contractStartsAt: today, contractEndsAt: addDays(today, 364) });
+    const res = await (await as('ops@test.cn')).post(`/api/operator/organizations/${created.id}/renewal`).send(body);
+    expect(res.status).toBe(409);
+    expect(res.body.message).toBe('这个组织还没开通，请先开通');
+    for (const who of ['a-admin@test.cn', 'expert@test.cn']) {
+      expect((await (await as(who)).post(`/api/operator/organizations/${org.a}/renewal`).send(body)).status).toBe(403);
+    }
+  });
+});
+
+describe('赠送活动统计', () => {
+  it('只算耕云赠送，按活动名称分组；客户 403', async () => {
+    const ops = await as('ops@test.cn');
+    const res = await ops.get('/api/operator/credits/gift-campaigns').expect(200);
+    const year = Number(chinaToday().slice(0, 4));
+    expect(res.body.year).toBe(year);
+    expect(res.body.years).toContain(year);
+    expect(res.body.unnamed).toMatchObject({ campaign: null });
+    for (const c of res.body.campaigns as { campaign: string; granted: number; used: number; unused: number }[]) {
+      expect(c.granted).toBe(c.used + c.unused);
+    }
+    expect((await ops.get('/api/operator/credits/gift-campaigns?year=abc')).status).toBe(400);
+    expect((await (await as('a-admin@test.cn')).get('/api/operator/credits/gift-campaigns')).status).toBe(403);
   });
 });

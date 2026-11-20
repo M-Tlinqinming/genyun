@@ -1,6 +1,13 @@
 import {
+  addDays,
   adminInvitationSchema,
+  checkRegionParts,
   chinaToday,
+  formatRegion,
+  isCreditContractActive,
+  orgRenewalSchema,
+  regionPartsOf,
+  type OrgRenewalResult,
   CREDIT_ENTRY_POOL,
   CREDIT_ENTRY_TYPE_LABELS,
   creditAdjustSchema,
@@ -34,15 +41,16 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { areaList } from '@vant/area-data';
+import { and, desc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { MulterError } from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
-import { clientIp } from '../audit/audit.ts';
+import { clientIp, insertAuditLog } from '../audit/audit.ts';
 import { canManageOrganizations } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
-import { creditBriefs, CreditsService } from '../credits/credits.service.ts';
+import { creditBriefs, CreditsService, lockOrg } from '../credits/credits.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import {
   creditEntries,
@@ -61,11 +69,17 @@ import { MAIL_OUTBOX, MAILER, type Mailer } from '../mail/mailer.ts';
 import { createInvitation, EMAIL_HAS_ACCOUNT } from './invitations.ts';
 
 const NOT_FOUND = '找不到该客户组织';
+const ALREADY_OPEN = '这个组织已经开通了，续约请到组织详情里点「登记续约」';
+// 2026-12-31 → 2026.12.31
+const dotted = (date: string) => date.replaceAll('-', '.');
 
 const columns = {
   id: organizations.id,
   name: organizations.name,
   region: organizations.region,
+  regionProvince: organizations.regionProvince,
+  regionCity: organizations.regionCity,
+  regionDistrict: organizations.regionDistrict,
   socialCreditCode: organizations.socialCreditCode,
   contactName: organizations.contactName,
   contactPhone: organizations.contactPhone,
@@ -79,11 +93,36 @@ const columns = {
   activatedByName: sql<string | null>`(select u.name from users u where u.id = "organizations"."activated_by")`,
 };
 
-type OrgRow = { activatedAt: Date | null; contractStartsAt: string | null; contractEndsAt: string | null };
-const withState = <T extends OrgRow>(o: T) => ({
+type OrgRow = {
+  activatedAt: Date | null;
+  contractStartsAt: string | null;
+  contractEndsAt: string | null;
+  regionProvince: string | null;
+  regionCity: string | null;
+  regionDistrict: string | null;
+};
+// 三列地区换成 regionParts（老数据只有文字时为 null）
+const withState = <T extends OrgRow>({ regionProvince, regionCity, regionDistrict, ...o }: T) => ({
   ...o,
+  regionParts: regionPartsOf({ regionProvince, regionCity, regionDistrict }),
   state: orgServiceState({ ...o, activatedAt: o.activatedAt?.toISOString() ?? null }, chinaToday()),
 });
+
+// 登记、修改资料：核对省市区，三列和拼好的全称一起存
+function registerValues(body: unknown) {
+  const parsed = orgRegisterSchema.safeParse(body);
+  if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+  const { region, ...rest } = parsed.data;
+  const wrong = checkRegionParts(region, areaList);
+  if (wrong) throw new BadRequestException(wrong);
+  return {
+    ...rest,
+    region: formatRegion(region, 'full'),
+    regionProvince: region.province,
+    regionCity: region.city,
+    regionDistrict: region.district,
+  };
+}
 
 // 运营管理客户组织：登记、修改资料、上传合同原件、开通（Paper 16 页 I02 与开通弹窗）。
 // 客户、专业人员一律 403；不存在的组织和内部组织一律 404
@@ -125,7 +164,11 @@ export class OperatorOrgsController {
     this.guard(user);
     const org = await this.load(id);
     const contracts = await this.latestContracts([id]);
-    // 开通弹窗里显示最近上传的合同原件，关掉弹窗再打开不用重传
+    // 开通、续约弹窗里带出最近上传、还没挂到任何合同上的原件，关掉弹窗再打开不用重传
+    const attached = this.db
+      .select({ id: organizationContracts.fileId })
+      .from(organizationContracts)
+      .where(and(eq(organizationContracts.orgId, id), sql`${organizationContracts.fileId} is not null`));
     const [contractFile] = await this.db
       .select({
         id: files.id,
@@ -136,13 +179,14 @@ export class OperatorOrgsController {
       })
       .from(files)
       .innerJoin(users, eq(users.id, files.uploadedBy))
-      .where(and(eq(files.orgId, id), eq(files.kind, 'contract')))
+      .where(and(eq(files.orgId, id), eq(files.kind, 'contract'), notInArray(files.id, attached)))
       .orderBy(desc(files.createdAt))
       .limit(1);
     return {
       ...withState(org),
       contract: contracts.get(id) ?? null,
       contractFile: contractFile ?? null,
+      contracts: await this.contractList(id),
       ...(await this.people(id)),
       enterprises: await this.enterpriseTasks(id),
     };
@@ -201,11 +245,10 @@ export class OperatorOrgsController {
   @Post()
   async register(@CurrentUser() user: SessionUser, @Body() body: unknown) {
     this.guard(user);
-    const parsed = orgRegisterSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+    const values = registerValues(body);
     const [created] = await this.db
       .insert(organizations)
-      .values({ ...parsed.data, kind: 'customer', registeredBy: user.id })
+      .values({ ...values, kind: 'customer', registeredBy: user.id })
       .returning({ id: organizations.id });
     return withState(await this.load(created!.id));
   }
@@ -214,9 +257,8 @@ export class OperatorOrgsController {
   async update(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     this.guard(user);
     await this.load(id);
-    const parsed = orgRegisterSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
-    await this.db.update(organizations).set(parsed.data).where(eq(organizations.id, id));
+    const values = registerValues(body);
+    await this.db.update(organizations).set(values).where(eq(organizations.id, id));
     return withState(await this.load(id));
   }
 
@@ -274,13 +316,13 @@ export class OperatorOrgsController {
     return { ...created!, uploadedByName: user.name };
   }
 
-  // 开通：登记合同、合同有效期生效、给首位管理员发邀请。原件未上传或未确认到账不能开通
+  // 开通：登记合同和次数、合同有效期生效、给首位管理员发邀请。没确认到账不能开通；合同原件可以以后再传
   @Post(':id/open')
   @HttpCode(200)
-  async open(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+  async open(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown, @Req() req: Request) {
     this.guard(user);
     const org = await this.load(id);
-    if (org.activatedAt) throw new ConflictException('这个组织已经开通了，续期请到组织详情里登记');
+    if (org.activatedAt) throw new ConflictException(ALREADY_OPEN);
 
     const gaps = openingGaps((body ?? {}) as OrgOpenDraft);
     if (gaps.length > 0) {
@@ -290,12 +332,7 @@ export class OperatorOrgsController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     const d = parsed.data;
 
-    const [contractFile] = await this.db
-      .select({ id: files.id })
-      .from(files)
-      .where(and(eq(files.id, d.contractFileId), eq(files.orgId, id), eq(files.kind, 'contract')))
-      .limit(1);
-    if (!contractFile) throw new BadRequestException('合同原件找不到了，请重新上传');
+    await this.checkContractFile(id, d.contractFileId);
     await this.rejectExistingAccount(d.adminEmail);
 
     const invitation = await this.db.transaction(async (tx) => {
@@ -305,31 +342,21 @@ export class OperatorOrgsController {
         .set({ contractStartsAt: d.startsAt, contractEndsAt: d.endsAt, activatedAt: new Date(), activatedBy: user.id })
         .where(and(eq(organizations.id, id), isNull(organizations.activatedAt)))
         .returning({ id: organizations.id });
-      if (!updated) throw new ConflictException('这个组织已经开通了，续期请到组织详情里登记');
-      const [contract] = await tx.insert(organizationContracts).values({
-        orgId: id,
-        number: d.contractNumber,
-        scopeKind: d.scopeKind,
-        scopeEnterprises: d.scopeEnterprises,
-        startsAt: d.startsAt,
-        endsAt: d.endsAt,
-        fileId: d.contractFileId,
-        paymentConfirmedBy: user.id,
-      }).returning({ id: organizationContracts.id });
-      // 合同购买和赠送的次数（16 页「次数记录」的两句原因；页面会在前面加「原因：」，存的时候不带）
-      const credits = [
-        ...(d.purchasedCredits
-          ? [{ type: 'contract_purchase' as const, delta: d.purchasedCredits, campaign: null, reason: '开通时按合同登记。' }]
-          : []),
-        ...(d.giftCredits > 0
-          ? [{ type: 'gift' as const, delta: d.giftCredits, campaign: d.giftCampaign, reason: '开通时按活动规则赠送，跟合同一起到期。' }]
-          : []),
-      ];
-      if (credits.length > 0) {
-        await tx.insert(creditEntries).values(
-          credits.map((c) => ({ ...c, orgId: id, contractId: contract!.id, pool: CREDIT_ENTRY_POOL[c.type], createdBy: user.id })),
-        );
-      }
+      if (!updated) throw new ConflictException(ALREADY_OPEN);
+      await this.insertContract(tx, id, user.id, {
+        ...d,
+        contractStartsAt: d.startsAt,
+        contractEndsAt: d.endsAt,
+        purchaseReason: '开通时按合同登记。',
+        giftReason: '开通时按活动规则赠送，跟合同一起到期。',
+      });
+      await insertAuditLog(tx, {
+        action: 'org_open',
+        actorId: user.id,
+        actorEmail: user.email,
+        ip: clientIp(req),
+        target: `${org.name} · 合同 ${d.contractNumber}`,
+      });
       return createInvitation(tx, {
         orgId: id,
         orgName: org.name,
@@ -347,6 +374,77 @@ export class OperatorOrgsController {
       ...withState(await this.load(id)),
       invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, ...this.mailMode() },
     };
+  }
+
+  /**
+   * 登记续约（画板没画，照开通弹窗）：新增一份合同，登记购买、赠送次数，更新组织的合同有效期。
+   * 没到期的：新合同要接着现在的合同（开始日不晚于现在到期日的后一天），到期日要更晚，只更新到期日；
+   * 已到期的：开始、到期都换成新合同的。提交后放开等续约的成果
+   */
+  @Post(':id/renewal')
+  @HttpCode(200)
+  async renew(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ): Promise<OrgRenewalResult> {
+    this.guard(user);
+    const org = await this.load(id);
+    if (!org.activatedAt || !org.contractEndsAt) throw new ConflictException('这个组织还没开通，请先开通');
+    const parsed = orgRenewalSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+    const d = parsed.data;
+    await this.checkContractFile(id, d.contractFileId);
+
+    await this.db.transaction(async (tx) => {
+      await lockOrg(tx, id);
+      const [now] = await tx
+        .select({ startsAt: organizations.contractStartsAt, endsAt: organizations.contractEndsAt })
+        .from(organizations)
+        .where(eq(organizations.id, id));
+      const currentEnd = now!.endsAt!;
+      const running = currentEnd >= chinaToday();
+      if (running) {
+        const latestStart = addDays(currentEnd, 1);
+        if (d.contractStartsAt > latestStart) {
+          throw new BadRequestException(`新合同要接着现在的合同：开始日不能晚于 ${dotted(latestStart)}`);
+        }
+        if (d.contractEndsAt <= currentEnd) {
+          throw new BadRequestException(`新合同的到期日要晚于现在的合同（${dotted(currentEnd)}）`);
+        }
+      }
+      const existing = await tx
+        .select({ number: organizationContracts.number, startsAt: organizationContracts.startsAt })
+        .from(organizationContracts)
+        .where(eq(organizationContracts.orgId, id))
+        .orderBy(desc(organizationContracts.startsAt));
+      const lastStart = existing[0]?.startsAt;
+      if (lastStart && d.contractStartsAt < lastStart) {
+        throw new BadRequestException(`新合同的开始日不能早于上一份合同（${dotted(lastStart)}）`);
+      }
+      if (existing.some((c) => c.number.trim() === d.contractNumber)) throw new ConflictException('这个合同编号已经登记过了');
+
+      await this.insertContract(tx, id, user.id, {
+        ...d,
+        purchaseReason: '续约时按合同登记。',
+        giftReason: '续约时按活动规则赠送，跟合同一起到期。',
+      });
+      await tx
+        .update(organizations)
+        .set(running ? { contractEndsAt: d.contractEndsAt } : { contractStartsAt: d.contractStartsAt, contractEndsAt: d.contractEndsAt })
+        .where(eq(organizations.id, id));
+      await insertAuditLog(tx, {
+        action: 'contract_renew',
+        actorId: user.id,
+        actorEmail: user.email,
+        ip: clientIp(req),
+        target: `${org.name} · 合同 ${d.contractNumber}，到 ${dotted(d.contractEndsAt)}`,
+      });
+    });
+    // 提交后放开等续约的成果（新合同还没开始的，到了开始日由每小时扫描放开）
+    const released = await this.credits.releaseLocked(id, 'renewal');
+    return { released };
   }
 
   // 运营看一个组织的次数：汇总、等次数的成果份数、台账明细（16 页「次数记录」）
@@ -380,6 +478,98 @@ export class OperatorOrgsController {
     // 提交后放开锁住的成果；放开了（扣了次数）才检查提醒
     const released = await this.credits.releaseLocked(id, 'credits');
     return { summary: (await creditBriefs(this.db, [id])).get(id)!, released };
+  }
+
+  // 合同原件选填；填了就要是这个组织上传过的合同原件
+  private async checkContractFile(orgId: string, fileId: string | null) {
+    if (!fileId) return;
+    const [found] = await this.db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(eq(files.id, fileId), eq(files.orgId, orgId), eq(files.kind, 'contract')))
+      .limit(1);
+    if (!found) throw new BadRequestException('合同原件找不到了，请重新上传');
+  }
+
+  // 开通、续约共用：写一份合同和它的购买、赠送次数（16 页「次数记录」的原因；页面会在前面加「原因：」，存的时候不带）
+  private async insertContract(
+    tx: Pick<Database, 'insert'>,
+    orgId: string,
+    operatorId: string,
+    d: {
+      contractNumber: string;
+      contractStartsAt: string;
+      contractEndsAt: string;
+      contractFileId: string | null;
+      purchasedCredits: number;
+      giftCredits: number;
+      giftCampaign: string | null;
+      purchaseReason: string;
+      giftReason: string;
+    },
+  ) {
+    const [contract] = await tx
+      .insert(organizationContracts)
+      .values({
+        orgId,
+        number: d.contractNumber,
+        scopeKind: null,
+        scopeEnterprises: null,
+        startsAt: d.contractStartsAt,
+        endsAt: d.contractEndsAt,
+        fileId: d.contractFileId,
+        paymentConfirmedBy: operatorId,
+      })
+      .returning({ id: organizationContracts.id });
+    const credits = [
+      ...(d.purchasedCredits > 0
+        ? [{ type: 'contract_purchase' as const, delta: d.purchasedCredits, campaign: null, reason: d.purchaseReason }]
+        : []),
+      ...(d.giftCredits > 0 ? [{ type: 'gift' as const, delta: d.giftCredits, campaign: d.giftCampaign, reason: d.giftReason }] : []),
+    ];
+    if (credits.length > 0) {
+      await tx
+        .insert(creditEntries)
+        .values(credits.map((c) => ({ ...c, orgId, contractId: contract!.id, pool: CREDIT_ENTRY_POOL[c.type], createdBy: operatorId })));
+    }
+  }
+
+  // 组织详情「年度服务」页签：全部合同，新的在前；次数按类型相加（不含交付扣减）
+  private async contractList(orgId: string) {
+    const rows = await this.db
+      .select({
+        id: organizationContracts.id,
+        number: organizationContracts.number,
+        startsAt: organizationContracts.startsAt,
+        endsAt: organizationContracts.endsAt,
+        scopeKind: organizationContracts.scopeKind,
+        scopeEnterprises: organizationContracts.scopeEnterprises,
+        paymentConfirmedAt: organizationContracts.paymentConfirmedAt,
+        paymentConfirmedByName: users.name,
+        fileId: files.id,
+        fileName: files.originalName,
+        fileCreatedAt: files.createdAt,
+      })
+      .from(organizationContracts)
+      .innerJoin(users, eq(users.id, organizationContracts.paymentConfirmedBy))
+      .leftJoin(files, eq(files.id, organizationContracts.fileId))
+      .where(eq(organizationContracts.orgId, orgId))
+      .orderBy(desc(organizationContracts.startsAt), desc(organizationContracts.createdAt));
+    const sums = await this.db
+      .select({ contractId: creditEntries.contractId, type: creditEntries.type, total: sql<number>`sum(${creditEntries.delta})::int` })
+      .from(creditEntries)
+      .where(eq(creditEntries.orgId, orgId))
+      .groupBy(creditEntries.contractId, creditEntries.type);
+    const today = chinaToday();
+    return rows.map(({ fileId, fileName, fileCreatedAt, ...c }) => {
+      const sum = (type: string) => sums.find((s) => s.contractId === c.id && s.type === type)?.total ?? 0;
+      return {
+        ...c,
+        state: isCreditContractActive(c, today) ? ('active' as const) : c.startsAt > today ? ('upcoming' as const) : ('expired' as const),
+        credits: { purchase: sum('contract_purchase'), gift: sum('gift'), topUp: sum('top_up'), compensation: sum('compensation') },
+        file: fileId ? { id: fileId, originalName: fileName!, createdAt: fileCreatedAt! } : null,
+      };
+    });
   }
 
   // 这一期首位管理员只能是新账号（已有账号加入其他组织留给第 7 项），发邀请时当场拦下，不等对方接受时才报错
