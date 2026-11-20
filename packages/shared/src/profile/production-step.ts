@@ -52,6 +52,8 @@ export const draftPressureVesselSchema = z.object({
   medium: text(30, '介质'),
   maxWorkingPressureMPa: amount,
   volumeM3: amount,
+  // 资料表格里放不进上面几格的内容（数量、主要参数、位置等），原样拼在一起给专家看（选填）
+  note: text(200, '备注'),
 });
 export const BOILER_TYPES = { steam: '蒸汽锅炉', hot_water: '热水锅炉', thermal_oil: '有机热载体锅炉' } as const;
 export const draftBoilerSchema = z.object({
@@ -59,16 +61,22 @@ export const draftBoilerSchema = z.object({
   type: z.enum(Object.keys(BOILER_TYPES) as [keyof typeof BOILER_TYPES]).optional(),
   // 如「2 t/h，1.25 MPa」
   ratedParams: text(50, '额定参数'),
+  // 同压力容器的 note
+  note: text(200, '备注'),
 });
 export const draftPipelineSchema = z.object({
   id,
   medium: text(30, '介质'),
   nominalDiameter: text(20, '公称直径'),
+  // 同压力容器的 note
+  note: text(200, '备注'),
 });
 export const draftTankSchema = z.object({
   id,
   substance: text(30, '储存物'),
   capacity: text(20, '储存量'),
+  // 同压力容器的 note；油库也放在储罐这一类，note 里写明「油库」
+  note: text(200, '备注'),
 });
 
 const category = <T extends z.ZodType>(row: T) =>
@@ -99,6 +107,8 @@ export const draftEquipmentSchema = z.object({
   location: text(50, '使用部门 / 地点'),
   // 可选常用值，也可直接写（如「运行 4 台」）
   condition: text(20, '使用状况'),
+  // 资料表格「备注」列（选填）
+  note: text(100, '备注'),
   // 所在厂址（有两处及以上地址时选填，见 addresses.ts）
   addressId: z.string().max(40).optional(),
 });
@@ -137,6 +147,23 @@ export const productionStepSchema = z.object({
   leasesPremises: z.boolean().optional(),
   ownVehicles: z.boolean().optional(),
   process: processDraftSchema.prefault({}),
+  // 以下来自资料表格，网页自填没有这几项（选填）
+  // 厂中厂的承租企业名称
+  tenants: z.array(z.string().trim().min(1).max(100, '承租企业名称最多 100 个字')).max(20).optional(),
+  // 特种设备「其他」一行：四类都放不下的（如电梯、起重机械、叉车），整行原样写成一句给专家判断
+  otherSpecialEquipment: z
+    .array(z.object({ id, description: z.string().trim().min(1).max(200, '最多 200 个字') }))
+    .max(20)
+    .optional(),
+  // 自有车辆：数量、停放位置、联系人和电话
+  vehicles: z
+    .object({
+      count: text(20, '车辆数量'),
+      location: text(50, '停放位置'),
+      contact: text(50, '联系人'),
+      contactPhone: text(30, '联系人电话'),
+    })
+    .optional(),
 });
 export type ProductionStep = z.infer<typeof productionStepSchema>;
 export type SpecialEquipmentDraft = ProductionStep['specialEquipment'];

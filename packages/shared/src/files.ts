@@ -10,6 +10,9 @@ export const FILE_TYPES = {
   doc: { mime: 'application/msword', label: 'DOC' },
   xlsx: { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', label: 'XLSX' },
   xls: { mime: 'application/vnd.ms-excel', label: 'XLS' },
+  // CAD 图纸（准备资料的图纸与照片）
+  dwg: { mime: 'image/vnd.dwg', label: 'DWG' },
+  dxf: { mime: 'image/vnd.dxf', label: 'DXF' },
 } as const;
 export type FileType = keyof typeof FILE_TYPES;
 
@@ -23,6 +26,10 @@ export const UPLOAD_RULES = {
   image_or_pdf: { types: ['pdf', 'jpg', 'png', 'webp'], maxBytes: 10 * MB },
   // 已签合同原件，仅运营上传和查看（M3）
   contract: { types: ['pdf'], maxBytes: 20 * MB },
+  // 准备资料：填好的资料表格，只收 .xlsx
+  intake_sheet: { types: ['xlsx'], maxBytes: 20 * MB },
+  // 准备资料：总平面布置图、紧急疏散示意图、其他图纸与照片（手绘拍照、扫描件、CAD 都可以）
+  intake_drawing: { types: ['pdf', 'jpg', 'png', 'webp', 'dwg', 'dxf'], maxBytes: 10 * MB },
 } as const satisfies Record<string, { types: readonly FileType[]; maxBytes: number }>;
 export type UploadRule = keyof typeof UPLOAD_RULES;
 
@@ -53,7 +60,7 @@ export function detectFileType(buf: Uint8Array): FileType | null {
   // DOCX / XLSX 是 zip 包，看里面的目录名
   if (startsWith(buf, [0x50, 0x4b, 0x03, 0x04]) && contains(buf, ascii('[Content_Types].xml'))) {
     if (contains(buf, ascii('word/'))) return 'docx';
-    if (contains(buf, ascii('xl/'))) return 'xlsx';
+    if (contains(buf, ascii('xl/workbook'))) return 'xlsx';
     return null;
   }
   // DOC / XLS 是 OLE 复合文档
@@ -62,8 +69,37 @@ export function detectFileType(buf: Uint8Array): FileType | null {
     if (contains(buf, utf16le('Workbook')) || contains(buf, utf16le('Book'))) return 'xls';
     return null;
   }
+  // CAD：DWG 开头是「AC10」加版本号；DXF 有文本和二进制两种
+  if (startsWith(buf, ascii('AC10'))) return 'dwg';
+  if (startsWith(buf, ascii('AutoCAD Binary DXF'))) return 'dxf';
+  if (isTextDxf(buf)) return 'dxf';
   return null;
 }
+
+// 文本 DXF：头两个非空行是「0」「SECTION」
+function isTextDxf(buf: Uint8Array): boolean {
+  const head = new TextDecoder('latin1').decode(buf.subarray(0, 64));
+  const lines = head.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== '');
+  return lines[0] === '0' && lines[1] === 'SECTION';
+}
+
+/** 压缩包（S02 原话）：zip（不是 Office 文件的）、rar、7z、gz 一律这么回 */
+export const ARCHIVE_MESSAGE = '压缩包打不开。请解压后把里面的文件传上来。';
+
+export function isArchive(buf: Uint8Array): boolean {
+  if (startsWith(buf, [0x50, 0x4b, 0x03, 0x04]) || startsWith(buf, [0x50, 0x4b, 0x05, 0x06])) {
+    return !contains(buf, ascii('[Content_Types].xml'));
+  }
+  return (
+    startsWith(buf, [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07]) ||
+    startsWith(buf, [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]) ||
+    startsWith(buf, [0x1f, 0x8b])
+  );
+}
+
+// 资料表格传错格式时的提示（我拟的）：老版 Excel 单说一句，其余统一一句
+export const INTAKE_SHEET_XLS_MESSAGE = '这是老版 Excel（.xls）文件，读不了。请用下载的资料模板（.xlsx）填好再传；手上只有 .xls 的，用 Excel 或 WPS 另存为 .xlsx 也可以。';
+export const INTAKE_SHEET_TYPE_MESSAGE = '资料表格只收 .xlsx 文件。请用下载的资料模板填好再传。';
 
 // 校验上传文件；不通过时返回给客户看的原因
 export function fileRejectionReason(rule: UploadRule, name: string, buf: Uint8Array): string | null {
@@ -73,6 +109,8 @@ export function fileRejectionReason(rule: UploadRule, name: string, buf: Uint8Ar
   }
   if (buf.length === 0) return `${name} 是空文件，请重新选择`;
   const type = detectFileType(buf);
+  if (!type && isArchive(buf)) return ARCHIVE_MESSAGE;
+  if (rule === 'intake_sheet' && type !== 'xlsx') return type === 'xls' ? INTAKE_SHEET_XLS_MESSAGE : INTAKE_SHEET_TYPE_MESSAGE;
   if (!type || !(types as readonly FileType[]).includes(type)) {
     return `${name} 的格式不支持，请选择 ${types.map((t) => FILE_TYPES[t].label).join('、')}`;
   }

@@ -46,6 +46,10 @@ export const draftSupplySchema = z.object({
   unit: text(10, '单位'),
   quantity: count,
   location: text(50, '位置'),
+  // 以下三项来自资料表格（选填）：保管人、保管人电话、状态（完好 / 过期 / 待补充）
+  keeper: text(50, '保管人'),
+  keeperPhone: text(30, '保管人电话'),
+  status: text(20, '状态'),
   // 所在厂址（有两处及以上地址时选填，见 addresses.ts）
   addressId: z.string().max(40).optional(),
 });
@@ -84,6 +88,9 @@ export const draftBuildingSchema = z.object({
   fireRating: z.enum(Object.keys(FIRE_RATINGS) as [FireRating, ...FireRating[]]).default('expert'),
   floors: z.number().int().min(1).max(200).optional(),
   areaM2: amount,
+  // 资料表格里的结构类型、用途或备注（选填）
+  structure: text(30, '结构类型'),
+  use: text(50, '用途'),
 });
 export type DraftBuilding = z.infer<typeof draftBuildingSchema>;
 
@@ -129,6 +136,8 @@ export const resourcesStepSchema = z.object({
       volumeM3: amount,
       // 容积点了「稍后补」
       volumeLater: z.boolean().default(false),
+      // 资料表格里的消防水池位置（选填）
+      location: text(100, '消防水池位置'),
     })
     .prefault({}),
   buildings: z.array(draftBuildingSchema).max(50, '建筑最多 50 栋').default([]),
@@ -157,6 +166,22 @@ export const resourcesStepSchema = z.object({
   mutualAid: z.object({ answer: z.enum(YES_NO_UNKNOWN).optional(), parties: text(100, '签订对象') }).optional(),
   // 紧急集合点（疏散后清点人数的地方）：有的写位置
   assemblyPoint: z.object({ answer: z.enum(YES_NO_UNKNOWN).optional(), location: text(100, '集合点位置') }).optional(),
+  // 以下来自资料表格「周边可以求助的单位」（选填）
+  // 就近医院
+  hospital: z.object({ name: text(50, '医院名称'), phone: text(30, '电话'), note: text(100, '备注') }).optional(),
+  // 「其他」类，旧版模板的属地消防救援站、园区管理方也放这里；type 是表格 A 列的类型
+  otherContacts: z
+    .array(
+      z.object({
+        id,
+        type: text(20, '类型'),
+        name: text(50, '名称'),
+        phone: text(30, '电话'),
+        note: text(100, '备注'),
+      }),
+    )
+    .max(20)
+    .optional(),
 });
 export type ResourcesStep = z.infer<typeof resourcesStepSchema>;
 
