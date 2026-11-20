@@ -22,7 +22,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [orgId, setOrgId] = useState<string>();
-  // 运营侧栏的角标：客户组织 = 待开通，任务中心 = 待分派 + 超时兜底 + 新上门工单，反馈受理 = 待受理（Paper 16 页侧栏）
+  // 运营侧栏的角标：客户组织 = 待开通，任务中心 = 待分派，反馈受理 = 待受理（Paper 16 页侧栏）
   const isOperator = workspace === 'operator' && Boolean(session.data && membershipsIn(session.data, 'operator').length > 0);
   const overview = useOperatorOverview(isOperator);
 
@@ -47,7 +47,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
     const o = overview.data;
     if (!o) return 0;
     if (path === '/operator/organizations') return o.orgs.pending;
-    if (path === '/operator/tasks') return o.tasks.unassigned + o.followUps.overdue + o.followUps.onSiteNew;
+    if (path === '/operator/tasks') return o.tasks.unassigned;
     if (path === '/operator/feedback') return o.feedback.new;
     return 0;
   };
@@ -87,7 +87,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
               onChange={setOrgId}
               options={memberships.map((m) => ({ value: m.orgId, label: nav.orgLabel ?? m.orgName }))}
               style={{ width: 191 }}
-              aria-label="当前机构"
+              aria-label="当前组织"
             />
           </div>
           <Menu

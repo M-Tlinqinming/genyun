@@ -104,8 +104,6 @@ export interface OperatorOverview {
   orgs: { total: number; active: number; pending: number; expired: number };
   tasks: { open: number; preparing: number; unassigned: number; drafting: number };
   deliveries: { thisMonth: number };
-  // 超时兜底、上门工单已取消，恒为 0（侧栏角标还在读，界面升级后去掉）
-  followUps: { overdue: number; onSiteNew: number };
   // 反馈受理（M3 第 6 项）：待受理、处理中；「待跟进反馈」= 两者之和
   feedback: { new: number; processing: number };
   todos: OverviewTodo[];

@@ -245,8 +245,6 @@ export class OperatorOverviewController {
         drafting: taskRows.filter((t) => t.status === 'submitted' && t.assignedExpertId).length,
       },
       deliveries: { thisMonth: delivered.length },
-      // 超时兜底、上门工单已取消；字段留着给侧栏角标（恒为 0）
-      followUps: { overdue: 0, onSiteNew: 0 },
       feedback: {
         new: feedbackRows.filter((f) => f.status === 'new').length,
         processing: feedbackRows.filter((f) => f.status === 'processing').length,

@@ -174,7 +174,7 @@ describe('运营概览', () => {
     // 已结束的任务不算在办
     expect(body.tasks).toEqual({ open: 4, preparing: 1, unassigned: 1, drafting: 2 });
     expect(body.deliveries).toEqual({ thisMonth: 1 });
-    expect(body.followUps).toEqual({ overdue: 0, onSiteNew: 0 });
+    expect(body).not.toHaveProperty('followUps');
     expect(body.feedback).toEqual({ new: 0, processing: 0 });
   });
 

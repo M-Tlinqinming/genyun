@@ -32,8 +32,7 @@ export function useConfirmGeneration(taskId: string) {
       request<{ current: GenerationProgress }>(`/tasks/${taskId}/generation`, { method: 'POST', body: JSON.stringify(input) }),
     onSuccess: (res) => {
       client.setQueryData(generationKey(taskId), res);
-      // 新一批：采用过的事实补件算按新事实重新生成过，「事实已更新」提示消失；审核按新一批重来
-      void client.invalidateQueries({ queryKey: ['tasks', taskId, 'supplements'] });
+      // 新一批：审核按新一批重来
       void client.invalidateQueries({ queryKey: ['tasks', taskId, 'draft-review'] });
     },
   });
