@@ -12,6 +12,7 @@ import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import { memberships, notifications, organizations, taskIntakeSubmissions, tasks, taskWorkups, users } from '../db/schema.ts';
 import { LocalDiskStorage } from '../files/storage.ts';
+import { CUSTOMER_WITHDREW_MESSAGE } from '../tasks/workup.service.ts';
 import {
   EXPERT_STARTED_MESSAGE,
   missingMessage,
@@ -259,6 +260,70 @@ describe('撤回', () => {
     expect(ops.status).toBe(403);
     expect(ops.body.message).toBe(READ_ONLY_MESSAGE);
     expect(view(await (await as('ops@test.cn')).get(`/api/tasks/${taskId}/intake`)).canWithdraw).toBe(false);
+  });
+});
+
+describe('撤回和专家开始核对加锁', () => {
+  /** 提交好、分给周工，还没打开 */
+  async function assigned(name: string) {
+    const { taskId } = await readyTask(name);
+    view(await submit(taskId));
+    await handle.db.update(tasks).set({ assignedExpertId: uid['zhou@test.cn']! }).where(eq(tasks.id, taskId));
+    return taskId;
+  }
+  const open = async (taskId: string) => (await as('zhou@test.cn')).get(`/api/tasks/${taskId}/workup`);
+  const workupRows = async (taskId: string) => (await handle.db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId))).length;
+
+  it('先撤回、后专家打开：409 customer_withdrew，不插快照', async () => {
+    const taskId = await assigned('耕云测试先撤回有限公司');
+    view(await withdraw(taskId));
+    const res = await open(taskId);
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ code: 'customer_withdrew', message: CUSTOMER_WITHDREW_MESSAGE });
+    expect(await workupRows(taskId)).toBe(0);
+    expect((await taskRow(taskId)).status).toBe('preparing');
+    // 改好再提交：专家打开，快照取的是重新提交时的资料
+    view(await submit(taskId));
+    const ok = await open(taskId);
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(ok.body.snapshot.identity.name).toBe('耕云测试先撤回有限公司');
+    expect(await workupRows(taskId)).toBe(1);
+  });
+
+  it('先专家打开、后撤回：撤回 409 expert_started，还是已提交', async () => {
+    const taskId = await assigned('耕云测试先打开有限公司');
+    expect((await open(taskId)).status).toBe(200);
+    expect(await workupRows(taskId)).toBe(1);
+    const res = await withdraw(taskId);
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('expert_started');
+    expect((await taskRow(taskId)).status).toBe('submitted');
+  });
+
+  it('同时撤回和打开：只能是上面两种结果之一', async () => {
+    for (let i = 0; i < 3; i++) {
+      const taskId = await assigned(`耕云测试同时撤回${i}有限公司`);
+      const [w, o] = await Promise.all([withdraw(taskId), open(taskId)]);
+      const status = (await taskRow(taskId)).status;
+      const rows = await workupRows(taskId);
+      if (w.status === 200) {
+        expect(o.status).toBe(409);
+        expect(o.body.code).toBe('customer_withdrew');
+        expect([status, rows]).toEqual(['preparing', 0]);
+      } else {
+        expect(w.status).toBe(409);
+        expect(w.body.code).toBe('expert_started');
+        expect(o.status).toBe(200);
+        expect([status, rows]).toEqual(['submitted', 1]);
+      }
+    }
+  });
+
+  it('撤回后删掉的任务：负责专家打不开（404）', async () => {
+    const taskId = await assigned('耕云测试删掉打不开有限公司');
+    view(await withdraw(taskId));
+    expect((await remove(taskId)).status).toBe(204);
+    expect((await open(taskId)).status).toBe(404);
   });
 });
 

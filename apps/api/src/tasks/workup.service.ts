@@ -46,11 +46,12 @@ import {
   ParseUUIDPipe,
   Put,
 } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { isOperator } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
+import { lockTaskRow } from '../intake/intake.service.ts';
 import { KnowledgeService } from '../knowledge/knowledge.service.ts';
 import {
   checklistItemFiles,
@@ -61,6 +62,7 @@ import {
   taskDocuments,
   taskIntakeFiles,
   taskIntakes,
+  taskIntakeSubmissions,
   tasks,
   taskWorkups,
   users,
@@ -104,6 +106,13 @@ export interface WorkupOriginal {
   itemKeys: string[];
   uploadedAt: Date;
 }
+
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+type Executor = Database | Tx;
+
+// 我拟的。专家开始核对时客户已经撤回（先后只差一点，或者专家开着旧页面）
+export const CUSTOMER_WITHDREW_MESSAGE = '客户撤回了这次提交，正在改资料。重新提交后会回到您的列表。';
+const customerWithdrew = () => new ConflictException({ statusCode: 409, message: CUSTOMER_WITHDREW_MESSAGE, code: 'customer_withdrew' });
 
 // 资料核对：每个任务一份，只有负责专家能改；运营可以看（M3 改派时接手）
 @Injectable()
@@ -379,14 +388,15 @@ export class WorkupService {
   }
 
   // 快照的来源：新流程（上传资料表格且已读出内容）取读表结果；老流程复制企业资料
-  async buildSnapshot(task: { id: string; enterpriseId: string }): Promise<WorkupSnapshot> {
-    const [intake] = await this.db
+  // db：在事务里调用时传 tx（PGlite 只有一个连接，事务里再用 this.db 会卡住）
+  async buildSnapshot(task: { id: string; enterpriseId: string }, db: Executor = this.db): Promise<WorkupSnapshot> {
+    const [intake] = await db
       .select({ parseResult: taskIntakes.parseResult })
       .from(taskIntakes)
       .where(eq(taskIntakes.taskId, task.id))
       .limit(1);
     if (intake?.parseResult) return { identity: intake.parseResult.identity, profile: intake.parseResult.profile };
-    const [ent] = await this.db.select().from(enterprises).where(eq(enterprises.id, task.enterpriseId)).limit(1);
+    const [ent] = await db.select().from(enterprises).where(eq(enterprises.id, task.enterpriseId)).limit(1);
     return {
       identity: {
         name: ent!.name,
@@ -398,13 +408,27 @@ export class WorkupService {
     };
   }
 
-  // 负责专家第一次打开时写快照；两人同时打开只留先写入的那份。只在负责专家的路径上调用
+  // 负责专家第一次打开时写快照；两人同时打开只留先写入的那份。只在负责专家的路径上调用。
+  // 新流程（有 task_intakes 行）：和客户撤回用同一把锁，锁里再看一次任务还是已提交才算快照、插入；
+  // 客户先撤回了就 409 customer_withdrew。快照在锁里算，免得插进撤回前的旧资料
   private async ensure(task: { id: string; enterpriseId: string }) {
     const existing = await this.row(task.id);
     if (existing) return existing;
-    const snapshot = await this.buildSnapshot(task);
     const data: WorkupData = { overrides: {} };
-    await this.db.insert(taskWorkups).values({ taskId: task.id, snapshot, data }).onConflictDoNothing();
+    const [intake] = await this.db.select({ taskId: taskIntakes.taskId }).from(taskIntakes).where(eq(taskIntakes.taskId, task.id)).limit(1);
+    if (!intake) {
+      const snapshot = await this.buildSnapshot(task);
+      await this.db.insert(taskWorkups).values({ taskId: task.id, snapshot, data }).onConflictDoNothing();
+      return (await this.row(task.id))!;
+    }
+    await this.db.transaction(async (tx) => {
+      const { task: locked } = await lockTaskRow(tx, task.id);
+      const [started] = await tx.select({ taskId: taskWorkups.taskId }).from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
+      if (started) return;
+      if (locked.status !== 'submitted') throw customerWithdrew();
+      const snapshot = await this.buildSnapshot(task, tx);
+      await tx.insert(taskWorkups).values({ taskId: task.id, snapshot, data }).onConflictDoNothing();
+    });
     return (await this.row(task.id))!;
   }
 
@@ -543,11 +567,20 @@ export class WorkupService {
         submittedAt: tasks.submittedAt,
       })
       .from(tasks)
-      .where(eq(tasks.id, id))
+      .where(and(eq(tasks.id, id), isNull(tasks.deletedAt)))
       .limit(1);
     const isAssigned = task && task.assignedExpertId === user.id && user.memberships.some((m) => m.role === 'expert');
     if (!task || !(isAssigned || isOperator(user))) throw new NotFoundException(NOT_FOUND);
-    if (task.status !== 'submitted') throw new BadRequestException('客户还没有提交资料，提交后才能开始核对');
+    if (task.status !== 'submitted') {
+      // 新流程的任务被客户撤回了：和锁里撞上撤回同一句话
+      const [withdrawn] = await this.db
+        .select({ id: taskIntakeSubmissions.id })
+        .from(taskIntakeSubmissions)
+        .where(and(eq(taskIntakeSubmissions.taskId, id), isNotNull(taskIntakeSubmissions.withdrawnAt)))
+        .limit(1);
+      if (withdrawn && task.status === 'preparing') throw customerWithdrew();
+      throw new BadRequestException('客户还没有提交资料，提交后才能开始核对');
+    }
     return task;
   }
 
