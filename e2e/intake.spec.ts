@@ -199,8 +199,12 @@ test('传改好的表：必填齐了，可以提交；删掉疏散图又缺一�
   await expect(page.getByRole('group', { name: '图纸与照片', exact: true })).toContainText('已传 2 张');
   await shot('u2b');
 
-  // 提交在后续开发里接上：现在点了没反应，也不报错
+  // 点了先弹确认；「再看看」不提交，留在准备资料页（提交的全过程在 workflow-submit.spec.ts）
   await submit().click();
+  const confirm = page.getByRole('dialog').filter({ hasText: '确认提交给专家？' });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: '再看看' }).click();
+  await expect(confirm).toBeHidden();
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${mainTask}/prepare$`));
 
   await page.getByRole('group', { name: '紧急疏散示意图' }).last().getByRole('button', { name: '删除' }).click();
@@ -244,7 +248,7 @@ test('别家企业的表不读取，可以去那家的任务；同一家改了�
 const START_ITEMS = ['business_license', 'basic_info', 'process_flow', 'equipment', 'special_equipment', 'materials', 'emergency_groups', 'emergency_supplies', 'evacuation_plan'];
 
 test('已经提交的任务打开准备资料页，转回任务详情', async () => {
-  // 提交给专家在后续开发里接上；这里用现有的提交接口把任务提交出去（同工作台测试）
+  // 用旧的提交接口把任务直接提交出去（不走准备资料），只看准备资料页会不会转走
   const id = await newTask('耕云测试已提交有限公司');
   await page.request.patch(`/api/tasks/${id}`, { data: { startMethod: 'upload' } });
   const file = await page.request.post(`/api/orgs/${orgId}/files?rule=material`, { multipart: { file: pdf('总平面图.pdf') } });
@@ -263,5 +267,5 @@ test('已经提交的任务打开准备资料页，转回任务详情', async ()
 
   await page.goto(`/customer/tasks/${id}/prepare`);
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${id}$`));
-  await expect(page.getByText('资料已提交', { exact: true })).toBeVisible();
+  await expect(page.getByText('已提交，编制期间不需要您操作')).toBeVisible();
 });
