@@ -31,11 +31,11 @@ describe('图件：自动排版', () => {
     expect(v.org).toMatchObject({ deputy: true, office: false, customized: false, status: 'pending' });
   });
 
-  it('飞宇：10 道工序、每行 5 道、没有支路；两张图都要采用', () => {
+  it('飞宇：10 道工序、每行 5 道、没有支路；组织体系图实时生成不用采用，只有工艺流程图要采用', () => {
     expect(v.process).toMatchObject({ available: true, perRow: 5, customized: false, source: '由客户的一句话描述拆出' });
     expect(v.process.steps).toHaveLength(10);
-    expect(v.required).toBe(2);
-    expect(v.pending.map((p) => p.label)).toEqual(['应急救援组织体系图', '生产工艺流程图']);
+    expect(v.required).toBe(1);
+    expect(v.pending.map((p) => p.label)).toEqual(['生产工艺流程图']);
   });
 
   it('没有工序时工艺流程图画不出，不计入必需项，也不能采用', () => {
@@ -43,7 +43,8 @@ describe('图件：自动排版', () => {
     profile.productionStep!.step.process.steps = [];
     const empty = figuresView({ ...feiyuSnapshot, profile } as WorkupSnapshot, { overrides: {} });
     expect(empty.process.available).toBe(false);
-    expect(empty.required).toBe(1);
+    expect(empty.required).toBe(0);
+    expect(empty.pending).toEqual([]);
     expect(figuresSaveError(empty, { version: 1, adopt: ['process'] })).toBe('没有工序，画不出工艺流程图');
   });
 });

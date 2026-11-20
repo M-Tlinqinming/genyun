@@ -69,6 +69,8 @@ export interface ExpertInput {
   facts?: ExpertFacts;
   /** 专家微调后的图件画法；没有时按自动排版 */
   figures?: PlanFigures;
+  /** 专家在资料核对里勾了「先留空」的事实键：这几项文稿写「（待补充）」，不写「—」 */
+  pending?: string[];
 }
 
 export interface PlanInput {

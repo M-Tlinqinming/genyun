@@ -3,7 +3,7 @@
 // 章用「1.」、节用「1.1」，编号后不空格（按专家稿，Martin 2026-10-31 确认）；再往下（1）企业概况）是加粗段落。
 import { flowOptionsOf, processFlowSvg, workplacesOf, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
 import { svgToPng } from '../word/png.ts';
-import { MISSING, cnDate, dash, fill, type PlanContext } from '../plan/context.ts';
+import { MISSING, cnDate, dash, fill, optional, type PlanContext } from '../plan/context.ts';
 import { parseMarkdown, toSections, type Figure } from '../plan/markdown.ts';
 
 export function companyOverview(ctx: PlanContext): string[] {
@@ -28,9 +28,9 @@ export function companyBasicTable(ctx: PlanContext, no: string): string[] {
     `| 公司名称 | ${ctx.company} |`,
     `| 注册地址 | ${fill(b.registeredAddress?.detail)} |`,
     `| 邮政编码 | ${dash(b.postalCode)} |`,
-    `| 联系电话 | ${dash(b.contactPhone)} |`,
+    `| 联系电话 | ${optional(ctx.input, 'contactPhone', b.contactPhone)} |`,
     `| 传真 | ${dash(b.fax)} |`,
-    `| 联系人 | ${dash(b.contactPerson)} |`,
+    `| 联系人 | ${optional(ctx.input, 'contactPerson', b.contactPerson)} |`,
     `| 公司网址 | ${dash(b.website)} |`,
     `| 电子邮箱 | ${dash(b.email)} |`,
     `| 公司类型 | ${dash(b.companyType)} |`,

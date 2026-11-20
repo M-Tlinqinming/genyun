@@ -12,7 +12,7 @@ import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { complete, testDocument } from '../tasks/test-workup.ts';
-import { DEMO_EMAILS, DEMO_ORGS, demoContractPdf, seedDemo } from './demo-seed.ts';
+import { DEMO_EMAILS, DEMO_INTAKE_ENTERPRISE, DEMO_ORGS, demoContractPdf, seedDemo } from './demo-seed.ts';
 
 const { enterprises, memberships, organizationContracts, organizations, taskContacts, taskNumberCounters, tasks, taskWorkups, users } = schema;
 
@@ -56,7 +56,7 @@ const hashOf = async (db: Database, email: string) =>
   (await db.select({ h: users.passwordHash }).from(users).where(eq(users.email, email)))[0]?.h;
 
 describe('演示数据', () => {
-  it('空库：写入五个演示账号、两家已开通且登记了合同的客户组织、三个已提交的任务（其中一个超时没联系上客户）', async () => {
+  it('空库：写入五个演示账号、两家已开通且登记了合同的客户组织、四个已提交的任务（其中一个超时没联系上客户、一个是上传资料表格的新流程）', async () => {
     handle = await openDatabase('memory://');
     const { db } = handle;
     const { storage, stored } = memoryStorage();
@@ -72,7 +72,9 @@ describe('演示数据', () => {
     for (const o of customers) expect(o).toMatchObject({ contractStartsAt: '2026-01-01', contractEndsAt: '2027-12-31', activatedAt: expect.any(Date) });
     expect(await db.select().from(organizationContracts)).toHaveLength(2);
     // 合同原件存进了文件存储，是一份 PDF
-    expect([...stored.values()].every((b) => b.subarray(0, 5).toString() === '%PDF-')).toBe(true);
+    const contractFiles = await db.select().from(schema.files).where(eq(schema.files.kind, 'contract'));
+    expect(contractFiles).toHaveLength(2);
+    for (const f of contractFiles) expect(stored.get(f.storageKey)!.subarray(0, 5).toString()).toBe('%PDF-');
 
     const rows = await db
       .select({ number: tasks.number, status: tasks.status, enterprise: enterprises.name, expert: users.email })
@@ -85,7 +87,19 @@ describe('演示数据', () => {
       { number: `GY-${year}-001`, status: 'submitted', enterprise: feiyuBasicInfo.companyName, expert: DEMO_EMAILS.expert },
       { number: `GY-${year}-002`, status: 'submitted', enterprise: '示例五金制品有限公司', expert: null },
       { number: `GY-${year}-003`, status: 'submitted', enterprise: '示例塑胶制品有限公司', expert: DEMO_EMAILS.expert2 },
+      { number: `GY-${year}-004`, status: 'submitted', enterprise: DEMO_INTAKE_ENTERPRISE, expert: DEMO_EMAILS.expert },
     ]);
+    // 新流程任务：读表结果按正式读表代码读出、资料表格和三份图纸照片都存了、有一条没撤回的提交记录
+    const [intake] = await db.select().from(schema.taskIntakes);
+    expect(intake!.parseResult!.identity.name).toBe(DEMO_INTAKE_ENTERPRISE);
+    expect(intake!.parseResult!.profile.basicStep?.basic.employeeCount).toBe(45);
+    expect(intake!.requiredCheck!.missing).toEqual([]);
+    const intakeFiles = await db.select().from(schema.taskIntakeFiles);
+    expect(intakeFiles.map((f) => f.slot).sort()).toEqual(['data_sheet', 'evacuation_map', 'other', 'site_plan']);
+    expect(intake!.dataSheetFileId).toBe(intakeFiles.find((f) => f.slot === 'data_sheet')!.fileId);
+    const subs = await db.select().from(schema.taskIntakeSubmissions);
+    expect(subs).toHaveLength(1);
+    expect(subs[0]!.snapshot.files).toHaveLength(4);
     // 塑胶：吴工打过一次没接通，任务两周前提交
     const contacts = await db.select().from(taskContacts);
     expect(contacts).toHaveLength(1);
@@ -139,12 +153,12 @@ describe('演示数据', () => {
       expect.arrayContaining([`组织「${DEMO_ORGS.internal}」`, `账号 ${DEMO_EMAILS.agencyAdmin}`, `账号 ${DEMO_EMAILS.expert}`, `账号 ${DEMO_EMAILS.operator}`]),
     );
     const afterFirst = await counts(db);
-    // 只多了缺的：飞宇组织、两个新账号、两份合同、三家企业、三个任务
+    // 只多了缺的：飞宇组织、两个新账号、两份合同、四家企业、四个任务
     expect(afterFirst.users! - before.users!).toBe(2);
     expect(afterFirst.organizations! - before.organizations!).toBe(1);
     expect(afterFirst.organization_contracts! - before.organization_contracts!).toBe(2);
-    expect(afterFirst.enterprises! - before.enterprises!).toBe(3);
-    expect(afterFirst.tasks! - before.tasks!).toBe(3);
+    expect(afterFirst.enterprises! - before.enterprises!).toBe(4);
+    expect(afterFirst.tasks! - before.tasks!).toBe(4);
 
     const second = await seedDemo(db, { passwordHash: await hashPassword('third-password'), storage });
     expect(second.created).toEqual([]);
@@ -173,6 +187,7 @@ describe('演示数据', () => {
     const numbers = (await db.select({ number: tasks.number, name: tasks.name }).from(tasks).orderBy(tasks.number)).map((t) => `${t.number} ${t.name}`);
     expect(numbers).toEqual([`GY-${year}-001 测试人员的任务`, `GY-${year}-002 ${year} 年生产安全事故应急预案编制`, `GY-${year}-003 ${year} 年生产安全事故应急预案编制`,
       `GY-${year}-004 ${year} 年生产安全事故应急预案编制`,
+      `GY-${year}-005 ${year} 年生产安全事故应急预案编制`,
     ]);
     // 机构原来的开通时间不改，只补上空着的地区和联系人
     expect((await db.select().from(organizations).where(eq(organizations.id, agency!.id)))[0]).toMatchObject({
