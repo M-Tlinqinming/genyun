@@ -80,7 +80,7 @@ beforeAll(async () => {
       { name: '耕云', kind: 'internal' },
     ])
     .returning();
-  [org.a, org.b, org.c, org.d, org.e] = rows.slice(0, 5).map((r) => r.id);
+  (['a', 'b', 'c', 'd', 'e'] as const).forEach((k, i) => (org[k] = rows[i]!.id));
   const internal = rows[5]!.id;
   // 管理员按建号先后：陈志刚在前
   const people = [
