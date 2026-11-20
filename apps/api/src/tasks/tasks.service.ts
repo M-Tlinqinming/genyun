@@ -39,6 +39,7 @@ import {
   files,
   notifications,
   organizations,
+  taskIntakes,
   taskNumberCounters,
   taskSubmissions,
   tasks,
@@ -68,6 +69,14 @@ const taskColumns = {
 };
 
 export type TaskView = Awaited<ReturnType<TasksService['load']>>;
+
+// 同一企业没办完的任务：新建任务页据此显示「继续已有任务」或「查看这个任务」
+interface OpenTask {
+  id: string;
+  number: string;
+  name: string;
+  status: 'preparing' | 'submitted';
+}
 
 @Injectable()
 export class TasksService {
@@ -147,7 +156,14 @@ export class TasksService {
     return hit !== undefined;
   }
 
-  async create(user: SessionUser, enterpriseId: string, input: TaskCreateInput) {
+  // 新建任务页选好企业就要知道这家有没有在办任务（12 页 U0b）；权限与新建任务相同
+  async openTaskOf(user: SessionUser, enterpriseId: string) {
+    await this.creatableEnterprise(user, enterpriseId);
+    return { openTask: (await this.findOpenTask(enterpriseId, 'emergency_plan')) ?? null };
+  }
+
+  // 能为这家企业新建任务：看得到这家企业（否则一律「找不到」），并且是本组织的客户（专家、运营不替客户建）
+  private async creatableEnterprise(user: SessionUser, enterpriseId: string) {
     const [ent] = await this.db
       .select({
         orgId: enterprises.orgId,
@@ -160,6 +176,11 @@ export class TasksService {
       .limit(1);
     if (!ent || !canViewEnterprise(user, { orgId: ent.orgId, enterpriseId })) throw new NotFoundException('找不到该企业');
     if (!canEditEnterpriseData(user, { orgId: ent.orgId, enterpriseId })) throw new ForbiddenException('编制任务由客户自己创建');
+    return ent;
+  }
+
+  async create(user: SessionUser, enterpriseId: string, input: TaskCreateInput) {
+    const ent = await this.creatableEnterprise(user, enterpriseId);
 
     // 已有没结束的同类任务：带客户去继续那个任务（12 页 P02B）
     const existing = await this.findOpenTask(enterpriseId, input.businessType);
@@ -189,6 +210,8 @@ export class TasksService {
             createdBy: user.id,
           })
           .returning({ id: tasks.id });
+        // 有这一行就是新流程任务（下载资料模板、上传资料表格）
+        await tx.insert(taskIntakes).values({ taskId: created!.id, updatedBy: user.id });
         return created!.id;
       });
       return this.load(user, id);
@@ -429,17 +452,25 @@ export class TasksService {
 
   private async findOpenTask(enterpriseId: string, businessType: TaskCreateInput['businessType']) {
     const [found] = await this.db
-      .select({ id: tasks.id, number: tasks.number, name: tasks.name })
+      .select({ id: tasks.id, number: tasks.number, name: tasks.name, status: tasks.status })
       .from(tasks)
-      .where(and(eq(tasks.enterpriseId, enterpriseId), eq(tasks.businessType, businessType), isNull(tasks.closedAt)))
+      .where(
+        and(
+          eq(tasks.enterpriseId, enterpriseId),
+          eq(tasks.businessType, businessType),
+          isNull(tasks.closedAt),
+          // 删掉的任务不占「同一企业只有一个在办任务」的名额
+          isNull(tasks.deletedAt),
+        ),
+      )
       .limit(1);
     return found;
   }
 
-  private duplicate(existing: { id: string; number: string; name: string }) {
+  private duplicate(existing: OpenTask) {
     return new ConflictException({
       statusCode: 409,
-      message: `这家企业已有进行中的同类任务（${existing.number}），可以继续该任务`,
+      message: `这家企业已经有一个没办完的任务（${existing.number}），继续这个任务就行`,
       existingTask: existing,
     });
   }

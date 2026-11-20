@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { enterpriseAssignments, memberships, organizations, tasks, users } from '../db/schema.ts';
+import { enterpriseAssignments, memberships, organizations, taskIntakes, tasks, users } from '../db/schema.ts';
 
 const PASSWORD = 'correct horse battery staple';
 const MISSING = '00000000-0000-4000-8000-000000000000';
@@ -112,6 +112,19 @@ describe('企业档案', () => {
   it('企业名称必填', async () => {
     await (await as('a-admin@test.cn')).post(`/api/orgs/${org.a}/enterprises`).send({ name: '' }).expect(400);
   });
+
+  it('同一组织里企业重名（空格、全角括号、大小写不同也算）返回 409 并带上已有企业，不同组织不受影响', async () => {
+    const first = await createEnterprise('a-admin@test.cn', org.a, { name: '重名(惠州)ABC 有限公司' });
+    for (const name of [' 重名（惠州）abc有限公司 ', '重名 (惠州) Abc　有限公司']) {
+      const dup = await (await as('a-admin@test.cn')).post(`/api/orgs/${org.a}/enterprises`).send({ name });
+      expect(dup.status).toBe(409);
+      expect(dup.body).toMatchObject({
+        message: '组织里已经有这家企业了',
+        existingEnterprise: { id: first.id, name: '重名(惠州)ABC 有限公司' },
+      });
+    }
+    await createEnterprise('b-admin@test.cn', org.b, { name: '重名（惠州）ABC有限公司' });
+  });
 });
 
 describe('越权：企业档案', () => {
@@ -186,6 +199,48 @@ describe('编制任务', () => {
     const again = await (await as('a-admin@test.cn')).post(`/api/enterprises/${ent.id}/tasks`).send({ name: '再来一个' });
     expect(again.status).toBe(409);
     expect(again.body.existingTask).toMatchObject({ id: first.id, number: first.number });
+  });
+
+  it('新建任务同时建好资料准备记录', async () => {
+    const t = await createTask('a-admin@test.cn', (await createEnterprise('a-admin@test.cn', org.a, { name: '资料记录企业' })).id);
+    const rows = await handle.db.select().from(taskIntakes).where(eq(taskIntakes.taskId, t.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.updatedBy).toBe(uid['a-admin@test.cn']);
+  });
+
+  it('409 带上已有任务的编号、名称和是否已提交', async () => {
+    const ent = await createEnterprise('a-admin@test.cn', org.a, { name: '已有任务详情企业' });
+    const first = await createTask('a-admin@test.cn', ent.id, '第一个任务');
+    const again = await (await as('a-admin@test.cn')).post(`/api/enterprises/${ent.id}/tasks`).send({ name: '第二个' });
+    expect(again.status).toBe(409);
+    expect(again.body.existingTask).toEqual({ id: first.id, number: first.number, name: '第一个任务', status: 'preparing' });
+  });
+
+  it('删掉的任务不挡新建', async () => {
+    const ent = await createEnterprise('a-admin@test.cn', org.a, { name: '删过任务的企业' });
+    const first = await createTask('a-admin@test.cn', ent.id);
+    await handle.db.update(tasks).set({ deletedAt: new Date(), deletedBy: uid['a-admin@test.cn'] }).where(eq(tasks.id, first.id));
+    const open = await (await as('a-admin@test.cn')).get(`/api/enterprises/${ent.id}/open-task`).expect(200);
+    expect(open.body).toEqual({ openTask: null });
+    const second = await createTask('a-admin@test.cn', ent.id, '重新建的任务');
+    expect(second.id).not.toBe(first.id);
+  });
+
+  it('查在办任务：有就返回，没有返回 null；看不到企业的 404，专家、运营 403', async () => {
+    const ent = await createEnterprise('a-admin@test.cn', org.a, { name: '查在办任务企业' });
+    const admin = await as('a-admin@test.cn');
+    expect((await admin.get(`/api/enterprises/${ent.id}/open-task`).expect(200)).body).toEqual({ openTask: null });
+    const t = await createTask('a-admin@test.cn', ent.id, '在办的任务');
+    expect((await admin.get(`/api/enterprises/${ent.id}/open-task`).expect(200)).body.openTask).toEqual({
+      id: t.id,
+      number: t.number,
+      name: '在办的任务',
+      status: 'preparing',
+    });
+    await (await as('b-admin@test.cn')).get(`/api/enterprises/${ent.id}/open-task`).expect(404);
+    await (await as('a-member@test.cn')).get(`/api/enterprises/${ent.id}/open-task`).expect(404);
+    await (await as('expert@test.cn')).get(`/api/enterprises/${ent.id}/open-task`).expect(404);
+    await (await as('ops@test.cn')).get(`/api/enterprises/${ent.id}/open-task`).expect(403);
   });
 
   it('选择开始方式', async () => {
