@@ -7,7 +7,7 @@ export const CUSTOMER_STAGES = ['准备资料', '专家编制', '已交付'] as 
 /** 专家这一端的四个阶段 */
 export const EXPERT_STAGES = ['资料核对', '生成初稿', '核对定稿', '交付'] as const;
 
-// 向导壳子：顶栏 64（带阶段条）+ 画布底色的内容区（宽 1080，上 32 下 48）+ 贴底的操作栏。
+// 向导壳子：顶栏 64（带阶段条）+ 画布底色的内容区（宽 1080，上下 48）+ 贴底的操作栏。
 // 不带侧栏，用于客户准备资料、专家核对这类一步一步往下走的页面。
 export function WizardLayout({
   title,
@@ -16,6 +16,7 @@ export function WizardLayout({
   current,
   headerExtra,
   footer,
+  paddingBlock = 48,
   children,
 }: {
   /** 顶栏左边第一行：在做什么 */
@@ -30,6 +31,8 @@ export function WizardLayout({
   headerExtra: ReactNode;
   /** 底部操作栏（ActionBar），不传就没有 */
   footer?: ReactNode;
+  /** 内容区上下内边距，默认 48 */
+  paddingBlock?: number;
   /** 页面内容 */
   children: ReactNode;
 }) {
@@ -38,7 +41,7 @@ export function WizardLayout({
       <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
         <WizardHeader title={title} enterpriseName={enterpriseName} stages={stages} current={current} extra={headerExtra} />
       </div>
-      <main style={{ flex: '1 0 auto', display: 'flex', justifyContent: 'center', padding: '32px 24px 48px' }}>
+      <main style={{ flex: '1 0 auto', display: 'flex', justifyContent: 'center', padding: `${paddingBlock}px 24px` }}>
         <div style={{ width: '100%', maxWidth: layout.wizard }}>{children}</div>
       </main>
       {footer}

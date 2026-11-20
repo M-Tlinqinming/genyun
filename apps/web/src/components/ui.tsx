@@ -30,7 +30,7 @@ export const linkButton: CSSProperties = {
 };
 
 // 卡片和抽屉里的小号文字链接
-export const linkButtonSmall: CSSProperties = { ...linkButton, fontSize: 13, lineHeight: '20px' };
+export const linkButtonSmall: CSSProperties = { ...linkButton, fontSize: 14, lineHeight: '22px' };
 
 // 页面上的提示条：已按设计系统改成无边框、圆角 8、上下 12 左右 16、16 号图标。
 // 新页面请用 NoticeBar（只有一句话、不带标题）；这里保留标题 + 说明两行的旧写法，给已有页面用。

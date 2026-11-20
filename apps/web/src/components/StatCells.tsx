@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { gy, stage, type, weight } from '../theme/tokens';
 import type { StatusTone } from './StatusTag';
 
@@ -47,6 +47,7 @@ export function StatCells({
 }
 
 function StatCell({ item, selected, onClick }: { item: StatItem; selected: boolean; onClick?: () => void }) {
+  const [hover, setHover] = useState(false);
   const body = (
     <>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -72,14 +73,22 @@ function StatCell({ item, selected, onClick }: { item: StatItem; selected: boole
     padding: '16px 20px',
     borderRadius: 8,
     border: `1px solid ${selected ? gy.primary : gy.split}`,
-    background: selected ? gy.selected : gy.surface,
+    // 选中：浅蓝底；可点的格子悬停时换成画布浅灰
+    background: selected ? gy.selected : hover && onClick ? gy.canvas : gy.surface,
     textAlign: 'left',
     fontFamily: 'inherit',
     transition: 'border-color 0.15s, background-color 0.15s',
   };
   if (!onClick) return <div style={style}>{body}</div>;
   return (
-    <button type="button" aria-pressed={selected} onClick={onClick} style={{ ...style, cursor: 'pointer' }}>
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ ...style, cursor: 'pointer' }}
+    >
       {body}
     </button>
   );

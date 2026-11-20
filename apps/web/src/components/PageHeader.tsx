@@ -12,6 +12,7 @@ export function PageHeader({
   description,
   actions,
   extra,
+  gap = 4,
 }: {
   /** 详情页的返回链接；一级页面不传 */
   back?: { to: string; label: string };
@@ -27,11 +28,13 @@ export function PageHeader({
   actions?: ReactNode;
   /** 旧名，等同 actions，保留给已有页面 */
   extra?: ReactNode;
+  /** 左侧各行之间的间距：工作台页默认 4，向导页头用 8 */
+  gap?: number;
 }) {
   const right = actions ?? extra;
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, marginBottom: 24 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap, minWidth: 0 }}>
         {back && <BackLink to={back.to} label={back.label} />}
         {eyebrow && <div style={{ ...type.caption, color: gy.secondary }}>{eyebrow}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>

@@ -150,10 +150,11 @@ export function UiShowcasePage() {
               <StatusTag tone="action" note="今天 16:00 前">待核对资料</StatusTag>
               <TaskStageTag status="preparing" />
               <TaskStageTag status="submitted" />
-              <SourceTag kind="customer" />
-              <SourceTag kind="expert" />
-              <SourceTag kind="system" />
-              <SourceTag kind="customer">营业执照.pdf</SourceTag>
+              <SourceTag kind="customer" text="客户表格" />
+              <SourceTag kind="customer" text="由您上传" />
+              <SourceTag kind="expert" text="您已修改" />
+              <SourceTag kind="expert" text="只有专家能填" />
+              <SourceTag kind="system" text="耕云补全" />
             </div>
           </Card>
         </Section>
@@ -219,6 +220,7 @@ export function UiShowcasePage() {
                   </ActionBar>
                 }
               >
+                <PageHeader gap={8} title="准备资料" description="下载模板填好后上传，必填项齐了就能交给专家。" />
                 <Card title="下载模板，填好后上传">按模板填好企业基本情况、人员和物资，上传后系统会自动检查必填项。</Card>
               </WizardLayout>
             </div>

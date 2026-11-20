@@ -114,7 +114,7 @@ export const theme: ThemeConfig = {
       inkBarColor: gy.primary,
     },
     // 标签：12 号字、高 22
-    Tag: { defaultBg: gy.neutralBg, defaultColor: gy.secondary, fontSizeSM: 12, lineHeightSM: 22 / 12 },
+    Tag: { defaultBg: gy.neutralBg, defaultColor: gy.secondary, fontSizeSM: 12, lineHeightSM: 20 / 12 },
     // 提示条：无边框、圆角 8、上下 12 左右 16
     Alert: {
       withDescriptionPadding: '12px 16px',

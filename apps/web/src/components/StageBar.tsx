@@ -25,7 +25,7 @@ export function StageBar({
       {stages.map((name, i) => {
         const state = i < current ? 'done' : i === current ? 'current' : 'todo';
         return (
-          <Fragment key={name}>
+          <Fragment key={i}>
             {i > 0 && (
               <li
                 aria-hidden

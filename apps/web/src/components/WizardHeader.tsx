@@ -36,7 +36,7 @@ export function WizardHeader({
         borderBottom: `1px solid ${gy.split}`,
       }}
     >
-      <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ flex: '0 0 360px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 24 }}>
         <Logo />
         <span style={{ width: 1, height: 24, flexShrink: 0, background: gy.split }} />
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -52,7 +52,7 @@ export function WizardHeader({
         </div>
       </div>
       {stages && <StageBar stages={stages} current={current} />}
-      <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
+      <div style={{ flex: '0 0 360px', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 20 }}>
         {extra}
       </div>
     </header>
