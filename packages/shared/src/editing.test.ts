@@ -135,9 +135,14 @@ describe('保存请求格式', () => {
     blocks: [{ type: 'paragraph', text: ['甲'] }],
     note: '按名册更正联系人',
   };
-  it('修订说明必填', () => {
+  it('修改说明选填：不写或空白都存空字符串，超过 200 字报错', () => {
     expect(sectionSaveSchema.safeParse(ok).success).toBe(true);
-    expect(sectionSaveSchema.safeParse({ ...ok, note: '  ' }).success).toBe(false);
+    const { note: _omit, ...bare } = ok;
+    expect(sectionSaveSchema.parse(bare).note).toBe('');
+    expect(sectionSaveSchema.parse({ ...ok, note: '  ' }).note).toBe('');
+    const long = sectionSaveSchema.safeParse({ ...ok, note: '字'.repeat(201) });
+    expect(long.success).toBe(false);
+    expect(long.error?.issues[0]?.message).toBe('修改说明不超过 200 字');
   });
   it('块的类型只能是段落、列表或锁定块', () => {
     expect(sectionSaveSchema.safeParse({ ...ok, blocks: [{ type: 'table', header: [], rows: [] }] }).success).toBe(false);

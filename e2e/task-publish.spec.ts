@@ -10,8 +10,6 @@ async function login(page: Page, email: string) {
   await page.getByRole('button', { name: /登\s*录/ }).click();
 }
 
-const checkBar = (page: Page) => page.getByRole('region', { name: '核对本份' });
-
 async function shots(page: Page, name: string) {
   for (const [w, h] of [
     [1366, 768],
@@ -26,12 +24,6 @@ async function shots(page: Page, name: string) {
   await page.setViewportSize({ width: 1440, height: 1000 });
 }
 
-async function checkThis(page: Page, button: RegExp) {
-  await expect(page.getByText(/第 \d 页 \/ 4/)).toBeVisible({ timeout: 30_000 });
-  await checkBar(page).getByRole('checkbox').check();
-  await checkBar(page).getByRole('button', { name: button }).click();
-}
-
 test.setTimeout(300_000);
 
 test('审核通过后交付；结果不确定时先查询，再点不会出第二次交付；客户看到已交付', async ({ page, browser }) => {
@@ -42,20 +34,17 @@ test('审核通过后交付；结果不确定时先查询，再点不会出第�
   const base = page.url().replace(/\?.*$/, '');
   const taskId = base.split('/').pop()!;
 
-  // 三份逐份核对、确认审核结论
-  await page.goto(`${base}?view=edit&doc=plan&tab=preview`);
-  await checkThis(page, /确认本份并核对下一份/);
+  // 三份逐份核对、写审核结论，定稿并交付（R03）
+  await page.goto(`${base}?view=edit&doc=plan`);
+  const check = page.getByRole('button', { name: '这一份核对完成' });
+  await check.click();
   await expect(page).toHaveURL(/doc=risk/);
-  await checkThis(page, /确认本份并核对下一份/);
+  await check.click();
   await expect(page).toHaveURL(/doc=resource/);
-  await checkThis(page, /确认本份，去确认审核结论/);
-  await expect(page).toHaveURL(/view=review/);
-  await page.getByRole('checkbox', { name: /确认以上结论对应当前保存稿/ }).check();
-  await page.getByRole('button', { name: '确认审核通过，进入交付' }).click();
-  await expect(page.getByRole('heading', { name: '本次审核已通过' })).toBeVisible();
-
-  // 进入发布（R03）
-  await page.getByRole('button', { name: '进入交付', exact: true }).click();
+  await check.click();
+  await expect(page).toHaveURL(/tab=conclusion/);
+  await page.getByRole('textbox', { name: '审核结论' }).fill('三份文稿已逐章核对，与资料一致。');
+  await page.getByRole('button', { name: '定稿并交付' }).click();
   await expect(page).toHaveURL(/view=publish/);
   await expect(page.getByRole('heading', { name: '审核已通过，等待交付' })).toBeVisible();
   await expect(page.getByText('本次将首次交付。')).toBeVisible();
@@ -134,10 +123,10 @@ test('审核通过后交付；结果不确定时先查询，再点不会出第�
   expect(another.status()).toBe(409);
   expect((await (await page.request.get(`/api/tasks/${taskId}/publication`)).json()).deliveries).toHaveLength(1);
 
-  // 发布后正文只读
+  // 交付后正文只读
   await page.goto(`${base}?view=edit&doc=plan`);
-  await expect(page.getByRole('status').filter({ hasText: '已交付 · 只读' })).toBeVisible();
-  await expect(page.getByText('这批文稿已交付，正文不能再修改')).toBeVisible();
+  await expect(page.getByRole('article', { name: '正文' }).getByRole('button', { name: /^修改这一节 / })).toHaveCount(0);
+  await expect(page.getByText('这批文稿已交付，正文不能再修改。要更正请回到资料核对，重新生成后再交付。')).toBeVisible();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/acceptance/m2-15-readonly-1440.png' });
 

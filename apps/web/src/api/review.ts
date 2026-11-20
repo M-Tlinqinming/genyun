@@ -1,8 +1,8 @@
-import type { DraftKind, PreviewView, ReviewRequest, ReviewView } from '@genyun/shared';
+import type { DraftKind, HistoryEntry, PreviewView, ReviewRequest, ReviewView } from '@genyun/shared';
 import { useQuery } from '@tanstack/react-query';
 import { request } from './request';
 
-// Word 校对与审核结论（M2 第 12 项）：三份逐份核对、当前稿的 PDF、审核结论
+// 核对定稿：三份逐份核对、Word 预览的 PDF、审核结论、处理记录
 
 export const reviewKey = (taskId: string) => ['tasks', taskId, 'draft-review'] as const;
 export const previewKey = (taskId: string, kind: DraftKind) => ['tasks', taskId, 'drafts', kind, 'preview'] as const;
@@ -45,3 +45,14 @@ export function retryPreview(taskId: string, kind: DraftKind) {
 }
 
 export const previewFileUrl = (taskId: string, kind: DraftKind, version: number) => `/api/tasks/${taskId}/drafts/${kind}/preview/file?v=${version}`;
+
+export const historyKey = (taskId: string) => ['tasks', taskId, 'history'] as const;
+
+/** 处理记录（新的在前）；抽屉打开时才取 */
+export function useHistory(taskId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: historyKey(taskId),
+    queryFn: () => request<HistoryEntry[]>(`/tasks/${taskId}/history`),
+    enabled,
+  });
+}

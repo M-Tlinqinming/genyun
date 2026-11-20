@@ -12,6 +12,7 @@
   --gy-hover: #1e4fc4;
   --gy-selected: #eff4ff;
   --gy-focus: #a3c8ff;
+  --gy-warning: #925f00;
 }
 
 html,
@@ -56,18 +57,18 @@ body {
   animation-name: gy-fade-out !important;
 }
 
-/* 正文编辑（E18-03）：编辑区的段落与列表，正文 14px / 行高 28px */
+/* 正文编辑（E18-03）：编辑区的段落与列表，正文 14px / 行高 24px，段间 8px */
 .gy-section-editor {
   outline: none;
   min-height: 100%;
   color: var(--gy-text);
   font-size: 14px;
-  line-height: 28px;
+  line-height: 24px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .gy-section-editor p {
-  margin: 8px 0;
+  margin: 0 0 8px;
 }
 .gy-section-editor ol,
 .gy-section-editor ul {
@@ -81,11 +82,17 @@ body {
   outline: 2px solid var(--gy-primary);
   border-radius: 4px;
 }
-/* 审核与修订各页（正文编辑、Word 预览、审核结论）的键盘焦点框统一为 3px #A3C8FF（14 页设计稿） */
-.gy-editor-box:focus-within {
-  outline: 3px solid var(--gy-focus);
-  outline-offset: 0;
+/* 核对定稿：右栏点一条待补充，正文里那一处琥珀框闪约 2 秒（E18-15 ②） */
+@keyframes gy-pending-flash {
+  0%, 50%, 100% { outline-color: var(--gy-warning); }
+  25%, 75% { outline-color: transparent; }
 }
+.gy-pending-flash {
+  outline: 2px solid var(--gy-warning);
+  outline-offset: 2px;
+  animation: gy-pending-flash 2s ease-in-out;
+}
+/* 核对定稿各页（正文、Word 预览、审核结论）的键盘焦点框统一为 3px #A3C8FF（14 页设计稿） */
 .gy-edit-page :focus-visible,
 .gy-review-page :focus-visible,
 .gy-edit-page .ant-btn:focus-visible,

@@ -1,6 +1,6 @@
 // 正文编辑（M2 第 11 项，14 页 E18-03、E18-04、E18-07、E18-08）：专家按节修改生成的草稿。
-// 一节里的段落和列表可以改；表格和图来自专业整理，在正文里锁定（只能在专业整理里改后重新生成）。
-// 修订只存改过的节（按节的稳定编号），生成 Word 时盖到生成时存下的文档结构上。
+// 一节里的段落和列表可以改；表格和图来自资料核对，在正文里锁定（只能在资料核对里改后重新生成）。
+// 修改只存改过的节（按节的稳定编号），生成 Word 时盖到生成时存下的文档结构上。
 import { z } from 'zod';
 import type { Block, DeliveryDocument, DocSection, TextRun } from './document/model.ts';
 import type { DraftKind } from './generation.ts';
@@ -66,7 +66,7 @@ export function editBlocksError(original: Block[], edit: EditBlock[]): string | 
   const want = original.flatMap((b, i) => (b.type === 'table' || b.type === 'figure' ? [i] : []));
   const got = edit.flatMap((b) => (b.type === 'locked' ? [b.index] : []));
   if (want.length !== got.length || want.some((i, k) => got[k] !== i)) {
-    return '表格和图来自专业整理，不能在正文里删除或调整顺序；请撤销后再保存';
+    return '表格和图来自资料核对，不能在正文里删除或调整顺序；请撤销后再保存';
   }
   const text = edit.map((b) => (b.type === 'paragraph' ? runsText(b.text) : b.type === 'list' ? b.items.map(runsText).join('') : '')).join('');
   if (!text.trim() && want.length === 0 && original.length > 0) return '本节正文不能为空';
@@ -163,11 +163,12 @@ export const sectionSaveSchema = z.object({
   aiPromptVersion: z.string().trim().min(1).max(40).optional(),
   baseRev: z.number().int().min(0),
   blocks: z.array(editBlockSchema).max(EDIT_LIMITS.blocks),
+  // 修改说明选填：没写存空字符串
   note: z
     .string()
     .trim()
-    .min(1, '请写修订说明：改了什么、依据是什么')
-    .max(EDIT_LIMITS.note, `修订说明不超过 ${EDIT_LIMITS.note} 字`),
+    .max(EDIT_LIMITS.note, `修改说明不超过 ${EDIT_LIMITS.note} 字`)
+    .default(''),
 });
 export type SectionSave = z.infer<typeof sectionSaveSchema>;
 
@@ -183,7 +184,8 @@ export interface SectionView {
   blocks: EditBlock[];
   rev: number;
   /** 最后一次保存；没改过为 null */
-  saved: { note: string; byName: string; at: string } | null;
+  /** by：保存人的账号 id（页面据此写「您已修改」） */
+  saved: { note: string; by?: string; byName: string; at: string } | null;
   /** 这一节里锁定的表格和图的内容（只读显示） */
   locked: LockedPreview[];
 }
