@@ -26,7 +26,7 @@ test.beforeAll(async () => {
   const org = await api.post('/api/operator/organizations', {
     data: {
       name: ORG,
-      region: '广东省惠州市',
+      region: { province: '广东省', city: '惠州市', district: '惠城区' },
       socialCreditCode: '91441300MA5XXXXXX7',
       contactName: '李经理',
       contactPhone: '137 2254 8890',
@@ -43,8 +43,7 @@ test.beforeAll(async () => {
   const opened = await api.post(`/api/operator/organizations/${id}/open`, {
     data: {
       contractNumber: 'GY-HT-2026-118',
-      scopeKind: 'annual',
-      scopeEnterprises: 3,
+      purchasedCredits: 10,
       startsAt: '2026-01-01',
       endsAt: '2027-12-31',
       contractFileId: (await file.json()).id,

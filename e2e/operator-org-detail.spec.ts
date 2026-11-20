@@ -39,7 +39,7 @@ test.beforeAll(async ({ browser }) => {
   const org = await api.post('/api/operator/organizations', {
     data: {
       name: ORG,
-      region: '广东省惠州市博罗县',
+      region: { province: '广东省', city: '惠州市', district: '博罗县' },
       socialCreditCode: '91441322MA5XXXXXX3',
       contactName: '何经理',
       contactPhone: '139 2266 1180',
@@ -55,8 +55,9 @@ test.beforeAll(async ({ browser }) => {
   const opened = await api.post(`/api/operator/organizations/${orgId}/open`, {
     data: {
       contractNumber: 'GY-HT-2026-131',
-      scopeKind: 'annual',
-      scopeEnterprises: 5,
+      purchasedCredits: 20,
+      giftCredits: 2,
+      giftCampaign: '新客户开通活动',
       startsAt: '2026-01-01',
       endsAt: '2027-12-31',
       contractFileId: (await file.json()).id,
@@ -89,16 +90,25 @@ test('从列表点「查看」进入详情：组织资料、成员、企业与�
   await page.getByRole('link', { name: `查看${ORG}` }).click();
   await expect(page).toHaveURL(new RegExp(`/operator/organizations/${orgId}$`));
   await expect(page.getByRole('heading', { level: 1, name: ORG })).toBeVisible();
-  await expect(page.getByText('服务中 · 广东省惠州市博罗县 · ')).toBeVisible();
+  await expect(page.getByRole('link', { name: '返回客户组织' })).toBeVisible();
+  await expect(page.getByText('服务中 · 广东省惠州市 · 2026.')).toBeVisible();
   await expect(page.getByText('0 家企业、0 名成员')).toBeVisible();
 
   await expect(card('组织资料')).toContainText('统一社会信用代码91441322MA5XXXXXX3');
+  await expect(card('组织资料')).toContainText('所在地区广东省惠州市博罗县');
   await expect(card('组织资料')).toContainText('主联系人何经理 · 139 **** 1180');
   await expect(card('联系人与成员')).toContainText(FIRST);
   await expect(card('联系人与成员')).toContainText('邀请中');
   await expect(card('企业与任务')).toContainText('客户还没有添加企业');
   await expect(card('年度服务')).toContainText('2026.01.01 – 2027.12.31');
   await expect(card('年度服务').getByRole('progressbar')).toBeVisible();
+  await expect(card('年度服务')).toContainText('到期前 30 天提醒客户管理员');
+  await expect(card('年度服务').getByRole('button', { name: '登记续约' })).toBeVisible();
+  // 编制次数：开通时登记的合同购买 20 次、赠送 2 次
+  await expect(card('编制次数')).toContainText('剩余 22 次');
+  await expect(card('编制次数')).toContainText('剩余里：赠送 2 次，购买 20 次 · 共 22 次，已用 0 次');
+  await expect(card('编制次数').getByRole('button', { name: '调整次数' })).toBeVisible();
+  await expect(card('企业与任务').getByRole('link', { name: '去任务中心' })).toHaveAttribute('href', '/operator/tasks');
   const invite = card('开通与邀请');
   await expect(invite).toContainText('首位管理员何经理 · 邀请中');
   await expect(invite).toContainText('待接受邀请1 个');
@@ -172,9 +182,13 @@ test('其他页签：开通与邀请里列出每封邀请的状态', async () =>
   await expect(history.getByRole('listitem').filter({ hasText: FIRST })).toHaveCount(2);
   await expect(history.getByRole('listitem').filter({ hasText: FIRST }).first()).toContainText('已作废');
   await page.getByRole('tab', { name: '年度服务' }).click();
-  await expect(card('合同')).toContainText('合同编号GY-HT-2026-131');
-  await expect(card('合同')).toContainText('服务范围年度服务 · 5 家企业');
-  await expect(card('合同').getByRole('button', { name: '博罗安联合同.pdf' })).toBeVisible();
+  const contract = card('合同 GY-HT-2026-131');
+  await expect(contract).toContainText('生效中');
+  await expect(contract).toContainText('合同有效期2026.01.01 – 2027.12.31');
+  await expect(contract).toContainText('次数合同购买 20 次 · 赠送 2 次');
+  // 开通时不再登记服务范围，新合同没有这一行
+  await expect(contract).not.toContainText('服务范围');
+  await expect(contract.getByRole('button', { name: '博罗安联合同.pdf' })).toBeVisible();
   await page.getByRole('tab', { name: '操作记录' }).click();
   await expect(card('操作记录')).toContainText('登记客户组织');
   await expect(card('操作记录')).toContainText('组织开通，合同有效期生效');
