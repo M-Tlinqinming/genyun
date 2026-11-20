@@ -12,8 +12,9 @@ import {
   type OverviewTodo,
 } from '@genyun/shared';
 import { Controller, ForbiddenException, Get, Inject } from '@nestjs/common';
-import { and, desc, eq, gt, gte, inArray, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, min, notInArray, sql } from 'drizzle-orm';
 import { canViewOperatorOverview } from '../auth/access.ts';
+import { creditBriefs } from '../credits/credits.service.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
@@ -148,6 +149,21 @@ export class OperatorOverviewController {
       return { ...o, state, daysLeft: contract.daysLeft } as const;
     });
     const unassigned = taskRows.filter(needsAssignment);
+    // 编制次数：开通了的组织才算
+    const credits = await creditBriefs(
+      this.db,
+      orgs.filter((o) => o.activatedAt).map((o) => o.id),
+    );
+    // 有锁住成果的组织：最早一份锁住成果的交付时间（这份成果首次交付的时间）
+    const lockedOrgs = [...credits].filter(([, c]) => c.awaiting > 0).map(([id]) => id);
+    const lockedSince = lockedOrgs.length
+      ? await this.db
+          .select({ orgId: tasks.orgId, at: min(deliveries.publishedAt) })
+          .from(tasks)
+          .innerJoin(deliveries, and(eq(deliveries.taskId, tasks.id), eq(deliveries.status, 'done')))
+          .where(and(inArray(tasks.orgId, lockedOrgs), eq(tasks.chargeStatus, 'awaiting_credits'), isNull(tasks.deletedAt)))
+          .groupBy(tasks.orgId)
+      : [];
     const todos: OverviewTodo[] = [];
 
     for (const o of orgs.filter((x) => x.state === 'pending')) {
@@ -210,6 +226,22 @@ export class OperatorOverviewController {
         link: `/operator/feedback?id=${f.id}`,
       });
     }
+    // 次数用完（16 页「次数用完」那一行）：有锁住成果的客户组织，每家一条
+    for (const o of orgs) {
+      const c = credits.get(o.id);
+      if (!c || c.awaiting === 0) continue;
+      const at = lockedSince.find((x) => x.orgId === o.id)?.at;
+      todos.push({
+        kind: 'credits_out',
+        id: o.id,
+        title: o.name,
+        subtitle: `客户组织 · 剩余 ${c.remaining.total} 次`,
+        note: `有 ${c.awaiting} 份成果已编制好，等次数到账后放开；客户加购或续约后在这里登记`,
+        since: (at ? new Date(at) : now).toISOString(),
+        action: '调整次数',
+        link: `/operator/organizations/${o.id}`,
+      });
+    }
     // 等得最久的在前
     todos.sort((a, b) => a.since.localeCompare(b.since));
 
@@ -229,6 +261,7 @@ export class OperatorOverviewController {
         enterprises: o.enterprises,
         state: o.state as 'pending' | 'active',
         daysLeft: o.state === 'active' && o.daysLeft !== null ? Math.round(o.daysLeft) : null,
+        credits: credits.get(o.id) ?? null,
       }));
 
     return {

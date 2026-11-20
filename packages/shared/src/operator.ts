@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import type { InvitationState } from './invitation.ts';
 import type { AuditAction } from './audit.ts';
+import type { OrgCreditsBrief } from './credits.ts';
 import { chinaToday } from './task.ts';
 
 // 耕云内部只有两种角色（CLAUDE.md）：运营管理员、专家。界面统一叫「专家」
@@ -66,6 +67,8 @@ export const OVERVIEW_TODO_KINDS = {
   invitation: '邀请未接受',
   unassigned: '待分派',
   feedback: '待受理反馈',
+  // 有成果已编制好、等次数到账才放开的客户组织
+  credits_out: '次数用完',
 } as const;
 export type OverviewTodoKind = keyof typeof OVERVIEW_TODO_KINDS;
 
@@ -90,6 +93,8 @@ export interface OverviewService {
   state: 'pending' | 'active';
   // 服务中：还剩几天；待开通为空
   daysLeft: number | null;
+  // 编制次数汇总加「等次数」的成果份数；待开通为 null（卡片样式、标黄、排序 K17 再定）
+  credits: OrgCreditsBrief | null;
 }
 
 export interface OverviewActivity {

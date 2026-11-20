@@ -27,6 +27,7 @@ export const AUDIT_ACTIONS = [
   'feedback_accept',
   'feedback_forward',
   'feedback_close',
+  'credits_adjust',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -55,6 +56,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   feedback_accept: '受理反馈',
   feedback_forward: '反馈转给专家',
   feedback_close: '回复并关闭反馈',
+  credits_adjust: '调整次数',
 };
 
 export const AUDIT_PAGE_SIZE = 50;

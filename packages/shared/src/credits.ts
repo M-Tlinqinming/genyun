@@ -148,7 +148,7 @@ export function creditSummary(contracts: CreditContract[], entries: CreditLedger
 }
 
 /** 赠送按活动名称统计（所有合同上的赠送行，正负相加；按活动第一次出现的先后） */
-export function giftCampaignTotals(entries: CreditLedgerRow[]): { campaign: string; total: number }[] {
+export function giftCampaignTotals(entries: Pick<CreditLedgerRow, 'type' | 'delta' | 'campaign'>[]): { campaign: string; total: number }[] {
   const map = new Map<string, number>();
   for (const e of entries) {
     if (e.type !== 'gift') continue;

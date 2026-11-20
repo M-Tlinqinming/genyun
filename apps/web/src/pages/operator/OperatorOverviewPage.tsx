@@ -39,6 +39,8 @@ const TODO_TONE: Record<OverviewTodoKind, { color: string; bg: string }> = {
   invitation: stage.progress,
   unassigned: stage.action,
   feedback: stage.action,
+  // 次数用完：警示色（黄）
+  credits_out: stage.action,
 };
 
 // 设计稿的数字写成两位（03、04）

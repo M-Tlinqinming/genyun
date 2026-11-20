@@ -55,6 +55,7 @@ import {
   users,
 } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
+import { type AfterCommit, CreditsService } from '../credits/credits.service.ts';
 import { enterpriseCustomerIds, NotificationsService } from '../notifications/notifications.service.ts';
 import { EditingService } from './editing.service.ts';
 import { ReviewService } from './review.service.ts';
@@ -82,6 +83,7 @@ export class PublishService {
     @Inject(ReviewService) private readonly review: ReviewService,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(CreditsService) private readonly credits: CreditsService,
   ) {}
 
   /** 交付页：能不能交付、这批文稿最近一次（或 publishId 那一次）交付的情况、已形成的交付版本 */
@@ -209,6 +211,8 @@ export class PublishService {
       return false;
     }
     let published = false;
+    // 次数相关、事务提交后才做的事（检查提醒、发锁住邮件）
+    let after: AfterCommit[] = [];
 
     const changed = await this.db.transaction(async (tx) => {
       // 锁住三份的修订记录，和保存修订不交错；交付期间又保存过就不算
@@ -229,9 +233,26 @@ export class PublishService {
       await tx.insert(deliveryFiles).values(stored.map((s) => ({ deliveryId: row.id, ...s })));
       // 任务进入已交付（以后再次交付时已经是已交付，只更新时间）
       await tx.update(tasks).set({ updatedAt: now }).where(eq(tasks.id, task.id));
-      await tx.update(tasks).set({ closedAt: now }).where(and(eq(tasks.id, task.id), isNull(tasks.closedAt)));
+      // 只在 closedAt 为空时写：写到了就是首次交付（重新打开不清 closedAt，以前交付过的任务都有它）
+      const first = await tx
+        .update(tasks)
+        .set({ closedAt: now })
+        .where(and(eq(tasks.id, task.id), isNull(tasks.closedAt)))
+        .returning({ id: tasks.id });
+      // 首次交付扣 1 次；扣不到时成果先锁住，不发「已交付」，改发锁住铃铛（在 chargeDelivery 里写）。
+      // 再次交付不扣；任务还锁着时「已更新」也不发（客户反正下载不了，放开时会收到通知）
+      let locked: boolean;
+      if (first.length > 0) {
+        const charge = await this.credits.chargeDelivery(tx, task, row);
+        after = charge.after;
+        locked = !charge.charged;
+      } else {
+        const [current] = await tx.select({ chargeStatus: tasks.chargeStatus }).from(tasks).where(eq(tasks.id, task.id));
+        locked = current?.chargeStatus === 'awaiting_credits';
+      }
       // 只在站内提醒，不发邮件；不写专家电话。只提醒机构管理员和负责这家企业的成员
-      await this.notifications.notify(
+      if (!locked)
+        await this.notifications.notify(
         await enterpriseCustomerIds(tx, task),
         {
           taskId: task.id,
@@ -254,6 +275,7 @@ export class PublishService {
       return false;
     });
     if (changed) await fail(CHANGED_WHILE_PUBLISHING);
+    if (published) await this.credits.run(after);
     return published;
   }
 

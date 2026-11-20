@@ -1,6 +1,10 @@
 import {
   adminInvitationSchema,
   chinaToday,
+  CREDIT_ENTRY_POOL,
+  CREDIT_ENTRY_TYPE_LABELS,
+  creditAdjustSchema,
+  type CreditAdjustResult,
   invitationState,
   operatorTaskStage,
   detectFileType,
@@ -34,11 +38,14 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { MulterError } from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
+import { AuditService, clientIp } from '../audit/audit.ts';
 import { canManageOrganizations } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
+import { creditBriefs, CreditsService } from '../credits/credits.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import {
+  creditEntries,
   enterprises,
   files,
   memberships,
@@ -87,6 +94,8 @@ export class OperatorOrgsController {
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
     @Inject(MAILER) private readonly mailer: Mailer,
     @Inject(MAIL_OUTBOX) private readonly mailOutbox: boolean,
+    @Inject(CreditsService) private readonly credits: CreditsService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   @Get()
@@ -104,7 +113,12 @@ export class OperatorOrgsController {
       .where(eq(organizations.kind, 'customer'))
       .orderBy(desc(organizations.createdAt));
     const contracts = await this.latestContracts(rows.map((r) => r.id));
-    return rows.map((r) => ({ ...withState(r), contract: contracts.get(r.id) ?? null }));
+    // 次数汇总加「等次数」的成果份数；还没开通的为 null
+    const credits = await creditBriefs(
+      this.db,
+      rows.filter((r) => r.activatedAt).map((r) => r.id),
+    );
+    return rows.map((r) => ({ ...withState(r), contract: contracts.get(r.id) ?? null, credits: credits.get(r.id) ?? null }));
   }
 
   @Get(':id')
@@ -293,7 +307,7 @@ export class OperatorOrgsController {
         .where(and(eq(organizations.id, id), isNull(organizations.activatedAt)))
         .returning({ id: organizations.id });
       if (!updated) throw new ConflictException('这个组织已经开通了，续期请到组织详情里登记');
-      await tx.insert(organizationContracts).values({
+      const [contract] = await tx.insert(organizationContracts).values({
         orgId: id,
         number: d.contractNumber,
         scopeKind: d.scopeKind,
@@ -302,7 +316,21 @@ export class OperatorOrgsController {
         endsAt: d.endsAt,
         fileId: d.contractFileId,
         paymentConfirmedBy: user.id,
-      });
+      }).returning({ id: organizationContracts.id });
+      // 合同购买和赠送的次数（16 页「次数记录」的两句原因；页面会在前面加「原因：」，存的时候不带）
+      const credits = [
+        ...(d.purchasedCredits
+          ? [{ type: 'contract_purchase' as const, delta: d.purchasedCredits, campaign: null, reason: '开通时按合同登记。' }]
+          : []),
+        ...(d.giftCredits > 0
+          ? [{ type: 'gift' as const, delta: d.giftCredits, campaign: d.giftCampaign, reason: '开通时按活动规则赠送，跟合同一起到期。' }]
+          : []),
+      ];
+      if (credits.length > 0) {
+        await tx.insert(creditEntries).values(
+          credits.map((c) => ({ ...c, orgId: id, contractId: contract!.id, pool: CREDIT_ENTRY_POOL[c.type], createdBy: user.id })),
+        );
+      }
       return createInvitation(tx, {
         orgId: id,
         orgName: org.name,
@@ -320,6 +348,41 @@ export class OperatorOrgsController {
       ...withState(await this.load(id)),
       invitation: { email: d.adminEmail, expiresAt: invitation.expiresAt, mailSent, ...this.mailMode() },
     };
+  }
+
+  // 运营看一个组织的次数：汇总、等次数的成果份数、台账明细（16 页「次数记录」）
+  @Get(':id/credits')
+  async creditsView(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    this.guard(user);
+    await this.load(id);
+    return this.credits.operatorView(id);
+  }
+
+  // 调整次数（16 页「调整次数」弹窗；弹窗本身 K16 做）。提交后放开锁住的成果，再检查次数提醒
+  @Post(':id/credits')
+  @HttpCode(200)
+  async adjustCredits(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ): Promise<CreditAdjustResult> {
+    this.guard(user);
+    const org = await this.load(id);
+    const parsed = creditAdjustSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+    const d = parsed.data;
+    await this.credits.adjust(id, d, user.id);
+    await this.audit.record({
+      action: 'credits_adjust',
+      actorId: user.id,
+      actorEmail: user.email,
+      ip: clientIp(req),
+      target: `${org.name} · ${CREDIT_ENTRY_TYPE_LABELS[d.type]} ${d.delta > 0 ? '+' : ''}${d.delta} 次`,
+    });
+    // 放开以后 releaseLocked 会按新余额检查一次提醒（没放开也查）
+    const released = await this.credits.releaseLocked(id, 'credits');
+    return { summary: (await creditBriefs(this.db, [id])).get(id)!, released };
   }
 
   // 这一期首位管理员只能是新账号（已有账号加入其他组织留给第 7 项），发邀请时当场拦下，不等对方接受时才报错

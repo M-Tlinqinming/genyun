@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.ts';
+import { grantCredits } from '../credits/test-credits.ts';
+import { MemoryMailer } from '../mail/mailer.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import { auditLogs, deliveries, deliveryFiles, enterprises, files, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
@@ -152,8 +154,11 @@ beforeAll(async () => {
     })
     .returning();
   taskId = task!.id;
+  // 编制次数（K14）：首次交付要扣 1 次，没有次数时成果会先锁住
+  await grantCredits(db, customer!.id, uid['ops@test.cn']!, { purchase: 20 });
 
   app = await createApp(db, {
+    mailer: new MemoryMailer(),
     loginLimitPerMinute: 1000,
     storage,
     queue,

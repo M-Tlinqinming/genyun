@@ -20,6 +20,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { canEditOrganizationData, canViewFile, canViewOrganization, enterpriseScope, needsFileEnterprises } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser, Public } from '../auth/session.guard.ts';
+import { assertDeliveryDownloadable } from '../credits/credits.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import {
   checklistItemFiles,
@@ -157,6 +158,17 @@ export class FilesController {
     @Query('inline') inline: string | undefined,
   ) {
     const file = await this.load(user, id);
+    // 交付文件：任务等次数（成果先锁住）时客户不能下载
+    if (file.kind === 'delivery') {
+      const [task] = await this.db
+        .select({ orgId: tasks.orgId, chargeStatus: tasks.chargeStatus })
+        .from(deliveryFiles)
+        .innerJoin(deliveries, eq(deliveries.id, deliveryFiles.deliveryId))
+        .innerJoin(tasks, eq(tasks.id, deliveries.taskId))
+        .where(eq(deliveryFiles.fileId, id))
+        .limit(1);
+      if (task) await assertDeliveryDownloadable(this.db, user, task);
+    }
     const url = await this.storage.downloadUrl(file.storageKey, {
       filename: file.originalName,
       contentType: file.contentType,

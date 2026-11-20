@@ -19,13 +19,23 @@ import JSZip from 'jszip';
 import { canViewDeliveries, canViewOrganization, enterpriseScope } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
+import { assertDeliveryDownloadable, lockInfo } from '../credits/credits.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { deliveries, deliveryFiles, enterprises, files, tasks } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 
 const NOT_FOUND = '找不到该成果';
 
-type TaskRow = { id: string; orgId: string; assignedExpertId: string | null; number: string; name: string; enterpriseId: string; enterpriseName: string };
+type TaskRow = {
+  id: string;
+  orgId: string;
+  assignedExpertId: string | null;
+  number: string;
+  name: string;
+  enterpriseId: string;
+  enterpriseName: string;
+  chargeStatus: string | null;
+};
 
 @Injectable()
 export class DeliveriesService {
@@ -55,6 +65,8 @@ export class DeliveriesService {
   /** 整套下载：同一个交付版本的三份 Word 打成一个压缩包，避免混用版本 */
   async bundle(user: SessionUser, taskId: string, version: number): Promise<{ name: string; data: Buffer }> {
     const task = await this.task(user, taskId);
+    // 成果先锁住（等次数）时客户不能下载
+    await assertDeliveryDownloadable(this.db, user, task);
     const delivery = await this.delivery(task.id, version);
     const rows = await this.db
       .select({ kind: deliveryFiles.kind, name: files.originalName, storageKey: files.storageKey })
@@ -81,6 +93,7 @@ export class DeliveriesService {
         name: tasks.name,
         enterpriseId: tasks.enterpriseId,
         enterpriseName: enterprises.name,
+        chargeStatus: tasks.chargeStatus,
       })
       .from(tasks)
       .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId));
@@ -118,6 +131,12 @@ export class DeliveriesService {
           .where(inArray(deliveryFiles.deliveryId, done.map((d) => d.id)))
       : [];
 
+    // 等次数的任务：锁住的原因和管理员名字（同一组织只查一次）
+    const locks = new Map<string, TaskDeliveries['lock']>();
+    for (const t of list) {
+      if (t.chargeStatus === 'awaiting_credits' && !locks.has(t.orgId)) locks.set(t.orgId, await lockInfo(this.db, t.orgId));
+    }
+
     return list.flatMap((t): TaskDeliveries[] => {
       const versions = done
         .filter((d) => d.taskId === t.id)
@@ -133,7 +152,17 @@ export class DeliveriesService {
           }),
         );
       if (versions.length === 0 && !keepEmpty) return [];
-      return [{ taskId: t.id, taskNumber: t.number, taskName: t.name, enterpriseId: t.enterpriseId, enterpriseName: t.enterpriseName, versions }];
+      return [
+        {
+          taskId: t.id,
+          taskNumber: t.number,
+          taskName: t.name,
+          enterpriseId: t.enterpriseId,
+          enterpriseName: t.enterpriseName,
+          versions,
+          lock: t.chargeStatus === 'awaiting_credits' ? (locks.get(t.orgId) ?? null) : null,
+        },
+      ];
     });
   }
 }
