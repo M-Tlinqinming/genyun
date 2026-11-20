@@ -42,8 +42,21 @@ export interface IntakeParseResult {
   identity: WorkupSnapshot['identity'];
   profile: EnterpriseProfile;
   sources?: Record<string, IntakeCellRef>;
+  /**
+   * 放不进资料的值：超长、电话里有汉字、数字栏写了字等。原样记下，不悄悄丢掉，
+   * 专家核对时再看（K11 决定怎么显示）。label 是给人看的字段名，text 是格子里的原文
+   */
+  unplaced: IntakeUnplacedValue[];
   /** ISO 时间 */
   parsedAt: string;
+}
+
+/** 一个放不进资料的值：在哪张表哪一格、是什么字段、格子里的原文 */
+export interface IntakeUnplacedValue {
+  sheet: string;
+  cell: string;
+  label: string;
+  text: string;
 }
 
 /**
@@ -56,11 +69,33 @@ export interface IntakeMissingItem {
   sheet: string | null;
   row: number | null;
   cell: string | null;
+  /** 给客户看的那句提示，如「没填。大概数就行，可以看租赁合同。」 */
+  note: string;
+  /** 旧版模板和新版对不上的一项（如旧版「是否出租厂房」选了「不清楚」），旧版提示里要数出来 */
+  mismatch?: boolean;
 }
 
-/** 必填核查结果：缺了哪几项。missing 为空 = 必填齐了（还要看两张图） */
+/**
+ * 一项选填没填。按格算的带行和格子（提示「没填。」）；按列算的（如建筑的结构类型）
+ * 只数已填的行里有几行没填，count 是行数，unitWord 是量词，显示成「2 栋没填。」「5 台设备没填。」
+ */
+export interface IntakeOptionalItem {
+  field: string;
+  label: string;
+  sheet: string;
+  row?: number;
+  cell?: string;
+  count?: number;
+  unitWord?: string;
+}
+
+/**
+ * 必填核查结果。missing 是缺的必填，表格里的按工作表、行、列排，缺的两张图排在最后；
+ * missing 为空 = 必填齐了。optional 是选填没填的，不影响提交
+ */
 export interface IntakeRequiredCheck {
   missing: IntakeMissingItem[];
+  optional: IntakeOptionalItem[];
   /** ISO 时间 */
   checkedAt: string;
 }
@@ -103,4 +138,65 @@ export interface IntakeSubmissionSnapshot {
   noEvacuationMap: boolean;
   /** 客户选的专家；为空 = 由耕云安排 */
   preferredExpertId: string | null;
+}
+
+/** 准备资料页上的一份文件（GET /api/tasks/:taskId/intake） */
+export interface IntakeFileView {
+  /** task_intake_files 的 id，删除时用 */
+  id: string;
+  fileId: string;
+  slot: IntakeFileSlot;
+  originalName: string;
+  sizeBytes: number;
+  contentType: string;
+  /** ISO 时间 */
+  uploadedAt: string;
+  uploadedByExpert: boolean;
+}
+
+/** 当前的资料表格：读成了（read），还是不是模板 / 像是别家企业的、没有读取 */
+export interface IntakeSheetView {
+  file: IntakeFileView;
+  status: 'read' | 'not_template' | 'other_enterprise';
+  templateVersion: string | null;
+  /** 旧版模板（读不到版本号） */
+  oldTemplate: boolean;
+  /** 读到的各张表和每张表缺几项；没读取时为空 */
+  sheets: { name: string; missing: number }[];
+}
+
+/** 表格像是别家企业的：按当前用户算好的跳转目标 */
+export interface IntakeOtherEnterprise {
+  enterpriseId: string;
+  enterpriseName: string;
+  /** 当前用户看不看得到那家企业；看不到不放按钮 */
+  visible: boolean;
+  /** 那家企业在办的任务（看得到时才给） */
+  openTaskId: string | null;
+}
+
+/** 这家企业以前提交过的资料表格（U1b）：同一企业其他任务里最近一次没撤回的提交 */
+export interface IntakePreviousSheet {
+  fileId: string;
+  originalName: string;
+  /** ISO 时间 */
+  submittedAt: string;
+}
+
+export interface IntakeView {
+  taskId: string;
+  /** 能不能上传、删除（组织管理员或分配到这家企业的成员，且任务还在准备资料） */
+  canEdit: boolean;
+  dataSheet: IntakeSheetView | null;
+  sitePlan: IntakeFileView | null;
+  evacuationMaps: IntakeFileView[];
+  others: IntakeFileView[];
+  /** 读到表格后才有；没读到为 null */
+  requiredCheck: IntakeRequiredCheck | null;
+  warnings: IntakeWarning[];
+  noEvacuationMap: boolean;
+  otherEnterprise: IntakeOtherEnterprise | null;
+  previousSheet: IntakePreviousSheet | null;
+  /** ISO 时间，「已自动保存 HH:MM」 */
+  updatedAt: string;
 }

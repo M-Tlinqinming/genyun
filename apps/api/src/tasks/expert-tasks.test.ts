@@ -132,13 +132,14 @@ beforeAll(async () => {
     )
     .returning();
   const fileOf = Object.fromEntries(intakeKeys.map((k, i) => [k, fileRows[i]!.id])) as Record<Key, string>;
-  const missing = (field: string) => ({ field, label: field, sheet: '基本信息', row: 3, cell: 'C3' });
+  const missing = (field: string) => ({ field, label: field, sheet: '基本信息', row: 3, cell: 'C3', note: '没填。' });
   await db.insert(taskIntakes).values(
     intakeKeys.map((k) => ({
       taskId: T[k],
       dataSheetFileId: fileOf[k],
       requiredCheck: {
         missing: k === 'preparing' ? [missing('enterprise.legalPerson'), missing('enterprise.phone')] : [],
+        optional: [],
         checkedAt: old.toISOString(),
       },
     })),
