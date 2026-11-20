@@ -11,11 +11,11 @@ export interface Enterprise {
   legalRepresentative: string | null;
   createdAt: string;
   updatedAt: string;
-  /** 列表里才有：分配到这家企业的成员（机构管理员不算） */
+  /** 列表里才有：分配到这家企业的成员（组织管理员不算） */
   members?: { id: string; name: string }[];
 }
 
-// 组织下的任务列表（企业页、工作台、业务任务列表共用）；完整任务详情在任务页取。
+// 组织下的任务列表（企业页、工作台、任务列表共用）；完整任务详情在任务页取。
 // missing = 还缺的开始编制必需资料；remaining = 提交后还没补的项；activityAt = 最近一次有人动过资料
 export interface TaskSummary {
   id: string;

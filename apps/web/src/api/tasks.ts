@@ -1,12 +1,10 @@
 import type {
   BusinessType,
-  CallTime,
   ChecklistItemKey,
   ChecklistItemUpdate,
   ChecklistState,
   ContractPeriod,
   DocumentVersionRef,
-  OnSiteRequestInput,
   Review,
   StartMethod,
   SubmitRequest,
@@ -99,22 +97,11 @@ export function useUpdateTask(id: string) {
   });
 }
 
-// 企业自填第 5 步「核对」（另带预约上门的默认联系人、合同有效期、最近一次上门需求）
-export interface OnSiteRequest {
-  id: string;
-  contactName: string;
-  contactPhone: string;
-  callTime: CallTime | null;
-  helpItems: string[];
-  note: string | null;
-  createdAt: string;
-}
-
+// 企业自填第 5 步「核对」（另带默认联系人、合同有效期）
 export interface TaskReview {
   review: Review;
   contact: { name: string; phone: string };
   contract: { startsAt: string | null; endsAt: string | null };
-  onSiteRequest: OnSiteRequest | null;
 }
 
 export const taskReviewKey = (id: string) => ['tasks', id, 'review'] as const;
@@ -125,20 +112,6 @@ export function useTaskReview(id: string) {
     queryKey: taskReviewKey(id),
     queryFn: () => request<TaskReview>(`/tasks/${id}/review`),
     gcTime: 0,
-  });
-}
-
-export function useRequestOnSite(taskId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: OnSiteRequestInput) =>
-      request<OnSiteRequest>(`/tasks/${taskId}/on-site-requests`, {
-        method: 'POST',
-        body: JSON.stringify(input),
-      }),
-    onSuccess: (created) => {
-      client.setQueryData<TaskReview>(taskReviewKey(taskId), (old) => old && { ...old, onSiteRequest: created });
-    },
   });
 }
 

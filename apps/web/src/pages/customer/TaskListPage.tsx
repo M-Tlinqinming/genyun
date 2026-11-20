@@ -13,7 +13,7 @@ import { CreateTaskButton, link, StageBar, taskHref, taskRows, useContract, when
 
 type Tab = TaskBucket | 'all';
 
-// C04 业务任务｜跨企业找到待办：待我处理在前；按企业名、任务编号搜索，按企业筛选；点进去直达要做的那一步
+// C04 任务｜跨企业找到待办：待我处理在前；按企业名、任务编号搜索，按企业筛选；点进去直达要做的那一步
 export function TaskListPage() {
   const { orgId } = useWorkspace();
   const tasks = useOrgTasks(orgId);
@@ -41,7 +41,7 @@ export function TaskListPage() {
   return (
     <>
       <PageHeader
-        title="业务任务"
+        title="任务"
         description="跨企业查看编制进度，先处理需要您动手的任务。"
         extra={<CreateTaskButton orgId={orgId} canCreate={contract.canCreate} />}
       />
@@ -168,7 +168,7 @@ export function TaskListPage() {
           >
             <span style={{ fontWeight: 500, color: gy.text }}>四个阶段</span>
             <span style={{ color: gy.secondary }}>
-              {TASK_STAGES.join(' → ')}。您只需在「资料准备」和被请求补件时动手；其余由耕云完成。
+              {TASK_STAGES.join(' → ')}。您只需在「资料准备」时上传资料；其余由耕云完成，有疑问专家会直接打电话问您。
             </span>
           </div>
         </>

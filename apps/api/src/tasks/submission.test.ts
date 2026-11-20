@@ -197,7 +197,7 @@ describe('提交生成申请', () => {
   });
 });
 
-describe('业务任务列表的进展', () => {
+describe('任务列表的进展', () => {
   it('列出还缺的必需资料、提交后还没补的项与最近更新时间', async () => {
     const agent = await as('a-admin@test.cn');
     const ent = await agent.post(`/api/orgs/${org.a}/enterprises`).send({ name: '列表进展公司' });

@@ -39,12 +39,10 @@ test('任务页显示资料准备阶段，一次选多份文件全部保存并�
   await page.goto(`/customer/tasks/${taskId}`);
   await expect(page.getByRole('heading', { name: '先准备企业已有资料' })).toBeVisible();
   await expect(page.getByRole('list', { name: '任务阶段' }).locator('[aria-current=step]')).toHaveText(/资料准备/);
-  await expect(page.getByRole('button', { name: '检查资料' })).toBeDisabled();
 
   await mainInput().setInputFiles([pdf('企业资料清单.pdf'), pdf('应急人员名册.pdf')]);
   await expect(table()).toContainText('已关联 2 份原始文件');
   await expect(table().getByRole('row').filter({ hasText: '企业资料清单.pdf' })).toContainText('V1已保存并关联');
-  await expect(page.getByRole('button', { name: '检查资料' })).toBeEnabled();
 });
 
 test('一份格式不对：其余照常保存，失败的一份重选后保存', async () => {

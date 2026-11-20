@@ -87,7 +87,7 @@ describe('企业档案', () => {
     expect(list.body.map((e: { id: string }) => e.id)).toContain(ent.id);
   });
 
-  it('只有机构管理员能新建企业，成员不能（成员只处理分配给自己的企业）', async () => {
+  it('只有组织管理员能新建企业，成员不能（成员只处理分配给自己的企业）', async () => {
     const res = await (await as('a-member@test.cn')).post(`/api/orgs/${org.a}/enterprises`).send({ name: '成员建的企业' });
     expect(res.status).toBe(403);
   });

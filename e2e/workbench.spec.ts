@@ -17,6 +17,26 @@ async function newTask(name: string, startMethod?: 'upload' | 'self_fill') {
   return { ...task, enterpriseId };
 }
 
+const pdf = (name: string) => ({ name, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF-1.7\n% ${name}\n`) });
+const START_ITEMS = ['business_license', 'basic_info', 'process_flow', 'equipment', 'special_equipment', 'materials', 'emergency_groups', 'emergency_supplies', 'evacuation_plan'];
+
+// 用接口准备一项已提交的任务（客户端按提示填写、提交入口已下线，提交接口不变；原来由 task-submit.spec 留下）
+async function submittedTask(name: string) {
+  const task = await newTask(name, 'upload');
+  const file = await page.request.post(`/api/orgs/${orgId}/files?rule=material`, { multipart: { file: pdf('总平面图.pdf') } });
+  const fileId = ((await file.json()) as { id: string }).id;
+  await page.request.post(`/api/tasks/${task.id}/documents`, { data: { fileId } });
+  await page.request.post(`/api/tasks/${task.id}/checklist/site_plan/files`, { data: { fileId } });
+  for (const key of START_ITEMS) await page.request.put(`/api/tasks/${task.id}/checklist/${key}`, { data: { status: 'provided', note: '员工 86 人' } });
+  await page.request.put(`/api/tasks/${task.id}/checklist/duty_phone`, { data: { status: 'later', callRequested: true } });
+  const state = (await (await page.request.get(`/api/tasks/${task.id}/submission`)).json()) as { preview: { fingerprint: string; taskDocuments: unknown } };
+  const res = await page.request.post(`/api/tasks/${task.id}/submission`, {
+    data: { requestId: crypto.randomUUID(), fingerprint: state.preview.fingerprint, documents: state.preview.taskDocuments },
+  });
+  expect(res.ok()).toBe(true);
+  return task;
+}
+
 // 北京时间今天往后 n 天，YYYY-MM-DD
 function chinaDay(offset: number) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date(Date.now() + offset * 86_400_000));
@@ -52,20 +72,18 @@ test('工作台：待我处理写清下一步，点按钮直达那一步', async
 
   const todo = page.getByRole('region', { name: '待我处理' });
   await expect(todo.getByTestId(`todo-${upload.number}`)).toContainText(/补充营业执照 等 \d+ 项/);
-  await expect(todo.getByTestId(`todo-${fresh.number}`)).toContainText('选择开始方式');
+  await expect(todo.getByTestId(`todo-${fresh.number}`)).toContainText('下载资料模板，填好后上传');
   await page.screenshot({ path: 'test-results/workbench-c01.png' });
 
   await todo.getByTestId(`todo-${fresh.number}`).getByRole('button', { name: '开始准备' }).click();
-  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${fresh.id}/start$`));
+  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${fresh.id}$`));
   await page.goto('/customer');
   await todo.getByTestId(`todo-${upload.number}`).getByRole('button', { name: '继续准备' }).click();
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${upload.id}$`));
 });
 
 test('已提交的任务进「正在办理」与「耕云处理中」，不在待我处理里', async () => {
-  // 第 12 项测试里已提交的任务
-  const list = (await (await page.request.get(`/api/orgs/${orgId}/tasks`)).json()) as { number: string; status: string }[];
-  const submitted = list.find((t) => t.status === 'submitted')!;
+  const submitted = await submittedTask('工作台已提交有限公司');
   await page.goto('/customer');
   await expect(page.getByRole('region', { name: '正在办理' })).toContainText('耕云编制中');
   await expect(page.getByTestId(`todo-${submitted.number}`)).toHaveCount(0);
@@ -79,7 +97,7 @@ test('已提交的任务进「正在办理」与「耕云处理中」，不在�
   await expect(page.getByText('资料已提交', { exact: true })).toBeVisible();
 });
 
-test('业务任务：默认先看待我处理，可搜索任务编号、按企业筛选', async () => {
+test('任务：默认先看待我处理，可搜索任务编号、按企业筛选', async () => {
   const task = await newTask('列表筛选测试有限公司', 'self_fill');
   await page.goto('/customer/tasks');
   await expect(page.getByRole('tab', { name: /待我处理 \d+/ })).toHaveAttribute('aria-selected', 'true');

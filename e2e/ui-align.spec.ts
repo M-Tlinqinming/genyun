@@ -59,15 +59,6 @@ test('企业详情：基本信息 6 项，带来源；资料库有文件类型�
   await expect(page.getByRole('img', { name: 'PDF' })).toBeVisible();
 });
 
-test('实际生产地址默认带出注册地址，标「同注册地址」', async () => {
-  const task = await page.request.post(`/api/enterprises/${enterpriseId}/tasks`, { data: { name: '2026 年应急预案编制' } });
-  const taskId = ((await task.json()) as { id: string }).id;
-  await page.request.patch(`/api/tasks/${taskId}`, { data: { startMethod: 'self_fill' } });
-  await page.goto(`/customer/tasks/${taskId}/fill/1`);
-  await expect(page.getByLabel('实际生产地址')).toHaveValue('惠州市惠阳区淡水街道金惠大道 18 号');
-  await expect(page.getByText('同注册地址')).toBeVisible();
-});
-
 test('联系耕云：顶栏打开，显示电话和微信二维码', async () => {
   await page.goto('/customer');
   await page.getByRole('button', { name: '联系耕云' }).click();

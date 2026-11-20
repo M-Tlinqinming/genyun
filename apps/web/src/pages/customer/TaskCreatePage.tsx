@@ -53,7 +53,7 @@ export function TaskCreatePage() {
     create.mutate(
       { businessType: 'emergency_plan', name },
       {
-        onSuccess: (created) => navigate(`/customer/tasks/${created.id}/start`, { replace: true }),
+        onSuccess: (created) => navigate(`/customer/tasks/${created.id}`, { replace: true }),
         onError: (err) => {
           if (err instanceof ApiError && err.status === 409 && err.body?.existingTask) {
             setConflict(err.body.existingTask as ExistingTask);

@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router';
 import { useTaskReview, type Task } from '../../../api/tasks';
 import { gy } from '../../../theme/tokens';
 import { ContactLink, GENGYUN_PHONE } from '../../../components/ContactLink';
-import { OnSiteBanner, OnSiteDialog } from '../OnSiteVisit';
 import { SubmitDialog } from '../submit/SubmitDialog';
 import { FILL_STEPS, FillCard, FillFrame, SecureNote, StepTitle } from './FillFrame';
 import { linkButton, Loading } from '../../../components/ui';
@@ -16,18 +15,17 @@ const rowLine = '1px solid #EEF0F3';
 const AFTER_SUBMIT = [
   { title: '耕云编制初稿', text: '危险源辨识、风险评估、法规匹配', dot: gy.primary },
   { title: '注册安全工程师审核', text: '核实待定项，需要时由负责专家联系您', dot: gy.primary },
-  { title: '发布成果', text: '审核完成后发布，任务页和邮件会通知您', dot: '#EDC147' },
+  { title: '交付成果', text: '审核完成后交付，任务页和邮件会通知您', dot: '#EDC147' },
   { title: '下载全套文档', text: '预案、风险评估、资源调查 Word', dot: gy.success },
 ];
 
-// S05 企业自填第 5 步「核对并提交」：前 4 步的概括、还缺的必需资料、专家判断与稍后补、预约上门。
+// S05 企业自填第 5 步「核对并提交」：前 4 步的概括、还缺的必需资料、专家判断与稍后补。
 // 「提交给耕云」打开确认框（13 页 F02–F06）；已提交的任务回到任务页
 export function ReviewStepPage({ task }: { task: Task }) {
   const navigate = useNavigate();
   const { message } = App.useApp();
   const data = useTaskReview(task.id);
   const [agreed, setAgreed] = useState(true);
-  const [booking, setBooking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submitted = task.status !== 'preparing';
   const exit = () => navigate(`/customer/enterprises/${task.enterpriseId}`);
@@ -79,7 +77,7 @@ export function ReviewStepPage({ task }: { task: Task }) {
     );
   }
 
-  const { review, contract, onSiteRequest } = data.data;
+  const { review, contract } = data.data;
   const later = review.steps.flatMap((s) => s.later);
   const missingCount = review.steps.reduce((n, s) => n + s.missing.length, 0);
 
@@ -131,21 +129,12 @@ export function ReviewStepPage({ task }: { task: Task }) {
               <ListCard
                 label="稍后补"
                 title={`稍后补 · ${later.length} 项`}
-                hint="提交后在任务页随时补，会提醒您"
+                hint="提交后负责专家会联系您补充"
                 items={review.steps.filter((s) => s.later.length > 0).map((s) => s.later.join('、'))}
                 tone={{ bg: gy.canvas, border: gy.split }}
               />
             )}
           </div>
-        )}
-
-        {review.suggestOnSiteVisit && (
-          <OnSiteBanner
-            title={`有 ${later.length} 项要稍后补，自己整理比较费时间`}
-            description="可以先提交，也可以请耕云专家到厂一次补齐。留下联系方式，耕云会电话联系您。"
-            submittedAt={onSiteRequest?.createdAt}
-            onBook={() => setBooking(true)}
-          />
         )}
 
         <FillCard title="提交以后会发生什么" gap={20}>
@@ -181,23 +170,15 @@ export function ReviewStepPage({ task }: { task: Task }) {
           <p style={sideText}>合同与发票问题请联系耕云商务。</p>
         </SideCard>
         <SideCard heading="拿不准？先问问我们" tone="plain">
-          <p style={sideText}>提交后由负责专家审核，有疑问会在任务里问您，或直接打电话。</p>
+          <p style={sideText}>提交后由负责专家审核，有疑问会直接打电话问您。</p>
           <p style={sideText}>
             产品咨询电话 <span style={{ color: gy.text, fontWeight: 500 }}>{GENGYUN_PHONE}</span>
           </p>
           <ContactLink hint="填写或提交中有疑问，可以直接联系耕云。">微信扫码咨询</ContactLink>
-          {onSiteRequest ? (
-            <span style={{ fontSize: 14, lineHeight: '22px', color: gy.success }}>已提交上门需求，耕云会电话联系您</span>
-          ) : (
-            <button type="button" style={link} onClick={() => setBooking(true)}>
-              资料太多整理不过来？预约专家上门
-            </button>
-          )}
         </SideCard>
         <SecureNote />
       </aside>
 
-      <OnSiteDialog taskId={task.id} open={booking} onClose={() => setBooking(false)} />
     </FillFrame>
   );
 }

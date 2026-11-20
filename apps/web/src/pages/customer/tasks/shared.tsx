@@ -20,18 +20,16 @@ export function taskRows(tasks: TaskSummary[] | undefined): TaskRow[] {
     .sort((a, b) => order[a.todo.bucket] - order[b.todo.bucket] || b.activityAt.localeCompare(a.activityAt));
 }
 
-// 已交付的写明是第几个交付版本
+// 已交付的写明交付过（客户只看最新一次交付，不写版本号）
 function withDelivery(todo: TaskTodo, t: TaskSummary): TaskTodo {
-  return todo.bucket === 'delivered' && t.delivery ? { ...todo, next: `已发布交付 V${t.delivery.version}，可查看和下载` } : todo;
+  return todo.bucket === 'delivered' && t.delivery ? { ...todo, next: t.delivery.version > 1 ? '成果已更新，可查看和下载' : '成果已交付，可查看和下载' } : todo;
 }
 
-// 点进去直达要做的那一步：没选开始方式先选；上传路线资料齐了直接到检查页提交；已提交看处理记录
+// 点进去直达要做的那一步：已交付看成果；已提交看处理记录；其余进任务页
 export function taskHref(t: TaskRow): string {
   const base = `/customer/tasks/${t.id}`;
   if (t.todo.bucket === 'delivered') return `/customer/documents/${t.id}`;
   if (t.todo.bucket !== 'mine') return `${base}?tab=records`;
-  if (t.startMethod === null) return `${base}/start`;
-  if (t.startMethod === 'upload' && t.missing.length === 0) return `${base}?view=check`;
   return base;
 }
 
@@ -136,7 +134,7 @@ export function CreateTaskButton({ orgId, canCreate, size = 'large' }: { orgId: 
             </button>
           </span>
         ) : (
-          <span style={{ fontSize: 13, color: gy.secondary }}>只列出分配给您的企业。找不到企业，请联系机构管理员新建或分配。</span>
+          <span style={{ fontSize: 13, color: gy.secondary }}>只列出分配给您的企业。找不到企业，请联系组织管理员新建或分配。</span>
         )}
       </Modal>
     </>

@@ -1,7 +1,6 @@
 import {
   checklistFileLinkSchema,
   checklistItemUpdateSchema,
-  onSiteRequestSchema,
   submitRequestSchema,
   taskCreateSchema,
   taskUpdateSchema,
@@ -110,11 +109,6 @@ export class TasksController {
   @Get('tasks/:id/review')
   review(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasks.review(user, id);
-  }
-
-  @Post('tasks/:id/on-site-requests')
-  requestOnSite(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
-    return this.tasks.requestOnSite(user, id, parse(onSiteRequestSchema, body));
   }
 
   // 确认框内容；提交结果不确定时也用它查询

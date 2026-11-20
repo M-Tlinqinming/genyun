@@ -1,34 +1,20 @@
-import {
-  checkOverview,
-  supplementProgress,
-  type Category,
-  type CategoryCheckItem,
-} from '@genyun/shared';
-import { CheckOutlined } from '@ant-design/icons';
-import { Button, Progress, Result } from 'antd';
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { checkOverview } from '@genyun/shared';
+import { Button, Result } from 'antd';
+import { type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useTaskCheck, useTaskSubmission, type Submission, type Task } from '../../../api/tasks';
-import { FlashOnDone } from '../../../theme/motion';
 import { gy, source, stage } from '../../../theme/tokens';
-import { CheckDrawer } from '../check/CheckDrawer';
-import { OnSiteDialog } from '../OnSiteVisit';
-import { ExpertRequests, useOpenRequests } from './ExpertRequests';
-import { SupplementCard, useOpenSupplement } from './SupplementCard';
 import { AnswerList, DocumentList } from './SubmitDialog';
-import { linkButton, Loading, Notice, panel } from '../../../components/ui';
+import { Loading, Notice, panel } from '../../../components/ui';
 
 const AFTER_SUBMIT = [
   { title: '耕云继续编制', text: '基于本次资料整理信息，生成三份文档初稿。' },
-  { title: '专家核对与修订', text: '校验企业事实与文稿；需要补充事实时，在本任务向您说明。' },
-  { title: '发布后获取成果', text: '下载同一交付版本的应急预案、风险评估和资源调查。' },
+  { title: '专家核对与修订', text: '校验企业事实与文稿；需要补充事实时，负责专家直接联系您。' },
+  { title: '交付后获取成果', text: '在成果文档里下载应急预案、风险评估和资源调查。' },
 ];
 
-// 已提交任务的阶段条（13 页 F03）：资料已提交、下一步、待补几项
-export function SubmittedStatusBar({ task }: { task: Task }) {
-  const { remaining } = useSupplements(task);
-  const questions = useOpenRequests(task.id).reduce((n, r) => n + r.questions.length, 0);
-  const ask = useOpenSupplement(task.id);
+// 已提交任务的阶段条（13 页 F03）：资料已提交、下一步
+export function SubmittedStatusBar({ task: _task }: { task: Task }) {
   return (
     <div
       style={{
@@ -44,137 +30,40 @@ export function SubmittedStatusBar({ task }: { task: Task }) {
         lineHeight: '22px',
       }}
     >
-      {ask ? (
-        <>
-          <span style={{ padding: '1px 8px', borderRadius: 4, color: stage.action.color, background: stage.action.bg }}>待您回应</span>
-          <span style={{ flex: 1, color: gy.text }}>下一步：请回应专家的补充问题（第 {ask.round} 轮），见下方</span>
-        </>
-      ) : (
-        <>
-          <span style={{ padding: '1px 8px', borderRadius: 4, color: stage.done.color, background: stage.done.bg }}>资料已提交</span>
-          <span style={{ flex: 1, color: gy.text }}>下一步：耕云整理资料并生成初稿</span>
-        </>
-      )}
-      {questions > 0 && <span style={{ color: stage.action.color }}>专家想向您确认 {questions} 项</span>}
-      <span style={{ color: gy.secondary }}>
-        {remaining.length > 0 ? `待补 ${remaining.length} 项 · 审核前补齐更好` : '生成完成后进入专家审核'}
-      </span>
+      <span style={{ padding: '1px 8px', borderRadius: 4, color: stage.done.color, background: stage.done.bg }}>资料已提交</span>
+      <span style={{ flex: 1, color: gy.text }}>下一步：耕云整理资料并生成初稿</span>
+      <span style={{ color: gy.secondary }}>生成完成后进入专家审核</span>
     </div>
   );
 }
 
-// 提交时待补、现在还没补的项
-function useSupplements(task: Task) {
-  const submission = useTaskSubmission(task.id);
-  const check = useTaskCheck(task.id);
-  const s = submission.data?.submitted ? submission.data.submission : null;
-  const items = check.data?.items ?? {};
-  const pending = s?.pendingKeys ?? [];
-  const progress = supplementProgress(pending, items);
-  return {
-    submission: s,
-    check,
-    isPending: submission.isPending || check.isPending,
-    error: submission.error ?? check.error,
-    progress,
-    remaining: pending.filter((k) => !progress.doneKeys.includes(k)),
-  };
-}
-
-// 「处理记录」标签（13 页 F03、F03B）：提交成功提示、待补清单、处理记录；右栏负责专家与提交后流程
+// 「处理记录」标签（13 页 F03）：提交成功提示、处理记录；右栏负责专家与提交后流程。
+// 系统里不再补件：需要补充时负责专家直接联系客户
 export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShowMaterials: () => void }) {
   const navigate = useNavigate();
-  const { submission, check, isPending, error, progress, remaining } = useSupplements(task);
-  const [openCategory, setOpenCategory] = useState<Category | null>(null);
-  const [booking, setBooking] = useState(false);
+  const submissionQuery = useTaskSubmission(task.id);
+  const check = useTaskCheck(task.id);
+  const submission = submissionQuery.data?.submitted ? submissionQuery.data.submission : null;
+  const error = submissionQuery.error ?? check.error;
 
-  if (isPending) return <Loading rows={6} />;
+  if (submissionQuery.isPending || check.isPending) return <Loading rows={6} />;
   if (error || !submission || !check.data) {
     return <Result status="error" title="处理记录加载失败" subTitle={error?.message ?? '请刷新页面重试'} />;
   }
 
   const overview = checkOverview(check.data.items);
-  const pendingKeys = new Set(submission.pendingKeys);
-  const groups = overview.categories
-    .map((c) => ({ ...c, items: c.items.filter((i) => pendingKeys.has(i.key)) }))
-    .filter((c) => c.items.length > 0);
-  const opened = overview.categories.find((c) => c.category === openCategory) ?? null;
   const expertItems = overview.withExpert.filter((i) => i.state === 'expert');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <Notice
         tone="success"
-        title={remaining.length > 0 ? '申请已提交，耕云已开始整理' : '申请已提交，当前无需您操作'}
-        text={
-          remaining.length > 0
-            ? `还有 ${remaining.length} 项可稍后补，不影响编制；专家审核前补齐，初稿会更准确。`
-            : '本次资料版本已记录。需要您补充企业事实时，会在本任务中说明。'
-        }
+        title="申请已提交，当前无需您操作"
+        text="本次资料版本已记录。需要您补充企业事实时，负责专家会直接联系您。"
       />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <SupplementCard task={task} />
-          <ExpertRequests task={task} />
-          {groups.length > 0 && (
-            <section aria-label="待补清单" style={panel}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '24px 24px 16px', borderBottom: `1px solid ${gy.split}` }}>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <h2 style={h2}>待补清单</h2>
-                  <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
-                    补一项少一项，补完的会通知负责的注册安全工程师。
-                  </span>
-                </div>
-                <span style={{ fontSize: 14, color: gy.text }}>
-                  已补 {progress.done} / {progress.total}
-                </span>
-                <Progress
-                  percent={progress.total ? Math.round((progress.done / progress.total) * 100) : 0}
-                  showInfo={false}
-                  size="small"
-                  style={{ width: 120, margin: 0 }}
-                />
-              </div>
-              <div style={{ padding: '8px 24px 24px' }}>
-                {groups.map((g) => (
-                  <div key={g.category} style={{ paddingTop: 16 }}>
-                    <span style={{ fontSize: 13, lineHeight: '20px', color: gy.tertiary }}>{g.label}</span>
-                    <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-                      {g.items.map((i, n) => (
-                        <SupplementRow
-                          key={i.key}
-                          item={i}
-                          first={n === 0}
-                          onOpen={() => setOpenCategory(g.category)}
-                        />
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-                {overview.suggestOnSiteVisit && remaining.length > 0 && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 16,
-                      marginTop: 20,
-                      padding: 16,
-                      borderRadius: 8,
-                      border: `1px dashed ${gy.border}`,
-                    }}
-                  >
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ fontSize: 14, fontWeight: 500, color: gy.text }}>还剩 {remaining.length} 项，没空一项项找？</span>
-                      <span style={{ fontSize: 13, color: gy.secondary }}>请耕云专家到厂一次补齐。留下联系方式，耕云会电话联系您。</span>
-                    </div>
-                    <Button onClick={() => setBooking(true)}>预约上门</Button>
-                  </div>
-                )}
-              </div>
-            </section>
-          )}
-
           <section aria-label="处理记录" style={panel}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px 24px 16px', borderBottom: `1px solid ${gy.split}` }}>
               <h2 style={h2}>本次任务的处理记录</h2>
@@ -188,7 +77,7 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
             />
             <Record at={task.createdAt} title="任务已创建" text="开始准备资料" />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 24, borderTop: `1px solid ${gy.split}` }}>
-              <span style={{ fontSize: 14, color: gy.secondary }}>提交后如有企业事实变化，请在待补清单中补充或请专家电话联系。无需再次提交同一申请。</span>
+              <span style={{ fontSize: 14, color: gy.secondary }}>提交后如有企业事实变化，请联系耕云客服或负责专家。无需再次提交同一申请。</span>
               <div style={{ display: 'flex', gap: 12 }}>
                 <Button type="primary" onClick={onShowMaterials}>
                   查看本次提交资料
@@ -205,7 +94,7 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
               <span style={{ fontSize: 13, color: gy.tertiary }}>负责专家</span>
               <span style={{ fontSize: 14, fontWeight: 500, color: gy.text }}>{task.assignedExpertName}</span>
               <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>
-                需要补充时{task.assignedExpertName}会直接联系您。有问题可以在待补项点「请专家电话联系」。
+                需要补充时{task.assignedExpertName}会直接联系您。
               </span>
             </section>
           )}
@@ -220,48 +109,7 @@ export function SubmittedRecords({ task, onShowMaterials }: { task: Task; onShow
         </aside>
       </div>
 
-      <CheckDrawer
-        task={task}
-        category={opened}
-        check={check.data}
-        onClose={() => setOpenCategory(null)}
-        onBook={() => setBooking(true)}
-      />
-      <OnSiteDialog taskId={task.id} open={booking} onClose={() => setBooking(false)} />
     </div>
-  );
-}
-
-function SupplementRow({ item, first, onOpen }: { item: CategoryCheckItem; first: boolean; onOpen: () => void }) {
-  const done = item.state === 'done';
-  return (
-    <FlashOnDone
-      as="li"
-      done={done}
-      data-testid={`supplement-${item.key}`}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '10px 0',
-        borderTop: first ? undefined : `1px solid ${gy.split}`,
-        fontSize: 14,
-        lineHeight: '22px',
-      }}
-    >
-      <span style={{ width: 16, flexShrink: 0 }}>{done && <CheckOutlined aria-hidden style={{ color: gy.success, fontSize: 12 }} />}</span>
-      <span style={{ flex: 1, minWidth: 0, color: done ? gy.secondary : gy.text }}>{item.label}</span>
-      {done ? (
-        <span style={{ color: gy.success }}>已补</span>
-      ) : (
-        <>
-          {item.state === 'call' && <span style={{ color: source.expert.color }}>待专家联系</span>}
-          <button type="button" style={link} aria-label={`补充${item.label}`} onClick={onOpen}>
-            去补充
-          </button>
-        </>
-      )}
-    </FlashOnDone>
   );
 }
 
@@ -340,4 +188,3 @@ function dateTime(iso: string): string {
 }
 
 const h2: CSSProperties = { margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text };
-const link: CSSProperties = linkButton;

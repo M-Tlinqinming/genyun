@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { gy } from '../../../theme/tokens';
 
-// 成果文档三个页面共用的小件：发布时间写法、Word 图标、文字按钮
+// 成果文档两个页面共用的小件：发布时间写法、Word 图标、文字按钮
 
 const fmt = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, ...opts }).formatToParts(new Date(iso));
@@ -20,27 +20,6 @@ export function stampShort(iso: string): string {
   return `${part(p, 'month')}.${part(p, 'day')} ${part(p, 'hour')}:${part(p, 'minute')}`;
 }
 
-export const versionText = (version: number) => `V${version}`;
-
-/** 按 ?v= 取交付版本；不写就是最新。写了但没有这一版时退回最新，并给出提示文字 */
-export function pickVersion<T extends { version: number }>(versions: T[], raw: string | null): { current: T | undefined; missing: string | null } {
-  const latest = versions[0];
-  if (raw === null || raw === '') return { current: latest, missing: null };
-  const found = /^\d+$/.test(raw) ? versions.find((v) => v.version === Number(raw)) : undefined;
-  if (found) return { current: found, missing: null };
-  const label = /^\d{1,6}$/.test(raw) ? `交付 V${Number(raw)}` : '这个交付版本';
-  return { current: latest, missing: `没有找到${label}，已为您显示最新版本` };
-}
-
-/** 指定的版本不存在时的提示条 */
-export function MissingVersion({ text }: { text: string }) {
-  return (
-    <div role="status" style={{ padding: '10px 16px', borderRadius: 6, background: gy.warningBg, color: gy.text, fontSize: 14, lineHeight: '22px' }}>
-      {text}
-    </div>
-  );
-}
-
 // Word 文件图标（设计稿 C06 的 20×20 线框图标）
 export function WordIcon() {
   return (
@@ -54,7 +33,7 @@ export function WordIcon() {
 
 export const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 
-// 蓝色文字按钮（在线阅读、下载）
+// 蓝色文字按钮（下载）
 export const textLink: CSSProperties = {
   ...text14,
   padding: 0,
@@ -66,12 +45,9 @@ export const textLink: CSSProperties = {
   textDecoration: 'none',
 };
 
-export const textLinkDisabled: CSSProperties = { ...textLink, cursor: 'not-allowed', color: gy.tertiary };
-
 export const card: CSSProperties = {
   background: gy.surface,
   border: `1px solid ${gy.split}`,
   borderRadius: 8,
 };
 
-export const NOT_READABLE = '这份暂时不能在线阅读，请下载 Word 查看';
