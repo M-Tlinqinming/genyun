@@ -1,289 +1,256 @@
-import { ArrowRightOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { EXPERT_STAGES, expertTodo, type ExpertStage, type ExpertTodo } from '@genyun/shared';
-import { Button, Input, Result, Select, Table, Tabs } from 'antd';
-import { useMemo, useState, type CSSProperties } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
-import { useExpertTasks, type ExpertEvent, type ExpertTask } from '../../api/expert';
+import { SearchOutlined } from '@ant-design/icons';
+import { EXPERT_CENTER_STATS, expertCenterStatOf, type ExpertCenterRow, type ExpertCenterStat } from '@genyun/shared';
+import { App, Button, Input, Switch, Table, Tabs } from 'antd';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { useExpertTasks, useSetAccepting } from '../../api/expert';
+import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
-import { linkButton, Loading, panel } from '../../components/ui';
-import { gy } from '../../theme/tokens';
+import { StatCells, type StatItem } from '../../components/StatCells';
+import { StatusTag, type StatusTone } from '../../components/StatusTag';
+import { linkButton, Loading } from '../../components/ui';
+import { gy, stage, type, weight } from '../../theme/tokens';
 
-type Tab = 'mine' | 'verify' | 'all';
-const TABS: Record<Tab, string> = { mine: '我的任务', verify: '待资料核实', all: '全部可见任务' };
+type Tab = 'mine' | 'all';
+const TABS: Record<Tab, string> = { mine: '我的任务', all: '全部任务' };
 
-interface Row extends ExpertTask {
-  todo: ExpertTodo;
-}
+// 暂停接单时开关轨道的颜色：设计稿上的值，令牌里没有，只在这里用
+const PAUSED_TRACK = '#BFC4CC';
 
-// 设计稿实测：卡片与表格分隔线、灰色标签
-const line = '#E5E8EE';
-const label: CSSProperties = { fontSize: 14, lineHeight: '22px', color: gy.text, marginBottom: 8 };
+const STAT_TEXT: Record<ExpertCenterStat, { label: string; note: string; tone: StatusTone }> = {
+  to_check: { label: '待核对资料', note: '客户已提交，等您开始', tone: 'action' },
+  working: { label: '编制中', note: '已开始，还没交付', tone: 'action' },
+  awaiting: { label: '等客户补资料', note: '缺项清单已发出，客服在联系客户', tone: 'progress' },
+  delivered_month: { label: '本月已交付', note: '在「全部任务」里看', tone: 'done' },
+};
 
-// 北京时间 MM.DD HH:mm；只要时刻时传 timeOnly
-function clock(iso: string, timeOnly = false): string {
-  const parts = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    hour12: false,
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).formatToParts(new Date(iso));
-  const p = (t: string) => parts.find((x) => x.type === t)?.value ?? '';
-  return timeOnly ? `${p('hour')}:${p('minute')}` : `${p('month')}.${p('day')} ${p('hour')}:${p('minute')}`;
-}
-const sameDay = (iso: string, now = new Date()) => clock(iso).slice(0, 5) === clock(now.toISOString()).slice(0, 5);
+// 描边按钮、搜索框用浅描边（设计稿）
+const outlined = { borderColor: gy.controlLine };
 
-export function GreyTag({ children }: { children: string }) {
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        flexShrink: 0,
-        padding: '2px 7px',
-        borderRadius: 4,
-        border: '1px solid #E4E7EC',
-        background: '#F5F6F8',
-        fontSize: 12,
-        lineHeight: '16px',
-        color: '#525D70',
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-// I04 任务中心｜从待办继续：专家只看到分派给自己的任务
+// 专家任务中心：分给自己的任务，要动手的排在前面；右上角接单开关
 export function TaskCenterPage() {
   const query = useExpertTasks();
+  const setAccepting = useSetAccepting();
+  const { message } = App.useApp();
   const navigate = useNavigate();
-  const [search, setSearch] = useSearchParams();
+  const [tab, setTab] = useState<Tab>('mine');
+  const [stat, setStat] = useState<ExpertCenterStat | undefined>();
   const [keyword, setKeyword] = useState('');
-  const [org, setOrg] = useState('all');
-  const [stage, setStage] = useState<ExpertStage | 'all'>('all');
 
-  const rows = useMemo<Row[]>(
-    () =>
-      (query.data?.tasks ?? [])
-        .map((t) => ({
-          ...t,
-          todo: expertTodo({
-            status: t.status,
-            closedAt: t.closedAt,
-            verifyCount: t.verifyItems.length,
-            contactCount: t.verifyItems.filter((v) => v.kind === 'call').length,
-          }),
-        }))
-        .sort((a, b) => b.activityAt.localeCompare(a.activityAt)),
-    [query.data],
-  );
-  const inTab: Record<Tab, (r: Row) => boolean> = {
-    mine: (r) => r.todo.stage !== 'delivered',
-    verify: (r) => r.todo.stage !== 'delivered' && r.verifyItems.length > 0,
-    all: () => true,
-  };
-  const tab = (search.get('tab') as Tab | null) ?? 'mine';
+  const toggle = (acceptingOrders: boolean) =>
+    setAccepting.mutate({ acceptingOrders }, { onError: (err) => message.error(err.message) });
+
+  const accepting = query.data?.acceptingOrders ?? true;
+  const rows = query.data?.rows ?? [];
+  const openRows = rows.filter((r) => r.isOpen);
+  const inTab = tab === 'mine' ? openRows : rows;
   const k = keyword.trim().toUpperCase();
-  const shown = rows
-    .filter(inTab[tab])
-    .filter((r) => org === 'all' || r.orgId === org)
-    .filter((r) => stage === 'all' || r.todo.stage === stage)
+  const shown = inTab
+    .filter((r) => !stat || expertCenterStatOf(r) === stat)
     .filter((r) => !k || r.enterpriseName.toUpperCase().includes(k) || r.number.toUpperCase().includes(k));
-  const orgs = [...new Map(rows.map((r) => [r.orgId, r.orgName])).entries()];
+  const filtered = !!stat || !!k;
+  const clear = () => {
+    setStat(undefined);
+    setKeyword('');
+  };
+
+  const pickStat = (key: string | undefined) => {
+    const next = key as ExpertCenterStat | undefined;
+    setStat(next);
+    // 本月已交付只在「全部任务」里；其余三格在「我的任务」
+    if (next) setTab(next === 'delivered_month' ? 'all' : 'mine');
+  };
+  const pickTab = (key: Tab) => {
+    setTab(key);
+    if (key === 'mine' && stat === 'delivered_month') setStat(undefined);
+  };
+
+  const stats: StatItem[] = EXPERT_CENTER_STATS.map((key) => ({
+    key,
+    ...STAT_TEXT[key],
+    value: query.data?.stats[key] ?? 0,
+  }));
   const open = (id: string) => navigate(`/expert/tasks/${id}`);
 
   return (
     <>
       <PageHeader
-        eyebrow="耕云内部 / 专业处理"
         title="任务中心"
-        description="从待办继续，处理获授权的企业任务。"
-        extra={
-          <Button icon={<ReloadOutlined />} loading={query.isFetching} onClick={() => query.refetch()}>
-            刷新任务
-          </Button>
+        description="分给您的任务都在这里。要您动手的排在前面。"
+        actions={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 32 }}>
+            <span style={{ ...type.body, color: gy.secondary }}>{accepting ? '接单中' : '已暂停接单'}</span>
+            <Switch
+              aria-label="接单"
+              checked={accepting}
+              disabled={!query.data}
+              loading={setAccepting.isPending}
+              onChange={toggle}
+              style={accepting ? undefined : { background: PAUSED_TRACK }}
+            />
+          </span>
         }
       />
 
       {query.isPending ? (
         <Loading rows={6} />
       ) : query.isError ? (
-        <Result status="error" title="任务加载失败" subTitle={query.error.message} />
+        <EmptyState
+          action={
+            <Button style={outlined} onClick={() => query.refetch()}>
+              重新加载
+            </Button>
+          }
+        >
+          {query.error.message}
+        </EmptyState>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <Stats rows={rows} />
+          {!accepting && <PausedBanner openCount={openRows.length} onResume={() => toggle(true)} pending={setAccepting.isPending} />}
 
-          <div style={{ ...panel, borderColor: line, overflow: 'hidden' }}>
-            <div style={{ padding: '0 24px' }}>
-              <Tabs
-                activeKey={tab}
-                onChange={(key) => setSearch({ tab: key }, { replace: true })}
-                items={(Object.keys(TABS) as Tab[]).map((key) => ({
-                  key,
-                  label: key === 'verify' ? `${TABS[key]} ${rows.filter(inTab.verify).length}` : TABS[key],
-                }))}
-              />
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, padding: '4px 0 24px' }}>
-                <div style={{ flex: 1 }}>
-                  <div style={label}>搜索企业或任务</div>
-                  <Input
-                    allowClear
-                    value={keyword}
-                    prefix={<SearchOutlined style={{ color: gy.tertiary }} />}
-                    placeholder="企业名称 / 任务编号"
-                    onChange={(e) => setKeyword(e.target.value)}
-                  />
-                </div>
-                <div style={{ width: 175 }}>
-                  <div style={label}>客户组织</div>
-                  <Select
-                    aria-label="客户组织"
-                    value={org}
-                    onChange={setOrg}
-                    style={{ width: '100%' }}
-                    options={[{ value: 'all', label: '全部组织' }, ...orgs.map(([id, name]) => ({ value: id, label: name }))]}
-                  />
-                </div>
-                <div style={{ width: 185 }}>
-                  <div style={label}>任务阶段</div>
-                  <Select
-                    aria-label="任务阶段"
-                    value={stage}
-                    onChange={setStage}
-                    style={{ width: '100%' }}
-                    options={[
-                      { value: 'all', label: '全部阶段' },
-                      ...(Object.keys(EXPERT_STAGES) as ExpertStage[]).map((s) => ({ value: s, label: EXPERT_STAGES[s] })),
-                    ]}
-                  />
-                </div>
-                <Button
-                  onClick={() => {
-                    setKeyword('');
-                    setOrg('all');
-                    setStage('all');
-                  }}
-                >
-                  重置
-                </Button>
-              </div>
-            </div>
-            <Table<Row>
+          <StatCells items={stats} selected={stat} onSelect={pickStat} />
+
+          <div style={{ borderRadius: 8, background: gy.surface, border: `1px solid ${gy.split}`, overflow: 'hidden' }}>
+            <Tabs
+              activeKey={tab}
+              onChange={(key) => pickTab(key as Tab)}
+              tabBarStyle={{ margin: 0, padding: '0 24px' }}
+              tabBarExtraContent={
+                <Input
+                  allowClear
+                  aria-label="搜索企业名称或任务编号"
+                  value={keyword}
+                  prefix={<SearchOutlined style={{ color: gy.tertiary }} />}
+                  placeholder="搜索企业名称或任务编号"
+                  onChange={(e) => setKeyword(e.target.value)}
+                  style={{ ...outlined, width: 280 }}
+                />
+              }
+              items={(Object.keys(TABS) as Tab[]).map((key) => ({
+                key,
+                label: (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: tab === key ? weight.strong : weight.normal }}>{TABS[key]}</span>
+                    <span className="gy-tabular" style={{ ...type.caption, color: tab === key ? gy.primary : gy.tertiary }}>
+                      {key === 'mine' ? openRows.length : rows.length}
+                    </span>
+                  </span>
+                ),
+              }))}
+            />
+            <Table<ExpertCenterRow>
               rowKey="id"
               dataSource={shown}
-              pagination={{ pageSize: 20, hideOnSinglePage: false, showSizeChanger: false, showTotal: (n) => `共 ${n} 个任务`, style: { padding: '0 24px' } }}
+              pagination={false}
+              // 整行都能点进任务；企业名称、按钮是同一个去处
               onRow={(r) => ({ onClick: () => open(r.id), style: { cursor: 'pointer' } })}
-              locale={{ emptyText: tab === 'verify' ? '没有等待核实的资料' : '没有符合条件的任务' }}
+              locale={{
+                emptyText:
+                  rows.length === 0 ? (
+                    <EmptyState>
+                      <span style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ color: gy.text }}>还没有分给您的任务</span>
+                        <span>耕云分配任务后会出现在这里，也会通知您。</span>
+                      </span>
+                    </EmptyState>
+                  ) : filtered ? (
+                    <EmptyState
+                      action={
+                        <button type="button" style={linkButton} onClick={clear}>
+                          清空搜索和筛选
+                        </button>
+                      }
+                    >
+                      没有符合条件的任务
+                    </EmptyState>
+                  ) : (
+                    <EmptyState>手上没有在办的任务，已交付的在「全部任务」里</EmptyState>
+                  ),
+              }}
+              footer={
+                shown.length === 0
+                  ? undefined
+                  : () => (
+                      <span style={{ ...type.caption, color: gy.tertiary }}>
+                        {tab === 'mine'
+                          ? `在办 ${openRows.length} 个 · 要您动手的排在前面 · 已交付的在「全部任务」里`
+                          : `共 ${rows.length} 个 · 要您动手的排在前面`}
+                      </span>
+                    )
+              }
               columns={[
                 {
                   title: '企业 / 任务',
+                  width: 300,
                   render: (_, r) => (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ color: gy.text }}>{r.enterpriseName}</span>
-                      <span style={{ fontSize: 12, lineHeight: '19px', color: gy.tertiary }}>{r.number}</span>
-                    </div>
+                    <span style={{ display: 'flex', flexDirection: 'column' }}>
+                      <Link to={`/expert/tasks/${r.id}`} onClick={(e) => e.stopPropagation()} style={{ ...type.body, fontWeight: weight.strong, color: gy.text }}>
+                        {r.enterpriseName}
+                      </Link>
+                      <span className="gy-tabular" style={{ ...type.caption, color: gy.tertiary }}>
+                        {r.number}
+                      </span>
+                    </span>
                   ),
                 },
-                { title: '所属客户组织', width: 171, render: (_, r) => <span style={{ color: gy.secondary }}>{r.orgName}</span> },
-                { title: '当前进度', width: 187, render: (_, r) => <GreyTag>{EXPERT_STAGES[r.todo.stage]}</GreyTag> },
-                { title: '待办事项', width: 205, render: (_, r) => r.todo.todo },
+                { title: '客户组织', width: 220, render: (_, r) => <span style={{ color: gy.text }}>{r.orgName}</span> },
                 {
-                  title: '最近更新',
-                  width: 146,
-                  render: (_, r) => <span style={{ fontSize: 13, color: gy.tertiary }}>{clock(r.activityAt)}</span>,
+                  title: '阶段',
+                  width: 260,
+                  render: (_, r) => (
+                    <StatusTag tone={r.view.tone} note={r.view.detail ?? undefined}>
+                      {r.view.label}
+                    </StatusTag>
+                  ),
+                },
+                {
+                  title: '等了多久 / 最近更新',
+                  width: 180,
+                  render: (_, r) => (
+                    <span style={{ color: r.time.tone === 'action' ? stage.action.color : gy.secondary }}>{r.time.text}</span>
+                  ),
                 },
                 {
                   title: '操作',
-                  width: 132,
+                  align: 'right',
                   render: (_, r) => (
-                    <button
-                      type="button"
-                      style={linkButton}
+                    <Button
+                      style={{ ...outlined, minWidth: 88 }}
                       onClick={(e) => {
                         e.stopPropagation();
                         open(r.id);
                       }}
                     >
-                      {r.todo.action} <ArrowRightOutlined />
-                    </button>
+                      {r.button}
+                    </Button>
                   ),
                 },
               ]}
             />
           </div>
-
-          <Recent events={query.data.events} onOpen={open} />
         </div>
       )}
     </>
   );
 }
 
-// 工作量：后续阶段（专业审核）做到时这个数会动起来
-function Stats({ rows }: { rows: Row[] }) {
-  const cards = [
-    { title: '我的任务', value: rows.length, note: '获授权的企业任务' },
-    { title: '待专业审核', value: 0, note: '三份草稿待核对' },
-    { title: '已交付', value: rows.filter((r) => r.todo.stage === 'delivered').length, note: '三份成果可下载' },
-  ];
+// 暂停接单时统计格上面的提示：左边标题 + 说明，右边「恢复接单」
+function PausedBanner({ openCount, onResume, pending }: { openCount: number; onResume: () => void; pending: boolean }) {
   return (
-    <div style={{ ...panel, borderColor: line, display: 'flex', padding: '23px 0' }}>
-      {cards.map((c, i) => (
-        <div
-          key={c.title}
-          style={{ flex: 1, padding: '0 28px', borderLeft: i === 0 ? 'none' : `1px solid ${line}`, display: 'flex', flexDirection: 'column' }}
-        >
-          <span style={{ fontSize: 14, lineHeight: '22px', color: gy.tertiary }}>{c.title}</span>
-          <span style={{ marginTop: 3, fontSize: 30, lineHeight: '44px', fontWeight: 500, color: gy.text }}>
-            {String(c.value).padStart(2, '0')}
-          </span>
-          <span style={{ fontSize: 12, lineHeight: '19px', color: gy.tertiary }}>{c.note}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const EVENT_TAGS: Record<ExpertEvent['kind'], string> = {
-  submitted: '待整理',
-  photo: '待核实',
-  delivered: '已交付',
-};
-
-function Recent({ events, onOpen }: { events: ExpertEvent[]; onOpen: (id: string) => void }) {
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
-        <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>最近处理</span>
-        <span style={{ fontSize: 12, lineHeight: '19px', color: gy.tertiary }}>今天 · {clock(new Date().toISOString()).slice(0, 5)}</span>
+    <div
+      role="status"
+      style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px', borderRadius: 8, background: gy.warningBg }}
+    >
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ ...type.body, fontWeight: weight.strong, color: gy.warning }}>已暂停接单</span>
+        <span style={{ ...type.body, color: gy.secondary }}>
+          客户在专家列表里选不到您，耕云也不再给您派新任务。
+          {openCount > 0 && `手上这 ${openCount} 个任务照常进行，不受影响。`}
+        </span>
       </div>
-      <div style={{ ...panel, borderColor: line, padding: '24px 24px 16px' }}>
-        {events.length === 0 ? (
-          <span style={{ color: gy.tertiary }}>还没有处理记录</span>
-        ) : (
-          events.map((e, i) => (
-            <div key={`${e.taskId}-${e.kind}`} style={{ display: 'flex', gap: 16, minHeight: i === events.length - 1 ? 30 : 48 }}>
-              <span style={{ position: 'relative', width: 10, flexShrink: 0 }}>
-                <span style={{ position: 'absolute', top: 6, width: 10, height: 10, borderRadius: 10, border: '2px solid #A9B1BF', boxSizing: 'border-box' }} />
-                {i < events.length - 1 && (
-                  <span style={{ position: 'absolute', top: 20, bottom: 4, left: 4, borderLeft: '2px solid #0505050F' }} />
-                )}
-              </span>
-              <span style={{ width: 84, flexShrink: 0, fontSize: 14, lineHeight: '22px', color: gy.tertiary }}>
-                {sameDay(e.at) ? clock(e.at, true) : clock(e.at)}
-              </span>
-              <span style={{ flex: 1, display: 'flex', alignItems: 'flex-start', gap: 16, fontSize: 14, lineHeight: '22px', color: gy.text }}>
-                {e.text}
-                <GreyTag>{EVENT_TAGS[e.kind]}</GreyTag>
-              </span>
-              <button type="button" style={{ ...linkButton, alignSelf: 'flex-start' }} onClick={() => onOpen(e.taskId)}>
-                查看任务
-              </button>
-            </div>
-          ))
-        )}
-      </div>
+      <Button style={{ ...outlined, flexShrink: 0 }} loading={pending} onClick={onResume}>
+        恢复接单
+      </Button>
     </div>
   );
 }
