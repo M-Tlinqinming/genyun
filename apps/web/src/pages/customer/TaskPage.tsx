@@ -1,5 +1,5 @@
 import { Breadcrumb, Button, Empty, Result, Tabs } from 'antd';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { Link, Navigate, useParams, useSearchParams } from 'react-router';
 import { ApiError } from '../../api/request';
 import { useTask } from '../../api/tasks';
 import { PageHeader } from '../../components/PageHeader';
@@ -11,7 +11,7 @@ import { Loading } from '../../components/ui';
 const STAGES = ['资料准备', '耕云编制', '专家审核', '成果交付'];
 
 // 任务详情（12 页 P03；13 页 F03）。「资料与检查」：上传、关联企业原始资料。提交以后默认看「处理记录」。
-// 选择开始方式、按提示填写、资料检查、补件、成果版本已取消；新的上传资料表格入口在后续开发里接上
+// 选择开始方式、按提示填写、资料检查、补件、成果版本已取消；新流程的任务在准备资料时转到准备资料页
 export function TaskPage() {
   const { taskId = '' } = useParams();
   const task = useTask(taskId);
@@ -31,6 +31,8 @@ export function TaskPage() {
   }
 
   const t = task.data;
+  // 新流程还在准备资料的任务：到准备资料页
+  if (t.flow === 'intake' && t.status === 'preparing') return <Navigate to={`/customer/tasks/${taskId}/prepare`} replace />;
   const submitted = t.status !== 'preparing';
   const requested = search.get('tab');
   const tab = requested === 'materials' || requested === 'records' ? requested : submitted ? 'records' : 'materials';

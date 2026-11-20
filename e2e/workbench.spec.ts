@@ -76,10 +76,10 @@ test('工作台：待我处理写清下一步，点按钮直达那一步', async
   await page.screenshot({ path: 'test-results/workbench-c01.png' });
 
   await todo.getByTestId(`todo-${fresh.number}`).getByRole('button', { name: '开始准备' }).click();
-  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${fresh.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${fresh.id}/prepare$`));
   await page.goto('/customer');
   await todo.getByTestId(`todo-${upload.number}`).getByRole('button', { name: '继续准备' }).click();
-  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${upload.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${upload.id}/prepare$`));
 });
 
 test('已提交的任务进「正在办理」与「耕云处理中」，不在待我处理里', async () => {
@@ -111,7 +111,7 @@ test('任务：默认先看待我处理，可搜索任务编号、按企业筛�
   await page.getByTitle('列表筛选测试有限公司').click();
   await expect(page.getByRole('row')).toHaveCount(2);
   await page.getByRole('row', { name: new RegExp(task.number) }).click();
-  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${task.id}$`));
+  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${task.id}/prepare$`));
 });
 
 test('新建任务：从工作台进入新建任务页，在页里选企业', async () => {

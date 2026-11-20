@@ -58,7 +58,7 @@ test('从企业概览新建任务：带上这家企业，新建后进入准备�
   await page.getByRole('button', { name: '新建任务' }).click();
 
   await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}\/prepare$/);
-  await expect(page.getByRole('heading', { name: '下载资料模板，填好后上传' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '先下载资料模板，填好后传上来' })).toBeVisible();
   await expect(page.getByRole('banner')).toContainText('编制应急预案');
   await expect(page.getByRole('banner')).toContainText('惠州示例五金有限公司');
   await shot('prepare');
