@@ -5,6 +5,7 @@ import { useTask } from '../../api/tasks';
 import { PageHeader } from '../../components/PageHeader';
 import { gy } from '../../theme/tokens';
 import { SubmittedMaterials, SubmittedRecords, SubmittedStatusBar } from './submit/SubmittedView';
+import { SubmittedTaskPage } from './submitted/SubmittedTaskPage';
 import { TaskDocumentsSection } from './TaskDocumentsSection';
 import { Loading } from '../../components/ui';
 
@@ -33,6 +34,8 @@ export function TaskPage() {
   const t = task.data;
   // 新流程还在准备资料的任务：到准备资料页
   if (t.flow === 'intake' && t.status === 'preparing') return <Navigate to={`/customer/tasks/${taskId}/prepare`} replace />;
+  // 新流程提交给专家以后、交付以前：已提交页（交付以后照旧）
+  if (t.flow === 'intake' && t.status === 'submitted' && !t.closedAt) return <SubmittedTaskPage task={t} />;
   const submitted = t.status !== 'preparing';
   const requested = search.get('tab');
   const tab = requested === 'materials' || requested === 'records' ? requested : submitted ? 'records' : 'materials';
