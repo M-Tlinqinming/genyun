@@ -1,16 +1,19 @@
 // 预览环境的演示数据（只用虚构数据）。可以反复运行：已有的一律跳过、只补没有的，
 // 不改已有账号的密码，不删、不覆盖任何数据（测试人员在预览环境里录的数据都保留）。
 // 各项按业务上不会变的标识先查后插：账号按邮箱、组织按名称、企业按信用代码（没有代码的按名称）、
-// 编制任务按企业（这家企业已有应急预案任务就不再建）、合同按组织（已登记过合同就不再登记）。
+// 编制任务按企业（这家企业已有应急预案任务就不再建）、合同按组织（已登记过合同就不再登记）、
+// 次数台账按合同 + 类型 + 活动名称、专家资料按专家账号。
 import { createHash, randomUUID } from 'node:crypto';
-import { type ChecklistItemKey, type ChecklistState, chinaToday, formatTaskNumber } from '@genyun/shared';
+import { CREDIT_ENTRY_POOL, type ChecklistItemKey, type ChecklistState, chinaToday, formatTaskNumber } from '@genyun/shared';
 import { feiyuBasicInfo, feiyuChecklist } from '@genyun/shared/fixtures/feiyu';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.ts';
 import {
   checklistItems,
+  creditEntries,
   enterprises,
+  expertProfiles,
   files,
   memberships,
   organizationContracts,
@@ -87,6 +90,35 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
   const operator = uid[DEMO_EMAILS.operator]!;
   await ensureContract(db, opts.storage, report, { orgId: agencyId, number: 'GY-DEMO-2026-01', scopeEnterprises: 10, by: operator, now });
   await ensureContract(db, opts.storage, report, { orgId: feiyuOrgId, number: 'GY-DEMO-2026-02', scopeEnterprises: 3, by: operator, now });
+
+  // 编制次数：示例安全咨询机构合同买 20 次、开通赠送 2 次；飞宇合同买 3 次
+  await ensureCredit(db, report, { orgId: agencyId, contractNumber: 'GY-DEMO-2026-01', type: 'contract_purchase', delta: 20, by: operator });
+  await ensureCredit(db, report, { orgId: agencyId, contractNumber: 'GY-DEMO-2026-01', type: 'gift', delta: 2, campaign: '开通赠送', by: operator });
+  await ensureCredit(db, report, { orgId: feiyuOrgId, contractNumber: 'GY-DEMO-2026-02', type: 'contract_purchase', delta: 3, by: operator });
+
+  // 专家资料：两位演示专家都已上架、接单中（客户选专家时看到的卡片）
+  await ensureExpertProfile(db, report, uid[DEMO_EMAILS.expert]!, operator, {
+    avatar: 'gy3',
+    displayName: '周工',
+    yearsOfExperience: 12,
+    industries: ['38', '34'],
+    intro: '（演示）做过多年企业安全管理，熟悉电子电器、机械制造厂的应急组织和现场处置。',
+    bio: '（演示资料）这是演示环境里的示例专家介绍，用来查看客户选专家时的卡片效果。',
+    realName: '周演示',
+    certificates: [{ name: '注册安全工程师', number: 'DEMO-0000-0001', expiresOn: '2028-06', fileId: null }],
+    certificateExpiresOn: '2028-06-30',
+  });
+  await ensureExpertProfile(db, report, uid[DEMO_EMAILS.expert2]!, operator, {
+    avatar: 'gy5',
+    displayName: '吴工',
+    yearsOfExperience: 8,
+    industries: ['29', '59'],
+    intro: '（演示）熟悉塑料制品、仓储类企业的应急预案和风险评估。',
+    bio: '（演示资料）这是演示环境里的示例专家介绍，用来查看客户选专家时的卡片效果。',
+    realName: '吴演示',
+    certificates: [{ name: '注册安全工程师', number: 'DEMO-0000-0002', expiresOn: '2029-03', fileId: null }],
+    certificateExpiresOn: '2029-03-31',
+  });
 
   // 飞宇自填的企业资料（各步都填了，可以直接提交、专业整理、生成）；
   // 技术人员数故意不填，演示专家整理时补齐缺失项（浏览器测试也按这一项走）
@@ -246,6 +278,66 @@ async function ensureContract(
     });
   });
   report.created.push(`「${org!.name}」的合同登记 ${c.number}`);
+}
+
+// 次数台账一条：同一份合同下同一类型、同一活动名称已经记过就跳过
+async function ensureCredit(
+  db: Database,
+  report: DemoSeedReport,
+  c: { orgId: string; contractNumber: string; type: 'contract_purchase' | 'gift'; delta: number; campaign?: string; by: string },
+) {
+  const [contract] = await db
+    .select({ id: organizationContracts.id })
+    .from(organizationContracts)
+    .where(and(eq(organizationContracts.orgId, c.orgId), eq(organizationContracts.number, c.contractNumber)))
+    .limit(1);
+  const label = `合同 ${c.contractNumber} 的次数「${c.type === 'gift' ? `赠送 ${c.delta} 次` : `购买 ${c.delta} 次`}」`;
+  if (!contract) {
+    report.skipped.push(`${label}（没有这份合同）`);
+    return;
+  }
+  const [existing] = await db
+    .select({ id: creditEntries.id })
+    .from(creditEntries)
+    .where(
+      and(
+        eq(creditEntries.contractId, contract.id),
+        eq(creditEntries.type, c.type),
+        c.campaign ? eq(creditEntries.campaign, c.campaign) : sql`${creditEntries.campaign} is null`,
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    report.skipped.push(label);
+    return;
+  }
+  await db.insert(creditEntries).values({
+    orgId: c.orgId,
+    type: c.type,
+    delta: c.delta,
+    campaign: c.campaign ?? null,
+    contractId: contract.id,
+    pool: CREDIT_ENTRY_POOL[c.type],
+    reason: '演示数据',
+    createdBy: c.by,
+  });
+  report.created.push(label);
+}
+
+async function ensureExpertProfile(
+  db: Database,
+  report: DemoSeedReport,
+  userId: string,
+  reviewedBy: string,
+  p: Omit<typeof expertProfiles.$inferInsert, 'userId' | 'reviewStatus' | 'reviewedBy' | 'reviewedAt' | 'acceptingOrders'>,
+) {
+  const [existing] = await db.select({ userId: expertProfiles.userId }).from(expertProfiles).where(eq(expertProfiles.userId, userId)).limit(1);
+  if (existing) {
+    report.skipped.push(`专家资料「${p.displayName}」`);
+    return;
+  }
+  await db.insert(expertProfiles).values({ ...p, userId, reviewStatus: 'approved', reviewedBy, reviewedAt: new Date(), acceptingOrders: true });
+  report.created.push(`专家资料「${p.displayName}」`);
 }
 
 async function ensureEnterprise(

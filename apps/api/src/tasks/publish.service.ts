@@ -2,7 +2,8 @@
 // 发布时把三份 Word 定稿（文件属性写上「AI 辅助起草、注册安全工程师审核」和审核人）存成文件，形成交付版本
 // （同一任务第一次 V1，以后 V2、V3），任务进入已交付，给客户发一条站内提醒。
 // 防重复：页面每次发布带一个 publishId；同一个 publishId 重发只返回那一次的结果。结果不确定时页面先按 publishId 查，
-// 查到没收到才重新发布。同一批文稿只能形成一个交付版本，同一任务同一时间只有一次发布在进行（数据库唯一索引兜底）
+// 查到没收到才重新发布。同一批文稿只能形成一个交付版本（发布时锁住任务检查；交付后重新打开的，同一批可以再次交付），
+// 同一任务同一时间只有一次发布在进行（数据库唯一索引兜底）
 import {
   DRAFT_KIND_KEYS,
   DRAFT_KINDS,
@@ -33,7 +34,7 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm';
 import type { Request } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { AuditService, clientIp } from '../audit/audit.ts';
@@ -117,30 +118,49 @@ export class PublishService {
     const [conclusion] = await this.db.select().from(draftReviews).where(eq(draftReviews.batchId, batchId)).limit(1);
     const batch = (await this.db.select().from(generationBatches).where(eq(generationBatches.id, batchId)).limit(1))[0]!;
 
-    // 先记下「正在发布」：同一任务另一次发布、同一批文稿再发布都会被唯一索引拦下
+    // 先记下「正在发布」。同一任务另一次发布由唯一索引拦下；同一批文稿再发布在这里检查：
+    // 锁住任务，同一批已有没失败的交付，而且那之后任务没重新打开过，就拒绝（和原来的唯一索引效果一样）
+    const version = await this.nextVersion(task.id);
     let row: Delivery;
     try {
-      [row] = (await this.db
-        .insert(deliveries)
-        .values({
-          publishId,
-          taskId: task.id,
-          batchId,
-          version: await this.nextVersion(task.id),
-          status: 'publishing',
-          reviewedBy: conclusion!.reviewedBy,
-          reviewedAt: conclusion!.reviewedAt,
-          versions: conclusion!.versions,
-          publishedBy: user.id,
-        })
-        .returning()) as [Delivery];
+      row = await this.db.transaction(async (tx) => {
+        const [locked] = await tx.select({ reopenedAt: tasks.reopenedAt }).from(tasks).where(eq(tasks.id, task.id)).for('update');
+        const [prior] = await tx
+          .select({ status: deliveries.status, publishedAt: deliveries.publishedAt, createdAt: deliveries.createdAt })
+          .from(deliveries)
+          .where(and(eq(deliveries.batchId, batchId), ne(deliveries.status, 'failed')))
+          .orderBy(desc(deliveries.createdAt))
+          .limit(1);
+        if (prior) {
+          const reopenedSince = !!locked?.reopenedAt && locked.reopenedAt > (prior.publishedAt ?? prior.createdAt);
+          if (prior.status === 'publishing' || !reopenedSince) throw new BatchAlreadyPublished();
+        }
+        const [inserted] = (await tx
+          .insert(deliveries)
+          .values({
+            publishId,
+            taskId: task.id,
+            batchId,
+            version,
+            status: 'publishing',
+            reviewedBy: conclusion!.reviewedBy,
+            reviewedAt: conclusion!.reviewedAt,
+            versions: conclusion!.versions,
+            publishedBy: user.id,
+          })
+          .returning()) as [Delivery];
+        return inserted;
+      });
     } catch (err) {
+      if (err instanceof BatchAlreadyPublished) {
+        return refuse('这批文稿正在发布或已经发布，请刷新查看发布结果', 'publishing');
+      }
       // 同一个 publishId 两个请求同时到：后到的按已收到返回
       if (isUniqueViolation(err, 'deliveries_publish_id_unique')) {
         const replayedLate = await this.replay(user, task, publishId);
         if (replayedLate) return replayedLate;
       }
-      if (isUniqueViolation(err, 'deliveries_one_publishing') || isUniqueViolation(err, 'deliveries_batch_once')) {
+      if (isUniqueViolation(err, 'deliveries_one_publishing')) {
         return refuse('这批文稿正在发布或已经发布，请刷新查看发布结果', 'publishing');
       }
       throw err;
@@ -385,3 +405,6 @@ export class PublishController {
     return this.service.publish(user, id, body, clientIp(req));
   }
 }
+
+// 同一批文稿已有没失败的交付、之后没重新打开过：按「正在发布或已经发布」拒绝
+class BatchAlreadyPublished extends Error {}

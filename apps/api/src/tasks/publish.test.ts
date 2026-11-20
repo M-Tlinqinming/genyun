@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import JSZip from 'jszip';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
@@ -14,6 +14,8 @@ import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
+import { PublishService } from './publish.service.ts';
+import type { ReviewService } from './review.service.ts';
 import { complete, testDocument } from './test-workup.ts';
 
 // 成果发布（M2 第 15 项）：审核结论有效才能发布、只有负责专家能发布、同一次发布重发只算一次、
@@ -361,5 +363,27 @@ describe('发布', () => {
     expect(conclude.message).toContain('已发布为交付 V1');
     const review: ReviewView = (await zhou.get(reviewUrl()).expect(200)).body;
     expect(review).toMatchObject({ editable: false, published: { version: 1 } });
+  });
+
+  // 原来靠唯一索引（同一批只能有一次没失败的交付）兜底；交付后要能重新打开、同一批再次交付，
+  // 改为发布时锁住任务检查。审核页的「已发布」判断先拦在前面，这里把它绕开，单测检查本身
+  it('同一批文稿已交付：没重新打开不能再交付；重新打开后可以再次交付', async () => {
+    const review = (app.get(PublishService) as unknown as { review: ReviewService }).review;
+    const real = review.view.bind(review);
+    const spy = vi.spyOn(review, 'view').mockImplementation(async (...args) => ({ ...(await real(...args)), published: null }));
+    try {
+      const zhou = await as('zhou@test.cn');
+      const refused = (await zhou.post(publishUrl()).send(body()).expect(409)).body;
+      expect(refused).toMatchObject({ reason: 'publishing', message: '这批文稿正在发布或已经发布，请刷新查看发布结果' });
+      expect((await handle.db.select().from(deliveries).where(eq(deliveries.taskId, taskId))).filter((d) => d.status !== 'failed')).toHaveLength(1);
+
+      await handle.db.update(tasks).set({ reopenedAt: new Date() }).where(eq(tasks.id, taskId));
+      const again: PublishView = (await zhou.post(publishUrl()).send(body()).expect(201)).body;
+      expect(again.attempt).toMatchObject({ status: 'done', version: 2 });
+      // 再次交付之后又没重新打开：同一批再交付仍被拒绝
+      expect((await zhou.post(publishUrl()).send(body()).expect(409)).body.reason).toBe('publishing');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

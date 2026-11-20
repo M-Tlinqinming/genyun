@@ -34,7 +34,7 @@ export interface OperatorOrg {
   createdAt: string;
   registeredByName: string | null;
   state: OrgServiceState;
-  contract: { number: string; scopeKind: ServiceScopeKind; scopeEnterprises: number | null } | null;
+  contract: { number: string; scopeKind: ServiceScopeKind | null; scopeEnterprises: number | null } | null;
 }
 
 export interface OperatorOrgRow extends OperatorOrg {

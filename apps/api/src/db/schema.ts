@@ -1,12 +1,23 @@
 import {
   CALL_TIMES,
+  CHARGE_STATUSES,
+  CREDIT_ENTRY_TYPES,
+  CREDIT_POOLS,
   DRAFT_KIND_KEYS,
+  EXPERT_AVATARS,
+  EXPERT_REVIEW_STATUSES,
+  INTAKE_FILE_SLOTS,
+  INTAKE_UPLOADER_SIDES,
   DRAFT_STATUSES,
   ITEM_STATUSES,
   ON_SITE_STATUSES,
   type AgencyCategory,
   type AuditAction,
   type HolidayKind,
+  type IntakeParseResult,
+  type IntakeRequiredCheck,
+  type IntakeSubmissionSnapshot,
+  type IntakeWarning,
   type CallTime,
   type ChecklistItemKey,
   type ChecklistState,
@@ -15,6 +26,7 @@ import {
   type DraftKind,
   type EditBlock,
   type EnterpriseProfile,
+  type ExpertCertificate,
   type FeedbackCategory,
   type FeedbackSource,
   type FeedbackStatus,
@@ -35,6 +47,7 @@ import { sql } from 'drizzle-orm';
 import type { SlotNote } from '../generation/ai/slots.ts';
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -187,6 +200,8 @@ export const enterpriseAssignments = pgTable(
 export const businessType = pgEnum('business_type', ['emergency_plan']);
 export const taskStatus = pgEnum('task_status', ['preparing', 'submitted']);
 export const startMethod = pgEnum('start_method', ['self_fill', 'upload']);
+// 扣次状态：未扣、已扣、等次数（首次交付时次数不够，成果先锁住，续约或加购后按任务先后放开）
+export const chargeStatus = pgEnum('charge_status', CHARGE_STATUSES);
 
 export const tasks = pgTable(
   'tasks',
@@ -215,14 +230,27 @@ export const tasks = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
-    // 交付完成或关闭的时间；为空表示任务还没结束
+    // 交付完成或关闭的时间；为空表示任务还没结束。
+    // 交付后「重新打开」不清空它：重新打开的任务仍算已结束（不挡同一企业新建任务），
+    // 只要 reopened_at 晚于最近一次成功交付，就是「重新打开 · 待交付」
     closedAt: timestamp('closed_at', { withTimezone: true }),
+    // 最近一次交付后重新打开的时间（15 页 R12）；再次交付后不清空，比最近交付时间早就说明已经再交付过
+    reopenedAt: timestamp('reopened_at', { withTimezone: true }),
+    // 等客户补资料：专家复制缺项清单时写入（13 页 E1、16 页 I04），客服去联系客户；
+    // 专家替客户传了资料后清空。awaiting_customer_items 是清单里列了几项（「缺 3 项」）
+    awaitingCustomerSince: timestamp('awaiting_customer_since', { withTimezone: true }),
+    awaitingCustomerItems: integer('awaiting_customer_items'),
+    // 扣次状态，见次数台账（credit_entries）；只有首次交付扣 1 次
+    chargeStatus: chargeStatus('charge_status').notNull().default('not_charged'),
+    // 删除任务（只能在提交前删）：只做标记，三端都不再显示；记录保留
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedBy: uuid('deleted_by').references(() => users.id),
   },
-  // 同一家企业同一种业务只能有一个没结束的任务
+  // 同一家企业同一种业务只能有一个没结束、没删除的任务
   (t) => [
     uniqueIndex('tasks_one_open_per_enterprise')
       .on(t.enterpriseId, t.businessType)
-      .where(sql`${t.closedAt} is null`),
+      .where(sql`${t.closedAt} is null and ${t.deletedAt} is null`),
   ],
 );
 
@@ -261,6 +289,102 @@ export const taskWorkups = pgTable('task_workups', {
   updatedBy: uuid('updated_by').references(() => users.id),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- 新流程「准备资料」（12 页 U1–U3b，DEV-PLAN K3–K6） ----------
+
+// 上传位置：资料表格、总平面布置图、紧急疏散示意图、其他图纸与照片
+export const intakeFileSlot = pgEnum('intake_file_slot', INTAKE_FILE_SLOTS);
+// 谁传的：客户自己，或专家替客户传
+export const intakeUploaderSide = pgEnum('intake_uploader_side', INTAKE_UPLOADER_SIDES);
+
+// 准备资料：每个任务一行。有这一行就说明任务走新流程（下载模板 → 上传资料表格 → 提交给专家），
+// 新建任务时创建（K4）；旧任务没有这一行，按旧流程只读显示。
+// 存的是当前这份资料表格读出来的结果、必填核查结果和上传后的提示，每次重新上传表格都整体覆盖
+export const taskIntakes = pgTable('task_intakes', {
+  taskId: uuid('task_id')
+    .primaryKey()
+    .references(() => tasks.id, { onDelete: 'cascade' }),
+  // 当前这份资料表格；还没上传为空。它和下面的 parse_result、required_check 是一组，
+  // 表示「当前这份资料表格和它的读取结果」。task_intake_files 是上传记录（也存总平面图、疏散图、其他图纸照片）；
+  // 上传时两处在同一事务里写，读当前表格以这里为准
+  dataSheetFileId: uuid('data_sheet_file_id').references(() => files.id),
+  // 表格里读到的模板版本（「填写说明」B2），读不到为空
+  templateVersion: text('template_version'),
+  // 读表结果：企业身份 + 档案，与专家整理快照同形；可带每项读自哪个格子
+  parseResult: jsonb('parse_result').$type<IntakeParseResult>(),
+  // 必填核查：缺哪几项（工作表、行、格子、字段、给客户看的原话）
+  requiredCheck: jsonb('required_check').$type<IntakeRequiredCheck>(),
+  // 上传后的提示：不是耕云模板、像是同组织另一家企业的表、旧版模板、企业名称已按表格改好
+  warnings: jsonb('warnings').$type<IntakeWarning[]>().notNull().default([]),
+  // 客户说明「紧急疏散示意图这张图我们没有」；客户可以撤销
+  noEvacuationMap: boolean('no_evacuation_map').notNull().default(false),
+  // 客户选的专家；为空 = 由耕云安排。撤回再提交保留原来选的专家
+  preferredExpertId: uuid('preferred_expert_id').references(() => users.id),
+  // 最近一次是谁传的资料：客户自己，还是专家替客户传
+  lastUploadedSide: intakeUploaderSide('last_uploaded_side'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+});
+
+// 资料文件记录：每传一次记一行，文件本身在 files 表（kind = customer_material）。
+// 移除、换掉时只写 removed_at，不删行；同一任务同一时间只有一份当前的资料表格
+export const taskIntakeFiles = pgTable(
+  'task_intake_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    slot: intakeFileSlot('slot').notNull(),
+    fileId: uuid('file_id')
+      .notNull()
+      .references(() => files.id),
+    uploadedBy: uuid('uploaded_by')
+      .notNull()
+      .references(() => users.id),
+    // 专家替客户传的（客服拿到客户的资料后由专家代传）
+    uploadedByExpert: boolean('uploaded_by_expert').notNull().default(false),
+    uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('task_intake_files_task').on(t.taskId),
+    uniqueIndex('task_intake_files_one_data_sheet')
+      .on(t.taskId)
+      .where(sql`${t.slot} = 'data_sheet' and ${t.removedAt} is null`),
+  ],
+);
+
+// 提交与撤回（12 页 U2c、U3、U3b、S01）：每提交一次记一行，requestId 由页面生成，重发只记一次。
+// 不动旧流程的 task_submissions。
+// 撤回规则（K6 实现）：
+// - 只能在专家点开任务开始核对（task_workups.snapshot_at 写入）之前撤回，而且只能撤回一次；
+// - 撤回后任务回到「准备资料」，清空 tasks.submitted_at；已分配的专家和已传的资料都保留；
+// - 撤回后再提交，这次提交就不能再撤回了。
+// 所以一个任务最多一条「没撤回」的提交、最多一条「已撤回」的提交
+export const taskIntakeSubmissions = pgTable(
+  'task_intake_submissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    requestId: uuid('request_id').notNull().unique(),
+    submittedBy: uuid('submitted_by')
+      .notNull()
+      .references(() => users.id),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+    withdrawnBy: uuid('withdrawn_by').references(() => users.id),
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+    // 这次交给专家的文件清单和读表结果
+    snapshot: jsonb('snapshot').$type<IntakeSubmissionSnapshot>().notNull(),
+  },
+  (t) => [
+    uniqueIndex('task_intake_submissions_one_active').on(t.taskId).where(sql`${t.withdrawnAt} is null`),
+    uniqueIndex('task_intake_submissions_one_withdrawn').on(t.taskId).where(sql`${t.withdrawnAt} is not null`),
+  ],
+);
 
 export const contactMethod = pgEnum('contact_method', ['request', 'phone']);
 export const contactResult = pgEnum('contact_result', ['clarified', 'later', 'unreachable']);
@@ -404,8 +528,9 @@ export const checklistItems = pgTable(
 
 // customer_material = 客户上传的资料，本组织与相关人员可见；contract = 已签合同原件，仅运营可见（M3）；
 // draft = 系统生成的草稿（Word、PDF），只有负责专家和运营看得到，发布前客户看不到；
-// delivery = 发布时定下的三份交付 Word（M2 第 15 项），本组织客户、负责专家和运营能看
-export const fileKind = pgEnum('file_kind', ['customer_material', 'contract', 'draft', 'delivery']);
+// delivery = 发布时定下的三份交付 Word（M2 第 15 项），本组织客户、负责专家和运营能看；
+// expert_certificate = 专家的资质证书照片，只给耕云审核看
+export const fileKind = pgEnum('file_kind', ['customer_material', 'contract', 'draft', 'delivery', 'expert_certificate']);
 
 // 上传的文件。内容在文件存储里（本机磁盘 / 对象存储），这里只存登记信息
 export const files = pgTable('files', {
@@ -721,7 +846,9 @@ export const drawingPages = pgTable(
 );
 
 // 合同登记（M3）：每次开通、续期各一行；组织表上的合同有效期取最新一行，其他地方的判断不用改。
-// 合同原件只存文件 ID（kind = contract，仅运营可见）。系统不记金额，「合同款已到账」只记谁在何时确认
+// 合同原件只存文件 ID（kind = contract，仅运营可见）。系统不记金额，「合同款已到账」只记谁在何时确认。
+// 新的开通、续约弹窗（16 页）不再选服务范围，合同原件改为选填，所以这两列可以为空；
+// 合同买了几次、送了几次记在次数台账（credit_entries）里
 export const serviceScopeKind = pgEnum('service_scope_kind', ['single', 'annual']);
 export const organizationContracts = pgTable('organization_contracts', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -729,14 +856,12 @@ export const organizationContracts = pgTable('organization_contracts', {
     .notNull()
     .references(() => organizations.id, { onDelete: 'cascade' }),
   number: text('number').notNull(),
-  scopeKind: serviceScopeKind('scope_kind').notNull(),
+  scopeKind: serviceScopeKind('scope_kind'),
   // 年度服务包含几家企业；编制 1 家时为空
   scopeEnterprises: integer('scope_enterprises'),
   startsAt: date('starts_at', { mode: 'string' }).notNull(),
   endsAt: date('ends_at', { mode: 'string' }).notNull(),
-  fileId: uuid('file_id')
-    .notNull()
-    .references(() => files.id),
+  fileId: uuid('file_id').references(() => files.id),
   paymentConfirmedBy: uuid('payment_confirmed_by')
     .notNull()
     .references(() => users.id),
@@ -823,11 +948,16 @@ export const deliveries = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     publishedAt: timestamp('published_at', { withTimezone: true }),
+    // 再次交付时专家填的「这次更新了什么」（选填，最多 40 字，接口里校验）；交付邮件里带这一行
+    updateNote: text('update_note'),
   },
+  // 同一批草稿原来用唯一索引限定只能交付一次；交付后可以重新打开、用同一批草稿再次交付，
+  // 改由发布时在事务里检查：同一批已有没失败的交付、且之后任务没重新打开过，就拒绝
   (t) => [
     uniqueIndex('deliveries_task_version').on(t.taskId, t.version).where(sql`${t.status} = 'done'`),
     uniqueIndex('deliveries_one_publishing').on(t.taskId).where(sql`${t.status} = 'publishing'`),
-    uniqueIndex('deliveries_batch_once').on(t.batchId).where(sql`${t.status} <> 'failed'`),
+    index('deliveries_batch').on(t.batchId),
+    check('deliveries_update_note_length', sql`char_length(${t.updateNote}) <= 40`),
   ],
 );
 
@@ -845,6 +975,93 @@ export const deliveryFiles = pgTable(
   },
   (t) => [primaryKey({ columns: [t.deliveryId, t.kind] })],
 );
+
+// ---------- 编制次数（11 页 C01·S02、16 页 I02 / I03，DEV-PLAN K14 / K16） ----------
+
+export const creditEntryType = pgEnum('credit_entry_type', CREDIT_ENTRY_TYPES);
+export const creditPool = pgEnum('credit_pool', CREDIT_POOLS);
+
+// 次数台账：每次加、减各记一行，只插入不修改。delta 加为正、减为负。
+// 合同购买、赠送在开通和续约时登记；加购、赠送、补偿由运营「调整次数」登记（可加可减，原因必填）；
+// 交付扣减在专家首次交付时自动记 -1，重新打开后再次交付、撤回都不再记。
+// 剩余次数（K14 实现）= 交付当天有效的合同下各行之和；扣的时候先扣赠送的，再扣购买的，
+// pool 记这一次扣的是哪一池。次数不够时不记扣减，任务的扣次状态改为「等次数」
+export const creditEntries = pgTable(
+  'credit_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    type: creditEntryType('type').notNull(),
+    delta: integer('delta').notNull(),
+    // 赠送时的活动名称（「开通赠送」「老客户续约活动」）
+    campaign: text('campaign'),
+    // 每一行都挂在合同上：赠送、加购、补偿跟这份合同一起到期；交付扣减记交付当天有效的那份合同
+    contractId: uuid('contract_id')
+      .notNull()
+      .references(() => organizationContracts.id),
+    // 交付扣减：哪个任务、哪一次交付
+    taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+    deliveryId: uuid('delivery_id').references(() => deliveries.id, { onDelete: 'set null' }),
+    // 记进哪一池：赠送、补偿 → 赠送池；合同购买、加购 → 购买池；交付扣减按实际扣的那一池（先赠送后购买）。
+    // 类型和池的对应写在共享代码 CREDIT_ENTRY_POOL 里，数据库不按类型约束
+    pool: creditPool('pool').notNull(),
+    reason: text('reason'),
+    // 登记人；交付扣减是交付的专家
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('credit_entries_org').on(t.orgId, t.createdAt),
+    // 一个任务最多扣一次
+    uniqueIndex('credit_entries_one_deduction_per_task')
+      .on(t.taskId)
+      .where(sql`${t.type} = 'delivery_deduction'`),
+    // 不记 0 次；交付扣减每次就是 -1
+    check('credit_entries_delta_nonzero', sql`${t.delta} <> 0`),
+    check('credit_entries_deduction_one', sql`${t.type} <> 'delivery_deduction' or ${t.delta} = -1`),
+  ],
+);
+
+// ---------- 专家资料（13 页 E3「我的资料」，客户在 12 页 S09 / S10 选专家时看到卡片） ----------
+
+export const expertAvatar = pgEnum('expert_avatar', EXPERT_AVATARS);
+export const expertReviewStatus = pgEnum('expert_review_status', EXPERT_REVIEW_STATUSES);
+
+// 每位专家一行。还没有这一行的专家按「接单中」算（老专家不用先填资料）。
+// 没有资料行的专家点「暂停接单」时建一行，只写 accepting_orders，其他字段留空。
+// 审核状态为空 = 耕云内部建的专家账号、没走入驻审核：按可派算，客户选不到。
+// 头像从 8 个系统头像里选，不上传照片。改资质证书要重新审核，其他改动保存后直接生效
+export const expertProfiles = pgTable('expert_profiles', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  avatar: expertAvatar('avatar'),
+  // 客户看到的称呼，如「周工」「李老师」；只为暂停接单建的行留空
+  displayName: text('display_name'),
+  yearsOfExperience: integer('years_of_experience'),
+  // 擅长行业，和企业行业共用一套分类（行业代码）
+  industries: jsonb('industries').$type<string[]>().notNull().default([]),
+  // 一句话介绍（最多 50 字）、简介（最多 500 字），长度在接口里校验
+  intro: text('intro'),
+  bio: text('bio'),
+  // 只给耕云审核看：真实姓名和资质证书（名称、证书号、有效期、照片）
+  realName: text('real_name'),
+  certificates: jsonb('certificates').$type<ExpertCertificate[]>().notNull().default([]),
+  // 最早到期的那本证书的有效期，到期自动下架用
+  certificateExpiresOn: date('certificate_expires_on', { mode: 'string' }),
+  // 入驻审核：自己注册的专家一注册就记待审核；为空 = 耕云内部建的账号，没走入驻审核
+  reviewStatus: expertReviewStatus('review_status'),
+  reviewedBy: uuid('reviewed_by').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  // 接单中；暂停接单的专家不出现在客户可选列表里
+  acceptingOrders: boolean('accepting_orders').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ---------- 知识库（M3 第 5 项，16 页 I07 / I07B）：只有运营维护，改动只影响之后生成的文档 ----------
 
