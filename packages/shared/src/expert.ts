@@ -25,7 +25,7 @@ export interface ExpertTodo {
 }
 
 export function expertTodo(t: ExpertTaskFacts): ExpertTodo {
-  if (t.closedAt !== null) return { stage: 'delivered', todo: '三份 Word 已发布', action: '查看成果' };
+  if (t.closedAt !== null) return { stage: 'delivered', todo: '三份 Word 已交付', action: '查看成果' };
   if (t.status === 'preparing') return { stage: 'customer_preparing', todo: '等待客户提交生成申请', action: '查看任务' };
   if (t.contactCount > 0) return { stage: 'organizing', todo: `电话联系客户问清 ${t.contactCount} 项`, action: '联系客户' };
   if (t.verifyCount > 0) return { stage: 'organizing', todo: `核实 ${t.verifyCount} 项资料`, action: '核实资料' };

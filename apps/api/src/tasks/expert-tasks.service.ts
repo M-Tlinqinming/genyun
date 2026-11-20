@@ -1,14 +1,17 @@
-import { type ChecklistItemKey, getItemDef, workingDaysLeft } from '@genyun/shared';
+import { CHECKLIST_ITEM_KEYS, type ChecklistItemKey, getItemDef } from '@genyun/shared';
 import { Controller, ForbiddenException, Get, Inject, Injectable } from '@nestjs/common';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { isExpert } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { checklistItems, enterprises, organizations, taskContacts, tasks, users } from '../db/schema.ts';
-import { byChecklistOrder, type ContactRequest, pendingContactRequest } from './contact-request.ts';
+import { checklistItems, enterprises, organizations, tasks, users } from '../db/schema.ts';
 
-export type { ContactRequest } from './contact-request.ts';
+// 资料项按资料清单的固定顺序排（数据库查询不保证顺序）
+const ITEM_ORDER = new Map<string, number>(CHECKLIST_ITEM_KEYS.map((k, i) => [k, i]));
+function byChecklistOrder<T extends { itemKey: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => (ITEM_ORDER.get(a.itemKey) ?? Infinity) - (ITEM_ORDER.get(b.itemKey) ?? Infinity));
+}
 
 export interface VerifyItem {
   key: ChecklistItemKey;
@@ -20,7 +23,7 @@ export interface ExpertEvent {
   at: Date;
   taskId: string;
   text: string;
-  kind: 'submitted' | 'contact' | 'photo' | 'delivered';
+  kind: 'submitted' | 'photo' | 'delivered';
 }
 
 const RECENT_EVENTS = 6;
@@ -72,15 +75,6 @@ export class ExpertTasksService {
           list.map((t) => t.id),
         ),
       );
-    const contacts = await this.db
-      .select({ taskId: taskContacts.taskId, method: taskContacts.method, result: taskContacts.result, createdAt: taskContacts.createdAt })
-      .from(taskContacts)
-      .where(
-        inArray(
-          taskContacts.taskId,
-          list.map((t) => t.id),
-        ),
-      );
     // 等专家核实的项：拍照给耕云看、请专家电话联系，且专家还没判定
     const pending = items.filter(
       (i) =>
@@ -96,23 +90,13 @@ export class ExpertTasksService {
         kind: p.callRequested ? 'call' : 'photo',
       }));
 
-      // 提交以后才轮到专家打电话；电话联系上客户以后不再进倒计时横幅（规则见 contact-request.ts）
-      const contact: ContactRequest | null = pendingContactRequest(
-        t,
-        mine.filter((p) => p.callRequested),
-        contacts.filter((c) => c.taskId === t.id),
-      );
-
       if (t.submittedAt) events.push({ at: t.submittedAt, taskId: t.id, kind: 'submitted', text: `${t.enterpriseName}提交生成申请` });
-      if (contact) {
-        events.push({ at: contact.requestedAt, taskId: t.id, kind: 'contact', text: `${t.enterpriseName}请专家电话联系` });
-      }
       const photos = mine.filter((p) => !p.callRequested);
       if (t.submittedAt && photos.length > 0) {
         const at = new Date(Math.max(t.submittedAt.getTime(), ...photos.map((p) => p.updatedAt.getTime())));
         events.push({ at, taskId: t.id, kind: 'photo', text: `${t.enterpriseName}有 ${photos.length} 项拍照资料待核实` });
       }
-      if (t.closedAt) events.push({ at: t.closedAt, taskId: t.id, kind: 'delivered', text: `${t.enterpriseName}三份成果已发布` });
+      if (t.closedAt) events.push({ at: t.closedAt, taskId: t.id, kind: 'delivered', text: `${t.enterpriseName}三份成果已交付` });
 
       const times = [t.updatedAt, t.submittedAt, ...items.filter((i) => i.taskId === t.id).map((i) => i.updatedAt)].filter(
         (d): d is Date => d !== null,
@@ -120,8 +104,6 @@ export class ExpertTasksService {
       return {
         ...t,
         verifyItems,
-        // 剩几个工作日按接口这边的节假日表算（运营在知识库维护），前端直接显示
-        contact: contact ? { ...contact, daysLeft: workingDaysLeft(contact.deadline) } : null,
         activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
       };
     });

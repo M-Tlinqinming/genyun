@@ -34,9 +34,6 @@ function clock(iso: string, timeOnly = false): string {
 }
 const sameDay = (iso: string, now = new Date()) => clock(iso).slice(0, 5) === clock(now.toISOString()).slice(0, 5);
 
-// 客户名字只露姓（设计稿写法：陈 ●●）
-const masked = (name: string) => `${name.slice(0, 1)} ●●`;
-
 export function GreyTag({ children }: { children: string }) {
   return (
     <span
@@ -115,7 +112,6 @@ export function TaskCenterPage() {
         <Result status="error" title="任务加载失败" subTitle={query.error.message} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <ContactBanner rows={rows} onOpen={open} />
           <Stats rows={rows} />
 
           <div style={{ ...panel, borderColor: line, overflow: 'hidden' }}>
@@ -224,59 +220,11 @@ export function TaskCenterPage() {
   );
 }
 
-// 客户点了「请专家电话联系」：显示最急的一条，2 个工作日内没联系转运营兜底
-function ContactBanner({ rows, onOpen }: { rows: Row[]; onOpen: (id: string) => void }) {
-  const requests = rows
-    .filter((r): r is Row & { contact: NonNullable<Row['contact']> } => r.contact !== null)
-    .sort((a, b) => a.contact.deadline.localeCompare(b.contact.deadline));
-  const first = requests[0];
-  if (!first) return null;
-  const { contact } = first;
-  // 剩几个工作日由接口按知识库里的节假日算好
-  const left = contact.daysLeft;
-  const due =
-    left < 0
-      ? '已超过 2 个工作日，已转运营兜底'
-      : left === 0
-        ? `今天 ${clock(contact.deadline, true)} 前未联系将转运营兜底`
-        : `剩 ${left} 个工作日，${clock(contact.deadline)} 前未联系将转运营兜底`;
-  return (
-    <div
-      role="alert"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        padding: '14px 20px',
-        borderRadius: 8,
-        border: '1px solid #F3D9A4',
-        background: gy.warningBg,
-      }}
-    >
-      <span style={{ flexShrink: 0, padding: '0 8px', borderRadius: 4, background: gy.warning, color: '#FFFFFF', fontSize: 12, lineHeight: '22px' }}>
-        客户请求联系 {requests.length}
-      </span>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>
-          {first.enterpriseName} · {masked(contact.requestedBy)} 点了「请专家电话联系」
-        </span>
-        <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
-          {contact.labels.join('、')} · {clock(contact.requestedAt)} 提出 · {due}
-        </span>
-      </div>
-      <Button type="primary" onClick={() => onOpen(first.id)}>
-        联系客户
-      </Button>
-    </div>
-  );
-}
-
-// 工作量：后续阶段（专业审核、补件）做到时这两个数会动起来
+// 工作量：后续阶段（专业审核）做到时这个数会动起来
 function Stats({ rows }: { rows: Row[] }) {
   const cards = [
     { title: '我的任务', value: rows.length, note: '获授权的企业任务' },
     { title: '待专业审核', value: 0, note: '三份草稿待核对' },
-    { title: '补件待核实', value: 0, note: '客户已提交回应' },
     { title: '已交付', value: rows.filter((r) => r.todo.stage === 'delivered').length, note: '三份成果可下载' },
   ];
   return (
@@ -299,7 +247,6 @@ function Stats({ rows }: { rows: Row[] }) {
 
 const EVENT_TAGS: Record<ExpertEvent['kind'], string> = {
   submitted: '待整理',
-  contact: '待联系',
   photo: '待核实',
   delivered: '已交付',
 };

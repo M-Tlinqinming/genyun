@@ -8,12 +8,11 @@ import { concludeReview, reviewKey, useReview } from '../../../api/review';
 import { useSession } from '../../../auth/session';
 import { linkButton, Loading } from '../../../components/ui';
 import { gy, stage } from '../../../theme/tokens';
-import { ContactRecords } from '../workup/ContactRecords';
 import { stamp } from './EditDialogs';
 
 // 审核结论（14 页 E18-06）：三份逐份核对过，确认本次审核结论。确认后任何一份再保存修订，结论失效，
 // 要重新核对那一份、重新确认
-const STAGES = ['资料核实', '专业编制', '审核与修订', '成果发布'];
+const STAGES = ['资料核实', '专业编制', '审核与修订', '成果交付'];
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const panel: CSSProperties = { background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 6 };
 const cell: CSSProperties = { ...text14, padding: '22px 24px', textAlign: 'left', borderBottom: `1px solid ${gy.split}` };
@@ -42,7 +41,6 @@ export function ConclusionView({
   const [agreed, setAgreed] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showRecords, setShowRecords] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -146,9 +144,6 @@ export function ConclusionView({
               </li>
             ))}
           </ol>
-          <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setShowRecords(true)}>
-            处理记录
-          </button>
         </div>
       </header>
 
@@ -159,7 +154,7 @@ export function ConclusionView({
       {passed ? (
         <Banner tone="done">
           ✓ 审核已通过 · {r.review!.byName} {stamp(r.review!.at)} · 结论对应三份当前保存稿
-          {r.published ? ` · 已发布为交付 V${r.published.version}，这批文稿只读` : ''}
+          {r.published ? ` · 已交付（交付 V${r.published.version}），这批文稿只读` : ''}
         </Banner>
       ) : r.factsChangedAt ? (
         <Banner tone="action">审核结论已失效：事实已更新，草稿还没有重新生成。请先按新事实重新生成三份草稿，再核对和确认审核结论。</Banner>
@@ -252,7 +247,7 @@ export function ConclusionView({
           </>
         )}
         <span style={{ ...text14, color: gy.secondary }}>
-          审核通过后进入成果发布；客户此时仍不能下载本次稿件。后续修改保存将使相应核对及审核结论失效。
+          审核通过后进入成果交付；客户此时仍不能下载本次稿件。后续修改保存将使相应核对及审核结论失效。
         </span>
       </section>
 
@@ -264,17 +259,16 @@ export function ConclusionView({
         {passed ? (
           // 用不同的 key：确认成功后按钮换成这个，不能沿用上一个按钮的加载状态
           <Button key="publish" type="primary" onClick={onPublish}>
-            {r.published ? '查看发布结果' : '进入发布'}
+            {r.published ? '查看交付结果' : '进入交付'}
           </Button>
         ) : (
           r.editable && (
             <Button key="conclude" type="primary" disabled={!allChecked || !agreed || !!r.factsChangedAt} loading={saving} onClick={() => void submit()}>
-              确认审核通过，进入发布
+              确认审核通过，进入交付
             </Button>
           )
         )}
       </div>
-      <ContactRecords taskId={taskId} open={showRecords} onClose={() => setShowRecords(false)} />
     </div>
   );
 }

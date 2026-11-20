@@ -9,14 +9,8 @@ async function login(page: Page, email: string) {
   await expect(page).toHaveURL(/\/expert$/);
 }
 
-test('周工在任务中心看到飞宇任务、客户请求联系，并能进入任务', async ({ page }) => {
+test('周工在任务中心看到飞宇任务，并能进入任务', async ({ page }) => {
   await login(page, 'expert@demo.genyun.net.cn');
-
-  const banner = page.getByRole('alert');
-  await expect(banner).toContainText('客户请求联系 1');
-  await expect(banner).toContainText('惠阳飞宇电器有限公司 · 陈 ●● 点了「请专家电话联系」');
-  await expect(banner).toContainText('应急物资及装备、消防水池');
-  await expect(banner).toContainText(/个工作日|今天 \d\d:\d\d 前/);
 
   const row = page.getByRole('row', { name: /惠阳飞宇电器有限公司/ });
   await expect(row).toContainText('飞宇演示客户');
@@ -30,7 +24,7 @@ test('周工在任务中心看到飞宇任务、客户请求联系，并能进�
 
   await expect(page.getByText('惠阳飞宇电器有限公司提交生成申请')).toBeVisible();
 
-  await banner.getByRole('button', { name: '联系客户' }).click();
+  await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
   await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+$/);
   await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
 });

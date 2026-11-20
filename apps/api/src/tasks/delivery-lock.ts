@@ -26,8 +26,8 @@ export async function batchLock(db: Pick<Database, 'select'>, batchId: string): 
 
 export function lockedMessage(lock: BatchLock) {
   return lock.status === 'done'
-    ? `这批文稿已发布为${deliveryLabel(lock.version)}，不能再修改。需要更正请发起事实补件，重新生成后再发布`
-    : '这批文稿正在发布，请等发布完成';
+    ? `这批文稿已交付（${deliveryLabel(lock.version)}），不能再修改。需要更正请回到专业整理核实，重新生成后再交付`
+    : '这批文稿正在交付，请等交付完成';
 }
 
 export function throwIfLocked(lock: BatchLock | null) {
@@ -35,7 +35,7 @@ export function throwIfLocked(lock: BatchLock | null) {
 }
 
 // 这个任务正在发布（不论哪一批）：采用补件会改企业事实、让审核结论作废，等发布完成后再采用
-export const PUBLISHING_MESSAGE = '这个任务正在发布三份 Word，请等发布完成后再采用补件';
+export const PUBLISHING_MESSAGE = '这个任务正在交付三份 Word，请等交付完成后再修改';
 
 export async function throwIfTaskPublishing(db: Pick<Database, 'select'>, taskId: string) {
   const [row] = await db

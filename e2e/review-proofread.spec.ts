@@ -166,7 +166,7 @@ test('逐份看 Word 版式并核对；改正文后该份回到待核对；三�
   const records = page.getByRole('region', { name: '三份文稿的核对记录' });
   await expect(records.getByRole('row')).toHaveCount(4);
   await expect(records.getByRole('row', { name: /应急预案/ })).toContainText('✓ 周工');
-  const approve = page.getByRole('button', { name: '确认审核通过，进入发布' });
+  const approve = page.getByRole('button', { name: '确认审核通过，进入交付' });
   await expect(approve).toBeDisabled();
   await expect(page.getByLabel('审核结论', { exact: true })).toHaveValue(/企业名称、联系人等关键信息一致/);
   await page.getByRole('checkbox', { name: /确认以上结论对应当前保存稿/ }).check();
@@ -205,7 +205,7 @@ test('逐份看 Word 版式并核对；改正文后该份回到待核对；三�
   await page.goto(page.url().replace(/\?.*$/, '?view=review'));
   await expect(page.getByRole('heading', { name: '还有文稿没有核对' })).toBeVisible();
   await expect(page.getByText(/审核结论已失效：风险评估报告在审核后又保存了修订/)).toBeVisible();
-  await expect(page.getByRole('button', { name: '确认审核通过，进入发布' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '确认审核通过，进入交付' })).toBeDisabled();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/acceptance/m2-12-lapsed-1440.png' });
 });

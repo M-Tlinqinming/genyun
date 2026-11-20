@@ -74,16 +74,9 @@ const sectionTitle: CSSProperties = { fontSize: 13, fontWeight: 500, lineHeight:
 
 export type EditMode = 'expert' | 'customer';
 
-// 客户在任务里的回答，专家点「采用」后带进编辑框
-export interface Adoption {
-  contactId: string;
-  answer: string;
-}
-
 export interface Editing {
   key: string;
   mode: EditMode;
-  adopt?: Adoption;
 }
 
 export interface FactsPanelProps {
@@ -92,13 +85,9 @@ export interface FactsPanelProps {
   onOnlyMissingChange: (v: boolean) => void;
   focusKey: string | null;
   editing: Editing | null;
-  onEdit: (key: string, mode: EditMode, adopt?: Adoption) => void;
+  onEdit: (key: string, mode: EditMode) => void;
   onCancelEdit: () => void;
-  onSave: (fact: Fact, value: FactValue | null, mode: EditMode, contactId?: string) => Promise<void>;
-  // 客户已回答、还没采用的项
-  awaiting: Map<string, Adoption>;
-  // 联系客户：打开联系客户对话框，只带这一项
-  onContact: (key: string) => void;
+  onSave: (fact: Fact, value: FactValue | null, mode: EditMode) => Promise<void>;
   onSourceClick?: (fact: Fact) => (() => void) | undefined;
   // 当前右侧打开的原件名称：专家直接填写时记作对照的原件
   originalName?: string;
@@ -174,14 +163,13 @@ function Rows(props: FactsPanelProps & { rows: Fact[] }) {
             <FactEditor
               fact={fact}
               mode={props.editing.mode}
-              adopt={props.editing.adopt}
               originalName={props.originalName}
               saving={props.saving}
               onCancel={props.onCancelEdit}
-              onSave={(value) => props.onSave(fact, value, props.editing!.mode, props.editing!.adopt?.contactId)}
+              onSave={(value) => props.onSave(fact, value, props.editing!.mode)}
             />
           ) : fact.required && fact.status !== 'done' ? (
-            <MissingRow fact={fact} focused={props.focusKey === fact.key} onEdit={props.onEdit} onContact={props.onContact} />
+            <MissingRow fact={fact} focused={props.focusKey === fact.key} onEdit={props.onEdit} />
           ) : (
             <FactRow
               fact={fact}
@@ -189,12 +177,6 @@ function Rows(props: FactsPanelProps & { rows: Fact[] }) {
               onEdit={props.onEdit}
               onRevert={() => props.onSave(fact, null, 'expert')}
               onSourceClick={props.onSourceClick?.(fact)}
-            />
-          )}
-          {props.editing?.key !== fact.key && props.awaiting.has(fact.key) && (
-            <AnswerBar
-              answer={props.awaiting.get(fact.key)!}
-              onAdopt={() => props.onEdit(fact.key, 'customer', props.awaiting.get(fact.key))}
             />
           )}
         </div>
@@ -276,45 +258,15 @@ function FactRow({
   );
 }
 
-// 客户在任务里回答了这一项：专家看过后点「采用」，带进编辑框确认再保存
-function AnswerBar({ answer, onAdopt }: { answer: Adoption; onAdopt: () => void }) {
-  return (
-    <div
-      data-testid="customer-answer"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        margin: '0 0 4px',
-        padding: '6px 12px 6px 120px',
-        borderRadius: 6,
-        background: source.customer.bg,
-        fontSize: 13,
-        lineHeight: '20px',
-      }}
-    >
-      <span style={{ flex: 1, minWidth: 0, color: gy.text }}>
-        <span style={{ color: source.customer.color }}>客户已回答：</span>
-        {answer.answer}
-      </span>
-      <button type="button" style={{ ...linkButton, fontSize: 13 }} onClick={onAdopt}>
-        采用
-      </button>
-    </div>
-  );
-}
-
-// 必需项缺失：黄底整块，三个处理方式（14 页 E18-00A「技术人员数」）
+// 必需项缺失：黄底整块，两个处理方式（14 页 E18-00A「技术人员数」）
 function MissingRow({
   fact,
   focused,
   onEdit,
-  onContact,
 }: {
   fact: Fact;
   focused: boolean;
   onEdit: FactsPanelProps['onEdit'];
-  onContact: FactsPanelProps['onContact'];
 }) {
   const status = fact.status === 'later' ? '客户稍后补' : '还没有';
   const why = [fact.use, fact.hint].filter(Boolean).join('；');
@@ -335,10 +287,6 @@ function MissingRow({
         <span style={{ width: 96, flexShrink: 0, fontSize: 14, lineHeight: '22px', color: gy.text }}>{fact.label} *</span>
         <span style={{ flex: 1, minWidth: 0, fontSize: 14, lineHeight: '22px', color: stage.action.color }}>{status}</span>
         <Space size={16}>
-          {/* 页面顶部也有「联系客户」（带全部缺失项），这里的读屏名称带上字段名以区分 */}
-          <button type="button" style={linkButton} aria-label={`联系客户：${fact.label}`} onClick={() => onContact(fact.key)}>
-            联系客户
-          </button>
           <button type="button" style={linkButton} onClick={() => onEdit(fact.key, 'customer')}>
             标为客户确认
           </button>
@@ -352,16 +300,9 @@ function MissingRow({
   );
 }
 
-// 采用客户回答时按类型带出：人数取第一个数字，文字原样
-function adoptedValue(fact: Fact, answer: string): { text: string; count: number | null } {
-  const n = answer.match(/\d+/);
-  return { text: fact.kind === 'text' ? answer : '', count: fact.kind === 'count' && n ? Number(n[0]) : null };
-}
-
 function FactEditor({
   fact,
   mode,
-  adopt,
   originalName,
   saving,
   onCancel,
@@ -369,15 +310,13 @@ function FactEditor({
 }: {
   fact: Fact;
   mode: EditMode;
-  adopt?: Adoption;
   originalName?: string;
   saving: boolean;
   onCancel: () => void;
   onSave: (value: FactValue) => Promise<void>;
 }) {
-  const adopted = adopt ? adoptedValue(fact, adopt.answer) : null;
-  const [text, setText] = useState(adopted ? adopted.text : typeof fact.value === 'string' ? fact.value : '');
-  const [count, setCount] = useState<number | null>(adopted ? adopted.count : typeof fact.value === 'number' ? fact.value : null);
+  const [text, setText] = useState(typeof fact.value === 'string' ? fact.value : '');
+  const [count, setCount] = useState<number | null>(typeof fact.value === 'number' ? fact.value : null);
   const [person, setPerson] = useState<FactPerson>(
     typeof fact.value === 'object' ? fact.value : { name: '', position: '', phone: '' },
   );
@@ -423,9 +362,8 @@ function FactEditor({
     input = <Input autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={500} aria-label={fact.label} {...keys} style={{ flex: 1 }} />;
   }
 
-  const recorded = adopt
-    ? `记为「客户确认 · 任务内补充」 · 客户原话：${adopt.answer}`
-    : mode === 'customer'
+  const recorded =
+    mode === 'customer'
       ? '记为「客户确认 · 电话确认」'
       : `记为「专家整理」${originalName ? `，对照原件：${originalName}` : ''}`;
   return (

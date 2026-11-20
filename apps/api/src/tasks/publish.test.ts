@@ -354,13 +354,13 @@ describe('发布', () => {
         .send({ saveId: randomUUID(), batchId, baseRev: section.rev, blocks: [{ type: 'paragraph', text: ['发布后再改。'] }], note: '更正' })
         .expect(409)
     ).body;
-    expect(saved.message).toContain('已发布为交付 V1');
+    expect(saved.message).toContain('已交付（交付 V1）');
     await zhou.put(url('plan', '/check')).send({ version: 0 }).expect(409);
     // AI 改写、再确认审核结论也被拦下
     const rewrite = (await zhou.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '一段需要改写的文字。' }).expect(409)).body;
-    expect(rewrite.message).toContain('已发布为交付 V1');
+    expect(rewrite.message).toContain('已交付（交付 V1）');
     const conclude = (await zhou.post(reviewUrl()).send({ note: '再确认一次。', versions: VERSIONS }).expect(409)).body;
-    expect(conclude.message).toContain('已发布为交付 V1');
+    expect(conclude.message).toContain('已交付（交付 V1）');
     const review: ReviewView = (await zhou.get(reviewUrl()).expect(200)).body;
     expect(review).toMatchObject({ editable: false, published: { version: 1 } });
   });

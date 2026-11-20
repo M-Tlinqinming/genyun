@@ -88,7 +88,6 @@ interface Row {
   number: string;
   orgName: string;
   verifyItems: { key: string; kind: string }[];
-  contact: { requestedAt: string; requestedBy: string; labels: string[]; deadline: string } | null;
 }
 
 describe('专家任务中心', () => {
@@ -109,21 +108,12 @@ describe('专家任务中心', () => {
     ]);
   });
 
-  it('请求联系从提交时起算 2 个工作日，记下是谁请求的', async () => {
-    const res = await (await as('zhou@test.cn')).get('/api/expert/tasks').expect(200);
-    const { contact } = (res.body.tasks as Row[]).find((r) => r.id === task.feiyu)!;
-    // 10-27（周二）15:20 北京时间提交，客户更早就点了请联系
-    expect(contact).toMatchObject({ requestedAt: '2026-10-27T07:20:00.000Z', deadline: '2026-10-29T07:20:00.000Z', requestedBy: '陈经理' });
-    expect(contact!.labels).toHaveLength(2);
-    expect((res.body.tasks as Row[]).find((r) => r.id === task.preparing)!.contact).toBeNull();
-  });
-
   it('最近处理只含自己任务的动态', async () => {
     const res = await (await as('zhou@test.cn')).get('/api/expert/tasks').expect(200);
     const events = res.body.events as { taskId: string; text: string }[];
     expect(events.length).toBeGreaterThan(0);
     expect(events.every((e) => e.taskId === task.feiyu || e.taskId === task.preparing)).toBe(true);
-    expect(events.map((e) => e.text)).toContain('飞宇制造有限公司请专家电话联系');
+    expect(events.map((e) => e.text)).toContain('飞宇制造有限公司提交生成申请');
   });
 
   it('看不到也打不开别的专家的任务', async () => {
