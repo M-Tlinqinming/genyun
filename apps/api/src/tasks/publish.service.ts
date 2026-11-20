@@ -1,14 +1,13 @@
-// 成果发布（M2 第 15 项，15 页 R03、R04、R04a、R04b）：审核结论有效时，负责专家发布三份当前稿。
-// 发布时把三份 Word 定稿（文件属性写上「AI 辅助起草、注册安全工程师审核」和审核人）存成文件，形成交付版本
-// （同一任务第一次 V1，以后 V2、V3），任务进入已交付，给客户发一条站内提醒。
-// 防重复：页面每次发布带一个 publishId；同一个 publishId 重发只返回那一次的结果。结果不确定时页面先按 publishId 查，
-// 查到没收到才重新发布。同一批文稿只能形成一个交付版本（发布时锁住任务检查；交付后重新打开的，同一批可以再次交付），
-// 同一任务同一时间只有一次发布在进行（数据库唯一索引兜底）
+// 成果交付（M2 第 15 项，15 页 R03、R04、R04a、R04b）：审核结论有效时，负责专家交付三份当前稿。
+// 交付时把三份 Word 定稿（文件属性写上「AI 辅助起草、注册安全工程师审核」和审核人）存成文件，形成交付版本
+// （同一任务内部按 1、2、3 编号，界面不显示），任务进入已交付，给客户发一条站内提醒。
+// 防重复：页面每次交付带一个 publishId；同一个 publishId 重发只返回那一次的结果。结果不确定时页面先按 publishId 查，
+// 查到没收到才重新交付。同一批文稿只能形成一个交付版本（交付时锁住任务检查；交付后重新打开的，同一批可以再次交付），
+// 同一任务同一时间只有一次交付在进行（数据库唯一索引兜底）
 import {
   DRAFT_KIND_KEYS,
   DRAFT_KINDS,
   PUBLISH_STALE_MS,
-  deliveryLabel,
   publishRequestSchema,
   reviewValid,
   type DeliveryVersion,
@@ -61,10 +60,10 @@ import { EditingService } from './editing.service.ts';
 import { ReviewService } from './review.service.ts';
 
 const NOT_FOUND = '找不到该任务';
-const ONLY_EXPERT = '只有负责这个任务的专家可以发布';
-const FAILED = '三份 Word 没能全部存好，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新发布';
-const INTERRUPTED = '发布中断，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新发布';
-const CHANGED_WHILE_PUBLISHING = '发布期间有文稿又保存了修订，本次没有形成交付。请重新核对并确认审核结论后再发布';
+const ONLY_EXPERT = '只有负责这个任务的专家可以交付';
+const FAILED = '三份 Word 没能全部存好，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新交付';
+const INTERRUPTED = '交付中断，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新交付';
+const CHANGED_WHILE_PUBLISHING = '交付期间有文稿又保存了修订，本次没有形成交付。请重新核对并确认审核结论后再交付';
 
 const WORD_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -85,10 +84,10 @@ export class PublishService {
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
-  /** 发布页：能不能发布、这批文稿最近一次（或 publishId 那一次）发布的情况、已形成的交付版本 */
+  /** 交付页：能不能交付、这批文稿最近一次（或 publishId 那一次）交付的情况、已形成的交付版本 */
   async view(user: SessionUser, taskId: string, publishId?: string): Promise<PublishView> {
     const task = await this.task(user, taskId);
-    if (publishId !== undefined && !isUuid(publishId)) throw new BadRequestException('发布编号不正确');
+    if (publishId !== undefined && !isUuid(publishId)) throw new BadRequestException('交付编号不正确');
     await this.expireStale(task.id);
     return this.build(user, task, publishId);
   }
@@ -97,10 +96,10 @@ export class PublishService {
     const task = await this.task(user, taskId);
     if (!canPublishTask(user, task)) throw new ForbiddenException(ONLY_EXPERT);
     const parsed = publishRequestSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException('请刷新页面后再发布');
+    if (!parsed.success) throw new BadRequestException('请刷新页面后再交付');
     const { publishId, batchId, versions } = parsed.data;
 
-    // 同一次发布重发（超时、断网后再点）：只返回那一次的结果，不再发布
+    // 同一次交付重发（超时、断网后再点）：只返回那一次的结果，不再交付
     const replayed = await this.replay(user, task, publishId);
     if (replayed) return replayed;
 
@@ -109,16 +108,16 @@ export class PublishService {
     const refuse = async (message: string, reason: string) => {
       throw new ConflictException({ statusCode: 409, message, reason, view: await this.build(user, task) });
     };
-    if (review.batchId !== batchId) return refuse('草稿已重新生成，请刷新后按新的一批核对、审核再发布', 'regenerated');
-    if (review.published) return refuse(`这批文稿已发布为${deliveryLabel(review.published.version)}，不用重复发布`, 'already_published');
-    if (!reviewValid(review)) return refuse(blockerOf(review) ?? '审核结论已失效，请重新核对并确认审核结论后再发布', 'review_invalid');
+    if (review.batchId !== batchId) return refuse('草稿已重新生成，请刷新后按新的一批核对、审核再交付', 'regenerated');
+    if (review.published) return refuse('这批文稿已经交付过了，不用重复交付', 'already_published');
+    if (!reviewValid(review)) return refuse(blockerOf(review) ?? '审核结论已失效，请重新核对并确认审核结论后再交付', 'review_invalid');
     if (review.docs.some((d) => versions[d.kind] !== d.version)) {
-      return refuse('有文稿在你打开发布页后又保存了修订，请重新核对并确认审核结论后再发布', 'stale');
+      return refuse('有文稿在你打开交付页后又保存了修订，请重新核对并确认审核结论后再交付', 'stale');
     }
     const [conclusion] = await this.db.select().from(draftReviews).where(eq(draftReviews.batchId, batchId)).limit(1);
     const batch = (await this.db.select().from(generationBatches).where(eq(generationBatches.id, batchId)).limit(1))[0]!;
 
-    // 先记下「正在发布」。同一任务另一次发布由唯一索引拦下；同一批文稿再发布在这里检查：
+    // 先记下「正在交付」。同一任务另一次交付由唯一索引拦下；同一批文稿再交付在这里检查：
     // 锁住任务，同一批已有没失败的交付，而且那之后任务没重新打开过，就拒绝（和原来的唯一索引效果一样）
     const version = await this.nextVersion(task.id);
     let row: Delivery;
@@ -153,7 +152,7 @@ export class PublishService {
       });
     } catch (err) {
       if (err instanceof BatchAlreadyPublished) {
-        return refuse('这批文稿正在发布或已经发布，请刷新查看发布结果', 'publishing');
+        return refuse('这批文稿正在交付或已经交付，请刷新查看交付结果', 'publishing');
       }
       // 同一个 publishId 两个请求同时到：后到的按已收到返回
       if (isUniqueViolation(err, 'deliveries_publish_id_unique')) {
@@ -161,31 +160,31 @@ export class PublishService {
         if (replayedLate) return replayedLate;
       }
       if (isUniqueViolation(err, 'deliveries_one_publishing')) {
-        return refuse('这批文稿正在发布或已经发布，请刷新查看发布结果', 'publishing');
+        return refuse('这批文稿正在交付或已经交付，请刷新查看交付结果', 'publishing');
       }
       throw err;
     }
 
     const published = await this.finish(row, task, batch, review.review!.byName);
-    // 操作日志：只记形成了交付版本的发布；重发同一个 publishId 走上面的 replay，不会再记
+    // 操作日志：只记形成了交付版本的交付；重发同一个 publishId 走上面的 replay，不会再记
     if (published) {
       await this.audit.record({
         action: 'publish',
         actorId: user.id,
         actorEmail: user.email,
         ip,
-        target: `${task.number} · ${deliveryLabel(row.version)}`,
+        target: `${task.number} · 第 ${row.version} 次交付`,
       });
     }
     return this.build(user, task, publishId);
   }
 
-  // 这个 publishId 已经收到过：属于本任务就返回那一次的结果；属于别的任务（页面串了编号）就拒绝，不当成本任务的发布
+  // 这个 publishId 已经收到过：属于本任务就返回那一次的结果；属于别的任务（页面串了编号）就拒绝，不当成本任务的交付
   private async replay(user: SessionUser, task: Task, publishId: string): Promise<PublishView | null> {
     const [same] = await this.db.select({ taskId: deliveries.taskId }).from(deliveries).where(eq(deliveries.publishId, publishId)).limit(1);
     if (!same) return null;
     if (same.taskId !== task.id) {
-      throw new ConflictException({ statusCode: 409, message: '这次发布的编号属于另一个任务，请刷新页面后重新发布', reason: 'other_task' });
+      throw new ConflictException({ statusCode: 409, message: '这次交付的编号属于另一个任务，请刷新页面后重新交付', reason: 'other_task' });
     }
     return this.build(user, task, publishId);
   }
@@ -201,18 +200,18 @@ export class PublishService {
     try {
       stored = [];
       for (const kind of DRAFT_KIND_KEYS) {
-        const word = await this.editing.deliveryWord(batch, kind, { reviewerName, version: row.version });
+        const word = await this.editing.deliveryWord(batch, kind, { reviewerName, deliveredAt: new Date() });
         stored.push({ kind, fileId: await this.store(task, row.publishedBy, word.name, word.data) });
       }
     } catch (err) {
-      this.logger.warn(`发布 ${task.number} 失败：${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(`交付 ${task.number} 失败：${err instanceof Error ? err.message : String(err)}`);
       await fail(FAILED);
       return false;
     }
     let published = false;
 
     const changed = await this.db.transaction(async (tx) => {
-      // 锁住三份的修订记录，和保存修订不交错；发布期间又保存过就不算
+      // 锁住三份的修订记录，和保存修订不交错；交付期间又保存过就不算
       const edits = await tx
         .select({ kind: draftEdits.kind, version: draftEdits.version })
         .from(draftEdits)
@@ -228,7 +227,7 @@ export class PublishService {
       // 中途被当成中断（超过 5 分钟）改成失败了：不再形成交付
       if (done.length === 0) return false;
       await tx.insert(deliveryFiles).values(stored.map((s) => ({ deliveryId: row.id, ...s })));
-      // 任务进入已交付（以后再发布 V2 时已经是已交付，只更新时间）
+      // 任务进入已交付（以后再次交付时已经是已交付，只更新时间）
       await tx.update(tasks).set({ updatedAt: now }).where(eq(tasks.id, task.id));
       await tx.update(tasks).set({ closedAt: now }).where(and(eq(tasks.id, task.id), isNull(tasks.closedAt)));
       // 只在站内提醒，不发邮件；不写专家电话。只提醒机构管理员和负责这家企业的成员
@@ -236,8 +235,12 @@ export class PublishService {
         await enterpriseCustomerIds(tx, task),
         {
           taskId: task.id,
-          title: `${task.enterpriseName}的成果已交付`,
-          body: `应急预案、风险评估报告、应急资源调查报告已发布（${deliveryLabel(row.version)}），可在成果文档里查看和下载。`,
+          // 第一次交付写「已交付」，之后再交付写「已更新」；不写版本号
+          title: row.version === 1 ? `${task.enterpriseName}的成果已交付` : `${task.enterpriseName}的成果已更新`,
+          body:
+            row.version === 1
+              ? '应急预案、风险评估报告、应急资源调查报告已交付，可在成果文档里查看和下载。'
+              : '应急预案、风险评估报告、应急资源调查报告已更新，可在成果文档里查看和下载。',
           link: `/customer/documents/${task.id}`,
         },
         tx,
@@ -246,7 +249,7 @@ export class PublishService {
       return false;
     }).catch(async (err: unknown) => {
       published = false;
-      this.logger.warn(`发布 ${task.number} 记录交付失败：${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(`交付 ${task.number} 记录交付失败：${err instanceof Error ? err.message : String(err)}`);
       await fail(FAILED);
       return false;
     });
@@ -272,7 +275,7 @@ export class PublishService {
     return id;
   }
 
-  // 发布中断（服务重启）超过 5 分钟还停在「正在发布」：按失败处理，可以重新发布
+  // 交付中断（服务重启）超过 5 分钟还停在「正在交付」：按失败处理，可以重新交付
   private async expireStale(taskId: string) {
     await this.db
       .update(deliveries)
@@ -319,11 +322,11 @@ export class PublishService {
     const passed = reviewValid(review);
     const inFlight = attemptRow?.d.status === 'publishing';
     const blocker = !editable
-      ? '只有负责这个任务的专家可以发布'
+      ? ONLY_EXPERT
       : review.published
-        ? `这批文稿已发布为${deliveryLabel(review.published.version)}`
+        ? '这批文稿已经交付'
         : inFlight
-          ? '这批文稿正在发布'
+          ? '这批文稿正在交付'
           : passed
             ? null
             : blockerOf(review);
@@ -360,7 +363,7 @@ export class PublishService {
     };
   }
 
-  // 负责专家和运营能看发布页，其他人一律当作不存在
+  // 负责专家和运营能看交付页，其他人一律当作不存在
   private async task(user: SessionUser, taskId: string): Promise<Task> {
     const [task] = await this.db
       .select({
@@ -381,11 +384,11 @@ export class PublishService {
   }
 }
 
-// 审核结论为什么还不能发布
+// 审核结论为什么还不能交付
 function blockerOf(review: ReviewView): string | null {
   if (reviewValid(review)) return null;
-  if (review.factsChangedAt) return '事实已更新，草稿还没有重新生成。请先按新事实重新生成，再核对、审核后发布';
-  if (!review.review) return '三份文稿核对完并确认审核结论后才能发布';
+  if (review.factsChangedAt) return '事实已更新，草稿还没有重新生成。请先按新事实重新生成，再核对、审核后交付';
+  if (!review.review) return '三份文稿核对完并确认审核结论后才能交付';
   return '审核结论已失效：有文稿在审核后又保存了修订，请重新核对并确认审核结论';
 }
 
@@ -406,5 +409,5 @@ export class PublishController {
   }
 }
 
-// 同一批文稿已有没失败的交付、之后没重新打开过：按「正在发布或已经发布」拒绝
+// 同一批文稿已有没失败的交付、之后没重新打开过：按「正在交付或已经交付」拒绝
 class BatchAlreadyPublished extends Error {}

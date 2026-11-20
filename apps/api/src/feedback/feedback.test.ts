@@ -256,7 +256,8 @@ describe('运营受理反馈', () => {
     const notes = await notesOf('zhou@test.cn');
     expect(notes).toHaveLength(1);
     expect(notes[0]).toMatchObject({ title: '客户反馈了成果内容', link: `/expert/tasks/${id.task}` });
-    expect(notes[0]!.body).toContain('已交付版本保持不变');
+    expect(notes[0]!.body).toContain('要修改的话请和运营沟通。');
+    expect(notes[0]!.body).not.toMatch(/V\d/);
     // 专家看不到附件，提醒里说明有几个、找运营要
     expect(notes[0]!.body).toContain('客户附了 1 个文件，需要查看请联系运营。');
     expect(await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'feedback_forward'))).toHaveLength(1);

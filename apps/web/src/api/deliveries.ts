@@ -39,7 +39,7 @@ export async function downloadWord(fileId: string, name: string) {
 }
 
 /** 下载整套：同一交付版本的三份 Word 打成一个压缩包 */
-export async function downloadBundle(taskId: string, version: number, enterpriseName: string) {
+export async function downloadBundle(taskId: string, version: number, enterpriseName: string, publishedAt: string) {
   let res: Response;
   try {
     res = await fetch(`/api/tasks/${taskId}/deliveries/${version}/bundle`, { credentials: 'include' });
@@ -57,6 +57,6 @@ export async function downloadBundle(taskId: string, version: number, enterprise
     throw new ApiError(0, NETWORK_TROUBLE);
   }
   const href = URL.createObjectURL(blob);
-  save(href, deliveryBundleName(enterpriseName, version));
+  save(href, deliveryBundleName(enterpriseName, publishedAt));
   setTimeout(() => URL.revokeObjectURL(href), 60_000);
 }

@@ -154,7 +154,7 @@ export function ConclusionView({
       {passed ? (
         <Banner tone="done">
           ✓ 审核已通过 · {r.review!.byName} {stamp(r.review!.at)} · 结论对应三份当前保存稿
-          {r.published ? ` · 已交付（交付 V${r.published.version}），这批文稿只读` : ''}
+          {r.published ? ' · 已交付，这批文稿只读' : ''}
         </Banner>
       ) : r.factsChangedAt ? (
         <Banner tone="action">审核结论已失效：事实已更新，草稿还没有重新生成。请先按新事实重新生成三份草稿，再核对和确认审核结论。</Banner>

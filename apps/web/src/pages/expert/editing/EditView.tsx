@@ -432,7 +432,7 @@ export function EditView({
   const thisDoc = r?.docs.find((x) => x.kind === kind);
   const published = d.published ?? null;
   const chip = published
-    ? { text: `已交付（交付 V${published.version}）· 只读`, ...stage.done }
+    ? { text: '已交付 · 只读', ...stage.done }
     : !editable
     ? { text: '只读 · 由负责专家修改', color: gy.secondary, bg: gy.neutralBg }
     : dirty
@@ -695,7 +695,7 @@ export function EditView({
       >
         {published ? (
           <span style={{ flex: 1, ...text14, color: gy.secondary }}>
-            这批文稿已交付（交付 V{published.version}），正文不能再修改。需要更正请回到专业整理核实，重新生成后再交付。
+            这批文稿已交付，正文不能再修改。要更正请回到资料核对，重新生成后再交付。
           </span>
         ) : !editable ? (
           <span style={{ flex: 1, ...text14, color: gy.secondary }}>只有负责这个任务的专家可以修改正文；可以下载当前稿 Word 查看。</span>

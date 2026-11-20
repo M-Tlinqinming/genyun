@@ -34,7 +34,7 @@ async function checkThis(page: Page, button: RegExp) {
 
 test.setTimeout(300_000);
 
-test('审核通过后交付形成交付 V1；结果不确定时先查询，再点不会出第二个版本；客户看到已交付', async ({ page, browser }) => {
+test('审核通过后交付；结果不确定时先查询，再点不会出第二次交付；客户看到已交付', async ({ page, browser }) => {
   await login(page, 'expert@demo.genyun.net.cn');
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
@@ -58,7 +58,9 @@ test('审核通过后交付形成交付 V1；结果不确定时先查询，再�
   await page.getByRole('button', { name: '进入交付', exact: true }).click();
   await expect(page).toHaveURL(/view=publish/);
   await expect(page.getByRole('heading', { name: '审核已通过，等待交付' })).toBeVisible();
-  await expect(page.getByText('本次将首次交付（交付 V1）')).toBeVisible();
+  await expect(page.getByText('本次将首次交付。')).toBeVisible();
+  // 界面不出现交付版本号
+  await expect(page.locator('main')).not.toContainText(/V\d/);
   const files = page.getByRole('region', { name: '本次待交付文件' });
   await expect(files.getByRole('row')).toHaveCount(4);
   await expect(files).toContainText('惠阳飞宇电器有限公司应急预案.docx');
@@ -68,7 +70,7 @@ test('审核通过后交付形成交付 V1；结果不确定时先查询，再�
   // R04a 正在发布、R04b 发布失败：模拟后台的回答截图
   for (const [status, name, heading, error] of [
     ['publishing', 'publishing', '正在交付三份文稿', null],
-    ['failed', 'failed', '本次交付失败', '三份 Word 没能全部存好，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新发布'],
+    ['failed', 'failed', '本次交付失败', '三份 Word 没能全部存好，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新交付'],
   ] as const) {
     await page.route(`**/api/tasks/${taskId}/publication`, async (route) => {
       const res = await route.fetch();
@@ -115,7 +117,9 @@ test('审核通过后交付形成交付 V1；结果不确定时先查询，再�
   expect(posted).toBe(1);
   // 刷新页面也还记着这一次：显示后台的结果
   await page.getByRole('button', { name: '查询本次交付结果' }).click();
-  await expect(page.getByRole('heading', { name: '已交付（交付 V1）', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '已交付', exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByText(/\d{1,2} 月 \d{1,2} 日交付/)).toBeVisible();
+  await expect(page.locator('main')).not.toContainText(/V\d/);
   await expect(page.getByRole('region', { name: '本次交付内容' })).toContainText('惠阳飞宇电器有限公司应急资源调查报告.docx');
   await shots(page, 'done');
 
@@ -132,8 +136,8 @@ test('审核通过后交付形成交付 V1；结果不确定时先查询，再�
 
   // 发布后正文只读
   await page.goto(`${base}?view=edit&doc=plan`);
-  await expect(page.getByRole('status').filter({ hasText: '已交付（交付 V1）· 只读' })).toBeVisible();
-  await expect(page.getByText('这批文稿已交付（交付 V1），正文不能再修改')).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '已交付 · 只读' })).toBeVisible();
+  await expect(page.getByText('这批文稿已交付，正文不能再修改')).toBeVisible();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/acceptance/m2-15-readonly-1440.png' });
 

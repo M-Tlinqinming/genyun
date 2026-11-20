@@ -72,7 +72,7 @@ export function FeedbackPage() {
     <PageHeader
       eyebrow="耕云运营 / 反馈受理"
       title="反馈受理"
-      description="客户对平台或成果的意见。受理与编制交付分开：不会改动已交付版本，需要重新编制时另建任务。"
+      description="客户对平台或成果的意见。受理与编制交付分开：不会改动已交付的成果，需要重新编制时另建任务。"
     />
   );
   if (query.isPending) {
@@ -208,7 +208,7 @@ function Detail({ item: f }: { item: OperatorFeedback }) {
   const [note, setNote] = useState(f.internalNote ?? '');
   const [pending, setPending] = useState<FeedbackAction | null>(null);
   const closed = f.status === 'closed';
-  const version = f.deliveryVersion ? `V${f.deliveryVersion}` : null;
+  const version = f.deliveryVersion ? `第 ${f.deliveryVersion} 次交付` : null;
 
   const run = (action: FeedbackAction, done: string) => {
     if (action === 'close' && !reply.trim()) {
@@ -282,7 +282,7 @@ function Detail({ item: f }: { item: OperatorFeedback }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             <span style={small}>对已交付成果的影响</span>
-            <span style={{ ...text14, color: gy.text }}>{version ? `无，${version} 保持不变` : '无'}</span>
+            <span style={{ ...text14, color: gy.text }}>{version ? '无，已交付的成果保持不变' : '无'}</span>
           </div>
           {f.forwardedToName && (
             <div style={{ display: 'flex', flexDirection: 'column' }}>

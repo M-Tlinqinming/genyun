@@ -178,7 +178,7 @@ export class FeedbackController {
           .select({ id: deliveries.id })
           .from(deliveries)
           .where(and(eq(deliveries.taskId, task.id), eq(deliveries.version, input.deliveryVersion), eq(deliveries.status, 'done')));
-        if (!d) throw new NotFoundException('找不到这个交付版本');
+        if (!d) throw new NotFoundException('找不到这次交付');
       }
     }
 
@@ -304,7 +304,7 @@ export class OperatorFeedbackController {
           {
             taskId: current.taskId!,
             title: '客户反馈了成果内容',
-            body: `${current.enterpriseName ?? ''} ${current.taskNumber ?? ''}${current.deliveryVersion ? ` 交付 V${current.deliveryVersion}` : ''}：「${current.content}」${note ? `运营说明：${note}` : ''}。${attached}是否另建修订任务由您决定，请与运营沟通；已交付版本保持不变。`,
+            body: `${current.enterpriseName ?? ''} ${current.taskNumber ?? ''}：「${current.content}」${note ? `运营说明：${note}` : ''}。${attached}要修改的话请和运营沟通。`,
             link: `/expert/tasks/${current.taskId}`,
           },
           tx,

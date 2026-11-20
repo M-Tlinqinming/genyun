@@ -18,7 +18,7 @@ const text14 = { fontSize: 14, lineHeight: '22px' } as const;
 export interface FeedbackContext {
   taskId: string;
   deliveryVersion: number;
-  // 弹窗里显示「关于：示例包装 · GY-2026-003 · 交付 V1」
+  // 弹窗里显示「关于：示例包装 · GY-2026-003 · 交付时间」
   label: string;
 }
 

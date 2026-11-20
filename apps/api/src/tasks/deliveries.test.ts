@@ -1,4 +1,4 @@
-import { deliveryBundleName, safeFileName, type TaskDeliveries } from '@genyun/shared';
+import { chinaToday, deliveryBundleName, safeFileName, type TaskDeliveries } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
@@ -17,8 +17,8 @@ import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts'
 import { attachment } from './deliveries.service.ts';
 import { complete, testDocument } from './test-workup.ts';
 
-// 客户成果文档（M2 第 16 项）：同组织客户能看、下载三份 Word 与整套压缩包、在线阅读发布时的 PDF；
-// 别家客户、没负责这项任务的专家一律 404；运营和负责专家按原规则能看；多次交付按 V2、V1 列出
+// 客户成果文档（M2 第 16 项）：同组织客户能看、下载三份 Word 与整套压缩包（在线阅读已取消）；
+// 别家客户、没负责这项任务的专家一律 404；运营和负责专家按原规则能看；多次交付新的在前
 const PASSWORD = 'correct horse battery staple';
 
 let handle: DatabaseHandle;
@@ -36,7 +36,7 @@ const storage: FileStorage = {
     return `/blob/${key}`;
   },
 };
-// 生成时只有应急预案带转好的 PDF：风险评估报告、应急资源调查报告不能在线阅读
+// 生成时只有应急预案带转好的 PDF
 const renderer: DraftRenderer = async (kind) => ({
   word: Buffer.from('word'),
   pdf: kind === 'plan' ? simplePdf(['plan']) : null,
@@ -162,18 +162,19 @@ const binary = (r: { on: (event: string, fn: (chunk?: Buffer) => void) => void }
 };
 
 describe('成果文档', () => {
-  it('同组织客户：列表只有已交付的任务，三份 Word 都在，生成时带 PDF 的那份能在线阅读', async () => {
+  it('同组织客户：列表只有已交付的任务，三份 Word 都在', async () => {
     const feiyu = await as('feiyu@test.cn');
     const list: TaskDeliveries[] = (await feiyu.get(`/api/orgs/${orgId}/deliveries`).expect(200)).body;
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ taskId, taskNumber: 'GY-2026-001', enterpriseName: '惠阳飞宇电器有限公司' });
     expect(list[0]!.versions.map((v) => v.version)).toEqual([1]);
     const files = list[0]!.versions[0]!.files;
-    expect(files.map((f) => [f.kind, f.name, f.readable])).toEqual([
-      ['plan', '惠阳飞宇电器有限公司应急预案.docx', true],
-      ['risk', '惠阳飞宇电器有限公司风险评估报告.docx', false],
-      ['resource', '惠阳飞宇电器有限公司应急资源调查报告.docx', false],
+    expect(files.map((f) => [f.kind, f.name])).toEqual([
+      ['plan', '惠阳飞宇电器有限公司应急预案.docx'],
+      ['risk', '惠阳飞宇电器有限公司风险评估报告.docx'],
+      ['resource', '惠阳飞宇电器有限公司应急资源调查报告.docx'],
     ]);
+    expect(files.some((f) => 'readable' in f)).toBe(false);
 
     // 单份下载：交付文件同组织客户可以取下载链接
     for (const f of files) expect((await feiyu.get(`/api/files/${f.fileId}/download-url`).expect(200)).body.url).toContain('/blob/');
@@ -187,11 +188,12 @@ describe('成果文档', () => {
     expect((await feiyu.get(`/api/tasks/${emptyTaskId}/deliveries`).expect(200)).body.versions).toEqual([]);
   });
 
-  it('整套下载：一个压缩包里正好三份 Word，文件名写企业和交付版本', async () => {
+  it('整套下载：一个压缩包里正好三份 Word，文件名写企业和交付日期', async () => {
     const feiyu = await as('feiyu@test.cn');
     const res = await feiyu.get(`${base()}/1/bundle`).buffer(true).parse(binary as never).expect(200);
     expect(res.headers['content-type']).toContain('application/zip');
-    expect(decodeURIComponent(res.headers['content-disposition']!)).toContain('惠阳飞宇电器有限公司编制成果（交付 V1）.zip');
+    const day = chinaToday(new Date(((await feiyu.get(base()).expect(200)).body as TaskDeliveries).versions[0]!.publishedAt));
+    expect(decodeURIComponent(res.headers['content-disposition']!)).toContain(`惠阳飞宇电器有限公司编制成果（${day}）.zip`);
     const zip = await JSZip.loadAsync(res.body as Buffer);
     expect(Object.keys(zip.files).sort()).toEqual(
       ['惠阳飞宇电器有限公司应急预案.docx', '惠阳飞宇电器有限公司应急资源调查报告.docx', '惠阳飞宇电器有限公司风险评估报告.docx'].sort(),
@@ -203,27 +205,23 @@ describe('成果文档', () => {
     // 版本号不是正整数或超出整数范围：一律 404
     for (const v of ['0', '-1', 'abc', '1.5', '01', '2147483648', '99999999999999999999']) {
       await feiyu.get(`${base()}/${v}/bundle`).expect(404);
-      await feiyu.get(`${base()}/${v}/plan/pdf`).expect(404);
     }
   });
 
   it('文件名：企业名称里的路径字符和 .. 被替换，下载头把 \'()* 也转义', () => {
     expect(safeFileName('a/b\\c:d*e?f"g<h>i|j')).toBe('a_b_c_d_e_f_g_h_i_j');
     expect(safeFileName('../../etc')).toBe('____etc');
-    expect(deliveryBundleName('惠阳/飞宇..', 2)).toBe('惠阳_飞宇_编制成果（交付 V2）.zip');
+    expect(deliveryBundleName('惠阳/飞宇..', '2026-11-20T02:00:00Z')).toBe('惠阳_飞宇_编制成果（2026-11-20）.zip');
+    // 按北京时间算日期：UTC 16:30 已是北京时间第二天
+    expect(deliveryBundleName('飞宇', '2026-11-20T16:30:00Z')).toBe('飞宇编制成果（2026-11-21）.zip');
     const header = attachment("飞宇(惠州)'s*.zip");
     expect(header).toContain("filename*=UTF-8''%E9%A3%9E%E5%AE%87%28%E6%83%A0%E5%B7%9E%29%27s%2A.zip");
     expect(header.split("UTF-8''")[1]).not.toMatch(/['()*]/);
   });
 
-  it('在线阅读：有 PDF 的返回 PDF，没有的提示下载 Word', async () => {
+  it('在线阅读已取消：原来的 PDF 地址不再提供', async () => {
     const feiyu = await as('feiyu@test.cn');
-    const res = await feiyu.get(`${base()}/1/plan/pdf`).buffer(true).parse(binary as never).expect(200);
-    expect(res.headers['content-type']).toContain('application/pdf');
-    expect((res.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
-    expect((await feiyu.get(`${base()}/1/risk/pdf`).expect(404)).body.message).toContain('请下载 Word');
-    await feiyu.get(`${base()}/1/nope/pdf`).expect(404);
-    await feiyu.get(`${base()}/2/plan/pdf`).expect(404);
+    await feiyu.get(`${base()}/1/plan/pdf`).expect(404);
   });
 
   it('越权：别家客户、没负责的专家一律 404；运营、负责专家、同组织成员能看', async () => {
@@ -231,7 +229,6 @@ describe('成果文档', () => {
       const agent = await as(email);
       await agent.get(base()).expect(404);
       await agent.get(`${base()}/1/bundle`).expect(404);
-      await agent.get(`${base()}/1/plan/pdf`).expect(404);
     }
     const other = await as('other@test.cn');
     await other.get(`/api/orgs/${orgId}/deliveries`).expect(404);
@@ -252,7 +249,7 @@ describe('成果文档', () => {
     const { db } = handle;
     const [v1] = await db.select().from(deliveries).where(eq(deliveries.taskId, taskId));
     const v1Files = await db.select().from(deliveryFiles).where(eq(deliveryFiles.deliveryId, v1!.id));
-    // 新的交付各自来自重新生成的一批（这里直接复制一批，不带草稿，所以 V2 不能在线阅读）
+    // 新的交付各自来自重新生成的一批（这里直接复制一批）
     const [{ id: _id, createdAt: _c, ...batch }] = (await db.select().from(generationBatches).where(eq(generationBatches.id, v1!.batchId))) as [
       typeof generationBatches.$inferSelect,
     ];
@@ -289,8 +286,6 @@ describe('成果文档', () => {
     const feiyu = await as('feiyu@test.cn');
     const detail: TaskDeliveries = (await feiyu.get(base()).expect(200)).body;
     expect(detail.versions.map((v) => v.version)).toEqual([2, 1]);
-    expect(detail.versions[0]!.files.map((f) => f.readable)).toEqual([false, false, false]);
-    expect(detail.versions[1]!.files[0]!.readable).toBe(true);
     await feiyu.get(`${base()}/1/bundle`).expect(200);
     await feiyu.get(`${base()}/3/bundle`).expect(404);
     const tasksList = (await feiyu.get(`/api/orgs/${orgId}/tasks`).expect(200)).body as { id: string; delivery: { version: number } }[];

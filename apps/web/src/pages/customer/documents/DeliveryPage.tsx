@@ -41,7 +41,7 @@ function Delivery({ data, current }: { data: TaskDeliveries; current: DeliveredV
   const bundle = async () => {
     setBundling(true);
     try {
-      await downloadBundle(data.taskId, current.version, data.enterpriseName);
+      await downloadBundle(data.taskId, current.version, data.enterpriseName, current.publishedAt);
     } catch (err) {
       message.error(`整套 Word 没能下载：${err instanceof Error ? err.message : '请稍后重试'}`);
     } finally {

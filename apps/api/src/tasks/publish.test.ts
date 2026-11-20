@@ -202,7 +202,7 @@ describe('发布', () => {
     const zhou = await as('zhou@test.cn');
     const view: PublishView = (await zhou.get(publishUrl()).expect(200)).body;
     expect(view).toMatchObject({ batchId, canPublish: false, editable: true, nextVersion: 1, attempt: null, deliveries: [] });
-    expect(view.blocker).toContain('确认审核结论后才能发布');
+    expect(view.blocker).toContain('确认审核结论后才能交付');
     expect(view.docs.map((d) => d.name)).toEqual([
       '惠阳飞宇电器有限公司应急预案.docx',
       '惠阳飞宇电器有限公司风险评估报告.docx',
@@ -264,7 +264,7 @@ describe('发布', () => {
     const second = await zhou.post(publishUrl()).send(body());
     expect(second.status).toBe(409);
     expect(second.body.reason).toBe('publishing');
-    expect(second.body.message).toContain('正在发布');
+    expect(second.body.message).toContain('正在交付');
     // 正在发布时也不能改正文
     const sectionNow = (await zhou.get(url('plan', '/sections/ch1.1')).expect(200)).body;
     await zhou
@@ -281,7 +281,7 @@ describe('发布', () => {
     expect(done.deliveries[0]).toMatchObject({ version: 1, byName: '周工' });
     expect(done.deliveries[0]!.files.map((f) => f.kind)).toEqual(['plan', 'risk', 'resource']);
     expect(done).toMatchObject({ canPublish: false, nextVersion: 2 });
-    expect(done.blocker).toContain('已发布为交付 V1');
+    expect(done.blocker).toBe('这批文稿已经交付');
 
     const [task] = await handle.db.select().from(tasks).where(eq(tasks.id, taskId));
     expect(task!.closedAt).not.toBeNull();
@@ -294,15 +294,19 @@ describe('发布', () => {
     const core = await zip.file('docProps/core.xml')!.async('string');
     expect(core).toContain(AI_ASSISTED_NOTE);
     expect(core).toContain('周工');
-    expect(core).toContain('交付 V1');
+    expect(core).not.toMatch(/V\d/);
     const custom = await zip.file('docProps/custom.xml')!.async('string');
     expect(custom).toContain('审核人');
+    expect(custom).toContain('交付日期');
+    expect(custom).toMatch(/\d{4} 年 \d{1,2} 月 \d{1,2} 日/);
+    expect(custom).not.toContain('交付版本');
 
     // 客户：站内提醒，不带专家电话
     const feiyu = await as('feiyu@test.cn');
     const notes = (await feiyu.get('/api/notifications').expect(200)).body.items as { title: string; body: string; link: string }[];
     const note = notes.find((n) => n.title.includes('成果已交付'))!;
-    expect(note.body).toContain('交付 V1');
+    expect(note.title).toBe('惠阳飞宇电器有限公司的成果已交付');
+    expect(note.body).toBe('应急预案、风险评估报告、应急资源调查报告已交付，可在成果文档里查看和下载。');
     expect(note.link).toBe(`/customer/documents/${taskId}`);
     expect(note.body).not.toMatch(/1[3-9]\d{9}/);
     // 交付的 Word 本组织客户能取，别家客户不能
@@ -339,7 +343,7 @@ describe('发布', () => {
     // 操作日志：只有形成交付的那一次记「发布」；存储失败的、重发的、被拒绝的都不记
     const logged = await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'publish'));
     expect(logged).toHaveLength(1);
-    expect(logged[0]).toMatchObject({ actorEmail: 'zhou@test.cn', target: 'GY-2026-001 · 交付 V1' });
+    expect(logged[0]).toMatchObject({ actorEmail: 'zhou@test.cn', target: 'GY-2026-001 · 第 1 次交付' });
     expect(logged[0]!.ip).toBeTruthy();
   });
 
@@ -354,13 +358,13 @@ describe('发布', () => {
         .send({ saveId: randomUUID(), batchId, baseRev: section.rev, blocks: [{ type: 'paragraph', text: ['发布后再改。'] }], note: '更正' })
         .expect(409)
     ).body;
-    expect(saved.message).toContain('已交付（交付 V1）');
+    expect(saved.message).toContain('这批文稿已交付，不能再修改');
     await zhou.put(url('plan', '/check')).send({ version: 0 }).expect(409);
     // AI 改写、再确认审核结论也被拦下
     const rewrite = (await zhou.post(url('plan', '/sections/ch1.1/rewrite')).send({ text: '一段需要改写的文字。' }).expect(409)).body;
-    expect(rewrite.message).toContain('已交付（交付 V1）');
+    expect(rewrite.message).toContain('这批文稿已交付，不能再修改');
     const conclude = (await zhou.post(reviewUrl()).send({ note: '再确认一次。', versions: VERSIONS }).expect(409)).body;
-    expect(conclude.message).toContain('已交付（交付 V1）');
+    expect(conclude.message).toContain('这批文稿已交付，不能再修改');
     const review: ReviewView = (await zhou.get(reviewUrl()).expect(200)).body;
     expect(review).toMatchObject({ editable: false, published: { version: 1 } });
   });

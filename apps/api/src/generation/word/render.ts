@@ -26,7 +26,7 @@ import {
   type IParagraphStyleOptions,
   type ISectionOptions,
 } from 'docx';
-import { AI_ASSISTED_NOTE, deliveryLabel, type Block, type DeliveryDocument, type DocSection, type TextRun as Run } from '@genyun/shared';
+import { AI_ASSISTED_NOTE, deliveryDateText, type Block, type DeliveryDocument, type DocSection, type TextRun as Run } from '@genyun/shared';
 import { exactLine, LAYOUTS, type Layout, type TextStyle } from './layout.ts';
 
 const ALIGN = {
@@ -44,13 +44,13 @@ const LIST_REFERENCE = 'gy-list';
 const BULLET_REFERENCE = 'gy-bullet';
 
 /**
- * 发布时写进 Word 文件属性（docProps/core.xml、custom.xml）的说明：AI 辅助起草、注册安全工程师审核，以及审核人。
+ * 交付时写进 Word 文件属性（docProps/core.xml、custom.xml）的说明：AI 辅助起草、注册安全工程师审核，以及审核人。
  * 正文里不加可见说明（TECH-PLAN 4.1）；草稿不写
  */
 export interface DeliveryMeta {
   reviewerName: string;
-  /** 交付版本号（V1 = 1） */
-  version: number;
+  /** 交付时间：Word 属性写交付日期（北京时间），不写版本号 */
+  deliveredAt: Date;
 }
 
 export async function renderWord(doc: DeliveryDocument, meta?: DeliveryMeta): Promise<Buffer> {
@@ -61,14 +61,13 @@ function deliveryProperties(meta: DeliveryMeta | undefined) {
   if (!meta) return {};
   const note = `${AI_ASSISTED_NOTE}（审核人：${meta.reviewerName}）`;
   return {
-    subject: deliveryLabel(meta.version),
     description: note,
     keywords: AI_ASSISTED_NOTE,
     lastModifiedBy: meta.reviewerName,
     customProperties: [
       { name: '编制方式', value: AI_ASSISTED_NOTE },
       { name: '审核人', value: meta.reviewerName },
-      { name: '交付版本', value: deliveryLabel(meta.version) },
+      { name: '交付日期', value: deliveryDateText(meta.deliveredAt) },
     ],
   };
 }

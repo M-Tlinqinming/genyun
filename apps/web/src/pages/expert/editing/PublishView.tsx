@@ -1,4 +1,7 @@
-import { DRAFT_KINDS, deliveryLabel, type DraftKind, type PublishView as View } from '@genyun/shared';
+import { DRAFT_KINDS, deliveredOnLabel, type DraftKind, type PublishView as View } from '@genyun/shared';
+
+// 不显示交付版本号：交付了的写交付日期，还没交付的写第几次交付
+const nth = (n: number) => `第 ${n} 次交付`;
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Result } from 'antd';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -176,6 +179,7 @@ export function PublishView({
     const version = shown === 'unknown' || shown === 'sending' ? view.nextVersion : (attempt?.version ?? view.nextVersion);
     const submittedAt = shown === 'unknown' || shown === 'sending' ? pending?.at : attempt?.startedAt;
     const delivered = shown === 'done' ? view.deliveries.find((d) => d.version === attempt?.version) : undefined;
+    const which = shown === 'done' && attempt?.publishedAt ? deliveredOnLabel(attempt.publishedAt) : nth(version);
     const screen = {
       sending: {
         title: '正在交付三份文稿',
@@ -212,16 +216,16 @@ export function PublishView({
         tone: 'error' as const,
         heading: view.canPublish ? '已确认未形成交付，可重新交付' : '已确认未形成交付',
         lines: [`查询结果：${attempt?.error ?? '本次没有形成交付'}`, view.canPublish ? '三份保存稿与审核结论仍有效；重试将继续交付同一批文稿，不修改内容。' : (view.blocker ?? '')],
-        access: `尚未交付 · 本次 ${deliveryLabel(version)} 未生效`,
+        access: `尚未交付 · 本次（${nth(version)}）未生效`,
         aside: ['重试前无需重新编制', '若需修改文稿，先返回审核与修订；修改后重新核对并审核，再交付。', `再次失败？联系运营 · ${taskNumber}`],
       },
       done: {
-        title: `已交付（${deliveryLabel(version)}）`,
+        title: '已交付',
         tone: 'done' as const,
         heading: '三份 Word 已定稿存档，任务已交付',
         lines: [
           `${attempt?.publishedAt ? stamp(attempt.publishedAt) : ''} 由${attempt?.byName ?? reviewer}交付。客户已收到站内提醒，任务显示“已交付”。`,
-          '这批文稿已定稿，正文只读；需要更正请回到专业整理核实，重新生成后再交付。',
+          '这批文稿已定稿，正文只读；要更正请回到资料核对，重新生成后再交付。',
         ],
         access: '已交付 · 客户在任务里看到“已交付”',
         aside: null,
@@ -237,7 +241,7 @@ export function PublishView({
             {screen.title}
           </h1>
           <span style={{ ...text14, color: gy.text }}>
-            {taskNumber} · 本次{shown === 'done' ? '' : '拟'}交付 V{version}
+            {taskNumber} · {shown === 'done' ? which : `本次拟${nth(version)}`}
             {submittedAt ? ` · 已于 ${stamp(submittedAt)} 提交交付` : ''}
           </span>
         </header>
@@ -370,7 +374,7 @@ export function PublishView({
           </h2>
           <p style={{ ...text14, margin: 0, color: gy.secondary }}>
             {view.canPublish
-              ? `三份文稿已完成全文、企业事实与 Word 版式核对；本次将${view.nextVersion === 1 ? '首次交付' : '再次交付'}（${deliveryLabel(view.nextVersion)}）。`
+              ? `三份文稿已完成全文、企业事实与 Word 版式核对；本次将${view.nextVersion === 1 ? '首次交付' : `再次交付（${nth(view.nextVersion)}）`}。`
               : view.blocker}
           </p>
           {view.review && (
@@ -389,7 +393,7 @@ export function PublishView({
       <section aria-label="本次待交付文件" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <h2 style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>本次待交付文件</h2>
-          <span style={{ ...text13, color: gy.secondary }}>{deliveryLabel(view.nextVersion)} · 同一批保存稿 · 三份齐全</span>
+          <span style={{ ...text13, color: gy.secondary }}>{nth(view.nextVersion)} · 同一批保存稿 · 三份齐全</span>
         </div>
         <div style={{ ...card, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -434,10 +438,10 @@ export function PublishView({
       <section aria-label="交付后会发生什么" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 12, padding: '26px 27px' }}>
         <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>交付后会发生什么</h2>
         <p style={{ ...text14, lineHeight: '26px', margin: 0, color: '#525D70' }}>
-          应急预案、风险评估报告和应急资源调查报告将一起定稿存档为{deliveryLabel(view.nextVersion)}。三份 Word 都存好后，任务才变为“已交付”，客户在任务里收到站内提醒。
+          应急预案、风险评估报告和应急资源调查报告将一起定稿存档，作为{nth(view.nextVersion)}。三份 Word 都存好后，任务才变为“已交付”，客户在任务里收到站内提醒。
         </p>
         <p style={{ ...text13, margin: 0, color: gy.secondary }}>
-          交付后这批文稿只读；需要更正请回到专业整理核实，重新生成后再交付。Word 文件属性里记有“AI 辅助起草、注册安全工程师审核”和审核人。
+          交付后这批文稿只读；要更正请回到资料核对，重新生成后再交付。Word 文件属性里记有“AI 辅助起草、注册安全工程师审核”和审核人。
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12, paddingTop: 24, borderTop: `1px solid ${gy.split}` }}>
           <Button onClick={onEdit}>返回修改</Button>

@@ -1,8 +1,9 @@
 // 成果发布（M2 第 15 项，15 页 R03、R04、R04a、R04b）：审核结论有效时，负责专家把三份当前稿定稿存档，
-// 形成一个交付版本（同一任务第一次是 V1，以后再发布是 V2、V3）。
+// 形成一次交付（内部按 1、2、3 编号；界面、通知、文件名、Word 属性都不显示编号，交付了的写交付日期）。
 // 发布带页面生成的 publishId：同一次发布重发（超时、断网后）只算一次；结果不确定时先按 publishId 查询，再决定要不要重试。
 import { z } from 'zod';
 import { DRAFT_KIND_KEYS, type DraftKind } from './generation.ts';
+import { chinaToday } from './task.ts';
 
 /** publishing = 正在发布；done = 已形成交付版本；failed = 没有形成交付，可以重新发布 */
 export type PublishStatus = 'publishing' | 'done' | 'failed';
@@ -72,7 +73,18 @@ export type PublishRequest = z.infer<typeof publishRequestSchema>;
 /** Word 文件属性里写的 AI 标识（TECH-PLAN 4.1：正文不加可见说明，只写在元数据里） */
 export const AI_ASSISTED_NOTE = 'AI 辅助起草、注册安全工程师审核';
 
-export const deliveryLabel = (version: number) => `交付 V${version}`;
+// 交付不对外显示版本号：需要区分第几次交付时写交付日期（北京时间）
+const ymd = (at: string | Date) => chinaToday(new Date(at)).split('-').map(Number) as [number, number, number];
+/** 例：11 月 20 日交付 */
+export const deliveredOnLabel = (at: string | Date) => {
+  const [, m, d] = ymd(at);
+  return `${m} 月 ${d} 日交付`;
+};
+/** Word 属性里的交付日期，例：2026 年 11 月 20 日 */
+export const deliveryDateText = (at: string | Date) => {
+  const [y, m, d] = ymd(at);
+  return `${y} 年 ${m} 月 ${d} 日`;
+};
 
 /** 发布中断（服务重启等）多久以后按失败处理、可以重新发布 */
 export const PUBLISH_STALE_MS = 5 * 60_000;
@@ -92,8 +104,6 @@ export interface DeliveredFile {
   name: string;
   fileId: string;
   sizeBytes: number;
-  /** 有没有可以在线阅读的版式（PDF）；没有时只能下载 Word */
-  readable: boolean;
 }
 
 export interface DeliveredVersion {
@@ -113,9 +123,9 @@ export interface TaskDeliveries {
   versions: DeliveredVersion[];
 }
 
-/** 整套下载的压缩包名（例：惠阳飞宇电器有限公司编制成果（交付 V1）.zip） */
-export const deliveryBundleName = (enterpriseName: string, version: number) =>
-  `${safeFileName(enterpriseName)}编制成果（${deliveryLabel(version)}）.zip`;
+/** 整套下载的压缩包名，括号里是交付日期（北京时间），例：某某有限公司编制成果（2026-11-20）.zip */
+export const deliveryBundleName = (enterpriseName: string, deliveredAt: string | Date) =>
+  `${safeFileName(enterpriseName)}编制成果（${chinaToday(new Date(deliveredAt))}）.zip`;
 
 /** 拼进文件名的文字：去掉路径和系统不允许的字符（/\:*?"<>| 与控制字符），连续的点换成下划线，避免跳出目录 */
 export const safeFileName = (text: string) =>

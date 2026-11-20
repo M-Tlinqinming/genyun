@@ -39,7 +39,7 @@ export const feedbackCreateSchema = z
     deliveryVersion: z.number().int().min(1).optional(),
     source: z.enum(FEEDBACK_SOURCES).default('general'),
   })
-  .refine((v) => v.deliveryVersion === undefined || v.taskId !== undefined, { message: '交付版本要和任务一起提交', path: ['deliveryVersion'] });
+  .refine((v) => v.deliveryVersion === undefined || v.taskId !== undefined, { message: '关联的交付要和任务一起提交', path: ['deliveryVersion'] });
 export type FeedbackCreateInput = z.input<typeof feedbackCreateSchema>;
 
 // 运营处理：accept = 受理，稍后回复；forward = 转给原任务的专家（只限成果内容、有负责专家的任务）；

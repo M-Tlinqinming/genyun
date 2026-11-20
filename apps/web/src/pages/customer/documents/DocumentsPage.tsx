@@ -97,7 +97,7 @@ function DeliveryCard({ task, version }: { task: TaskDeliveries; version: Delive
   const bundle = async () => {
     setBundling(true);
     try {
-      await downloadBundle(task.taskId, version.version, task.enterpriseName);
+      await downloadBundle(task.taskId, version.version, task.enterpriseName, version.publishedAt);
     } catch (err) {
       message.error(`整套 Word 没能下载：${err instanceof Error ? err.message : '请稍后重试'}`);
     } finally {
