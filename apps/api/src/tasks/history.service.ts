@@ -127,11 +127,22 @@ export class HistoryService {
       .innerJoin(users, eq(users.id, draftChecks.checkedBy))
       .leftJoin(draftEdits, and(eq(draftEdits.batchId, draftChecks.batchId), eq(draftEdits.kind, draftChecks.kind)))
       .where(inArray(draftChecks.batchId, batchIds));
+    // 待补充要把整份文稿盖上修改再数，较慢：同一批同一份只算一次
+    const notes = new Map<string, Promise<string | null>>();
+    const noteOf = (batchId: string, kind: DraftKind) => {
+      const key = `${batchId}/${kind}`;
+      let p = notes.get(key);
+      if (!p) {
+        p = this.pendingNote(batchId, kind);
+        notes.set(key, p);
+      }
+      return p;
+    };
     return Promise.all(
       rows.map(async (r) => {
         const what = `核对完成「${DRAFT_KINDS[r.kind]}」`;
         if ((r.current ?? 0) !== r.version) return entry(r.at, r.name, what, '之后又改过，要重新核对', true);
-        return entry(r.at, r.name, what, await this.pendingNote(r.batchId, r.kind), true);
+        return entry(r.at, r.name, what, await noteOf(r.batchId, r.kind), true);
       }),
     );
   }

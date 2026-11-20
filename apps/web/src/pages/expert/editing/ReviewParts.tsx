@@ -12,12 +12,17 @@ import {
   type PendingItem,
 } from '@genyun/shared';
 import { App } from 'antd';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { openFile } from '../../../api/documents';
 import { useHistory } from '../../../api/review';
 import { linkButton } from '../../../components/ui';
+import { MOTION } from '../../../theme/motion';
 import { gy, stage } from '../../../theme/tokens';
 import { clock, dayLabel } from './EditDialogs';
+
+/** 文稿页签栏的高度：处理记录抽屉从它下面开始，盖住右栏、不盖页签 */
+export const DOC_BAR_HEIGHT = 52;
 
 // 核对定稿页的几块：文稿栏（E18-09）、左栏章节、右栏待补充和资料依据、处理记录抽屉（E18-13）
 
@@ -88,7 +93,7 @@ export function DocBar({
     tabs[to]!.click();
   };
   return (
-    <div style={{ height: 52, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 32, padding: '0 32px', background: gy.surface, borderBottom: `1px solid ${gy.split}` }}>
+    <div style={{ height: DOC_BAR_HEIGHT, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 32, padding: '0 32px', background: gy.surface, borderBottom: `1px solid ${gy.split}` }}>
       <div role="tablist" aria-label="三份文稿" onKeyDown={keys} style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
         {DRAFT_KIND_KEYS.map((k, i) => (
           <button
@@ -303,10 +308,44 @@ export function SidePanel({
   );
 }
 
-/** 处理记录抽屉（E18-13）：从右边滑出，盖在右栏上面，按天分组 */
+/** 处理记录抽屉（E18-13）：从右边滑入、关时滑出，盖在右栏上面（不盖文稿页签栏），按天分组 */
 export function HistoryDrawer({ taskId, open, onClose }: { taskId: string; open: boolean; onClose: () => void }) {
-  const history = useHistory(taskId, open);
-  if (!open) return null;
+  const reduce = useReducedMotion();
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.aside
+          key="history"
+          role="dialog"
+          aria-label="处理记录"
+          initial={reduce ? false : { x: '100%' }}
+          animate={{ x: 0 }}
+          exit={reduce ? undefined : { x: '100%' }}
+          transition={{ duration: MOTION.fast, ease: MOTION.ease }}
+          onKeyDown={(e) => e.key === 'Escape' && onClose()}
+          style={{
+            position: 'absolute',
+            top: DOC_BAR_HEIGHT,
+            right: 0,
+            bottom: 0,
+            width: 480,
+            zIndex: 5,
+            display: 'flex',
+            flexDirection: 'column',
+            background: gy.surface,
+            borderLeft: `1px solid ${gy.split}`,
+            boxShadow: '0 6px 16px rgb(0 0 0 / 8%)',
+          }}
+        >
+          <HistoryBody taskId={taskId} onClose={onClose} />
+        </motion.aside>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function HistoryBody({ taskId, onClose }: { taskId: string; onClose: () => void }) {
+  const history = useHistory(taskId, true);
   const days: { day: string; rows: HistoryEntry[] }[] = [];
   for (const e of history.data ?? []) {
     const day = dayLabel(e.at);
@@ -315,24 +354,7 @@ export function HistoryDrawer({ taskId, open, onClose }: { taskId: string; open:
     else days.push({ day, rows: [e] });
   }
   return (
-    <aside
-      role="dialog"
-      aria-label="处理记录"
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
-      style={{
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: 480,
-        zIndex: 5,
-        display: 'flex',
-        flexDirection: 'column',
-        background: gy.surface,
-        borderLeft: `1px solid ${gy.split}`,
-        boxShadow: '-8px 0 24px rgb(24 36 59 / 8%)',
-      }}
-    >
+    <>
       <div style={{ display: 'flex', alignItems: 'center', height: 56, flexShrink: 0, padding: '0 24px', borderBottom: `1px solid ${gy.split}` }}>
         <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 600, color: gy.text }}>处理记录</span>
         <span style={{ flex: 1 }} />
@@ -345,11 +367,12 @@ export function HistoryDrawer({ taskId, open, onClose }: { taskId: string; open:
         {history.isError && <span style={{ ...text14, color: gy.error }}>{history.error.message}</span>}
         {history.data?.length === 0 && <span style={{ ...text14, color: gy.tertiary }}>还没有记录。</span>}
         {days.map((d) => (
-          <section key={d.day} aria-label={d.day} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <section key={d.day} aria-label={d.day} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span style={{ ...caption, color: gy.tertiary }}>{d.day}</span>
-            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 16 }}>
               {d.rows.map((e, i) => (
                 <li key={i} style={{ display: 'flex', gap: 12 }}>
+                  {/* 圆点下移 7、行距 16：照 E18-13 画板 */}
                   <span aria-hidden style={{ width: 8, height: 8, borderRadius: 4, marginTop: 7, flexShrink: 0, background: e.check ? gy.primary : gy.controlLine }} />
                   <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                     <span style={{ ...text14, color: gy.text, overflowWrap: 'anywhere' }}>{e.who ? `${e.who} ${e.what}` : e.what}</span>
@@ -364,6 +387,6 @@ export function HistoryDrawer({ taskId, open, onClose }: { taskId: string; open:
           </section>
         ))}
       </div>
-    </aside>
+    </>
   );
 }

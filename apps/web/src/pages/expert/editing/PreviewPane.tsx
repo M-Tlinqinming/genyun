@@ -65,7 +65,7 @@ export function PreviewPane({ taskId, kind, savedAt, onBackToText }: { taskId: s
     const z = dir === 1 ? ZOOMS.find((x) => pct(x) > percent) : [...ZOOMS].reverse().find((x) => pct(x) < percent);
     if (z) setZoom(z);
   };
-  const basis = savedAt ? `按${when(savedAt)}保存的内容排版` : '按生成的内容排版';
+  const basis = savedAt ? `按${when(savedAt)} 保存的内容排版` : '按生成的内容排版';
 
   const retry = async () => {
     setRetrying(true);

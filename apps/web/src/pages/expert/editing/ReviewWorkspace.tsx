@@ -564,7 +564,7 @@ export function ReviewWorkspace({
   const frame = (body: ReactNode) => (
     <div className="gy-review-page" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', flexDirection: 'column', background: gy.canvas }}>
       {header}
-      <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {body}
         <HistoryDrawer taskId={taskId} open={historyOpen} onClose={() => setHistoryOpen(false)} />
       </div>
@@ -588,7 +588,7 @@ export function ReviewWorkspace({
     />
   );
 
-  if (!resumed || review.isLoading) return frame(<div style={{ padding: 32 }}><Loading /></div>);
+  if (review.isLoading || (!resumed && !review.isError)) return frame(<div style={{ padding: 32 }}><Loading /></div>);
   // 切到还没读过的文稿：页签留着（键盘焦点不丢），下面先显示加载
   if (doc.isLoading) return frame(<>{docBar}<div style={{ padding: 32 }}><Loading /></div></>);
   if (doc.isError || review.isError || !r || !d) {
@@ -635,6 +635,12 @@ export function ReviewWorkspace({
 
   // 底栏：按先后取第一条符合的原因
   const left = pending.data ? pendingCount(pending.data) : null;
+  // 接着上次的提示第二句：哪几份已核对完成，这一份待补充已处理几处；哪半句没有就不写
+  const checkedNames = r ? r.docs.filter(checkValid).map((x) => DRAFT_KINDS[x.kind]) : [];
+  const handledHere = items.filter((it) => it.handled).length;
+  const resumeTail = [checkedNames.length ? `${checkedNames.join('、')}已核对完成` : '', handledHere ? `待补充已处理 ${handledHere} 处` : '']
+    .filter(Boolean)
+    .join('，');
   const checkedNow = thisDoc ? checkValid(thisDoc) : false;
   const name = DRAFT_KINDS[kind];
   let reason: ReactNode;
@@ -793,7 +799,7 @@ export function ReviewWorkspace({
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                 <span style={{ ...text14, fontWeight: 600, color: gy.text }}>已接着上次的地方打开</span>
                 <span style={{ ...text14, color: gy.secondary }}>
-                  {when(resumeNote.at)}您核对到「{resumeNote.where}」
+                  {when(resumeNote.at)} 您核对到「{resumeNote.where}」{resumeTail ? `。${resumeTail}。` : ''}
                 </span>
               </div>
               <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setResumeNote(null)}>

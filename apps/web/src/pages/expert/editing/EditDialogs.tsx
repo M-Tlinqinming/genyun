@@ -103,9 +103,9 @@ export function LeaveDialog({
           <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 600, color: gy.text }}>{title}</span>
           <span style={{ ...text14, color: gy.secondary }}>{body}</span>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <Button onClick={onStay}>留在 {section}</Button>
+            <Button onClick={onStay}>{keptOnly ? '继续合并' : `留在 ${section}`}</Button>
             <Button danger onClick={onDiscard}>
-              不保存，直接离开
+              {keptOnly ? '放弃并离开' : '不保存，直接离开'}
             </Button>
             {!keptOnly && (
               <Button type="primary" loading={saving} onClick={onSave}>

@@ -246,9 +246,15 @@ describe('正文编辑', () => {
     await zhou.put(url('risk', '/sections/ch1.1')).send(save([{ type: 'paragraph', text: ['第二次的写法。'] }], 1, '第二次')).expect(200);
 
     const query = (await zhou.get(url('risk', `/saves/${first}?batch=${batchId}`)).expect(200)).body;
-    expect(query.section).toMatchObject({ rev: 1, version: 1, blocks: [{ type: 'paragraph', text: ['第一次的写法。'] }], saved: { note: '第一次', byName: '周工' } });
+    // 带上保存人编号：页面按它判断显示「您已修改」还是「某某已修改」
+    expect(query.section).toMatchObject({
+      rev: 1,
+      version: 1,
+      blocks: [{ type: 'paragraph', text: ['第一次的写法。'] }],
+      saved: { note: '第一次', by: uid['zhou@test.cn'], byName: '周工' },
+    });
     const retry = (await zhou.put(url('risk', '/sections/ch1.1')).send(body).expect(200)).body;
-    expect(retry).toMatchObject({ rev: 1, blocks: [{ text: ['第一次的写法。'] }] });
+    expect(retry).toMatchObject({ rev: 1, blocks: [{ text: ['第一次的写法。'] }], saved: { by: uid['zhou@test.cn'], byName: '周工' } });
 
     const other = await zhou.put(url('risk', '/sections/ch1.2')).send(save([{ type: 'paragraph', text: ['别处'] }, lockedTable], 0, '别处', first)).expect(409);
     expect(other.body.reason).toBe('other_section');

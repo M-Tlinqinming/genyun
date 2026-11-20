@@ -14,7 +14,8 @@ import { Tag } from './ReviewParts';
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const caption: CSSProperties = { fontSize: 12, lineHeight: '20px' };
-const th: CSSProperties = { ...text14, color: gy.secondary, fontWeight: 600, padding: '14px 24px', textAlign: 'left', borderBottom: `1px solid ${gy.split}`, background: gy.canvas };
+// 表头上下 10、行上下 14、左右 24：照 E18-06 画板
+const th: CSSProperties = { ...text14, color: gy.secondary, fontWeight: 600, padding: '10px 24px', textAlign: 'left', borderBottom: `1px solid ${gy.split}`, background: gy.canvas };
 const td: CSSProperties = { ...text14, color: gy.text, padding: '14px 24px', textAlign: 'left', borderBottom: `1px solid ${gy.split}`, verticalAlign: 'middle' };
 
 function PendingCell({ taskId, kind }: { taskId: string; kind: DraftKind }) {

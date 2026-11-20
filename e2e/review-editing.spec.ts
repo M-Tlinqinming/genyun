@@ -35,6 +35,23 @@ async function typeAtEnd(page: Page, text: string) {
   await page.keyboard.type(text);
 }
 
+type Outline = { id: string; children: Outline[] };
+
+/** 找应急预案里第一个带锁定表格（或图）的节 */
+async function sectionWith(page: Page, taskId: string, kind: 'table' | 'figure') {
+  const doc = (await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/edit`)).json()) as { outline: Outline[] };
+  const ids: string[] = [];
+  const walk = (list: Outline[]) => list.forEach((n) => (n.children.length ? walk(n.children) : ids.push(n.id)));
+  walk(doc.outline);
+  for (const id of ids) {
+    const res = await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${id}`);
+    const s = (await res.json()) as { locked: { kind: string; src?: string }[] };
+    const found = s.locked.find((l) => l.kind === kind);
+    if (found) return { id, src: found.src, body: await res.text() };
+  }
+  return null;
+}
+
 /** 两种宽度各截一张：1366×768 和 1440 */
 async function shots(page: Page, name: string) {
   for (const [w, h] of [
@@ -154,19 +171,35 @@ test('按章读正文，改一节不写说明也能保存；离开前三个选�
   await conflict.getByRole('button', { name: '留着我的输入，打开最新的' }).click();
   await expect(editor(page)).toContainText('另一处保存的最新内容。');
   await expect(article(page).getByLabel('您没保存的内容')).toContainText('我的未保存输入');
-  // 合并进编辑框保存后，下面的那块自动收起
+  // 编辑框没有改动、只剩冲突前的输入没合并：没有可保存的，离开只给「继续合并」「放弃并离开」
+  await docTab(page, '风险评估报告').click();
+  const unmerged = page.getByRole('alertdialog', { name: /还有内容没合并$/ });
+  await expect(unmerged).toContainText('冲突前写的内容');
+  await expect(unmerged.getByRole('button', { name: '保存并离开' })).toHaveCount(0);
+  await expect(unmerged.getByRole('button', { name: '放弃并离开' })).toBeVisible();
+  await unmerged.getByRole('button', { name: '继续合并' }).click();
+  await expect(unmerged).toBeHidden();
+  await expect(page).not.toHaveURL(/doc=risk/);
+  await expect(article(page).getByLabel('您没保存的内容')).toContainText('我的未保存输入');
+  // 编辑框一有改动，又回到三个选择
   await typeAtEnd(page, '我的未保存输入');
+  await docTab(page, '风险评估报告').click();
+  const leaveAgain = page.getByRole('alertdialog', { name: /改的内容还没保存$/ });
+  await expect(leaveAgain.getByRole('button', { name: '保存并离开' })).toBeVisible();
+  await leaveAgain.getByRole('button', { name: /^留在 / }).click();
+  await expect(leaveAgain).toBeHidden();
+  // 合并进编辑框保存后，下面的那块自动收起
   await saveButton(page).click();
   await expect(page.getByText(/^已保存 · /)).toBeVisible();
   await expect(article(page).getByLabel('您没保存的内容')).toHaveCount(0);
 
   // E18-15：右栏点一条待补充，正文滚到那一处并闪一下
-  const items = page.getByRole('list', { name: '待补充清单' }).getByRole('button');
-  if ((await items.count()) && !((await items.first().textContent()) ?? '').includes('已处理')) {
-    await items.first().click();
-    await expect(article(page).locator('.gy-pending-flash')).toBeInViewport();
-    await shots(page, 'pending');
-  }
+  // 演示数据的应急预案里有正文中的待补充（不在表格里、还没处理），清单至少有一条可以点
+  const items = page.getByRole('list', { name: '待补充清单' }).getByRole('button').filter({ hasNotText: /已处理|表格里/ });
+  await expect(items.first()).toBeVisible();
+  await items.first().click();
+  await expect(article(page).locator('.gy-pending-flash')).toBeInViewport();
+  await shots(page, 'pending');
 
   // E18-13：处理记录，按天分组，新的在前
   await page.getByRole('button', { name: '处理记录', exact: true }).click();
@@ -185,6 +218,55 @@ test('按章读正文，改一节不写说明也能保存；离开前三个选�
   await shots(page, 'resume');
   await resume.getByRole('button', { name: '知道了' }).click();
   await expect(resume).toHaveCount(0);
+
+  // 锁定的表格：正文里只读显示，「去资料核对修改」去资料核对；改这一节时表格可以收起
+  const tableSection = await sectionWith(page, taskId, 'table');
+  if (tableSection) {
+    await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan&section=${tableSection.id}`);
+    const region = article(page).locator(`[data-section="${tableSection.id}"]`);
+    await expect(region.locator('[data-locked] table').first()).toBeVisible();
+    await expect(region.getByRole('textbox')).toHaveCount(0);
+    await shots(page, 'locked');
+    await region.getByRole('button', { name: /^修改这一节 / }).click();
+    const lockedTable = editor(page).getByRole('table').first();
+    await expect(lockedTable).toBeVisible();
+    await editor(page).getByRole('button', { name: '收起表格' }).first().click();
+    await expect(lockedTable).toBeHidden();
+    await editor(page).getByRole('button', { name: '展开表格' }).first().click();
+    await expect(lockedTable).toBeVisible();
+    await page.getByRole('button', { name: '放弃修改' }).click();
+    await region.getByRole('link', { name: '去资料核对修改' }).first().click();
+    await expect(page).toHaveURL(/view=workup/);
+  } else {
+    console.log('演示数据的应急预案里没有锁定表格，跳过表格检查');
+  }
+
+  // 锁定的图：节的内容里只带缩略图地址，图单独加载（长边 480 的 JPEG），浏览器里真的画出来
+  const figureSection = await sectionWith(page, taskId, 'figure');
+  if (figureSection) {
+    expect(figureSection.body).not.toContain('base64');
+    const img = await page.request.get(figureSection.src!);
+    expect(img.status()).toBe(200);
+    expect(img.headers()['content-type']).toBe('image/jpeg');
+    await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan&section=${figureSection.id}`);
+    const figure = article(page).locator(`[data-section="${figureSection.id}"] [data-locked] img`).first();
+    await expect(figure).toBeVisible();
+    await expect.poll(() => figure.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  } else {
+    console.log('演示数据的应急预案里没有锁定的图，跳过图的检查');
+  }
+  // 不是图的位置找不到
+  expect((await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${first.id}/figures/0`)).status()).toBe(404);
+
+  // 审核接口出错：不一直转圈，显示出错提示
+  await page.route('**/api/tasks/*/draft-review', (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '服务器出错了' }) }) : route.continue(),
+  );
+  await page.goto(`/expert/tasks/${taskId}?view=edit`);
+  await expect(page.getByText('还不能核对正文')).toBeVisible();
+  await page.unrouteAll();
+  await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan`);
+  await expect(article(page)).toBeVisible();
 
   // 1366×768：底栏在一屏内
   await page.setViewportSize({ width: 1366, height: 768 });

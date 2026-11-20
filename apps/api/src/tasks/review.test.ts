@@ -1,4 +1,4 @@
-import { reviewValid, type HistoryEntry, type ReviewView } from '@genyun/shared';
+import { DRAFT_KIND_KEYS, reviewValid, type HistoryEntry, type ReviewView } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
@@ -8,7 +8,20 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { draftPreviews, enterprises, generationBatches, memberships, organizations, taskIntakeSubmissions, tasks, taskWorkups, users } from '../db/schema.ts';
+import {
+  deliveries,
+  draftPreviews,
+  enterprises,
+  generatedDrafts,
+  generationBatches,
+  memberships,
+  organizations,
+  taskIntakeSubmissions,
+  tasks,
+  taskSubmissions,
+  taskWorkups,
+  users,
+} from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
@@ -54,6 +67,7 @@ const converter: PdfConverter = async (docx) => {
 };
 
 let taskId = '';
+const uid: Record<string, string> = {};
 let batchId = '';
 
 beforeAll(async () => {
@@ -78,7 +92,6 @@ beforeAll(async () => {
       { name: '耕云', kind: 'internal' },
     ])
     .returning();
-  const uid: Record<string, string> = {};
   for (const p of [
     {
       email: 'feiyu@test.cn',
@@ -362,6 +375,90 @@ describe('接着上次的地方、待补充、处理记录', () => {
     await ops.get(`/api/tasks/${taskId}/history`).expect(200);
     for (const email of ['wu@test.cn', 'feiyu@test.cn', 'other@test.cn']) await (await as(email)).get(`/api/tasks/${taskId}/history`).expect(404);
     await zhou.get(`/api/tasks/${randomUUID()}/history`).expect(404);
+  });
+
+  it('处理记录：生成失败、重新生成、旧流程按清单提交、定稿并交付', async () => {
+    const zhou = await as('zhou@test.cn');
+    const [base] = await handle.db.select().from(tasks).where(eq(tasks.id, taskId));
+    // 同一企业同一业务只能有一个进行中的任务：另建一家
+    const [ent] = await handle.db
+      .insert(enterprises)
+      .values({
+        orgId: base!.orgId,
+        name: '处理记录测试厂',
+        socialCreditCode: '91441300000000001X',
+        legalRepresentative: '张三',
+        registeredAddress: '惠州市',
+        profile: feiyuProfile,
+        createdBy: uid['feiyu@test.cn']!,
+      })
+      .returning();
+    const [task] = await handle.db
+      .insert(tasks)
+      .values({
+        orgId: base!.orgId,
+        enterpriseId: ent!.id,
+        businessType: 'emergency_plan',
+        name: '处理记录另一个任务',
+        number: 'GY-2026-H01',
+        status: 'submitted',
+        assignedExpertId: uid['zhou@test.cn']!,
+        createdBy: uid['feiyu@test.cn']!,
+      })
+      .returning();
+    const at = (iso: string) => new Date(`2026-01-0${iso}Z`);
+    // 旧流程：客户按清单提交
+    await handle.db.insert(taskSubmissions).values({
+      taskId: task!.id,
+      requestId: randomUUID(),
+      submittedBy: uid['feiyu@test.cn']!,
+      submittedAt: at('3T01:00:00'),
+      documents: [],
+      items: {} as never,
+      answers: [],
+      pendingKeys: [],
+    });
+    const batch = (createdAt: Date) => ({
+      taskId: task!.id,
+      workupVersion: 1,
+      snapshotAt: createdAt,
+      input: {} as never,
+      materials: [],
+      createdBy: uid['zhou@test.cn']!,
+      createdAt,
+    });
+    // 第一批：应急预案生成失败；第二批（重新生成）三份都生成完
+    const [first] = await handle.db.insert(generationBatches).values(batch(at('3T02:00:00'))).returning();
+    const [second] = await handle.db.insert(generationBatches).values(batch(at('3T03:00:00'))).returning();
+    await handle.db.insert(generatedDrafts).values([
+      { batchId: first!.id, kind: 'plan', status: 'failed', finishedAt: at('3T02:05:00') },
+      { batchId: first!.id, kind: 'risk', status: 'done', finishedAt: at('3T02:06:00') },
+      ...DRAFT_KIND_KEYS.map((kind, i) => ({ batchId: second!.id, kind, status: 'done' as const, finishedAt: at(`3T03:0${i + 1}:00`) })),
+    ]);
+    // 定稿并交付：只记成功的
+    const delivery = (status: 'done' | 'failed', publishedAt: Date | null) => ({
+      publishId: randomUUID(),
+      taskId: task!.id,
+      batchId: second!.id,
+      version: 1,
+      status,
+      reviewedBy: uid['zhou@test.cn']!,
+      reviewedAt: at('3T04:00:00'),
+      versions: { plan: 0, risk: 0, resource: 0 },
+      publishedBy: uid['zhou@test.cn']!,
+      publishedAt,
+    });
+    await handle.db.insert(deliveries).values([delivery('failed', null), delivery('done', at('3T05:00:00'))]);
+
+    const list: HistoryEntry[] = (await zhou.get(`/api/tasks/${task!.id}/history`).expect(200)).body;
+    expect(list.map((e) => [e.who, e.what, e.extra])).toEqual([
+      ['周工', '定稿并交付', null],
+      [null, '三份初稿生成完成', '用时 3 分钟'],
+      ['周工', '重新生成', null],
+      [null, '「应急预案」生成失败', null],
+      ['周工', '确认资料，开始生成', null],
+      [null, '客户提交资料', '陈志刚提交'],
+    ]);
   });
 });
 
