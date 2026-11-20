@@ -197,10 +197,15 @@ export function TaskCenterPage() {
                 {
                   title: '阶段',
                   width: 260,
+                  // 画板上 260 是文字宽度；去掉右内边距，长说明（旧流程那句）不折行
+                  onCell: () => ({ style: { paddingRight: 0 } }),
                   render: (_, r) => (
-                    <StatusTag tone={r.view.tone} note={r.view.detail ?? undefined}>
-                      {r.view.label}
-                    </StatusTag>
+                    // 包一层块级 flex，免得 inline-flex 带进行高和基线留白，行高对齐画板
+                    <div style={{ display: 'flex' }}>
+                      <StatusTag tone={r.view.tone} note={r.view.detail ?? undefined}>
+                        {r.view.label}
+                      </StatusTag>
+                    </div>
                   ),
                 },
                 {

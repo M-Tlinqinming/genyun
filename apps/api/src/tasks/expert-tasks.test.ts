@@ -1,7 +1,7 @@
 import type { ExpertCenterData, ExpertCenterRow } from '@genyun/shared';
 import type { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
@@ -288,6 +288,31 @@ describe('读状态输入（loadTaskViewInputs）', () => {
     expect(f.get(T.deliveredNow)!.lastDelivery).toEqual({ at: ago(60_000), kind: 'update' });
     expect(f.get(T.awaiting)).toMatchObject({ awaitingCustomerSince: ago(2 * DAY + HOUR), awaitingCustomerItems: 3 });
     expect(f.get(T.deleted)!.deletedAt).toEqual(ago(3 * DAY));
+  });
+
+  it('失败、交付中的交付记录不算：最近交付和「首次 / 再次」都不变', async () => {
+    const { db } = handle;
+    const [b] = await db.select({ id: generationBatches.id }).from(generationBatches).where(eq(generationBatches.taskId, T.reopened));
+    const extra = (version: number, status: 'failed' | 'publishing') => ({
+      publishId: randomUUID(),
+      taskId: T.reopened,
+      batchId: b!.id,
+      version,
+      status,
+      reviewedBy: uid['zhou@test.cn']!,
+      reviewedAt: ago(HOUR),
+      versions: { plan: 0, risk: 0, resource: 0 },
+      publishedBy: uid['zhou@test.cn']!,
+      // 时间比已完成的那次晚，也不该被当成最近交付
+      publishedAt: ago(HOUR),
+    });
+    const added = await db.insert(deliveries).values([extra(2, 'failed'), extra(3, 'publishing')]).returning({ id: deliveries.id });
+    try {
+      const f = await loadTaskViewInputs(db, [T.reopened]);
+      expect(f.get(T.reopened)!.lastDelivery).toEqual({ at: ago(5 * DAY), kind: 'first' });
+    } finally {
+      await db.delete(deliveries).where(inArray(deliveries.id, added.map((d) => d.id)));
+    }
   });
 
   it('没有任务时不查库', async () => {

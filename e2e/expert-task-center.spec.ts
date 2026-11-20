@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, request, test, type Browser, type Page } from '@playwright/test';
 
 // 专家任务中心（13 页任务中心、已暂停接单）。演示数据：飞宇任务（旧流程）分派给周工（expert@），
 // 五金的任务已提交、待运营分派。分派、改派后的越权见 operator-task-center.spec
@@ -72,10 +72,21 @@ async function opsPage(browser: Browser) {
   return { p, close: () => ctx.close() };
 }
 
-test('暂停接单：提示条出现，运营分配时周工置灰；恢复后提示条消失', async ({ page, browser }) => {
-  const hardware = await hardwareTaskId(page);
-  await login(page, ZHOU);
-  try {
+// 暂停用例单独放：无论成败（含超时中止、页面已关）都用新的请求上下文重新登录周工，恢复接单，免得带坏后面的用例
+test.describe('暂停接单', () => {
+  test.afterEach(async ({ baseURL }) => {
+    const api = await request.newContext({ baseURL });
+    try {
+      expect((await api.post('/api/auth/login', { data: { email: ZHOU, password: 'e2e-password' } })).ok()).toBe(true);
+      expect((await api.put('/api/expert/accepting', { data: { acceptingOrders: true } })).ok()).toBe(true);
+    } finally {
+      await api.dispose();
+    }
+  });
+
+  test('暂停接单：提示条出现，运营分配时周工置灰；恢复后提示条消失', async ({ page, browser }) => {
+    const hardware = await hardwareTaskId(page);
+    await login(page, ZHOU);
     const toggle = page.getByRole('switch', { name: '接单' });
     await toggle.click();
     const banner = page.getByRole('status').filter({ hasText: '已暂停接单' });
@@ -108,11 +119,7 @@ test('暂停接单：提示条出现，运营分配时周工置灰；恢复后�
     await expect(page.getByRole('status').filter({ hasText: '已暂停接单' })).toHaveCount(0);
     await expect(page.getByRole('switch', { name: '接单' })).toBeChecked();
     await expect(page.getByText('接单中', { exact: true })).toBeVisible();
-  } finally {
-    // 后面的运营分配用例要派给周工：无论成败都恢复接单
-    const res = await page.request.put('/api/expert/accepting', { data: { acceptingOrders: true } });
-    expect(res.ok()).toBe(true);
-  }
+  });
 });
 
 test('越权：周工打不开没分派给他的任务', async ({ page }) => {

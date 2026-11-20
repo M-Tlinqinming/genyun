@@ -305,4 +305,21 @@ describe('暂停接单的专家', () => {
     expect(ok.status).toBe(201);
     expect(ok.body.assignedExpertName).toBe('孙工');
   });
+
+  it('名单里接单中的在前、暂停的在后，暂停的之间仍按名字', async () => {
+    const { db } = handle;
+    const passwordHash = await hashPassword(PASSWORD);
+    const [internal] = await db.select().from(organizations).where(eq(organizations.kind, 'internal'));
+    // 名字排在最前的一位也暂停：不该再排在第一
+    const [u] = await db.insert(users).values({ email: 'ding@test.cn', name: '丁工', passwordHash }).returning();
+    await db.insert(memberships).values({ userId: u!.id, orgId: internal!.id, role: 'expert' });
+    await db.insert(expertProfiles).values({ userId: u!.id, reviewStatus: 'approved', acceptingOrders: false });
+
+    const ops = await as('ops@test.cn');
+    const list = (await ops.get(`/api/operator/tasks/${task.busy}/experts`).expect(200)).body as { name: string; paused: boolean }[];
+    const firstPaused = list.findIndex((e) => e.paused);
+    expect(firstPaused).toBeGreaterThan(0);
+    expect(list.slice(0, firstPaused).every((e) => !e.paused)).toBe(true);
+    expect(list.slice(firstPaused).map((e) => e.name)).toEqual(['丁工', '王工']);
+  });
 });

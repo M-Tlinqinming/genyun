@@ -148,7 +148,9 @@ export class OperatorTasksController {
       .select({ expertId: tasks.assignedExpertId, orgId: tasks.orgId, enterpriseId: tasks.enterpriseId })
       .from(tasks)
       .where(and(inArray(tasks.assignedExpertId, people.map((p) => p.id)), isNull(tasks.closedAt)));
-    return people.map((p) => {
+    // 接单中的在前、暂停的在后，各自仍按名字（sort 是稳定排序）
+    const ordered = [...people].sort((a, b) => Number(isExpertPaused(a.profile)) - Number(isExpertPaused(b.profile)));
+    return ordered.map((p) => {
       const mine = open.filter((t) => t.expertId === p.id);
       const sameOrg = new Set(
         mine.filter((t) => t.orgId === task.orgId && t.enterpriseId !== task.enterpriseId).map((t) => t.enterpriseId),
