@@ -6,6 +6,10 @@ describe('企业名称比较', () => {
     expect(normalizeEnterpriseName(' 惠阳 飞宇\u3000电器有限公司 ')).toBe('惠阳飞宇电器有限公司');
   });
 
+  it('不间断空格也不算', () => {
+    expect(normalizeEnterpriseName('惠阳飞宇 电器有限公司')).toBe('惠阳飞宇电器有限公司');
+  });
+
   it('全角括号和半角括号当成一样', () => {
     expect(normalizeEnterpriseName('飞宇（惠州）有限公司')).toBe(normalizeEnterpriseName('飞宇(惠州)有限公司'));
   });

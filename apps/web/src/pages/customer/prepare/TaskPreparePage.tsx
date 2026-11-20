@@ -40,7 +40,7 @@ export function TaskPreparePage() {
 
   return (
     <WizardLayout
-      title={task.data.name}
+      title="编制应急预案"
       enterpriseName={task.data.enterpriseName}
       stages={CUSTOMER_STAGES}
       current={0}

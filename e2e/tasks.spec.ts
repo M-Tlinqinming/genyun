@@ -59,7 +59,7 @@ test('从企业概览新建任务：带上这家企业，新建后进入准备�
 
   await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}\/prepare$/);
   await expect(page.getByRole('heading', { name: '下载资料模板，填好后上传' })).toBeVisible();
-  await expect(page.getByRole('banner')).toContainText(`${year} 年应急预案编制`);
+  await expect(page.getByRole('banner')).toContainText('编制应急预案');
   await expect(page.getByRole('banner')).toContainText('惠州示例五金有限公司');
   await shot('prepare');
 });
@@ -137,6 +137,7 @@ test('从任务列表新建：没选企业有提示；搜不到的企业当场�
   await expect(callout()).toHaveCount(0);
   await page.getByRole('button', { name: '新建任务' }).click();
   await expect(page).toHaveURL(/\/customer\/tasks\/[0-9a-f-]{36}\/prepare$/);
+  await expect(page.getByRole('banner')).toContainText('编制应急预案');
   await expect(page.getByRole('banner')).toContainText('惠州示例电子有限公司');
 });
 
@@ -153,7 +154,8 @@ test('填表期间同事已建好任务：点新建时改为继续那个任务',
   await expect(callout()).toContainText('「同事建的任务」还没提交');
   await page.getByRole('button', { name: '继续已有任务' }).click();
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${otherId}/prepare$`));
-  await expect(page.getByRole('banner')).toContainText('同事建的任务');
+  await expect(page.getByRole('banner')).toContainText('编制应急预案');
+  await expect(page.getByRole('banner')).toContainText('惠州示例塑胶有限公司');
 });
 
 test('年度服务不在有效期内时不能新建任务', async () => {

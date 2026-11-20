@@ -158,7 +158,6 @@ export function TaskNewPage() {
           <Input
             id="task-name"
             value={name}
-            disabled={existing !== null}
             status={nameError ? 'error' : undefined}
             maxLength={100}
             onChange={(e) => {
@@ -210,7 +209,12 @@ export function TaskNewPage() {
 }
 
 // 选中的企业已有没办完的任务：还没提交的去继续，已提交给专家的只能先看
-function OpenTaskCallout({ task }: { task: ExistingTask }) {
+function OpenTaskCallout({
+  task,
+}: {
+  /** 这家企业没办完的那个任务，按它的状态决定提醒的说法 */
+  task: ExistingTask;
+}) {
   const preparing = task.status === 'preparing';
   return (
     <div
@@ -245,9 +249,13 @@ function NewEnterpriseModal({
   onClose,
   onPicked,
 }: {
+  /** 企业建在哪个组织下 */
   orgId: string;
+  /** 名称预填：下拉里搜的那几个字 */
   initialName: string;
+  /** 取消或关掉弹窗 */
   onClose: () => void;
+  /** 保存成功，或重名时点「选这家企业」：把这家企业交回去选中 */
   onPicked: (e: Pick<Enterprise, 'id' | 'name'>) => void;
 }) {
   const { message } = App.useApp();
@@ -305,6 +313,7 @@ function NewEnterpriseModal({
         label="企业名称"
         required={false}
         help="按营业执照上的全称填。其他信息在资料模板里填。"
+        helpTone="tertiary"
         error={error}
         after={
           same && (
@@ -326,7 +335,11 @@ function NewEnterpriseModal({
             setError(null);
             setSame(null);
           }}
-          onPressEnter={save}
+          onPressEnter={() => {
+            // 正在保存时再按回车不重复提交
+            if (create.isPending) return;
+            save();
+          }}
         />
       </Field>
     </Modal>
@@ -339,16 +352,26 @@ function Field({
   label,
   required = true,
   help,
+  helpTone = 'secondary',
   error,
   after,
   children,
 }: {
+  /** 输入框的 id，标签靠它指向输入框 */
   id: string;
+  /** 标签文字 */
   label: string;
+  /** 是否必填，必填的标签后带星号；默认必填 */
   required?: boolean;
+  /** 输入框下面的说明文字，出错时换成错误提示 */
   help: string;
+  /** 说明文字的颜色深浅；弹窗里的说明用浅一档 */
+  helpTone?: 'secondary' | 'tertiary';
+  /** 错误提示，没有为 null */
   error: string | null;
+  /** 说明文字下面再跟的内容，比如「选这家企业」 */
   after?: ReactNode;
+  /** 输入框本身 */
   children: ReactNode;
 }) {
   return (
@@ -358,7 +381,7 @@ function Field({
         {required && ' *'}
       </label>
       {children}
-      <span role={error ? 'alert' : undefined} style={{ ...type.caption, color: error ? gy.error : gy.secondary }}>
+      <span role={error ? 'alert' : undefined} style={{ ...type.caption, color: error ? gy.error : gy[helpTone] }}>
         {error ?? help}
       </span>
       {after}

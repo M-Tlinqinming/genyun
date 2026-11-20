@@ -214,6 +214,7 @@ describe('编制任务', () => {
     const again = await (await as('a-admin@test.cn')).post(`/api/enterprises/${ent.id}/tasks`).send({ name: '第二个' });
     expect(again.status).toBe(409);
     expect(again.body.existingTask).toEqual({ id: first.id, number: first.number, name: '第一个任务', status: 'preparing' });
+    expect(again.body.message).toBe(`这家企业已经有一个没办完的任务（${first.number}），继续这个任务就行`);
   });
 
   it('删掉的任务不挡新建', async () => {
@@ -226,7 +227,7 @@ describe('编制任务', () => {
     expect(second.id).not.toBe(first.id);
   });
 
-  it('查在办任务：有就返回，没有返回 null；看不到企业的 404，专家、运营 403', async () => {
+  it('查在办任务：有就返回，没有返回 null；看不到企业的和专家 404，运营 403', async () => {
     const ent = await createEnterprise('a-admin@test.cn', org.a, { name: '查在办任务企业' });
     const admin = await as('a-admin@test.cn');
     expect((await admin.get(`/api/enterprises/${ent.id}/open-task`).expect(200)).body).toEqual({ openTask: null });

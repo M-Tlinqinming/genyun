@@ -94,9 +94,13 @@ export function CreateTaskButton({
   size = 'large',
   explain = 'tooltip',
 }: {
+  /** 能不能新建：年度服务不在有效期内或组织还没开通时为 false，按钮置灰 */
   canCreate: boolean;
+  /** 从企业页进来时带上这家企业，新建任务页会预先选好 */
   enterpriseId?: string;
+  /** 按钮大小：页头用 large，企业概览里用 middle */
   size?: 'large' | 'middle';
+  /** 不能新建时原因怎么说：inline 写在按钮旁边，tooltip 悬停时显示 */
   explain?: 'inline' | 'tooltip';
 }) {
   const navigate = useNavigate();

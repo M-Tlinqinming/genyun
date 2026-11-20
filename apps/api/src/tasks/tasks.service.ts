@@ -470,7 +470,10 @@ export class TasksService {
   private duplicate(existing: OpenTask) {
     return new ConflictException({
       statusCode: 409,
-      message: `这家企业已经有一个没办完的任务（${existing.number}），继续这个任务就行`,
+      message:
+        existing.status === 'preparing'
+          ? `这家企业已经有一个没办完的任务（${existing.number}），继续这个任务就行`
+          : `这家企业已经有一个任务（${existing.number}）在专家编制，交付以后才能新建下一个任务`,
       existingTask: existing,
     });
   }
