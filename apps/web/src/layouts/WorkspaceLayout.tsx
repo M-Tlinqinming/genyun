@@ -14,7 +14,8 @@ import { NAVIGATION } from './navigation';
 import { NotificationBell } from './NotificationBell';
 import type { WorkspaceContext } from './workspace';
 
-// 三端共用的框架：顶栏 64 + 侧栏 224。只有该工作区的成员才能进入。
+// 工作台壳子（客户一套，专家和运营共用一套样式）：顶栏 64 + 侧栏 224，内容最宽 1152、左右 32。
+// 只有该工作区的成员才能进入。
 export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
   const session = useSession();
   const logout = useLogout();
@@ -70,7 +71,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
       <Layout.Sider
         width={layout.sider}
         style={{
-          borderRight: `1px solid ${gy.frameLine}`,
+          borderRight: `1px solid ${gy.split}`,
           position: 'sticky',
           top: 0,
           height: '100vh',
@@ -143,19 +144,19 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
       </Layout.Sider>
 
       <Layout>
+        {/* 顶栏左边不写工作空间名（壳子规范），只在右边放联系、提醒和头像 */}
         <Layout.Header
           style={{
-            borderBottom: `1px solid ${gy.frameLine}`,
+            borderBottom: `1px solid ${gy.split}`,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
             position: 'sticky',
             top: 0,
             zIndex: 10,
           }}
         >
-          <Typography.Text type="secondary">{nav.headerTitle}</Typography.Text>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
             {nav.showContact && (
               <FeedbackModal
                 orgId={current.orgId}
@@ -176,7 +177,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
               />
             )}
             <NotificationBell />
-            <Avatar size={28} style={{ background: '#F2F4F7', color: gy.text }}>
+            <Avatar size={28} style={{ background: gy.avatarBg, color: gy.secondary, fontSize: 18 }}>
               {initial}
             </Avatar>
           </div>
