@@ -123,7 +123,9 @@ test('停用：确认后已停用，对方不能登录；恢复后能登录', as
 });
 
 test('操作日志里有邀请、停用、恢复', async () => {
-  await page.getByRole('menuitem', { name: /操作日志/ }).click();
+  await page.getByRole('menuitem', { name: /运营概览/ }).click();
+  await page.getByRole('link', { name: '全部记录' }).click();
+  await expect(page.getByRole('heading', { name: '全部记录' })).toBeVisible();
   for (const label of ['邀请内部成员', '停用账号', '恢复账号']) {
     await expect(page.getByRole('row').filter({ hasText: label }).first()).toContainText('孙工');
   }

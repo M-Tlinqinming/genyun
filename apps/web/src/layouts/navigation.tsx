@@ -1,8 +1,8 @@
 import {
   AppstoreOutlined,
-  AuditOutlined,
   BankOutlined,
   BookOutlined,
+  IdcardOutlined,
   MailOutlined,
   FileTextOutlined,
   MessageOutlined,
@@ -17,7 +17,7 @@ export interface NavItem {
   path: string;
   label: string;
   icon: ReactNode;
-  // 设计稿里专业人员可见但不可用的入口（置灰）
+  // 可见但不可用的入口（置灰）
   disabled?: boolean;
   // 平时不在菜单里，只有打开这个页面时才出现并高亮（模拟发件箱：只在预览环境有用）
   onlyWhenActive?: boolean;
@@ -49,14 +49,14 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
         items: [
           { path: '/customer', label: '工作台', icon: <AppstoreOutlined /> },
           { path: '/customer/enterprises', label: '企业', icon: <BankOutlined /> },
-          { path: '/customer/tasks', label: '业务任务', icon: <ProfileOutlined /> },
+          { path: '/customer/tasks', label: '任务', icon: <ProfileOutlined /> },
           { path: '/customer/documents', label: '成果文档', icon: <FileTextOutlined /> },
           // 我的反馈：平时不在菜单里，从站内提醒、反馈提交成功、成果文档页进入
           { path: '/customer/feedback', label: '我的反馈', icon: <MessageOutlined />, onlyWhenActive: true },
         ],
       },
       {
-        label: '机构管理',
+        label: '组织管理',
         roles: ['customer_admin'],
         items: [{ path: '/customer/organization', label: '组织管理', icon: <TeamOutlined /> }],
       },
@@ -71,8 +71,8 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
         label: '专业工作空间',
         items: [
           { path: '/expert', label: '任务中心', icon: <ProfileOutlined /> },
-          { path: '/expert/organizations', label: '客户组织', icon: <BankOutlined />, disabled: true },
-          { path: '/expert/accounts', label: '内部账号', icon: <UserOutlined />, disabled: true },
+          // 我的资料：专家库这一轮再做页面，先占位
+          { path: '/expert/profile', label: '我的资料', icon: <UserOutlined /> },
         ],
       },
     ],
@@ -88,8 +88,10 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
           { path: '/operator', label: '运营概览', icon: <AppstoreOutlined /> },
           { path: '/operator/organizations', label: '客户组织', icon: <BankOutlined /> },
           { path: '/operator/tasks', label: '任务中心', icon: <ProfileOutlined /> },
+          // 专家：专家库这一轮再做页面，先占位
+          { path: '/operator/experts', label: '专家', icon: <IdcardOutlined /> },
           { path: '/operator/accounts', label: '内部账号', icon: <UserOutlined /> },
-          { path: '/operator/audit-logs', label: '操作日志', icon: <AuditOutlined /> },
+          // 操作日志不进菜单：从运营概览「最近操作」的「全部记录」进入，菜单高亮运营概览
           { path: '/operator/knowledge', label: '知识库', icon: <BookOutlined /> },
           { path: '/operator/feedback', label: '反馈受理', icon: <MessageOutlined /> },
           { path: '/operator/mail-outbox', label: '模拟发件箱', icon: <MailOutlined />, onlyWhenActive: true },

@@ -12,8 +12,8 @@ export const INTERNAL_ROLE_LABELS: Record<InternalRole, string> = { expert: '专
 // 每种角色能看到的范围（I06 表格「可见范围」列、角色说明卡片）
 export const INTERNAL_ROLE_SCOPES: Record<InternalRole, string> = { expert: '分配给本人的任务', operator: '全部客户组织' };
 export const INTERNAL_ROLE_DUTIES: Record<InternalRole, string> = {
-  operator: '开通客户组织、维护年度服务、分配任务、受理反馈、处理上门工单和超时兜底、管理内部账号。不参与文档编制和审核。',
-  expert: '只处理分配给自己的任务：核实资料、联系客户、整理编制、审核并发布三份成果。',
+  operator: '开通客户组织、维护年度服务、分配任务、受理反馈、管理内部账号。不参与文档编制和审核。',
+  expert: '只处理分配给自己的任务：核实资料、联系客户、整理编制、审核并交付三份成果。',
 };
 
 // 邀请内部成员（邮件邀请，7 天有效，和客户组织的邀请同一套）
@@ -66,8 +66,6 @@ export const OVERVIEW_TODO_KINDS = {
   invitation: '邀请未接受',
   unassigned: '待分派',
   feedback: '待受理反馈',
-  overdue: '超时兜底',
-  on_site: '上门工单',
 } as const;
 export type OverviewTodoKind = keyof typeof OVERVIEW_TODO_KINDS;
 
@@ -106,6 +104,7 @@ export interface OperatorOverview {
   orgs: { total: number; active: number; pending: number; expired: number };
   tasks: { open: number; preparing: number; unassigned: number; drafting: number };
   deliveries: { thisMonth: number };
+  // 超时兜底、上门工单已取消，恒为 0（侧栏角标还在读，界面升级后去掉）
   followUps: { overdue: number; onSiteNew: number };
   // 反馈受理（M3 第 6 项）：待受理、处理中；「待跟进反馈」= 两者之和
   feedback: { new: number; processing: number };

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { checklistItems, enterprises, memberships, organizations, taskContacts, tasks, users } from '../db/schema.ts';
+import { checklistItems, enterprises, memberships, organizations, tasks, users } from '../db/schema.ts';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -145,39 +145,20 @@ describe('运营任务中心', () => {
     expect((await admin.get(`/api/tasks/${task.fresh}`)).body.assignedExpertName).toBe('周工');
   });
 
-  it('改派：联系记录随任务带给新专家，原专家看不到这个任务，并收到改派提醒', async () => {
-    await handle.db.insert(taskContacts).values({
-      taskId: task.fresh,
-      method: 'phone',
-      questions: [],
-      target: null,
-      result: 'later',
-      createdBy: uid['zhou@test.cn']!,
-    });
+  it('改派：任务带给新专家，原专家看不到这个任务，并收到改派提醒', async () => {
     const ops = await as('ops@test.cn');
     const detail = await ops.get(`/api/operator/tasks/${task.fresh}`);
-    expect(detail.body).toMatchObject({ contactCount: 1, assignedExpertName: '周工' });
+    expect(detail.body).toMatchObject({ assignedExpertName: '周工' });
 
-    const before = Date.now();
     const res = await ops
       .post(`/api/operator/tasks/${task.fresh}/assign`)
       .send({ expertId: uid['wu@test.cn'], currentExpertId: uid['zhou@test.cn'], reason: 'leave' });
     expect(res.status).toBe(201);
     expect(res.body.assignedExpertName).toBe('吴工');
 
-    // 「客户请电话联系」的期限从吴工接手时重新算，不沿用周工那边已过去的时间
-    const wuTasks = (await (await as('wu@test.cn')).get('/api/expert/tasks')).body.tasks as {
-      id: string;
-      contact: { requestedAt: string } | null;
-    }[];
-    const contact = wuTasks.find((t) => t.id === task.fresh)!.contact!;
-    expect(new Date(contact.requestedAt).getTime()).toBeGreaterThanOrEqual(before);
-
     const wu = await as('wu@test.cn');
     expect((await wu.get(`/api/tasks/${task.fresh}`)).status).toBe(200);
-    const contacts = await wu.get(`/api/tasks/${task.fresh}/contacts`);
-    expect(contacts.status).toBe(200);
-    expect(JSON.stringify(contacts.body)).toContain('later');
+    expect(((await wu.get('/api/expert/tasks')).body.tasks as { id: string }[]).map((t) => t.id)).toContain(task.fresh);
     expect((await wu.get('/api/notifications')).body.items[0]).toMatchObject({ title: '改派给你的任务' });
 
     const zhou = await as('zhou@test.cn');
@@ -185,7 +166,6 @@ describe('运营任务中心', () => {
     const old = await zhou.get(`/api/tasks/${task.fresh}`);
     expect(old.status).toBe(404);
     expect(old.body.message).toBe('这个任务已改派给吴工');
-    expect((await zhou.get(`/api/tasks/${task.fresh}/contacts`)).status).toBe(404);
     expect(((await zhou.get('/api/expert/tasks')).body.tasks as { id: string }[]).map((t) => t.id)).not.toContain(task.fresh);
     const bell = (await zhou.get('/api/notifications')).body.items[0];
     expect(bell).toMatchObject({ title: '任务已改派', link: `/expert/tasks/${task.fresh}` });
@@ -195,6 +175,26 @@ describe('运营任务中心', () => {
     // 从没负责过的人还是「找不到该任务」，不透露负责人
     const fake = await as('fake@test.cn');
     expect((await fake.get(`/api/tasks/${task.fresh}`)).body.message).toBe('找不到该任务');
+  });
+
+  it('改派记进运营记录；运营可以写内部备注，客户、专家看不到', async () => {
+    const ops = await as('ops@test.cn');
+    const res = await ops.post(`/api/operator/tasks/${task.fresh}/notes`).send({ body: '客户说周五前回电' });
+    expect(res.status).toBe(201);
+    expect(res.body[0]).toMatchObject({ kind: 'note', body: '客户说周五前回电', createdByName: '赵运营' });
+    expect(res.body.map((n: { kind: string }) => n.kind)).toContain('reassign');
+    expect((await ops.post(`/api/operator/tasks/${task.fresh}/notes`).send({ body: '  ' })).status).toBe(400);
+    // 只能写备注；改派走分派接口
+    expect((await ops.post(`/api/operator/tasks/${task.fresh}/notes`).send({ kind: 'reassign', body: 'x' })).status).toBe(400);
+
+    for (const email of ['admin@test.cn', 'wu@test.cn']) {
+      const other = await as(email);
+      expect((await other.get(`/api/operator/tasks/${task.fresh}/notes`)).status).toBe(403);
+      expect((await other.post(`/api/operator/tasks/${task.fresh}/notes`).send({ body: 'x' })).status).toBe(403);
+    }
+    // 客户看任务时没有内部备注
+    const view = await (await as('admin@test.cn')).get(`/api/tasks/${task.fresh}`);
+    expect(JSON.stringify(view.body)).not.toContain('客户说周五前回电');
   });
 
   it('打开弹窗后别人已分派过：拒绝并说明现在是谁', async () => {

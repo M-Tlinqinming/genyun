@@ -109,7 +109,7 @@ beforeAll(async () => {
     publishedAt: now,
   });
   id.memberFile = await addFile(orgA!.id, uid['member@a.cn']!, '下载页截图.png');
-  // 机构管理员上传的、没挂到成员企业上的文件：成员不能借反馈附上
+  // 组织管理员上传的、没挂到成员企业上的文件：成员不能借反馈附上
   id.adminFile = await addFile(orgA!.id, admin, '电子厂平面图.png');
   id.otherOrgFile = await addFile(orgB!.id, uid['admin@b.cn']!, '别家.png');
   // 本组织的合同原件、文稿：不是客户上传的资料，不能当反馈附件
@@ -184,7 +184,7 @@ describe('客户提交反馈', () => {
     expect((await request(app.getHttpServer()).get(`/api/orgs/${id.orgA}/feedback`)).status).toBe(401);
   });
 
-  it('附件只能是客户上传的资料：机构管理员附本组织的合同、文稿也拒绝', async () => {
+  it('附件只能是客户上传的资料：组织管理员附本组织的合同、文稿也拒绝', async () => {
     const admin = await as('admin@a.cn');
     for (const fileId of [id.contractFile, id.draftFile]) {
       const res = await admin.post(`/api/orgs/${id.orgA}/feedback`).send({ content: '附件', fileIds: [fileId] });
@@ -194,7 +194,7 @@ describe('客户提交反馈', () => {
     expect((await admin.post(`/api/orgs/${id.orgA}/feedback`).send({ content: '附件', fileIds: [id.adminFile, id.contractFile] })).status).toBe(400);
   });
 
-  it('成员只看到自己提交的，机构管理员看到本组织全部', async () => {
+  it('成员只看到自己提交的，组织管理员看到本组织全部', async () => {
     const mine = (await (await as('member@a.cn')).get(`/api/orgs/${id.orgA}/feedback`).expect(200)).body as CustomerFeedback[];
     expect(mine.map((f) => f.id)).toEqual([id.fb]);
     const all = (await (await as('admin@a.cn')).get(`/api/orgs/${id.orgA}/feedback`).expect(200)).body as CustomerFeedback[];
@@ -227,7 +227,7 @@ describe('运营受理反馈', () => {
     const o = (await ops.get('/api/operator/overview').expect(200)).body as OperatorOverview;
     expect(o.feedback).toEqual({ new: 2, processing: 0 });
     const todo = o.todos.find((t) => t.kind === 'feedback' && t.id === id.fb);
-    expect(todo).toMatchObject({ title: '示例包装有限公司', subtitle: 'GY-2026-003 · 已交付 V1', action: '受理反馈', link: `/operator/feedback?id=${id.fb}` });
+    expect(todo).toMatchObject({ title: '示例包装有限公司', subtitle: 'GY-2026-003 · 已交付', action: '受理反馈', link: `/operator/feedback?id=${id.fb}` });
   });
 
   it('受理：变为处理中，提醒提交人，记操作日志；客户看不到内部备注和回复草稿', async () => {

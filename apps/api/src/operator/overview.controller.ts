@@ -23,13 +23,11 @@ import {
   enterprises,
   feedback,
   memberships,
-  onSiteRequests,
   organizationInvitations,
   organizations,
   tasks,
   users,
 } from '../db/schema.ts';
-import { listOverdueTasks } from '../tasks/operator-tasks.controller.ts';
 
 // 「最近操作」只放业务动作；登录、退出、改密码在操作日志页里看
 const ACCOUNT_ACTIONS: AuditAction[] = ['login_success', 'login_failure', 'logout', 'password_change', 'password_reset'];
@@ -38,7 +36,7 @@ const DAY_MS = 86_400_000;
 const EXPIRED_TODO_DAYS = 14;
 
 // 运营概览（Paper 16 页 I01）：四个统计、今天先处理、客户年度服务、最近操作。全部按真实数据算，
-// 复用客户组织（待开通）、邀请、任务中心（待分派、超时兜底、上门工单）、成果发布、操作日志。
+// 复用客户组织（待开通）、邀请、任务中心（待分派）、成果交付、操作日志。
 // 只有运营；客户、专家一律 403。侧栏「客户组织」「任务中心」的角标也用这里的数
 @Controller('operator/overview')
 export class OperatorOverviewController {
@@ -50,7 +48,7 @@ export class OperatorOverviewController {
     const now = new Date();
     const today = chinaToday(now);
 
-    const [orgRows, taskRows, overdue, orders, invitations, delivered, recent, feedbackRows] = await Promise.all([
+    const [orgRows, taskRows, invitations, delivered, recent, feedbackRows] = await Promise.all([
       this.db
         .select({
           id: organizations.id,
@@ -80,19 +78,6 @@ export class OperatorOverviewController {
         .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
         .innerJoin(organizations, eq(organizations.id, tasks.orgId))
         .where(and(eq(organizations.kind, 'customer'), isNull(tasks.closedAt))),
-      listOverdueTasks(this.db, now),
-      this.db
-        .select({
-          id: onSiteRequests.id,
-          createdAt: onSiteRequests.createdAt,
-          helpItems: onSiteRequests.helpItems,
-          enterpriseName: enterprises.name,
-          orgName: organizations.name,
-        })
-        .from(onSiteRequests)
-        .innerJoin(enterprises, eq(enterprises.id, onSiteRequests.enterpriseId))
-        .innerJoin(organizations, eq(organizations.id, onSiteRequests.orgId))
-        .where(eq(onSiteRequests.status, 'new')),
       this.db
         .select({
           id: organizationInvitations.id,
@@ -126,7 +111,7 @@ export class OperatorOverviewController {
           ),
         )
         .orderBy(desc(organizationInvitations.createdAt)),
-      // 本月（北京时间）发布成功的交付：同一任务本月发了 V1、V2 只算一次
+      // 本月（北京时间）交付成功的：同一任务本月交付、更新了两次只算一次
       this.db
         .selectDistinct({ taskId: deliveries.taskId })
         .from(deliveries)
@@ -213,7 +198,7 @@ export class OperatorOverviewController {
     }
     // 待受理反馈（处理中的不放进今天先处理，在反馈受理页里跟进）
     for (const f of feedbackRows.filter((x) => x.status === 'new')) {
-      const subtitle = f.taskNumber ? `${f.taskNumber}${f.deliveryVersion ? ` · 已交付 V${f.deliveryVersion}` : ''}` : f.orgName;
+      const subtitle = f.taskNumber ? `${f.taskNumber}${f.deliveryVersion ? ' · 已交付' : ''}` : f.orgName;
       todos.push({
         kind: 'feedback',
         id: f.id,
@@ -223,30 +208,6 @@ export class OperatorOverviewController {
         since: f.createdAt.toISOString(),
         action: '受理反馈',
         link: `/operator/feedback?id=${f.id}`,
-      });
-    }
-    for (const t of overdue) {
-      todos.push({
-        kind: 'overdue',
-        id: t.id,
-        title: t.enterpriseName,
-        subtitle: `${t.number} · 负责专家 ${t.assignedExpertName ?? '—'}`,
-        note: `客户请专家电话联系，已等 ${t.waitedDays} 个工作日；${t.reason}`,
-        since: t.request.requestedAt.toISOString(),
-        action: '处理超时',
-        link: `/operator/tasks?tab=overdue&task=${t.id}`,
-      });
-    }
-    for (const o of orders) {
-      todos.push({
-        kind: 'on_site',
-        id: o.id,
-        title: o.enterpriseName,
-        subtitle: `上门工单 · ${o.orgName}`,
-        note: o.helpItems.length > 0 ? `客户需要帮忙整理 ${o.helpItems.length} 项资料，请联系客户安排` : '客户预约上门，请联系客户安排',
-        since: o.createdAt.toISOString(),
-        action: '处理工单',
-        link: `/operator/tasks?tab=onsite&order=${o.id}`,
       });
     }
     // 等得最久的在前
@@ -284,7 +245,8 @@ export class OperatorOverviewController {
         drafting: taskRows.filter((t) => t.status === 'submitted' && t.assignedExpertId).length,
       },
       deliveries: { thisMonth: delivered.length },
-      followUps: { overdue: overdue.length, onSiteNew: orders.length },
+      // 超时兜底、上门工单已取消；字段留着给侧栏角标（恒为 0）
+      followUps: { overdue: 0, onSiteNew: 0 },
       feedback: {
         new: feedbackRows.filter((f) => f.status === 'new').length,
         processing: feedbackRows.filter((f) => f.status === 'processing').length,

@@ -213,7 +213,7 @@ export function AssignExpertModal({
           }}
         >
           {reassign
-            ? `改派后，已整理的内容和联系记录都带给新专家，客户页面直接换成新的负责人（不另外通知客户）；${task.assignedExpertName}不再能打开这个任务。`
+            ? `改派后，已整理的内容都带给新专家，客户页面直接换成新的负责人（不另外通知客户）；${task.assignedExpertName}不再能打开这个任务。`
             : '之后可以改派。改派保留已有的整理和处理记录，客户页面直接换成新的负责人。'}
         </div>
 
