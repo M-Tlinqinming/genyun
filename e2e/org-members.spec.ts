@@ -45,7 +45,7 @@ test('成员与权限：列出自己（不能改自己），角色说明', async
   await page.getByRole('menuitem', { name: /组织管理/ }).click();
   await expect(page).toHaveURL(/\/customer\/organization$/);
   await expect(page.getByRole('heading', { name: '组织管理', level: 1 })).toBeVisible();
-  const list = page.getByRole('region', { name: '机构成员' });
+  const list = page.getByRole('region', { name: '组织成员' });
   await expect(list).toContainText('陈志刚 · 您');
   await expect(list).toContainText('全部企业');
   await expect(page.getByRole('button', { name: '移除陈志刚' })).toHaveCount(0);

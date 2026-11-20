@@ -11,7 +11,7 @@ exports[`邮件模板 > invitation：纯文本和 HTML 两版 > html 1`] = `
 <p style="margin:0 0 16px;font-size:15px;line-height:24px;color:#18243B">耕云运营邀请您以组织管理员身份加入耕云工作空间「示例安全咨询机构」。点下面的按钮设置登录密码，之后就可以开始使用。</p>
 <p style="margin:8px 0 16px"><a href="https://preview.example.cn/invite/abc?x=1&amp;y=2" style="display:inline-block;padding:10px 24px;background:#245BDB;color:#FFFFFF;border-radius:6px;font-size:15px;text-decoration:none">接受邀请</a></p><p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">按钮打不开时，复制下面的地址到浏览器：<br><a href="https://preview.example.cn/invite/abc?x=1&amp;y=2" style="color:#245BDB;word-break:break-all">https://preview.example.cn/invite/abc?x=1&amp;y=2</a></p>
 <p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">链接有效期至 2026 年 11 月 8 日 09:30（北京时间），只能使用一次。</p>
-<p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">不认识这个机构？忽略这封邮件即可，链接过期后会自动失效。</p>
+<p style="margin:0 0 16px;font-size:13px;line-height:20px;color:#596170">不认识这个组织？忽略这封邮件即可，链接过期后会自动失效。</p>
 </td></tr>
 <tr><td style="padding:16px 32px 24px;border-top:1px solid #E8EAEE;font-size:13px;color:#596170">耕云 · 0752-5200831</td></tr>
 </table>
@@ -28,7 +28,7 @@ https://preview.example.cn/invite/abc?x=1&y=2
 
 链接有效期至 2026 年 11 月 8 日 09:30（北京时间），只能使用一次。
 
-不认识这个机构？忽略这封邮件即可，链接过期后会自动失效。
+不认识这个组织？忽略这封邮件即可，链接过期后会自动失效。
 
 ——
 耕云 · 0752-5200831"

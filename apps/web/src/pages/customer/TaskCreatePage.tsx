@@ -37,7 +37,7 @@ export function TaskCreatePage() {
       <Result
         status="404"
         title="找不到该企业"
-        subTitle="企业可能不在当前机构下，或您没有查看权限。"
+        subTitle="企业可能不在当前组织下，或您没有查看权限。"
         extra={<Link to="/customer/enterprises">返回企业列表</Link>}
       />
     );

@@ -200,7 +200,7 @@ export class OperatorTasksController {
         {
           taskId: id,
           title: previous ? '改派给你的任务' : '分配给你的新任务',
-          body: [said, `${what}（${task.number}，${task.orgName}）`, previous ? '已有的专业整理都在任务里。' : null]
+          body: [said, `${what}（${task.number}，${task.orgName}）`, previous ? '已有的核对记录都在任务里。' : null]
             .filter(Boolean)
             .join(' '),
           link: `/expert/tasks/${id}`,

@@ -351,7 +351,7 @@ export class EditingService {
       .limit(1);
     if (!row || row.status !== 'done') throw new BadRequestException(`${DRAFT_KINDS[k]}还没有生成完，生成完才能编辑正文`);
     if (!row.storageKey || !row.fileId) {
-      throw new BadRequestException(`这份${DRAFT_KINDS[k]}是在正文编辑上线前生成的，请回到专业整理重新确认生成后再编辑`);
+      throw new BadRequestException(`这份${DRAFT_KINDS[k]}是在正文编辑上线前生成的，请回到资料核对重新生成后再编辑`);
     }
     let doc = this.cache.get(row.fileId);
     if (!doc) {

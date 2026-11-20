@@ -212,7 +212,7 @@ function AcceptForm({ token, inv, signedInAs }: { token: string; inv: Invitation
         </Button>
       </Form>
       <div style={{ height: 1, background: gy.split }} />
-      <div style={{ ...text12, color: gy.secondary }}>不认识这个机构？忽略这封邀请即可，链接过期后会自动失效。</div>
+      <div style={{ ...text12, color: gy.secondary }}>不认识这个组织？忽略这封邀请即可，链接过期后会自动失效。</div>
     </>
   );
 }
@@ -228,7 +228,7 @@ function Expired({ token, inv }: { token: string; inv: InvitationView }) {
       <InfoBox
         muted
         rows={[
-          ['机构', inv.orgName],
+          ['组织', inv.orgName],
           ['邀请人', inv.inviterName],
           ['受邀邮箱', <Email value={inv.email} />],
         ]}

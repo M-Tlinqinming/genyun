@@ -168,7 +168,7 @@ function MembersTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <TableCard
-        label="机构成员"
+        label="组织成员"
         head={
           <>
             <span style={{ flex: '1 1 0', minWidth: 0 }}>成员</span>
@@ -402,9 +402,9 @@ function ProfileTab({ view, orgId }: { view: OrgManagementView; orgId: string })
   return (
     <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
       <section aria-label="组织资料" style={{ ...panel, flex: '1 1 0', minWidth: 0, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <h2 style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text, margin: 0 }}>机构信息</h2>
+        <h2 style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text, margin: 0 }}>组织信息</h2>
         <Form form={form} layout="vertical" requiredMark={requiredAfter} initialValues={initial} onValuesChange={() => setDirty(true)}>
-          <Form.Item label="机构名称" extra={<span style={small}>开通时由耕云登记，如需变更请联系耕云。</span>}>
+          <Form.Item label="组织名称" extra={<span style={small}>开通时由耕云登记，如需变更请联系耕云。</span>}>
             <Input value={view.org.name} readOnly aria-readonly />
           </Form.Item>
           <div style={{ display: 'flex', gap: 16 }}>
@@ -415,7 +415,7 @@ function ProfileTab({ view, orgId }: { view: OrgManagementView; orgId: string })
               <Input maxLength={30} />
             </Form.Item>
           </div>
-          <Form.Item label="联系邮箱" name="contactEmail" extra={<span style={small}>用于耕云联系机构，与个人登录账号分开管理。</span>} style={{ marginBottom: 0 }}>
+          <Form.Item label="联系邮箱" name="contactEmail" extra={<span style={small}>用于耕云联系组织，与个人登录账号分开管理。</span>} style={{ marginBottom: 0 }}>
             <Input maxLength={100} />
           </Form.Item>
         </Form>
@@ -610,7 +610,7 @@ export function OrganizationPage() {
       title: `移除 ${m.name}？`,
       content: (
         <>
-          移除后{m.name}不能再登录本机构，已登录的地方会退出；上传记录与操作记录仍保留。
+          移除后{m.name}不能再登录本组织，已登录的地方会退出；上传记录与操作记录仍保留。
           {alone.length > 0 && <div style={{ marginTop: 8, color: gy.warning }}>以下企业只有{m.name}负责，移除后没有负责成员（组织管理员仍能看到）：{alone.join('、')}。</div>}
         </>
       ),

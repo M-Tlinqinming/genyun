@@ -34,7 +34,7 @@ export class ExpertTasksService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async list(user: SessionUser) {
-    if (!isExpert(user)) throw new ForbiddenException('任务中心只对专业人员开放');
+    if (!isExpert(user)) throw new ForbiddenException('任务中心只对专家开放');
     const list = await this.db
       .select({
         id: tasks.id,

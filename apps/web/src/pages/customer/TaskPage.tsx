@@ -24,7 +24,7 @@ export function TaskPage() {
       <Result
         status={notFound ? '404' : 'error'}
         title={notFound ? '找不到该任务' : '任务加载失败'}
-        subTitle={notFound ? '任务可能不在当前机构下，或您没有查看权限。' : task.error.message}
+        subTitle={notFound ? '任务可能不在当前组织下，或您没有查看权限。' : task.error.message}
         extra={<Link to="/customer/enterprises">返回企业列表</Link>}
       />
     );

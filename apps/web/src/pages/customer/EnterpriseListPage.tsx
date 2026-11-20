@@ -66,7 +66,7 @@ export function EnterpriseListPage() {
     <>
       <PageHeader
         title="企业"
-        description={isAdmin ? '管理本机构服务的企业。企业资料可在多次编制任务中复用。' : '分配给您的企业。企业资料可在多次编制任务中复用。'}
+        description={isAdmin ? '管理本组织服务的企业。企业资料可在多次编制任务中复用。' : '分配给您的企业。企业资料可在多次编制任务中复用。'}
         extra={isAdmin ? newButton : undefined}
       />
       <div style={{ background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 8, overflow: 'hidden' }}>
