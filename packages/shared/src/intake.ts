@@ -185,6 +185,18 @@ export interface IntakePreviousSheet {
   submittedAt: string;
 }
 
+/** 当前有效（没撤回）的那次提交：已提交页的资料卡片、进度第 1 步用 */
+export interface IntakeSubmissionView {
+  /** ISO 时间 */
+  submittedAt: string;
+  /** 提交人的姓名（人已经不在组织里也照样显示） */
+  submittedByName: string;
+  /** 这次交给专家的文件，取自提交快照 */
+  files: IntakeSubmittedFile[];
+  /** 提交时说明了「这张图我们没有」（紧急疏散示意图） */
+  noEvacuationMap: boolean;
+}
+
 export interface IntakeView {
   taskId: string;
   /** 能不能上传、删除（组织管理员或分配到这家企业的成员，且任务还在准备资料） */
@@ -201,4 +213,17 @@ export interface IntakeView {
   previousSheet: IntakePreviousSheet | null;
   /** ISO 时间，「已自动保存 HH:MM」 */
   updatedAt: string;
+  /** 当前有效的提交；还没提交或已撤回为 null */
+  submission: IntakeSubmissionView | null;
+  /** 撤回过的话是那次撤回的时间（ISO），否则 null。一个任务只能撤回一次 */
+  withdrawnAt: string | null;
+  /** 现在能不能撤回：有编辑权限、已提交、没撤回过、专家还没开始核对 */
+  canWithdraw: boolean;
+  /** 专家已开始核对（负责专家第一次打开资料核对时复制了快照） */
+  expertStarted: boolean;
+}
+
+/** 提交给专家（POST /api/tasks/:taskId/intake/submit）：requestId 每次打开确认弹窗生成一个，失败重试时沿用 */
+export interface IntakeSubmitRequest {
+  requestId: string;
 }
