@@ -38,6 +38,16 @@ test('客户账号打不开运营工作区', async ({ page }) => {
   await expect(page).toHaveURL(/\/customer$/);
 });
 
+test('已登录时打开不存在的地址，回到自己的工作台而不是登录页', async ({ page }) => {
+  await login(page, 'admin@demo.genyun.net.cn');
+  await expect(page).toHaveURL(/\/customer$/);
+  for (const path of ['/no-such-page', '/customer/no-such-page', '/customer/tasks/abc/def/ghi']) {
+    await page.goto(path);
+    await expect(page).toHaveURL(/\/customer$/);
+    await expect(page.getByPlaceholder('请输入邮箱')).toHaveCount(0);
+  }
+});
+
 test('退出登录后回到登录页', async ({ page }) => {
   await login(page, 'admin@demo.genyun.net.cn');
   await page.getByRole('button', { name: /林管理员/ }).click();

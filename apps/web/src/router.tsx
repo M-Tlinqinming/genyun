@@ -1,5 +1,5 @@
 import type { Workspace } from '@genyun/shared';
-import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
+import { createBrowserRouter, Navigate, useParams, type RouteObject } from 'react-router';
 import { NAVIGATION } from './layouts/navigation';
 import { WorkspaceLayout } from './layouts/WorkspaceLayout';
 import { AccountPage, AccountLayout } from './pages/AccountPage';
@@ -33,7 +33,7 @@ import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
   customer: '客户工作台',
-  expert: '耕云内部 / 专业处理',
+  expert: '耕云专家',
   operator: '耕云运营',
 };
 
@@ -50,6 +50,12 @@ const EXTRA: Partial<Record<Workspace, RouteObject[]>> = {
   // 全部记录（操作日志）：从运营概览「最近操作」进入，菜单高亮运营概览
   operator: [{ path: 'audit-logs', element: <AuditLogPage /> }],
 };
+
+// 旧地址（取消的填写向导、在线阅读）：收藏过的链接跳到现在对应的页面
+function Moved({ to }: { to: (taskId: string) => string }) {
+  const { taskId } = useParams();
+  return <Navigate to={to(taskId!)} replace />;
+}
 
 // 已做好的页面；菜单项下可以有子页面
 const PAGES: Partial<Record<string, RouteObject[]>> = {
@@ -82,11 +88,14 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
+    { path: ':taskId/start', element: <Moved to={(id) => `/customer/tasks/${id}`} /> },
+    { path: ':taskId/fill/:step', element: <Moved to={(id) => `/customer/tasks/${id}`} /> },
   ],
   // 成果文档：列表 → 某任务的交付详情（客户只看最新一次交付）
   '/customer/documents': [
     { index: true, element: <DocumentsPage /> },
     { path: ':taskId', element: <DeliveryPage /> },
+    { path: ':taskId/read/:kind', element: <Moved to={(id) => `/customer/documents/${id}`} /> },
   ],
 };
 
@@ -129,5 +138,6 @@ export const router = createBrowserRouter([
   workspaceRoutes('expert'),
   workspaceRoutes('operator'),
   ...DEV_ROUTES,
+  // 不存在的地址：登录页会把已登录的人送回自己的工作台
   { path: '*', element: <Navigate to="/login" replace /> },
 ]);

@@ -77,7 +77,10 @@ test('客户在成果文档里看到已交付的成果，下载三份 Word 和�
   const bundle = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载整套 Word' }).click();
   const zipFile = await bundle;
-  expect(zipFile.suggestedFilename()).toBe('惠阳飞宇电器有限公司编制成果（交付 V1）.zip');
+  // 压缩包名写企业名和交付日期（北京时间），不写版本号
+  const publishedAt: string = (await (await page.request.get(`/api/tasks/${taskId}/deliveries`)).json()).versions[0].publishedAt;
+  const day = new Date(publishedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+  expect(zipFile.suggestedFilename()).toBe(`惠阳飞宇电器有限公司编制成果（${day}）.zip`);
   const zip = await JSZip.loadAsync(await readFile((await zipFile.path())!));
   expect(Object.keys(zip.files).sort()).toEqual(
     ['惠阳飞宇电器有限公司应急预案.docx', '惠阳飞宇电器有限公司应急资源调查报告.docx', '惠阳飞宇电器有限公司风险评估报告.docx'].sort(),
@@ -101,7 +104,15 @@ test('客户在成果文档里看到已交付的成果，下载三份 Word 和�
   const row = page.getByRole('row', { name: /惠阳飞宇电器有限公司/ });
   await expect(row).toContainText('成果已交付，可查看和下载');
 
-  // 别家客户组织的人拿不到：详情、整套、PDF 一律 404，直接打开页面显示找不到
+  // 旧地址（在线阅读、旧的填写向导）收藏过的：跳到现在对应的页面，不进登录页
+  await page.goto(`/customer/documents/${taskId}/read/plan`);
+  await expect(page).toHaveURL(new RegExp(`/customer/documents/${taskId}$`));
+  for (const old of ['start', 'fill/2']) {
+    await page.goto(`/customer/tasks/${taskId}/${old}`);
+    await expect(page).toHaveURL(new RegExp(`/customer/tasks/${taskId}$`));
+  }
+
+  // 别家客户组织的人拿不到：详情、整套一律 404（在线阅读的 PDF 地址已取消，也是 404），直接打开页面显示找不到
   const ctx = await browser.newContext();
   const other = await ctx.newPage();
   await login(other, 'admin@demo.genyun.net.cn');
