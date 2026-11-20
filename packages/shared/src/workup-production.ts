@@ -22,6 +22,7 @@ import { hazchemSuggestionOf } from './plan/hazchem.ts';
 import type { PlanInput } from './plan/input.ts';
 import { suggestScope, type ScopeSuggestion } from './plan/scope.ts';
 import type { WorkupSnapshot } from './workup.ts';
+import { effectiveSnapshot, type ExpertCopy } from './workup-steps.ts';
 
 export const PRODUCTION_LISTS = {
   equipment: '设备清单',
@@ -226,7 +227,8 @@ function addedRows<T>(edits: Record<string, Judged<T>>): [string, Judged<T>][] {
     .sort((a, b) => a[1].at.localeCompare(b[1].at));
 }
 
-export function productionView(snapshot: WorkupSnapshot, data: { production?: ProductionWorkup }): ProductionView {
+export function productionView(snapshot: WorkupSnapshot, data: { production?: ProductionWorkup } & Partial<ExpertCopy>): ProductionView {
+  snapshot = effectiveSnapshot(snapshot, data);
   const w = data.production ?? emptyProductionWorkup();
   const step = snapshot.profile.productionStep?.step;
   const res = snapshot.profile.resourcesStep?.step;
@@ -360,7 +362,8 @@ export function listCounts(view: ProductionView): Record<ProductionList, { count
 }
 
 // 保存前校验：行、物料、建筑在这份整理里存在，特种设备参数的格式对得上
-export function productionSaveError(snapshot: WorkupSnapshot, data: { production?: ProductionWorkup }, save: ProductionSave): string | null {
+export function productionSaveError(snapshot: WorkupSnapshot, data: { production?: ProductionWorkup } & Partial<ExpertCopy>, save: ProductionSave): string | null {
+  snapshot = effectiveSnapshot(snapshot, data);
   const view = productionView(snapshot, data);
   const step = snapshot.profile.productionStep?.step;
   switch (save.kind) {

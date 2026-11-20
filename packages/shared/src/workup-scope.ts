@@ -7,6 +7,7 @@ import { PLAN_TEMPLATES, SCOPE_KEYS, SCOPE_SWITCHES, selectPlans, type PlanTempl
 import { suggestScope, type ScopeSuggestion } from './plan/scope.ts';
 import { isAddedRow, planProductionOf, productionView, type Judged, type ProductionWorkup } from './workup-production.ts';
 import type { WorkupSnapshot } from './workup.ts';
+import { effectiveSnapshot, type ExpertCopy } from './workup-steps.ts';
 
 // 界面上的短名称（设计稿 E18-00D），完整说明用 SCOPE_SWITCHES
 export const SCOPE_SHORT: Record<ScopeKey, string> = {
@@ -126,8 +127,9 @@ export function addedHazardsOf(risks: AddedHazards | undefined): { factor: strin
 
 export function scopeView(
   snapshot: WorkupSnapshot,
-  data: { production?: ProductionWorkup; scope?: ScopeWorkup; risks?: AddedHazards },
+  data: { production?: ProductionWorkup; scope?: ScopeWorkup; risks?: AddedHazards } & Partial<ExpertCopy>,
 ): ScopeView {
+  snapshot = effectiveSnapshot(snapshot, data);
   const production = productionView(snapshot, data);
   const plan = planProductionOf(snapshot, production);
   const suggested = suggestScope({ ...plan, expert: { hazardousMaterials: plan.hazardousMaterials } }, addedHazardsOf(data.risks));

@@ -39,6 +39,7 @@ export * from './workup-drawings.ts';
 export * from './workup-risk.ts';
 export * from './workup-scope.ts';
 export * from './workup-plan.ts';
+export * from './workup-steps.ts';
 export * from './generation.ts';
 export * from './editing.ts';
 export * from './review.ts';

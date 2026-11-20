@@ -1,6 +1,15 @@
 import {
+  basicStepWorkupSaveSchema,
   CUSTOMER_DRAWING_KEYS,
   drawingKeyOf,
+  effectiveSnapshot,
+  organizationOfSnapshot,
+  organizationStepSaveError,
+  organizationStepWorkupSaveSchema,
+  replaceStepBlank,
+  stepsDoneSaveSchema,
+  stripStepOverrides,
+  workupStepsDone,
   emptyProductionWorkup,
   factDefOf,
   factSaveError,
@@ -19,6 +28,7 @@ import {
   type CustomerDrawingKey,
   type FactOverride,
   type FiguresWorkup,
+  type IntakeFileSlot,
   type WorkupData,
   type WorkupSnapshot,
 } from '@genyun/shared';
@@ -36,7 +46,7 @@ import {
   ParseUUIDPipe,
   Put,
 } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { isOperator } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
@@ -49,6 +59,8 @@ import {
   enterprises,
   files,
   taskDocuments,
+  taskIntakeFiles,
+  taskIntakes,
   tasks,
   taskWorkups,
   users,
@@ -68,7 +80,19 @@ function profilePhotos(snapshot: WorkupSnapshot): { fileId: string; itemKey: str
     ...of('buildings', res?.fireAcceptanceFileIds),
   ];
 }
-const STALE = '这份整理刚被其他人修改过，已为您显示最新内容，请确认后再改';
+const STALE = '资料刚被其他人修改过，已为您显示最新内容，请确认后再改';
+const ONLY_EXPERT = '只有负责专家可以修改资料核对';
+
+// 新流程（上传资料表格）任务里客户传的文件：第 1 步找营业执照、右栏「客户原表」用
+export interface WorkupIntakeFile {
+  fileId: string;
+  name: string;
+  contentType: string;
+  slot: IntakeFileSlot;
+  uploadedAt: Date;
+}
+
+type WorkupRow = typeof taskWorkups.$inferSelect;
 
 // 原件对照（右栏）：任务里能看到的客户文件
 export interface WorkupOriginal {
@@ -81,7 +105,7 @@ export interface WorkupOriginal {
   uploadedAt: Date;
 }
 
-// 专业整理（14 页 E18-00A）：每个任务一份，只有负责专家能改；运营可以看（M3 改派时接手）
+// 资料核对：每个任务一份，只有负责专家能改；运营可以看（M3 改派时接手）
 @Injectable()
 export class WorkupService {
   constructor(
@@ -89,23 +113,112 @@ export class WorkupService {
     @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
   ) {}
 
+  // 负责专家第一次打开时写快照（snapshot_at 就是「专家开始核对」）；运营等其他人先打开时只在内存里算，不写
   async get(user: SessionUser, taskId: string) {
     const task = await this.task(user, taskId);
-    return this.view(task.id, await this.ensure(task));
+    if (task.assignedExpertId === user.id) return this.view(task.id, await this.ensure(task));
+    const row = await this.row(task.id);
+    if (row) return this.view(task.id, row);
+    const snapshot = await this.buildSnapshot(task);
+    const draft: WorkupRow = {
+      taskId: task.id,
+      snapshot,
+      snapshotAt: new Date(),
+      data: { overrides: {} },
+      version: 1,
+      updatedBy: null,
+      updatedAt: new Date(),
+    } as WorkupRow;
+    return this.view(task.id, draft);
+  }
+
+  // 向导第 1 步「企业基本信息」：整步写进专家那份，删掉这一步用过的单项修改，「先留空」按这一步替换
+  async saveBasicStep(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+    const parsed = basicStepWorkupSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+
+    const before = effectiveSnapshot(row.snapshot, row.data).profile.basicStep;
+    const stamp = { by: user.id, byName: user.name, at: new Date().toISOString() };
+    const data: WorkupData = {
+      ...row.data,
+      overrides: stripStepOverrides(row.data.overrides, 'basic'),
+      identity: save.identity,
+      profile: { ...row.data.profile, basicStep: { later: [], sources: {}, ...before, basic: save.basic } },
+      blank: replaceStepBlank(row.data.blank, 'basic', save.blank),
+      steps: { ...row.data.steps, basic: stamp },
+      stepsDone: Math.max(workupStepsDone(row.data), save.stepsDone ?? 0),
+    };
+    return this.write(task.id, row, data, user.id);
+  }
+
+  // 向导第 2 步「人员与应急组织」：小组只能用五个预设、不能重复；少于 3 组也能保存（页面上挡「下一步」）
+  async saveOrganizationStep(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+    const parsed = organizationStepWorkupSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+
+    const eff = effectiveSnapshot(row.snapshot, row.data);
+    const error = organizationStepSaveError(save.step, organizationOfSnapshot(eff));
+    if (error) throw new BadRequestException(error);
+    const stamp = { by: user.id, byName: user.name, at: new Date().toISOString() };
+    const data: WorkupData = {
+      ...row.data,
+      overrides: stripStepOverrides(row.data.overrides, 'organization'),
+      profile: {
+        ...row.data.profile,
+        organizationStep: { rosterFileIds: eff.profile.organizationStep?.rosterFileIds ?? [], step: save.step },
+      },
+      blank: replaceStepBlank(row.data.blank, 'organization', save.blank),
+      steps: { ...row.data.steps, organization: stamp },
+      stepsDone: Math.max(workupStepsDone(row.data), save.stepsDone ?? 0),
+    };
+    return this.write(task.id, row, data, user.id);
+  }
+
+  // 只记走到第几步（第 3–5 步暂用原来的整理页时，向导的「下一步」用它）；只增不减
+  async saveStepsDone(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+    const parsed = stepsDoneSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const row = await this.ensure(task);
+    if (parsed.data.version !== row.version) throw this.stale(row.version);
+    const data: WorkupData = { ...row.data, stepsDone: Math.max(workupStepsDone(row.data), parsed.data.stepsDone) };
+    return this.write(task.id, row, data, user.id);
+  }
+
+  private async write(taskId: string, row: WorkupRow, data: WorkupData, userId: string) {
+    const [saved] = await this.db
+      .update(taskWorkups)
+      .set({ data, version: row.version + 1, updatedBy: userId, updatedAt: new Date() })
+      .where(and(eq(taskWorkups.taskId, taskId), eq(taskWorkups.version, row.version)))
+      .returning();
+    // 读与写之间别人刚好保存了
+    if (!saved) throw this.stale(row.version + 1);
+    return this.view(taskId, saved);
   }
 
   async saveFact(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
     const parsed = factSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const { version, key, value, fileId, source } = parsed.data;
 
     const row = await this.ensure(task);
     if (version !== row.version) throw this.stale(row.version);
-    const error = factSaveError(factDefOf(row.snapshot, key), value);
+    const error = factSaveError(factDefOf(row.snapshot, key, row.data), value);
     if (error) throw new BadRequestException(error);
-    if (fileId && !(await this.originals(task.id, row.snapshot)).some((o) => o.fileId === fileId)) {
+    if (fileId && !(await this.originals(task.id, effectiveSnapshot(row.snapshot, row.data))).some((o) => o.fileId === fileId)) {
       throw new BadRequestException('对照的原件不在这个任务里');
     }
 
@@ -129,7 +242,7 @@ export class WorkupService {
   // 生产设备与物料（14 页 E18-00B）：一次保存一条判断或一行修改，带版本号，value 为 null 撤回
   async saveProduction(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
     const parsed = productionSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
@@ -138,7 +251,7 @@ export class WorkupService {
     if (save.version !== row.version) throw this.stale(row.version);
     const error = productionSaveError(row.snapshot, row.data, save);
     if (error) throw new BadRequestException(error);
-    if (save.fileId && !(await this.originals(task.id, row.snapshot)).some((o) => o.fileId === save.fileId)) {
+    if (save.fileId && !(await this.originals(task.id, effectiveSnapshot(row.snapshot, row.data))).some((o) => o.fileId === save.fileId)) {
       throw new BadRequestException('对照的原件不在这个任务里');
     }
 
@@ -180,7 +293,7 @@ export class WorkupService {
   // 危险源辨识（14 页 E18-00C）：一次保存一行（改过的候选或新增行），带版本号，value 为 null 撤回到系统推荐 / 删掉新增行
   async saveRisk(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
     const parsed = riskSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
@@ -189,7 +302,7 @@ export class WorkupService {
     if (save.version !== row.version) throw this.stale(row.version);
     const error = riskSaveError(row.snapshot, row.data, save);
     if (error) throw new BadRequestException(error);
-    if (save.fileId && !(await this.originals(task.id, row.snapshot)).some((o) => o.fileId === save.fileId)) {
+    if (save.fileId && !(await this.originals(task.id, effectiveSnapshot(row.snapshot, row.data))).some((o) => o.fileId === save.fileId)) {
       throw new BadRequestException('对照的原件不在这个任务里');
     }
 
@@ -209,7 +322,7 @@ export class WorkupService {
   // 适用范围（14 页 E18-00D）：一次确认或改一个开关，带版本号，value 为 null 撤回到系统建议
   async saveScope(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
     const parsed = scopeSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
@@ -232,7 +345,7 @@ export class WorkupService {
   // 图件（14 页 E18-00F）：改一张或两张图的画法（null 恢复自动排版）、采用图；采用时记下当时的图，之后图有变化回到待采用
   async saveFigures(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
     const parsed = figuresSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
@@ -245,7 +358,7 @@ export class WorkupService {
     if (save.process === null) delete figures.process;
     else if (save.process) figures.process = save.process;
     if (save.drawings) {
-      const ours = new Set((await this.drawingCandidates(task.id, task.orgId, row.snapshot)).map((c) => c.fileId));
+      const ours = new Set((await this.drawingCandidates(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data))).map((c) => c.fileId));
       if (Object.keys(save.drawings).some((id) => !ours.has(id))) throw new BadRequestException('这份图纸不在这个任务里');
       figures.drawings = { ...figures.drawings, ...save.drawings };
     }
@@ -266,16 +379,21 @@ export class WorkupService {
   }
 
 
+  // 还没写快照时只在内存里算，不写库（只有负责专家第一次打开才写）
   async snapshotOf(task: { id: string; enterpriseId: string }) {
-    return (await this.ensure(task)).snapshot;
+    return (await this.row(task.id))?.snapshot ?? (await this.buildSnapshot(task));
   }
 
-  // 第一次打开时复制企业资料作快照；两人同时打开只留先写入的那份
-  private async ensure(task: { id: string; enterpriseId: string }) {
-    const existing = await this.row(task.id);
-    if (existing) return existing;
+  // 快照的来源：新流程（上传资料表格且已读出内容）取读表结果；老流程复制企业资料
+  async buildSnapshot(task: { id: string; enterpriseId: string }): Promise<WorkupSnapshot> {
+    const [intake] = await this.db
+      .select({ parseResult: taskIntakes.parseResult })
+      .from(taskIntakes)
+      .where(eq(taskIntakes.taskId, task.id))
+      .limit(1);
+    if (intake?.parseResult) return { identity: intake.parseResult.identity, profile: intake.parseResult.profile };
     const [ent] = await this.db.select().from(enterprises).where(eq(enterprises.id, task.enterpriseId)).limit(1);
-    const snapshot: WorkupSnapshot = {
+    return {
       identity: {
         name: ent!.name,
         socialCreditCode: ent!.socialCreditCode,
@@ -284,6 +402,13 @@ export class WorkupService {
       },
       profile: ent!.profile,
     };
+  }
+
+  // 负责专家第一次打开时写快照；两人同时打开只留先写入的那份。只在负责专家的路径上调用
+  private async ensure(task: { id: string; enterpriseId: string }) {
+    const existing = await this.row(task.id);
+    if (existing) return existing;
+    const snapshot = await this.buildSnapshot(task);
     const data: WorkupData = { overrides: {} };
     await this.db.insert(taskWorkups).values({ taskId: task.id, snapshot, data }).onConflictDoNothing();
     return (await this.row(task.id))!;
@@ -294,7 +419,8 @@ export class WorkupService {
     return row;
   }
 
-  private async view(taskId: string, row: typeof taskWorkups.$inferSelect) {
+  // 客户原表（快照）和专家的修改（data）原样返回，页面自己算盖上后的内容
+  private async view(taskId: string, row: WorkupRow) {
     const [by] = row.updatedBy
       ? await this.db.select({ name: users.name }).from(users).where(eq(users.id, row.updatedBy)).limit(1)
       : [];
@@ -305,10 +431,34 @@ export class WorkupService {
       data: row.data,
       updatedAt: row.updatedAt,
       updatedByName: by?.name ?? null,
-      originals: await this.originals(taskId, row.snapshot),
+      // 新流程（上传资料表格）还是老流程（逐项填写）
+      flow: (await this.isIntake(taskId)) ? ('intake' as const) : ('legacy' as const),
+      intakeFiles: await this.intakeFiles(taskId),
+      originals: await this.originals(taskId, effectiveSnapshot(row.snapshot, row.data)),
       // 知识库里的属地应急机构：整理页「企业事实」按它显示（与生成时一致）
       agencyDistricts: await this.knowledge.agencyDistricts(),
     };
+  }
+
+  private async isIntake(taskId: string) {
+    const [row] = await this.db.select({ taskId: taskIntakes.taskId }).from(taskIntakes).where(eq(taskIntakes.taskId, taskId)).limit(1);
+    return Boolean(row);
+  }
+
+  // 新流程任务里客户（或专家代传）的文件，按上传先后；撤掉的不算
+  async intakeFiles(taskId: string): Promise<WorkupIntakeFile[]> {
+    return this.db
+      .select({
+        fileId: taskIntakeFiles.fileId,
+        name: files.originalName,
+        contentType: files.contentType,
+        slot: taskIntakeFiles.slot,
+        uploadedAt: taskIntakeFiles.uploadedAt,
+      })
+      .from(taskIntakeFiles)
+      .innerJoin(files, eq(files.id, taskIntakeFiles.fileId))
+      .where(and(eq(taskIntakeFiles.taskId, taskId), isNull(taskIntakeFiles.removedAt)))
+      .orderBy(asc(taskIntakeFiles.uploadedAt));
   }
 
   // 挂在资料项上的文件 + 任务选用的企业资料（某一版本）+ 快照里自填时拍的照片（铭牌、标签、药箱），按文件去重
@@ -387,7 +537,7 @@ export class WorkupService {
     return [...out.values()].filter((c) => ours.some((o) => o.id === c.fileId));
   }
 
-  // 负责专家、运营可以打开；客户和其他专家看不到（与不存在同样返回）。客户提交以后才开始整理
+  // 负责专家、运营可以打开；客户和其他专家看不到（与不存在同样返回）。客户提交以后才开始核对
   async task(user: SessionUser, id: string) {
     const [task] = await this.db
       .select({
@@ -403,7 +553,7 @@ export class WorkupService {
       .limit(1);
     const isAssigned = task && task.assignedExpertId === user.id && user.memberships.some((m) => m.role === 'expert');
     if (!task || !(isAssigned || isOperator(user))) throw new NotFoundException(NOT_FOUND);
-    if (task.status !== 'submitted') throw new BadRequestException('客户还没有提交资料，提交后才能开始整理');
+    if (task.status !== 'submitted') throw new BadRequestException('客户还没有提交资料，提交后才能开始核对');
     return task;
   }
 
@@ -439,6 +589,21 @@ export class WorkupController {
   @Put('scope')
   saveScope(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.saveScope(user, id, body);
+  }
+
+  @Put('steps/basic')
+  saveBasicStep(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveBasicStep(user, id, body);
+  }
+
+  @Put('steps/organization')
+  saveOrganizationStep(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveOrganizationStep(user, id, body);
+  }
+
+  @Put('steps/done')
+  saveStepsDone(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveStepsDone(user, id, body);
   }
 
   @Put('figures')

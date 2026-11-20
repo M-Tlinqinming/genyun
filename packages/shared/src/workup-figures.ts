@@ -11,6 +11,7 @@ import { processTemplateLabel } from './profile/process-flow.ts';
 import { drawingsSaveSchema, type DrawingSelection } from './workup-drawings.ts';
 import type { Stamp } from './workup-production.ts';
 import { organizationOf, type WorkupData, type WorkupSnapshot } from './workup.ts';
+import { effectiveSnapshot, type ExpertCopy } from './workup-steps.ts';
 
 export const FIGURES = {
   org: '应急救援组织体系图',
@@ -137,7 +138,8 @@ export function orderGroups(ruleOrder: string[], order: string[] | undefined): s
   return [...kept, ...ruleOrder.filter((n) => !kept.includes(n))];
 }
 
-export function figuresView(snapshot: WorkupSnapshot, data: Pick<WorkupData, 'overrides' | 'figures'>): FiguresView {
+export function figuresView(snapshot: WorkupSnapshot, data: Pick<WorkupData, 'overrides' | 'figures'> & Partial<ExpertCopy>): FiguresView {
+  snapshot = effectiveSnapshot(snapshot, data);
   const settings = data.figures ?? {};
 
   // ── 组织体系图：组名按规则排序（与客户自填页一致）；副总指挥有人才显示，专家可改 ──
@@ -207,10 +209,11 @@ export function figuresView(snapshot: WorkupSnapshot, data: Pick<WorkupData, 'ov
     adopted: stampOf(settings.adopted?.process),
   };
 
-  const pending = [orgView, ...(processView.available ? [processView] : [])]
+  // 组织体系图按第 2 步的人员实时画出，不用再采用（11-20 定）；只有工艺流程图还要采用
+  const pending = (processView.available ? [processView] : [])
     .filter((f) => f.status !== 'adopted')
     .map((f) => ({ key: f.key, label: FIGURES[f.key] }));
-  return { org: orgView, process: processView, pending, required: processView.available ? 2 : 1 };
+  return { org: orgView, process: processView, pending, required: processView.available ? 1 : 0 };
 }
 
 // 采用时记下的内容，与 figuresView 里判断「有变化」用的同一份

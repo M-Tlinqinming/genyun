@@ -11,6 +11,7 @@ import {
   type PlanDrawingRef,
   type WorkupData,
   type WorkupSnapshot,
+  effectiveSnapshot,
 } from '@genyun/shared';
 import { Controller, Get, Inject, Injectable, NotFoundException, Param, ParseIntPipe, ParseUUIDPipe, Res, type OnApplicationShutdown } from '@nestjs/common';
 import type { Response } from 'express';
@@ -61,7 +62,7 @@ export class DrawingsService implements OnApplicationShutdown {
     const task = await this.workup.task(user, taskId);
     const [row] = await this.db.select().from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
     if (!row) return [];
-    return this.drawingsOf(task.id, task.orgId, row.snapshot, row.data);
+    return this.drawingsOf(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data), row.data);
   }
 
   // 确认生成时锁定、保存选页时校验都用这一份
@@ -136,8 +137,8 @@ export class DrawingsService implements OnApplicationShutdown {
 
   private async taskFile(user: SessionUser, taskId: string, fileId: string): Promise<DrawingFile> {
     const task = await this.workup.task(user, taskId);
-    const [row] = await this.db.select({ snapshot: taskWorkups.snapshot }).from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
-    const file = row && (await this.files(task.id, task.orgId, row.snapshot)).find((f) => f.fileId === fileId);
+    const [row] = await this.db.select({ snapshot: taskWorkups.snapshot, data: taskWorkups.data }).from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
+    const file = row && (await this.files(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data))).find((f) => f.fileId === fileId);
     if (!file) throw new NotFoundException('这份图纸不在这个任务里');
     return file;
   }

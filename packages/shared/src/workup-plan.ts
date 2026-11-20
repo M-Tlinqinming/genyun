@@ -12,7 +12,8 @@ import { figuresView, planFiguresOf } from './workup-figures.ts';
 import { planProductionOf, productionView, type ProductionList } from './workup-production.ts';
 import { planHazardsOf, riskView } from './workup-risk.ts';
 import { planScopeOf, scopeView } from './workup-scope.ts';
-import { organizationOf, workupFacts, workupProgress, type FactPerson, type FactSection, type FactValue, type WorkupData, type WorkupSnapshot } from './workup.ts';
+import { answerOf, effectiveSnapshot, organizationStepView } from './workup-steps.ts';
+import { workupFacts, workupProgress, type FactPerson, type FactSection, type FactValue, type WorkupData, type WorkupSnapshot } from './workup.ts';
 
 const address = (detail: string): Address => ({ province: '', city: '', district: '', detail });
 const text = (v: FactValue | undefined) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
@@ -23,17 +24,6 @@ const squareMeters = (v: FactValue | undefined) => {
   const n = typeof v === 'number' ? v : Number.parseFloat(String(v ?? '').replace(/[^\d.]/g, ''));
   return Number.isFinite(n) && n > 0 ? n : undefined;
 };
-
-// workup.ts answerText 的反向：「有 · 明细」「没有」「不清楚」
-function answerOf(v: FactValue | undefined): { answer: YesNoUnknown; detail?: string } | undefined {
-  const s = text(v);
-  if (!s) return undefined;
-  const [head, ...rest] = s.split(' · ');
-  const answer = (Object.keys(YES_NO_UNKNOWN_LABELS) as YesNoUnknown[]).find((k) => YES_NO_UNKNOWN_LABELS[k] === head);
-  // 专家直接写了名称的，按「有」处理
-  if (!answer) return { answer: 'yes', detail: s };
-  return { answer, detail: rest.join(' · ') || undefined };
-}
 
 // 「名称 · 电话」
 function agencyOf(v: FactValue | undefined): { name: string; phone?: string } | undefined {
@@ -111,30 +101,6 @@ function locationOf(snapshot: WorkupSnapshot, data: WorkupData): Location {
     rescueAgreement: agreement('agency.rescueAgreement', res?.rescueAgreement),
     mutualAid: agreement('agency.mutualAid', res?.mutualAid),
     neighbours,
-  };
-}
-
-// 专家改了总指挥、副总指挥、组长的，替换到组织里；同一个人兼任几处时只改这一处
-function organizationStepOf(snapshot: WorkupSnapshot, data: WorkupData): OrganizationStep {
-  const step = organizationOf(snapshot);
-  const o = (key: string) => {
-    const v = data.overrides[key]?.value;
-    return typeof v === 'object' ? v : undefined;
-  };
-  const replace = (p: DraftPerson | undefined, v: FactPerson | undefined, id: string): DraftPerson | undefined =>
-    v ? { id: p?.id ?? id, name: v.name, position: v.position, phone: v.phone } : p;
-  const groupKey = (g: OrganizationStep['groups'][number]) =>
-    `group.${g.kind === 'custom' || step.groups.find((x) => x.kind === g.kind) !== g ? g.id : g.kind}`;
-  const duty = text(data.overrides.dutyPhone?.value);
-  const yn = (key: string, stored: YesNoUnknown | undefined) => answerOf(data.overrides[key]?.value)?.answer ?? stored;
-  return {
-    ...step,
-    commander: replace(step.commander, o('commander'), 'commander'),
-    deputies: step.deputies.map((d, i) => replace(d, o(`deputy.${i + 1}`), `deputy${i + 1}`)!),
-    groups: step.groups.map((g) => ({ ...g, leader: replace(g.leader, o(groupKey(g)), `${g.id}-leader`) })),
-    dutyPhone: duty ?? step.dutyPhone,
-    paSystem: yn('paSystem', step.paSystem),
-    imGroup: yn('imGroup', step.imGroup),
   };
 }
 
@@ -225,13 +191,14 @@ const compact =<T extends object>(o: T): T => Object.fromEntries(Object.entries(
 
 // districts：知识库里的属地机构（生成时从数据库取）；不传时用内置数据
 export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn: string, districts?: readonly AgencyDistrict[]): PlanInput {
+  snapshot = effectiveSnapshot(snapshot, data);
   const production = productionView(snapshot, data);
   const { hazardousMaterials, ...plan } = planProductionOf(snapshot, production);
   const location = locationOf(snapshot, data);
   return {
     basic: basicOf(snapshot, data),
     location,
-    organization: organizationFrom(organizationStepOf(snapshot, data)),
+    organization: organizationFrom(organizationStepView(snapshot, data)),
     ...plan,
     agencies: agenciesOf(location, data, districts),
     issuedOn,
