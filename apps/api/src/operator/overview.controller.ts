@@ -78,7 +78,7 @@ export class OperatorOverviewController {
         .from(tasks)
         .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
         .innerJoin(organizations, eq(organizations.id, tasks.orgId))
-        .where(and(eq(organizations.kind, 'customer'), isNull(tasks.closedAt))),
+        .where(and(eq(organizations.kind, 'customer'), isNull(tasks.closedAt), isNull(tasks.deletedAt))),
       this.db
         .select({
           id: organizationInvitations.id,

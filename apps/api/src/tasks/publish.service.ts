@@ -399,7 +399,7 @@ export class PublishService {
       })
       .from(tasks)
       .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
-      .where(eq(tasks.id, taskId))
+      .where(and(eq(tasks.id, taskId), isNull(tasks.deletedAt)))
       .limit(1);
     if (!task || !canViewTaskWork(user, task)) throw new NotFoundException(NOT_FOUND);
     return task;

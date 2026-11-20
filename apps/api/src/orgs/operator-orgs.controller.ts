@@ -449,7 +449,7 @@ export class OperatorOrgsController {
         closedAt: tasks.closedAt,
       })
       .from(tasks)
-      .where(eq(tasks.orgId, orgId))
+      .where(and(eq(tasks.orgId, orgId), isNull(tasks.deletedAt)))
       .orderBy(desc(tasks.createdAt));
     const latest = new Map<string, { id: string; number: string; stage: ReturnType<typeof operatorTaskStage> }>();
     for (const t of rows) {

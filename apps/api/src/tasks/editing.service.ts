@@ -42,7 +42,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { Response } from 'express';
 import { canEditTaskWork, canViewTaskWork } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
@@ -347,7 +347,7 @@ export class EditingService {
     const [task] = await this.db
       .select({ id: tasks.id, assignedExpertId: tasks.assignedExpertId })
       .from(tasks)
-      .where(eq(tasks.id, taskId))
+      .where(and(eq(tasks.id, taskId), isNull(tasks.deletedAt)))
       .limit(1);
     if (!task || !canViewTaskWork(user, task)) throw new NotFoundException(NOT_FOUND);
     if (!DRAFT_KIND_KEYS.includes(kind as DraftKind)) throw new NotFoundException('找不到这份文档');

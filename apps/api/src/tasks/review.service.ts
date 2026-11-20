@@ -30,7 +30,7 @@ import {
   Put,
   Res,
 } from '@nestjs/common';
-import { and, desc, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 import type { Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { canEditTaskWork, canViewTaskWork } from '../auth/access.ts';
@@ -422,7 +422,7 @@ export class ReviewService {
         assignedExpertId: tasks.assignedExpertId,
       })
       .from(tasks)
-      .where(eq(tasks.id, taskId))
+      .where(and(eq(tasks.id, taskId), isNull(tasks.deletedAt)))
       .limit(1);
     if (!task || !canViewTaskWork(user, task)) throw new NotFoundException(NOT_FOUND);
     const [batch] = await this.db
