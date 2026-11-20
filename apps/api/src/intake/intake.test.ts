@@ -363,4 +363,15 @@ describe('放不进去的值', () => {
     expect(a.parse.identity.socialCreditCode).toBeNull();
     expect(a.parse.profile.basicStep!.basic.technicalManagementCount).toBeUndefined();
   });
+
+  test('企业名称超过 100 个字：照常读完，按没填处理，原文进 unplaced，缺项里有一条', async () => {
+    const long = `${S.SAMPLE_NAME}${'第一分厂'.repeat(25)}`;
+    const a = read(await analyze(await S.renamed(long)));
+    expect(a.parse.identity.name).toBe(S.SAMPLE_NAME);
+    expect(a.rename).toBeNull();
+    expect(a.parse.unplaced).toContainEqual({ sheet: '企业信息', cell: 'B3', label: '企业名称', text: long });
+    expect(a.sheet.missing.filter((m) => m.field === 'enterprise.name')).toEqual([
+      { field: 'enterprise.name', label: '企业名称', sheet: '企业信息', row: 3, cell: 'B3', note: '超过 100 个字。按营业执照上的全称填。' },
+    ]);
+  });
 });

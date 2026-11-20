@@ -1,7 +1,7 @@
 // 传上来一份资料表格后的判断，按 k5 说明的顺序：不是模板 → 别家企业 → 改名 → 旧版。
 // 纯函数，不碰数据库；接口按返回结果去存文件、改企业名称、写读表结果。
 import { normalizeEnterpriseName, type IntakeParseResult, type IntakeWarning } from '@genyun/shared';
-import { checkSheet, type SheetCheck } from './check.ts';
+import { checkSheet, isNameTooLong, type SheetCheck } from './check.ts';
 import { buildParseResult } from './profile.ts';
 import { loadWorkbook, readWorkbook, UnreadableWorkbookError } from './read.ts';
 import { checkZip } from './zip-guard.ts';
@@ -46,7 +46,9 @@ export async function analyzeSheet(
   if (out.kind === 'not_template') return { kind: 'not_template', warnings: [{ kind: 'not_template' }] };
 
   const read = out.read;
-  const name = read.fields.name?.text ?? '';
+  // 超过 100 个字的企业名称不拿来认企业、也不改名，按没填处理（缺项里有「企业名称」）
+  const rawName = read.fields.name?.text ?? '';
+  const name = isNameTooLong(rawName) ? '' : rawName;
   const key = name ? normalizeEnterpriseName(name) : '';
   if (key && key !== normalizeEnterpriseName(ctx.enterprise.name)) {
     const target = ctx.others.find((e) => e.id !== ctx.enterprise.id && normalizeEnterpriseName(e.name) === key);

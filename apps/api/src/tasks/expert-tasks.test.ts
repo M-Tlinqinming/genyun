@@ -57,6 +57,19 @@ const now = new Date();
 const ago = (ms: number) => new Date(now.getTime() - ms);
 // 待核对资料那一个任务的最晚资料上传时间（「最近更新」取它）
 const LATEST_UPLOAD = ago(HOUR);
+// 「已等 N 天」「本月已交付」按北京时间的日期、月份算。用 now 减几小时构造会随跑测试的钟点变：
+// 北京时间 0–1 点跑，now 减 2 天 1 小时会落到三天前；每月 1 日 0 点那一分钟，now 减 1 分钟会落到上个月。
+// 所以这两处按北京时间的日期构造，和钟点无关。
+const BEIJING = 8 * HOUR;
+const beijingToday = Math.floor((now.getTime() + BEIJING) / DAY);
+/** 北京日期往前推 n 天的 12:00 */
+const beijingNoonDaysAgo = (n: number) => new Date((beijingToday - n) * DAY + 12 * HOUR - BEIJING);
+const nowInBeijing = new Date(now.getTime() + BEIJING);
+const beijingMonthStart = Date.UTC(nowInBeijing.getUTCFullYear(), nowInBeijing.getUTCMonth(), 1) - BEIJING;
+// 本月的两次交付：通常是 1 分钟前、30 秒前；月初第一分钟里跑就挪到本月开头，先后顺序不变
+const AWAITING_SINCE = beijingNoonDaysAgo(2);
+const DELIVERED_V2 = new Date(Math.max(now.getTime() - 60_000, beijingMonthStart));
+const DELIVERED_V3 = new Date(Math.max(now.getTime() - 30_000, DELIVERED_V2.getTime() + 1));
 
 beforeAll(async () => {
   handle = await openDatabase('memory://');
@@ -106,7 +119,7 @@ beforeAll(async () => {
         updatedAt: ago(2 * DAY),
         createdBy: by,
         deletedAt: k === 'deleted' ? old : null,
-        awaitingCustomerSince: k === 'awaiting' ? ago(2 * DAY + HOUR) : null,
+        awaitingCustomerSince: k === 'awaiting' ? AWAITING_SINCE : null,
         awaitingCustomerItems: k === 'awaiting' ? 3 : null,
         reopenedAt: k === 'reopened' ? ago(DAY) : null,
       })),
@@ -228,8 +241,8 @@ beforeAll(async () => {
     delivery('reopened', ago(5 * DAY)),
     // 先交付、重新打开后又交付了一次（再次交付）；失败的那次不算
     delivery('deliveredNow', ago(45 * DAY)),
-    delivery('deliveredNow', ago(60_000), 2),
-    delivery('deliveredNow', ago(30_000), 3, 'failed'),
+    delivery('deliveredNow', DELIVERED_V2, 2),
+    delivery('deliveredNow', DELIVERED_V3, 3, 'failed'),
     delivery('deliveredOld', ago(45 * DAY)),
   ]);
 
@@ -286,8 +299,8 @@ describe('读状态输入（loadTaskViewInputs）', () => {
     // 改稿时间晚于其他时间：最近更新取它
     expect(f.get(T.ready)!.activityAt).toEqual(ago(10 * HOUR));
     expect(f.get(T.reopened)).toMatchObject({ lastDelivery: { at: ago(5 * DAY), kind: 'first' }, reopenedAt: ago(DAY) });
-    expect(f.get(T.deliveredNow)!.lastDelivery).toEqual({ at: ago(60_000), kind: 'update' });
-    expect(f.get(T.awaiting)).toMatchObject({ awaitingCustomerSince: ago(2 * DAY + HOUR), awaitingCustomerItems: 3 });
+    expect(f.get(T.deliveredNow)!.lastDelivery).toEqual({ at: DELIVERED_V2, kind: 'update' });
+    expect(f.get(T.awaiting)).toMatchObject({ awaitingCustomerSince: AWAITING_SINCE, awaitingCustomerItems: 3 });
     expect(f.get(T.deleted)!.deletedAt).toEqual(ago(3 * DAY));
   });
 

@@ -170,6 +170,18 @@ describe('上传资料表格', () => {
     expect(ent!.name).toBe('耕云测试新名称有限公司');
   });
 
+  it('企业名称超过 100 个字：照常返回，不改名，缺项里有这一条', async () => {
+    const { taskId, enterpriseId } = await newTask('耕云测试超长名称有限公司');
+    const long = `耕云测试超长名称有限公司${'第一分厂'.repeat(25)}`;
+    const v = ok(await put(taskId, 'data_sheet', await renamed(long), '资料表格.xlsx'));
+    expect(v.warnings.map((w) => w.kind)).not.toContain('enterprise_renamed');
+    expect(v.requiredCheck!.missing.filter((m) => m.field === 'enterprise.name').map((m) => m.note)).toEqual([
+      '超过 100 个字。按营业执照上的全称填。',
+    ]);
+    const [ent] = await handle.db.select().from(enterprises).where(eq(enterprises.id, enterpriseId));
+    expect(ent!.name).toBe('耕云测试超长名称有限公司');
+  });
+
   it('旧版模板：记 old_template，右栏标旧版', async () => {
     const { taskId } = await newTask('耕云测试旧版有限公司');
     const v = ok(await put(taskId, 'data_sheet', await oldSample('耕云测试旧版有限公司'), '旧表.xlsx'));

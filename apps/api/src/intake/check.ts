@@ -8,6 +8,10 @@ import { readOrg, OPTIONAL_GROUPS, REQUIRED_GROUPS, type PersonVals } from './or
 import type { ReadRow, Val, WorkbookRead } from './read.ts';
 import { isSameAsRegistered, parseInteger, parseNumber, parseYesNo, phoneKind } from './values.ts';
 
+// 企业名称最长 100 个字（同企业资料的校验）；超长的按没填处理，进必填缺项
+export const ENTERPRISE_NAME_MAX = 100;
+export const isNameTooLong = (name: string) => name.trim().length > ENTERPRISE_NAME_MAX;
+
 export interface SheetCheck {
   missing: IntakeMissingItem[];
   optional: IntakeOptionalItem[];
@@ -16,6 +20,7 @@ export interface SheetCheck {
 // 空着没填的提示（k5 说明给的原话，最后几条是我拟的）
 export const NOTES = {
   name: '没填。按营业执照上的全称填。',
+  nameTooLong: '超过 100 个字。按营业执照上的全称填。',
   siteAddress: '没填。写实际生产的地址，到门牌号。',
   inPark: '没填。选「是」或「否」。',
   leases: '没填。选「是」或「否」：厂区里有别的企业租您的厂房生产经营，选「是」。',
@@ -100,6 +105,7 @@ export function checkSheet(read: WorkbookRead): SheetCheck {
     if (!field(k).text) miss(`enterprise.${k}`, label, field(k), note);
   };
   text('name', '企业名称', NOTES.name);
+  if (isNameTooLong(field('name').text)) miss('enterprise.name', '企业名称', field('name'), NOTES.nameTooLong);
 
   const site = field('siteAddress');
   if (!site.text) miss('enterprise.siteAddress', '生产场所地址', site, NOTES.siteAddress);

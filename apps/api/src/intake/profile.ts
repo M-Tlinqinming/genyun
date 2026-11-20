@@ -42,6 +42,8 @@ type Obj = Record<string, unknown>;
 class Builder {
   readonly unplaced: IntakeUnplacedValue[] = [];
   readonly refs = new Map<string, { v: Val; label: string }>();
+  /** settle 时因超长、格式不对移到 unplaced 的字段（完整路径） */
+  readonly dropped = new Set<string>();
 
   /** 有字才放；放的时候记下来源 */
   put(target: Obj, path: string, key: string, v: Val | undefined, label: string, value: unknown = v?.text) {
@@ -61,8 +63,12 @@ class Builder {
     if (text && first) this.unplaced.push({ sheet: first.sheet, cell: `第 ${first.row} 行`, label, text });
   }
 
-  /** 用 schema 校验；不过的字段移到 unplaced 再校验，直到通过 */
-  settle<S extends z.ZodType>(schema: S, raw: Obj, path: string): z.infer<S> {
+  /**
+   * 用 schema 校验；不过的字段移到 unplaced 再校验，直到通过。
+   * 必填字段移走后仍校验不过（缺了）：fallbacks 里有这个字段就填占位值，没有就抛错。
+   * 调用方用 dropped 判断占位值是不是这样填上的。
+   */
+  settle<S extends z.ZodType>(schema: S, raw: Obj, path: string, fallbacks: Obj = {}): z.infer<S> {
     for (let attempt = 0; attempt < 500; attempt++) {
       const r = schema.safeParse(raw);
       if (r.success) return r.data;
@@ -72,8 +78,13 @@ class Builder {
         for (let n = keys.length; n > 0; n--) {
           const ref = this.refs.get([path, ...keys.slice(0, n)].join('.'));
           if (!ref) continue;
-          if (removeAt(raw, keys.slice(0, n))) {
+          const at = keys.slice(0, n);
+          if (removeAt(raw, at)) {
             this.drop(ref.v, ref.label);
+            this.dropped.add([path, ...at].join('.'));
+            fixed = true;
+          } else if (n === 1 && at[0]! in fallbacks && !(at[0]! in raw)) {
+            raw[at[0]!] = fallbacks[at[0]!];
             fixed = true;
           }
           break;
@@ -142,12 +153,14 @@ export function buildParseResult(read: WorkbookRead, now = new Date()): IntakePa
   }
   b.put(identityRaw, 'identity', 'legalRepresentative', f.legalRep, '法定代表人');
   b.put(identityRaw, 'identity', 'registeredAddress', f.regAddress, '注册地址');
-  // 企业名称是空的也要能过校验：先占个位，后面换回空字符串（接口按任务的企业名称补）
+  // 企业名称是空的、或超过 100 个字被移到 unplaced 的，也要能过校验：先占个位，
+  // 后面换回空字符串（接口按任务的企业名称补；超长的缺项里有「企业名称」）
+  const NAME_PLACEHOLDER = '-';
   const nameEmpty = !identityRaw.name;
-  if (nameEmpty) identityRaw.name = '-';
-  const identityParsed = b.settle(enterpriseInputSchema, identityRaw, 'identity');
+  if (nameEmpty) identityRaw.name = NAME_PLACEHOLDER;
+  const identityParsed = b.settle(enterpriseInputSchema, identityRaw, 'identity', { name: NAME_PLACEHOLDER });
   const identity = {
-    name: nameEmpty ? '' : identityParsed.name,
+    name: nameEmpty || b.dropped.has('identity.name') ? '' : identityParsed.name,
     socialCreditCode: identityParsed.socialCreditCode ?? null,
     legalRepresentative: identityParsed.legalRepresentative ?? null,
     registeredAddress: identityParsed.registeredAddress ?? null,
