@@ -231,7 +231,7 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
           change({ blank: e.target.checked ? [...blank, key] : blank.filter((k) => k !== key) });
         }}
       >
-        <span style={{ ...type.caption, color: gy.secondary }}>先留空，文稿标「待补充」</span>
+        <span style={{ ...type.body, color: gy.text, whiteSpace: 'nowrap' }}>先留空，文稿标「待补充」</span>
       </Checkbox>
     );
 
@@ -428,13 +428,13 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
           </div>
         </InfoBox>
         <Row>
-          <Field label="员工人数" tag={tag(src(basic.employeeCount, customerBasic.employeeCount, 'employeeCount'))} extra={blankBox('employeeCount', basic.employeeCount)}>
+          <Field label="员工人数" tag={tag(src(basic.employeeCount, customerBasic.employeeCount, 'employeeCount'))} aside={blankBox('employeeCount', basic.employeeCount)}>
             {count('employeeCount')}
           </Field>
           <Field
             label="专职或兼职安全管理人员"
             tag={tag(src(basic.safetyManagementCount, customerBasic.safetyManagementCount, 'safetyManagementCount'))}
-            extra={blankBox('safetyManagementCount', basic.safetyManagementCount)}
+            aside={blankBox('safetyManagementCount', basic.safetyManagementCount)}
           >
             {count('safetyManagementCount', '待您补充')}
           </Field>
@@ -443,11 +443,11 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
           <Field
             label="技术管理人员"
             tag={tag(src(basic.technicalManagementCount, customerBasic.technicalManagementCount, 'technicalManagementCount'))}
-            extra={blankBox('technicalManagementCount', basic.technicalManagementCount)}
+            aside={blankBox('technicalManagementCount', basic.technicalManagementCount)}
           >
             {count('technicalManagementCount')}
           </Field>
-          <Field label="主要产品" tag={tag(src(basic.mainProducts, customerBasic.mainProducts, 'mainProducts'))} extra={blankBox('mainProducts', basic.mainProducts)}>
+          <Field label="主要产品" tag={tag(src(basic.mainProducts, customerBasic.mainProducts, 'mainProducts'))} aside={blankBox('mainProducts', basic.mainProducts)}>
             {text('mainProducts', basic.mainProducts, setB('mainProducts'), { maxLength: 500 })}
           </Field>
         </Row>
@@ -482,10 +482,10 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
 
       <Card title="联系人与负责人" hint="写进预案「企业基本情况」。需要向客户核实时，请客服用这个电话或企业微信联系。">
         <Row>
-          <Field label="联系人" tag={tag(src(basic.contactPerson, customerBasic.contactPerson, 'contactPerson'))} extra={blankBox('contactPerson', basic.contactPerson)}>
+          <Field label="联系人" tag={tag(src(basic.contactPerson, customerBasic.contactPerson, 'contactPerson'))} aside={blankBox('contactPerson', basic.contactPerson)}>
             {text('contactPerson', basic.contactPerson, setB('contactPerson'), { maxLength: 50 })}
           </Field>
-          <Field label="联系电话" tag={tag(src(basic.contactPhone, customerBasic.contactPhone, 'contactPhone'))} extra={blankBox('contactPhone', basic.contactPhone)}>
+          <Field label="联系电话" tag={tag(src(basic.contactPhone, customerBasic.contactPhone, 'contactPhone'))} aside={blankBox('contactPhone', basic.contactPhone)}>
             {text('contactPhone', basic.contactPhone, setB('contactPhone'), { maxLength: 30 })}
           </Field>
         </Row>

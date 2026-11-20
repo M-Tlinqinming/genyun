@@ -17,6 +17,22 @@ const footer = (page: Page) => page.getByRole('region', { name: '页面操作' }
 // 等这一步整步保存的请求回来（防抖 800 ms）
 const stepSaved = (page: Page) =>
   page.waitForResponse((r) => r.request().method() === 'PUT' && /\/workup\/steps\/(basic|organization)$/.test(r.url()) && r.ok());
+// 等「某个小组的组员里有没有这个人」的那次保存回来（之前改电话的保存可能还在路上，不能随便等一个）
+const membersOf = (body: unknown): string[] => {
+  if (Array.isArray(body)) return body.flatMap(membersOf);
+  if (!body || typeof body !== 'object') return [];
+  const o = body as Record<string, unknown>;
+  const here = Array.isArray(o.members) ? (o.members as { name?: string }[]).map((m) => m.name ?? '') : [];
+  return [...here, ...Object.values(o).flatMap(membersOf)];
+};
+const memberSaved = (page: Page, name: string, present: boolean) =>
+  page.waitForResponse(
+    (r) =>
+      r.request().method() === 'PUT' &&
+      r.url().endsWith('/workup/steps/organization') &&
+      r.ok() &&
+      membersOf(r.request().postDataJSON()).includes(name) === present,
+  );
 
 test('第 1 步：还没生成过草稿时默认打开；改了自动保存，格式不对的先不存', async ({ page }) => {
   await openWizard(page);
@@ -79,7 +95,7 @@ test('第 2 步：手机号校验、从已填人员添加组员、至少 3 个�
   const dialog = page.getByRole('dialog', { name: '给「通讯联络组」添加组员' });
   await dialog.getByLabel('搜姓名或岗位').fill('陈志刚');
   await dialog.getByRole('listitem').filter({ hasText: '陈志刚' }).click();
-  const adding = stepSaved(page);
+  const adding = memberSaved(page, '陈志刚', true);
   await dialog.getByRole('button', { name: /^添\s*加$/ }).click();
   await expect(dialog).toHaveCount(0);
   await expect(comms.getByLabel('通讯联络组组员 陈志刚姓名')).toHaveValue('陈志刚');
@@ -97,7 +113,7 @@ test('第 2 步：手机号校验、从已填人员添加组员、至少 3 个�
   const again = page.getByRole('group', { name: '通讯联络组' });
   await again.getByRole('button', { name: /^通讯联络组/ }).click();
   await expect(again.getByLabel('通讯联络组组员 陈志刚姓名')).toHaveValue('陈志刚');
-  const removing = stepSaved(page);
+  const removing = memberSaved(page, '陈志刚', false);
   await again.getByRole('button', { name: '移出这名组员' }).last().click();
   await expect(again.getByLabel('通讯联络组组员 陈志刚姓名')).toHaveCount(0);
   await removing;

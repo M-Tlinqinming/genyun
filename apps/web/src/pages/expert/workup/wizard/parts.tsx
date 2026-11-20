@@ -104,6 +104,7 @@ export function Field({
   hint,
   error,
   extra,
+  aside,
   flex = 1,
   children,
 }: {
@@ -112,6 +113,8 @@ export function Field({
   hint?: ReactNode;
   error?: string | null;
   extra?: ReactNode;
+  /** 输入框右侧（如「先留空」勾选框） */
+  aside?: ReactNode;
   flex?: number | string;
   children: ReactNode;
 }) {
@@ -123,7 +126,14 @@ export function Field({
         <span style={{ flex: 1 }} />
         {extra}
       </div>
-      {children}
+      {aside ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+          <div style={{ flexShrink: 0 }}>{aside}</div>
+        </div>
+      ) : (
+        children
+      )}
       {error ? (
         <span role="alert" style={{ ...type.caption, color: gy.error }}>
           {error}
