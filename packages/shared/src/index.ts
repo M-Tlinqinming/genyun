@@ -54,3 +54,7 @@ export * from './operator.ts';
 export * from './members.ts';
 export * from './knowledge.ts';
 export * from './feedback.ts';
+export * from './intake.ts';
+export * from './credits.ts';
+export * from './expert-profile.ts';
+export * from './task-status.ts';
