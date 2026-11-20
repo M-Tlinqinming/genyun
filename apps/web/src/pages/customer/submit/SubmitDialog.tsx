@@ -136,7 +136,7 @@ export function SubmitDialog({
       : phase === 'submitting'
         ? [
             <Button key="leave" onClick={leave}>
-              返回业务任务
+              返回任务
             </Button>,
             <Button key="busy" disabled>
               提交中…
@@ -145,7 +145,7 @@ export function SubmitDialog({
         : phase === 'unknown' || phase === 'querying'
           ? [
               <Button key="leave" onClick={leave}>
-                返回业务任务
+                返回任务
               </Button>,
               <Button key="query" type="primary" loading={phase === 'querying'} onClick={() => void query()}>
                 查询提交结果
@@ -278,7 +278,7 @@ function Note({ phase, pendingCount }: { phase: Phase; pendingCount: number }) {
     return box('重试时会再次核对资料版本和检查结果。您也可以返回检查页面，稍后继续申请。', { border: `1px solid ${gy.error}` });
   }
   if (phase === 'submitting') {
-    return box('您可以返回业务任务查看处理状态；如暂时无法确认结果，请先查询提交结果，避免重复申请。', { background: gy.selected });
+    return box('您可以返回任务列表查看处理状态；如暂时无法确认结果，请先查询提交结果，避免重复申请。', { background: gy.selected });
   }
   return box(
     `本次提交将记录以上资料版本和您确认的事项。后续上传新文件，不会自动替换本任务已提交的资料。${

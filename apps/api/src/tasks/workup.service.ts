@@ -49,13 +49,10 @@ import {
   enterprises,
   files,
   taskDocuments,
-  taskContacts,
   tasks,
   taskWorkups,
   users,
 } from '../db/schema.ts';
-
-export type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 const NOT_FOUND = '找不到该任务';
 
@@ -99,12 +96,10 @@ export class WorkupService {
 
   async saveFact(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
     const parsed = factSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
-    const { version, key, value, fileId, contactId } = parsed.data;
-    // 采用客户在任务里的回答：来源是客户确认 · 任务内补充
-    const source = contactId ? 'customer' : parsed.data.source;
+    const { version, key, value, fileId, source } = parsed.data;
 
     const row = await this.ensure(task);
     if (version !== row.version) throw this.stale(row.version);
@@ -113,21 +108,12 @@ export class WorkupService {
     if (fileId && !(await this.originals(task.id, row.snapshot)).some((o) => o.fileId === fileId)) {
       throw new BadRequestException('对照的原件不在这个任务里');
     }
-    if (contactId && value !== null) {
-      const [contact] = await this.db
-        .select({ answeredAt: taskContacts.answeredAt })
-        .from(taskContacts)
-        .where(and(eq(taskContacts.id, contactId), eq(taskContacts.taskId, task.id), eq(taskContacts.method, 'request')))
-        .limit(1);
-      if (!contact?.answeredAt) throw new BadRequestException('客户还没有回答这条补充请求');
-    }
 
     const overrides = { ...row.data.overrides };
     if (value === null) delete overrides[key];
     else {
       const entry: FactOverride = { value, source, by: user.id, byName: user.name, at: new Date().toISOString() };
       if (fileId) entry.fileId = fileId;
-      if (contactId) Object.assign(entry, { via: 'request', contactId });
       overrides[key] = entry;
     }
     const [saved] = await this.db
@@ -143,7 +129,7 @@ export class WorkupService {
   // 生产设备与物料（14 页 E18-00B）：一次保存一条判断或一行修改，带版本号，value 为 null 撤回
   async saveProduction(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
     const parsed = productionSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
@@ -194,7 +180,7 @@ export class WorkupService {
   // 危险源辨识（14 页 E18-00C）：一次保存一行（改过的候选或新增行），带版本号，value 为 null 撤回到系统推荐 / 删掉新增行
   async saveRisk(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
     const parsed = riskSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
@@ -223,7 +209,7 @@ export class WorkupService {
   // 适用范围（14 页 E18-00D）：一次确认或改一个开关，带版本号，value 为 null 撤回到系统建议
   async saveScope(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
     const parsed = scopeSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
@@ -246,7 +232,7 @@ export class WorkupService {
   // 图件（14 页 E18-00F）：改一张或两张图的画法（null 恢复自动排版）、采用图；采用时记下当时的图，之后图有变化回到待采用
   async saveFigures(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
-    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改专业整理');
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException('只有负责专家可以修改资料核对');
     const parsed = figuresSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
@@ -279,62 +265,6 @@ export class WorkupService {
     return this.view(task.id, saved);
   }
 
-  // 电话问清后把回答回填到企业事实，来源记为「客户确认 · 电话确认」。和专家正在编辑的页面同时保存时重读再写
-  async applyPhoneAnswers(
-    user: SessionUser,
-    task: { id: string; enterpriseId: string },
-    contactId: string,
-    answers: { key: string; value: FactOverride['value'] }[],
-  ) {
-    return this.applyCustomer(user, task, answers, { via: 'phone', contactId });
-  }
-
-  // 事实补件经专家核实采用后回填企业事实，来源记为「客户确认 · 事实补件」。
-  // tx：和「这一轮改成已采用」放在同一个事务里，写回失败一起回滚
-  async applySupplement(
-    user: SessionUser,
-    task: { id: string; enterpriseId: string },
-    supplementId: string,
-    answers: { key: string; value: FactOverride['value'] }[],
-    tx: Tx,
-  ) {
-    return this.applyCustomer(user, task, answers, { via: 'supplement', supplementId }, tx);
-  }
-
-  // 快照与专业整理数据（补件发起时取本任务原来用的值、采用时校验类型）
-  async rowOf(task: { id: string; enterpriseId: string }) {
-    const row = await this.ensure(task);
-    return { snapshot: row.snapshot, data: row.data };
-  }
-
-  private async applyCustomer(
-    user: SessionUser,
-    task: { id: string; enterpriseId: string },
-    answers: { key: string; value: FactOverride['value'] }[],
-    origin: Pick<FactOverride, 'via' | 'contactId' | 'supplementId'>,
-    db: Database | Tx = this.db,
-  ) {
-    if (answers.length === 0) return;
-    // 在事务里（事实补件采用）时调用方已经建好整理记录；查询都走同一个事务，不另开连接
-    if (db === this.db) await this.ensure(task);
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).for('update').limit(1);
-      if (!row) throw new NotFoundException(NOT_FOUND);
-      const overrides = { ...row.data.overrides };
-      const at = new Date().toISOString();
-      for (const a of answers) {
-        overrides[a.key] = { value: a.value, source: 'customer', ...origin, by: user.id, byName: user.name, at };
-      }
-      const [saved] = await db
-        .update(taskWorkups)
-        .set({ data: { ...row.data, overrides }, version: row.version + 1, updatedBy: user.id, updatedAt: new Date() })
-        .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
-        .returning({ version: taskWorkups.version });
-      if (saved) return;
-    }
-    const [latest] = await db.select({ version: taskWorkups.version }).from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
-    throw this.stale(latest!.version);
-  }
 
   async snapshotOf(task: { id: string; enterpriseId: string }) {
     return (await this.ensure(task)).snapshot;

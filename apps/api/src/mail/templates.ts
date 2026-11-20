@@ -87,7 +87,7 @@ export interface InvitationMailInput {
   name: string;
   inviterName: string;
   orgName: string;
-  // 「机构管理员」或「成员」
+  // 「组织管理员」或「成员」
   roleLabel: string;
   link: string;
   expiresAt: Date;
@@ -106,7 +106,7 @@ export function invitationMail(i: InvitationMailInput): MailMessage {
       { button: '接受邀请', href: i.link },
       { note: `链接有效期至 ${formatBeijingTime(i.expiresAt)}（北京时间），只能使用一次。` },
       ...(i.resend ? [{ note: '这是重新发送的邀请，之前的邀请链接已作废，请以最新一封为准。' }] : []),
-      { note: '不认识这个机构？忽略这封邮件即可，链接过期后会自动失效。' },
+      { note: '不认识这个组织？忽略这封邮件即可，链接过期后会自动失效。' },
     ],
   });
 }

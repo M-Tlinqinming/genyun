@@ -19,7 +19,7 @@ import { Loading, Notice, panel } from '../../components/ui';
 import { gy, stage } from '../../theme/tokens';
 
 // 运营概览（Paper 16 页 I01）：四个统计、今天先处理、客户年度服务、最近操作。数字都来自真实数据：
-// 客户组织（服务状态）、任务中心（待分派、超时兜底、上门工单）、成果发布、反馈受理、操作日志
+// 客户组织（服务状态）、任务中心（待分派）、成果交付、反馈受理、操作日志
 
 const body: CSSProperties = { fontSize: 14, lineHeight: '22px', color: gy.text };
 const muted: CSSProperties = { fontSize: 14, lineHeight: '22px', color: gy.secondary };
@@ -38,8 +38,6 @@ const TODO_TONE: Record<OverviewTodoKind, { color: string; bg: string }> = {
   org_pending: stage.action,
   invitation: stage.progress,
   unassigned: stage.action,
-  overdue: stage.error,
-  on_site: stage.action,
   feedback: stage.action,
 };
 
@@ -92,7 +90,7 @@ function Stats({ data: d }: { data: OperatorOverview }) {
         value={d.tasks.open}
         note={breakdownLine([['资料准备', d.tasks.preparing], ['编制中', d.tasks.drafting], ['待分派', d.tasks.unassigned]], '没有在办的任务')}
       />
-      <Stat label="本月交付" value={d.deliveries.thisMonth} note={d.deliveries.thisMonth > 0 ? '三份成果已发布' : '本月还没有发布成果'} />
+      <Stat label="本月交付" value={d.deliveries.thisMonth} note={d.deliveries.thisMonth > 0 ? '三份成果已交付' : '本月还没有交付成果'} />
       <Stat
         label="待跟进反馈"
         value={pendingFeedback}
@@ -145,13 +143,10 @@ function Todos({ todos }: { todos: OverviewTodo[] }) {
           <h2 style={{ ...cardTitle, margin: 0 }}>今天先处理</h2>
           <span style={small}>{todos.length > 0 ? `${todos.length} 项 · 等待最久的在前` : '没有待处理的事'}</span>
         </div>
-        <Link to="/operator/audit-logs" style={link}>
-          查看全部操作记录
-        </Link>
       </div>
       {todos.length === 0 ? (
         <p style={{ ...muted, margin: 0, padding: '32px 24px', textAlign: 'center' }}>
-          待开通的组织、未接受的邀请、待分派和超时的任务、新上门工单、待受理的反馈都处理完了。
+          待开通的组织、未接受的邀请、待分派的任务、待受理的反馈都处理完了。
         </p>
       ) : (
         <>
@@ -218,7 +213,7 @@ export function OperatorOverviewPage() {
     <PageHeader
       eyebrow="耕云运营 / 运营概览"
       title="运营概览"
-      description="今天需要你跟进的开通、分派、反馈、超时兜底与上门工单。"
+      description="今天需要你跟进的开通、分派与反馈。"
       extra={
         <Button onClick={() => void overview.refetch()} loading={overview.isFetching && !overview.isPending}>
           刷新
@@ -276,7 +271,9 @@ export function OperatorOverviewPage() {
           <section aria-label="最近操作" style={{ ...panel, flex: '1 1 0', minWidth: 0 }}>
             <div style={cardHead}>
               <h2 style={{ ...cardTitle, margin: 0 }}>最近操作</h2>
-              <span style={small}>今天 · {dotted(today).slice(5)}</span>
+              <Link to="/operator/audit-logs" style={link}>
+                全部记录
+              </Link>
             </div>
             {d.recent.length === 0 ? (
               <p style={{ ...muted, margin: 0, padding: '24px' }}>还没有操作记录。</p>

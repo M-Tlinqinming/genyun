@@ -20,7 +20,7 @@ export interface NotificationInput {
   dedupeKey?: string;
 }
 
-// 某家企业的事要提醒哪些客户账号：本组织机构管理员，加上分配到这家企业的成员（M3 第 7 项）。
+// 某家企业的事要提醒哪些客户账号：本组织的组织管理员，加上分配到这家企业的成员（M3 第 7 项）。
 // 没分配到这家企业的成员看不到它，也不收它的提醒
 export async function enterpriseCustomerIds(db: Pick<Database, 'select'>, task: { orgId: string; enterpriseId: string }): Promise<string[]> {
   const rows = await db
@@ -43,13 +43,13 @@ export async function enterpriseCustomerIds(db: Pick<Database, 'select'>, task: 
   return rows.map((r) => r.userId);
 }
 
-// 发给机构管理员、和某个组织有关的通知（年度服务到期、邀请过期请重发）的去重键都以这个前缀开头，
+// 发给组织管理员、和某个组织有关的通知（年度服务到期、邀请过期请重发）的去重键都以这个前缀开头，
 // 成员被移出组织或降为成员时按前缀删掉
 export function orgNoticePrefix(orgId: string): string {
   return `org:${orgId}:`;
 }
 
-// 年度服务到期前 30 天提醒机构管理员（M3 第 7 项）：只在站内，同一组织同一到期日只提醒一次
+// 年度服务到期前 30 天提醒组织管理员（M3 第 7 项）：只在站内，同一组织同一到期日只提醒一次
 export function contractReminderKey(orgId: string, endsAt: string): string {
   return `${orgNoticePrefix(orgId)}contract-expiring:${endsAt}`;
 }
@@ -94,7 +94,7 @@ export class NotificationsService {
     return { items, unread: unread?.n ?? 0 };
   }
 
-  // 打开铃铛（每分钟轮询）时顺带检查：自己是机构管理员的组织，年度服务 30 天内到期的补一条提醒。
+  // 打开铃铛（每分钟轮询）时顺带检查：自己是组织管理员的组织，年度服务 30 天内到期的补一条提醒。
   // 靠 (user_id, dedupe_key) 唯一索引去重，不会每次请求都发；续约后到期日变了会再提醒一次
   private async remindContracts(user: SessionUser) {
     const orgIds = user.memberships.filter((m) => m.role === 'customer_admin').map((m) => m.orgId);

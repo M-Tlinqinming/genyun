@@ -19,13 +19,13 @@ function isCustomerOf(user: SessionUser, orgId: string): boolean {
   return Boolean(customerMembership(user, orgId));
 }
 
-// 本组织的机构管理员
+// 本组织的组织管理员
 export function isCustomerAdminOf(user: SessionUser, orgId: string): boolean {
   return customerMembership(user, orgId)?.role === 'customer_admin';
 }
 
-// 在这个组织里能看到哪些企业（M3 第 7 项）：运营、机构管理员看全部（'all'）；
-// 成员只看机构管理员分配给自己的企业（企业 ID 列表，可能为空）；别的人一律 null
+// 在这个组织里能看到哪些企业（M3 第 7 项）：运营、组织管理员看全部（'all'）；
+// 成员只看组织管理员分配给自己的企业（企业 ID 列表，可能为空）；别的人一律 null
 export function enterpriseScope(user: SessionUser, orgId: string): 'all' | string[] | null {
   if (isOperator(user)) return 'all';
   const m = customerMembership(user, orgId);
@@ -55,28 +55,28 @@ export function canEditOrganizationData(user: SessionUser, orgId: string): boole
   return isCustomerOf(user, orgId);
 }
 
-// 单家企业（档案、资料、任务列表）：运营、机构管理员看全部；成员只看分配给自己的
+// 单家企业（档案、资料、任务列表）：运营、组织管理员看全部；成员只看分配给自己的
 export function canViewEnterprise(user: SessionUser, ent: { orgId: string; enterpriseId: string }): boolean {
   return inScope(enterpriseScope(user, ent.orgId), ent.enterpriseId);
 }
 
-// 维护企业资料、建任务、填资料、提交申请、回应补件：本组织机构管理员，或分配到这家企业的成员。运营不替客户填
+// 维护企业资料、建任务、填资料、提交申请：本组织的组织管理员，或分配到这家企业的成员。运营不替客户填
 export function canEditEnterpriseData(user: SessionUser, ent: { orgId: string; enterpriseId: string }): boolean {
   return inScope(customerEnterpriseScope(user, ent.orgId), ent.enterpriseId);
 }
 
-// 新建企业（含建档前识别营业执照）：只有机构管理员。成员只处理分配给自己的企业（11 页角色说明）
+// 新建企业（含建档前识别营业执照）：只有组织管理员。成员只处理分配给自己的企业（11 页角色说明）
 export function canCreateEnterprise(user: SessionUser, orgId: string): boolean {
   return isCustomerAdminOf(user, orgId);
 }
 
-// 组织管理（成员、邀请、企业分配、组织资料、年度服务）：只有本组织机构管理员。
-// 不能移除自己、不能改自己的角色，组织里至少保留一位机构管理员（接口里加锁判断）
+// 组织管理（成员、邀请、企业分配、组织资料、年度服务）：只有本组织的组织管理员。
+// 不能移除自己、不能改自己的角色，组织里至少保留一位组织管理员（接口里加锁判断）
 export function canManageOrgMembers(user: SessionUser, orgId: string): boolean {
   return isCustomerAdminOf(user, orgId);
 }
 
-// 单个任务：运营管理员、本组织能看到这家企业的客户（机构管理员；分配到这家企业的成员），以及被分派为负责专家的专业人员
+// 单个任务：运营管理员、本组织能看到这家企业的客户（组织管理员；分配到这家企业的成员），以及被分派为负责专家的专业人员
 export function canViewTask(user: SessionUser, task: { orgId: string; enterpriseId: string; assignedExpertId: string | null }): boolean {
   if (canViewEnterprise(user, task)) return true;
   return task.assignedExpertId === user.id && isExpert(user);
@@ -95,7 +95,7 @@ export function canViewFile(
   if (file.kind === 'expert_certificate') return isOperator(user) || file.uploadedBy === user.id;
   // 生成的草稿发布前客户看不到，只有负责专家和运营
   if (file.kind === 'draft') return isOperator(user) || (ctx.usedInMyAssignedTask && isExpert(user));
-  // 其余（客户资料、发布后的交付 Word）：运营、机构管理员、相关企业的成员；负责专家通过任务看到
+  // 其余（客户资料、发布后的交付 Word）：运营、组织管理员、相关企业的成员；负责专家通过任务看到
   const scope = enterpriseScope(user, file.orgId);
   if (scope === 'all') return true;
   if (scope && (file.uploadedBy === user.id || ctx.linkedEnterpriseIds.some((id) => scope.includes(id)))) return true;
@@ -107,18 +107,8 @@ export function needsFileEnterprises(user: SessionUser, orgId: string): boolean 
   return Array.isArray(enterpriseScope(user, orgId));
 }
 
-// 运营任务中心：看全部任务、分派和改派负责专家。只有运营；专业人员不能自己领任务或转给别人
+// 运营任务中心：看全部任务、分派和改派负责专家、写内部备注。只有运营；专家不能自己领任务或转给别人
 export function canAssignTasks(user: SessionUser): boolean {
-  return isOperator(user);
-}
-
-// 超时兜底（提醒专家、致电客户、内部备注）：只有运营；内部备注和运营记录客户、专家都看不到
-export function canHandleOverdue(user: SessionUser): boolean {
-  return isOperator(user);
-}
-
-// 上门工单（列表、转交、关闭、内部备注）：只有运营；客户只看到「已收到上门需求」
-export function canHandleOnSiteOrders(user: SessionUser): boolean {
   return isOperator(user);
 }
 
@@ -165,7 +155,7 @@ export function canManageKnowledge(user: SessionUser): boolean {
 
 // ---------- 反馈受理（M3 第 6 项） ----------
 
-// 提交反馈：本组织客户账号（机构管理员、成员）。运营、专家不替客户提交
+// 提交反馈：本组织客户账号（组织管理员、成员）。运营、专家不替客户提交
 export function canSubmitFeedback(user: SessionUser, orgId: string): boolean {
   return isCustomerOf(user, orgId);
 }
@@ -175,7 +165,7 @@ export function canFeedbackOnTask(user: SessionUser, task: { orgId: string; ente
   return canEditEnterpriseData(user, task);
 }
 
-// 客户查看反馈：机构管理员看本组织全部，成员只看自己提交的（'own'）；别的人 null
+// 客户查看反馈：组织管理员看本组织全部，成员只看自己提交的（'own'）；别的人 null
 export function feedbackScope(user: SessionUser, orgId: string): 'all' | 'own' | null {
   const m = customerMembership(user, orgId);
   if (!m) return null;

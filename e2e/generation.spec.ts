@@ -50,7 +50,6 @@ test('确认采用资料：资料又变了留在本页标出；生成时一份�
   await expect(materials(page).getByRole('listitem', { name: '企业基本信息' })).toContainText('✓ 与整理时一致');
   const ledger = materials(page).getByRole('listitem', { name: '应急物资台账.pdf' });
   await expect(ledger).toContainText('整理开始后客户上传');
-  await expect(ledger).toContainText('发起事实补件');
   const outline = page.getByRole('complementary', { name: '将生成的内容' });
   await expect(outline).toContainText('✓ 必需项 23 / 23 已整理');
   await expect(outline).toContainText(/危险源\s*\d+ 项/);

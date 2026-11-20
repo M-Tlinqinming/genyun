@@ -3,7 +3,7 @@
 // 或自己打电话后填结果。每次联系记一条，客户看不到联系记录本身，只看到发给他的问题。
 import { z } from 'zod';
 import { CHECKLIST_ITEMS, type ChecklistItemKey } from './checklist/items.ts';
-import { factPersonSchema, type FactKind, type FactValue, type WorkupData } from './workup.ts';
+import { factPersonSchema, type FactKind, type FactValue } from './workup.ts';
 
 export const CONTACT_METHODS = {
   request: '请客户在任务里补充',
@@ -63,30 +63,6 @@ const questionInputSchema = z.object({
 });
 export type ContactQuestionInput = z.infer<typeof questionInputSchema>;
 
-const questionsSchema = z.array(questionInputSchema).min(1, '至少问一个问题').max(10, '一次最多问 10 个问题');
-
-export const contactCreateSchema = z.discriminatedUnion('method', [
-  z.object({ method: z.literal('request'), questions: questionsSchema }),
-  z.object({
-    method: z.literal('phone'),
-    questions: questionsSchema,
-    target: z.object({
-      name: z.string().trim().min(1).max(50),
-      role: z.string().trim().max(50),
-      phone: z.string().trim().min(1).max(30),
-    }),
-    result: z.enum(Object.keys(CONTACT_RESULTS) as [ContactResult, ...ContactResult[]]),
-  }),
-]);
-export type ContactCreate = z.infer<typeof contactCreateSchema>;
-
-// 电话问清时每个问题都要有回答；企业事实还要有能回填的值
-export function contactCreateError(input: ContactCreate): string | null {
-  if (input.method !== 'phone' || input.result !== 'clarified') return null;
-  const missing = input.questions.find((q) => (q.factKey ? q.value === undefined : !q.answer));
-  return missing ? `请填写「${missing.label}」的回答` : null;
-}
-
 // 客户回答补充请求：每个问题写文字或附文件，一次提交
 export const contactAnswerSchema = z.object({
   answers: z
@@ -114,33 +90,6 @@ export function defaultQuestion(label: string, kind: FactKind): string {
   if (kind === 'count') return `公司现在有多少${label.replace(/(人数|数)$/, '')}？`;
   if (kind === 'person') return `${label}是谁？请提供姓名、职位和手机。`;
   return `请提供${label}。`;
-}
-
-// 客户请专家电话联系的资料项
-export function itemQuestion(itemKey: ChecklistItemKey): Pick<ContactQuestion, 'itemKey' | 'label' | 'question'> {
-  const label = CHECKLIST_ITEMS.find((i) => i.key === itemKey)!.label;
-  return { itemKey, label, question: `客户请专家电话联系，问清「${label}」的实际情况。` };
-}
-
-// 客户请专家电话联系后，联系上客户（已问清 / 客户稍后补）才算已联系；未接通和任务内补充都不停 2 个工作日的倒计时
-// （2026-10-29 Martin 确认未接通不算）
-export function reachedCustomer(records: readonly Pick<ContactRecord, 'method' | 'result' | 'createdAt'>[], since: Date): boolean {
-  return records.some(
-    (r) => r.method === 'phone' && (r.result === 'clarified' || r.result === 'later') && new Date(r.createdAt) >= since,
-  );
-}
-
-// 客户已回答、专家还没「采用」的企业事实（Martin 10-29：客户的回答由专家看过后点采用才写进企业事实）
-export function awaitingAdoption(records: readonly ContactRecord[], data: WorkupData): Map<string, { contactId: string; answer: string }> {
-  // 同一项问过多次时只看最近一次回答
-  const latest = new Map<string, { contactId: string; answer: string }>();
-  const answered = records.filter((r) => r.method === 'request' && r.answeredAt);
-  answered.sort((a, b) => a.answeredAt!.localeCompare(b.answeredAt!));
-  for (const r of answered) {
-    for (const q of r.questions) if (q.factKey && q.answer) latest.set(q.factKey, { contactId: r.id, answer: q.answer });
-  }
-  for (const [key, v] of latest) if (data.overrides[key]?.contactId === v.contactId) latest.delete(key);
-  return latest;
 }
 
 // 拨打对象的号码只露前三后四：138 **** 2071

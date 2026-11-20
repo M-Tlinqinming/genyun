@@ -54,7 +54,7 @@ export function EnterpriseDetailPage() {
       <Result
         status={notFound ? '404' : 'error'}
         title={notFound ? '找不到该企业' : '企业信息加载失败'}
-        subTitle={notFound ? '企业可能不在当前机构下，或您没有查看权限。' : enterprise.error.message}
+        subTitle={notFound ? '企业可能不在当前组织下，或您没有查看权限。' : enterprise.error.message}
         extra={<Link to="/customer/enterprises">返回企业列表</Link>}
       />
     );

@@ -25,7 +25,7 @@ import { MemoryMailer } from '../mail/mailer.ts';
 import { contractReminderKey, enterpriseCustomerIds, inviteExpiredKey } from '../notifications/notifications.service.ts';
 
 // 客户组织管理（M3 第 7 项）：成员只看分配给自己的企业（企业、任务、资料、成果都按这条），
-// 机构管理员邀请 / 重新发送 / 撤销 / 移除 / 改角色、分配企业；不能移除自己、至少保留一位机构管理员；
+// 组织管理员邀请 / 重新发送 / 撤销 / 移除 / 改角色、分配企业；不能移除自己、至少保留一位组织管理员；
 // 操作写进操作日志；年度服务到期前 30 天站内提醒一次
 const PASSWORD = 'correct horse battery staple';
 
@@ -139,7 +139,7 @@ describe('成员只看分配给自己的企业', () => {
     expect((await li.get(`/api/orgs/${org.a}/enterprises`).expect(200)).body).toEqual([]);
     expect((await li.get(`/api/orgs/${org.a}/tasks`).expect(200)).body).toEqual([]);
     expect((await li.get(`/api/orgs/${org.a}/deliveries`).expect(200)).body).toEqual([]);
-    // 机构管理员看全部
+    // 组织管理员看全部
     const admin = await as('admin@test.cn');
     expect((await admin.get(`/api/orgs/${org.a}/enterprises`).expect(200)).body).toHaveLength(2);
   });
@@ -243,7 +243,7 @@ describe('成员只看分配给自己的企业', () => {
     await admin.put(`${base()}/members/${uid['other@test.cn']}/enterprises`).send({ enterpriseIds: [ent.one] }).expect(404);
   });
 
-  it('按企业调整负责成员；提醒只发给机构管理员和负责这家企业的成员', async () => {
+  it('按企业调整负责成员；提醒只发给组织管理员和负责这家企业的成员', async () => {
     const admin = await as('admin@test.cn');
     const view: OrgManagementView = (
       await admin.put(`${base()}/enterprises/${ent.two}/members`).send({ userIds: [uid['zhang@test.cn'], uid['admin@test.cn']] }).expect(200)
@@ -259,7 +259,7 @@ describe('成员只看分配给自己的企业', () => {
     );
     expect(await actions('enterprise_assign')).toContain('惠州德赛电池 · 负责成员：张伟、林管理员');
 
-    // 张伟不再负责这家企业：这家企业任务的站内通知从他那里删掉；机构管理员的保留
+    // 张伟不再负责这家企业：这家企业任务的站内通知从他那里删掉；组织管理员的保留
     const notice = { taskId: task.two, title: '补充请求', body: '惠州德赛电池：请补充值班电话', link: `/customer/tasks/${task.two}` };
     await handle.db.insert(notifications).values([
       { userId: uid['zhang@test.cn']!, ...notice },
@@ -309,10 +309,10 @@ describe('邀请、移除、改角色', () => {
     await admin.post(`${base()}/invitations/${inv.id}/revoke`).expect(200);
     await admin.post(`${base()}/invitations/${inv.id}/revoke`).expect(409);
     await request(app.getHttpServer()).post(`/api/invitations/${token}/accept`).send({ name: '赵六', password: 'genyun2026', agreed: true }).expect(409);
-    expect(await actions('member_invite_revoke')).toEqual(['赵六（zhao@test.cn）· 机构管理员']);
+    expect(await actions('member_invite_revoke')).toEqual(['赵六（zhao@test.cn）· 组织管理员']);
   });
 
-  it('机构管理员可以邀请第二位机构管理员（首位管理员之外）', async () => {
+  it('组织管理员可以邀请第二位组织管理员（首位管理员之外）', async () => {
     const admin = await as('admin@test.cn');
     await admin.post(`${base()}/invitations`).send({ name: '周敏', email: 'zhou@test.cn', role: 'customer_admin' }).expect(200);
     const res = await request(app.getHttpServer())
@@ -329,13 +329,13 @@ describe('邀请、移除、改角色', () => {
     await admin.put(`${base()}/members/${uid['admin@test.cn']}/role`).send({ role: 'customer_member' }).expect(409);
   });
 
-  it('改角色：成员升为机构管理员后看全部企业；两位管理员同时互相降级，只有一个成功，组织里始终留一位', async () => {
+  it('改角色：成员升为组织管理员后看全部企业；两位管理员同时互相降级，只有一个成功，组织里始终留一位', async () => {
     const admin = await as('admin@test.cn');
     await admin.put(`${base()}/members/${uid['zhang@test.cn']}/role`).send({ role: 'customer_admin' }).expect(200);
     const zhang = await as('zhang@test.cn');
     expect((await zhang.get(`/api/orgs/${org.a}/enterprises`).expect(200)).body).toHaveLength(2);
     await admin.put(`${base()}/members/${uid['zhang@test.cn']}/role`).send({ role: 'customer_member' }).expect(200);
-    expect(await actions('member_role_change')).toEqual(['张伟（zhang@test.cn）· 成员 → 机构管理员', '张伟（zhang@test.cn）· 机构管理员 → 成员']);
+    expect(await actions('member_role_change')).toEqual(['张伟（zhang@test.cn）· 成员 → 组织管理员', '张伟（zhang@test.cn）· 组织管理员 → 成员']);
 
     // 现在有林管理员、周敏两位管理员：同时把对方降成成员
     const zhou = await as('zhou@test.cn', 'genyun2026');
@@ -378,7 +378,7 @@ describe('邀请、移除、改角色', () => {
     ]);
     const view: OrgManagementView = (await admin.post(`${base()}/members/${uid['li@test.cn']}/remove`).expect(200)).body;
     expect(view.members.map((m) => m.email)).not.toContain('li@test.cn');
-    // 不在任何组织了：账号记为「被机构管理员移除」，站内通知全部删掉
+    // 不在任何组织了：账号记为「被组织管理员移除」，站内通知全部删掉
     const [removed] = await handle.db.select({ reason: users.disabledReason }).from(users).where(eq(users.id, uid['li@test.cn']!));
     expect(removed!.reason).toBe('removed_by_customer');
     expect(await handle.db.select().from(notifications).where(eq(notifications.userId, uid['li@test.cn']!))).toEqual([]);
@@ -386,7 +386,7 @@ describe('邀请、移除、改角色', () => {
     expect(await handle.db.select().from(sessions).where(eq(sessions.userId, uid['li@test.cn']!))).toEqual([]);
     expect(await handle.db.select().from(enterpriseAssignments).where(eq(enterpriseAssignments.userId, uid['li@test.cn']!))).toEqual([]);
     expect((await request(app.getHttpServer()).post('/api/auth/login').send({ email: 'li@test.cn', password: PASSWORD })).status).not.toBe(200);
-    // 上传的文件仍归她，机构管理员能看
+    // 上传的文件仍归她，组织管理员能看
     await admin.get(`/api/files/${upload!.id}`).expect(200);
     expect(await actions('member_remove')).toEqual(['李静（li@test.cn）· 成员']);
     await admin.post(`${base()}/members/${uid['li@test.cn']}/remove`).expect(404);
@@ -417,7 +417,7 @@ describe('邀请、移除、改角色', () => {
     expect(sun!.reason).toBe('operator');
   });
 
-  it('机构管理员被降为成员或移除：他发出、还没接受的邀请作废；过期提醒不再发给他', async () => {
+  it('组织管理员被降为成员或移除：他发出、还没接受的邀请作废；过期提醒不再发给他', async () => {
     const admin = await as('admin@test.cn');
     await admin.put(`${base()}/members/${uid['zhang@test.cn']}/role`).send({ role: 'customer_admin' }).expect(200);
     const zhang = await as('zhang@test.cn');
@@ -468,7 +468,7 @@ describe('邀请、移除、改角色', () => {
     expect(row!.at).toBeNull();
   });
 
-  it('组织资料：机构管理员改联系人、电话、邮箱', async () => {
+  it('组织资料：组织管理员改联系人、电话、邮箱', async () => {
     const admin = await as('admin@test.cn');
     await admin.put(`${base()}/profile`).send({ contactName: '', contactPhone: '0752-1234567' }).expect(400);
     const view: OrgManagementView = (
@@ -485,7 +485,7 @@ describe('年度服务', () => {
     expect(view.service).toMatchObject({ startsAt: '2026-01-01', endsAt: endsIn(20), state: 'expiring', daysLeft: 20, enterprises: 2, delivered: 0, inProgress: 2 });
   });
 
-  it('到期前 30 天站内提醒机构管理员一次，不重复发；成员不收', async () => {
+  it('到期前 30 天站内提醒组织管理员一次，不重复发；成员不收', async () => {
     const admin = await as('admin@test.cn');
     await admin.get('/api/notifications').expect(200);
     await admin.get('/api/notifications').expect(200);

@@ -32,8 +32,8 @@ import { linkButton, Loading, Notice, panel, requiredAfter } from '../../compone
 import { useWorkspace } from '../../layouts/workspace';
 import { gy, stage } from '../../theme/tokens';
 
-// 组织管理（Paper 11 页）：仅机构管理员可见。四个标签：组织资料、成员与权限、企业分配、年度服务（?tab= 记住当前标签）。
-// 成员只能访问分配给自己的企业；机构管理员访问全部企业。邀请走邮件，7 天有效
+// 组织管理（Paper 11 页）：仅组织管理员可见。四个标签：组织资料、成员与权限、企业分配、年度服务（?tab= 记住当前标签）。
+// 成员只能访问分配给自己的企业；组织管理员访问全部企业。邀请走邮件，7 天有效
 
 type Tab = 'profile' | 'members' | 'enterprises' | 'service';
 const TABS: Tab[] = ['profile', 'members', 'enterprises', 'service'];
@@ -168,7 +168,7 @@ function MembersTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <TableCard
-        label="机构成员"
+        label="组织成员"
         head={
           <>
             <span style={{ flex: '1 1 0', minWidth: 0 }}>成员</span>
@@ -312,7 +312,7 @@ function EnterprisesTab({ view, onAdjust }: { view: OrgManagementView; onAdjust:
           );
         })}
       </TableCard>
-      <InfoBox title="分配只决定谁能看到这家企业" text="调整后立即生效；企业资料、任务与历史记录都保留。机构管理员始终可以看到全部企业。" />
+      <InfoBox title="分配只决定谁能看到这家企业" text="调整后立即生效；企业资料、任务与历史记录都保留。组织管理员始终可以看到全部企业。" />
     </div>
   );
 }
@@ -402,9 +402,9 @@ function ProfileTab({ view, orgId }: { view: OrgManagementView; orgId: string })
   return (
     <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
       <section aria-label="组织资料" style={{ ...panel, flex: '1 1 0', minWidth: 0, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <h2 style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text, margin: 0 }}>机构信息</h2>
+        <h2 style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text, margin: 0 }}>组织信息</h2>
         <Form form={form} layout="vertical" requiredMark={requiredAfter} initialValues={initial} onValuesChange={() => setDirty(true)}>
-          <Form.Item label="机构名称" extra={<span style={small}>开通时由耕云登记，如需变更请联系耕云。</span>}>
+          <Form.Item label="组织名称" extra={<span style={small}>开通时由耕云登记，如需变更请联系耕云。</span>}>
             <Input value={view.org.name} readOnly aria-readonly />
           </Form.Item>
           <div style={{ display: 'flex', gap: 16 }}>
@@ -415,7 +415,7 @@ function ProfileTab({ view, orgId }: { view: OrgManagementView; orgId: string })
               <Input maxLength={30} />
             </Form.Item>
           </div>
-          <Form.Item label="联系邮箱" name="contactEmail" extra={<span style={small}>用于耕云联系机构，与个人登录账号分开管理。</span>} style={{ marginBottom: 0 }}>
+          <Form.Item label="联系邮箱" name="contactEmail" extra={<span style={small}>用于耕云联系组织，与个人登录账号分开管理。</span>} style={{ marginBottom: 0 }}>
             <Input maxLength={100} />
           </Form.Item>
         </Form>
@@ -478,7 +478,7 @@ function InviteModal({ open, orgId, onClose }: { open: boolean; orgId: string; o
         <Form.Item label="邮箱" name="email" rules={[{ required: true, whitespace: true, message: '请填写邮箱' }]}>
           <Input placeholder="name@example.com" />
         </Form.Item>
-        <Form.Item label="角色" name="role" rules={[{ required: true, message: '请选择角色' }]} extra="成员只访问分配给自己的企业；机构管理员访问全部企业并管理组织。">
+        <Form.Item label="角色" name="role" rules={[{ required: true, message: '请选择角色' }]} extra="成员只访问分配给自己的企业；组织管理员访问全部企业并管理组织。">
           <Radio.Group options={CUSTOMER_ROLES.map((r) => ({ value: r, label: CUSTOMER_ROLE_LABELS[r] }))} />
         </Form.Item>
       </Form>
@@ -610,8 +610,8 @@ export function OrganizationPage() {
       title: `移除 ${m.name}？`,
       content: (
         <>
-          移除后{m.name}不能再登录本机构，已登录的地方会退出；上传记录与操作记录仍保留。
-          {alone.length > 0 && <div style={{ marginTop: 8, color: gy.warning }}>以下企业只有{m.name}负责，移除后没有负责成员（机构管理员仍能看到）：{alone.join('、')}。</div>}
+          移除后{m.name}不能再登录本组织，已登录的地方会退出；上传记录与操作记录仍保留。
+          {alone.length > 0 && <div style={{ marginTop: 8, color: gy.warning }}>以下企业只有{m.name}负责，移除后没有负责成员（组织管理员仍能看到）：{alone.join('、')}。</div>}
         </>
       ),
       okText: '移除',
@@ -663,7 +663,7 @@ export function OrganizationPage() {
           </Button>
         )}
       </div>
-      <span style={muted}>仅机构管理员可见。成员只能访问分配给自己的企业。</span>
+      <span style={muted}>仅组织管理员可见。成员只能访问分配给自己的企业。</span>
     </div>
   );
 
@@ -743,7 +743,7 @@ export function OrganizationPage() {
         <PickModal
           open={membersOf !== null}
           title={membersOf ? `调整 ${membersOf.name} 的负责成员` : ''}
-          intro="勾选的成员可以查看和办理这家企业，并收到这家企业任务的站内通知。机构管理员始终可以看到全部企业，勾选只表示由他负责。"
+          intro="勾选的成员可以查看和办理这家企业，并收到这家企业任务的站内通知。组织管理员始终可以看到全部企业，勾选只表示由他负责。"
           options={data.members.map((m) => ({ value: m.id, label: `${m.name}（${CUSTOMER_ROLE_LABELS[m.role]} · ${m.email}）` }))}
           initial={membersOf?.memberIds ?? []}
           empty="还没有成员。先在「成员与权限」里邀请成员。"

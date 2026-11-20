@@ -11,7 +11,7 @@ import { useWorkspace } from '../../layouts/workspace';
 import { gy, stage } from '../../theme/tokens';
 
 // 我的反馈：客户提交过的意见、耕云的处理状态和回复（处理结果同时在站内提醒里告诉客户，不发邮件）。
-// 成员看自己提交的，机构管理员看本组织全部。?id= 定位到某一条（站内提醒点进来）
+// 成员看自己提交的，组织管理员看本组织全部。?id= 定位到某一条（站内提醒点进来）
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const small: CSSProperties = { fontSize: 12, lineHeight: '20px', color: gy.secondary };
@@ -108,9 +108,9 @@ function Item({ item: f, focused }: { item: CustomerFeedback; focused: boolean }
         {f.taskId && f.enterpriseName && (
           <>
             {' · 关于 '}
-            <Link to={`/customer/documents/${f.taskId}${f.deliveryVersion ? `?v=${f.deliveryVersion}` : ''}`} style={{ color: gy.primary }}>
+            <Link to={`/customer/documents/${f.taskId}`} style={{ color: gy.primary }}>
               {f.enterpriseName} {f.taskNumber}
-              {f.deliveryVersion ? ` 交付 V${f.deliveryVersion}` : ''}
+              {f.deliveryVersion ? ' 的成果' : ''}
             </Link>
           </>
         )}

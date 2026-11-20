@@ -1,8 +1,8 @@
-import { deliveryBundleName, type DraftKind, type TaskDeliveries } from '@genyun/shared';
+import { deliveryBundleName, type TaskDeliveries } from '@genyun/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, NETWORK_TROUBLE, request, SERVER_TROUBLE } from './request';
 
-// 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05、R06）：已交付的三份 Word 按交付版本列出、在线阅读、下载
+// 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05、R06）：已交付的三份 Word 列出、下载（客户只看最新一次交付）
 
 export const orgDeliveriesKey = (orgId: string) => ['orgs', orgId, 'deliveries'] as const;
 export const taskDeliveriesKey = (taskId: string) => ['tasks', taskId, 'deliveries'] as const;
@@ -20,9 +20,6 @@ export function useTaskDeliveries(taskId: string) {
     queryFn: () => request<TaskDeliveries>(`/tasks/${taskId}/deliveries`),
   });
 }
-
-/** 在线阅读用的 PDF（发布时那一版的版式） */
-export const deliveryPdfUrl = (taskId: string, version: number, kind: DraftKind) => `/api/tasks/${taskId}/deliveries/${version}/${kind}/pdf`;
 
 // 让浏览器把这个地址当下载处理（附件下载不会离开当前页面）
 function save(href: string, name: string) {
@@ -42,7 +39,7 @@ export async function downloadWord(fileId: string, name: string) {
 }
 
 /** 下载整套：同一交付版本的三份 Word 打成一个压缩包 */
-export async function downloadBundle(taskId: string, version: number, enterpriseName: string) {
+export async function downloadBundle(taskId: string, version: number, enterpriseName: string, publishedAt: string) {
   let res: Response;
   try {
     res = await fetch(`/api/tasks/${taskId}/deliveries/${version}/bundle`, { credentials: 'include' });
@@ -60,6 +57,6 @@ export async function downloadBundle(taskId: string, version: number, enterprise
     throw new ApiError(0, NETWORK_TROUBLE);
   }
   const href = URL.createObjectURL(blob);
-  save(href, deliveryBundleName(enterpriseName, version));
+  save(href, deliveryBundleName(enterpriseName, publishedAt));
   setTimeout(() => URL.revokeObjectURL(href), 60_000);
 }

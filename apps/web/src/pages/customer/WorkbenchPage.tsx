@@ -59,7 +59,7 @@ export function WorkbenchPage() {
                 <span style={{ fontSize: 14, color: gy.secondary }}>确认企业事实、补充资料，让任务继续推进。</span>
               </div>
               <Link to="/customer/tasks" style={{ color: gy.text }}>
-                查看业务任务 <ArrowRightOutlined />
+                查看任务 <ArrowRightOutlined />
               </Link>
             </div>
             {mine.length === 0 ? (
@@ -71,7 +71,7 @@ export function WorkbenchPage() {
             )}
             {mine.length > MAX_TODO && (
               <div style={{ padding: '16px 28px', borderTop: `1px solid ${gy.split}`, fontSize: 14, color: gy.secondary }}>
-                还有 {mine.length - MAX_TODO} 项待处理，<Link to="/customer/tasks">在业务任务里查看全部</Link>
+                还有 {mine.length - MAX_TODO} 项待处理，<Link to="/customer/tasks">在任务里查看全部</Link>
               </div>
             )}
           </section>
@@ -91,9 +91,9 @@ export function WorkbenchPage() {
               label="最近交付"
               task={delivered}
               tag={<><CheckCircleOutlined /> 已交付</>}
-              text={(t) => `专家已审核并发布${t.delivery ? `交付 V${t.delivery.version}` : ''}，三份 Word 可直接查看和下载。`}
+              text={(t) => `专家已审核并交付${t.delivery && t.delivery.version > 1 ? '（已更新）' : ''}，三份 Word 可直接查看和下载。`}
               action="查看编制成果"
-              empty="专家审核发布后，成果会显示在这里。"
+              empty="专家审核交付后，成果会显示在这里。"
               onOpen={(t) => navigate(taskHref(t))}
             />
           </div>

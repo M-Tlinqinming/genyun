@@ -65,7 +65,7 @@ describe('年度服务提醒', () => {
 describe('任务的下一步', () => {
   const base = { status: 'preparing' as const, startMethod: 'upload' as const, closedAt: null, missing: [], remaining: 0 };
   it('资料准备中归待我处理，按情况给出下一步', () => {
-    expect(taskTodo({ ...base, startMethod: null })).toMatchObject({ bucket: 'mine', next: '选择开始方式' });
+    expect(taskTodo({ ...base, startMethod: null })).toMatchObject({ bucket: 'mine', next: '下载资料模板，填好后上传' });
     expect(taskTodo({ ...base, missing: ['总平面布置图', '营业执照'] })).toMatchObject({
       bucket: 'mine',
       next: '补充总平面布置图 等 2 项',

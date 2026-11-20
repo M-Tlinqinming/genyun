@@ -9,7 +9,6 @@ import {
   type KnowledgeAgenciesView,
   type LocalAgencies,
   productionStepSchema,
-  type KnowledgeTemplatesView,
 } from '@genyun/shared';
 import { feiyuLocation } from '@genyun/shared/fixtures/feiyu';
 import type { INestApplication } from '@nestjs/common';
@@ -20,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { auditLogs, enterprises, holidays, memberships, organizations, users } from '../db/schema.ts';
+import { auditLogs, enterprises, holidays, memberships, organizations, processTemplates, users } from '../db/schema.ts';
 import { KnowledgeService } from './knowledge.service.ts';
 
 const PASSWORD = 'correct horse battery staple';
@@ -119,15 +118,6 @@ describe('知识库 · 权限', () => {
       () => a.post(`/api/operator/knowledge/agencies/${agency.id}/verify`),
       () => a.post(`/api/operator/knowledge/agencies/${agency.id}/disable`),
       () => a.post(`/api/operator/knowledge/agencies/${agency.id}/enable`),
-      () => a.get('/api/operator/knowledge/holidays'),
-      () => a.post('/api/operator/knowledge/holidays').send({ date: '2027-01-01', kind: 'holiday', name: '元旦' }),
-      () => a.delete('/api/operator/knowledge/holidays/2026-01-01'),
-      () => a.get('/api/operator/knowledge/templates'),
-      () => a.post('/api/operator/knowledge/templates').send({ label: 'x' }),
-      () => a.put('/api/operator/knowledge/templates/smt/draft').send({ label: 'x' }),
-      () => a.post('/api/operator/knowledge/templates/smt/publish').send({ label: 'x', steps: [{ name: 'a' }] }),
-      () => a.post('/api/operator/knowledge/templates/smt/disable'),
-      () => a.post('/api/operator/knowledge/templates/smt/enable'),
     ];
     for (const email of ['admin@test.cn', 'zhou@test.cn']) {
       for (const call of calls(await as(email))) expect((await call()).status).toBe(403);
@@ -193,32 +183,6 @@ describe('知识库 · 属地应急机构', () => {
   });
 });
 
-describe('知识库 · 节假日', () => {
-  it('补一天调休：工作日计算马上按新的表；删掉后恢复', async () => {
-    const ops = await as('ops@test.cn');
-    // 2026-12-31 周四 → 往后 1 个工作日：2027-01-01 周五（表里还没有 2027 年）
-    const from = new Date('2026-12-31T02:00:00Z');
-    expect(addWorkingDays(from, 1).toISOString()).toBe('2027-01-01T02:00:00.000Z');
-    await ops.post('/api/operator/knowledge/holidays').send({ date: '2027-01-01', kind: 'holiday', name: '元旦' }).expect(200);
-    expect(addWorkingDays(from, 1).toISOString()).toBe('2027-01-04T02:00:00.000Z');
-    // 2027-01-02 周六改成调休上班
-    await ops.post('/api/operator/knowledge/holidays').send({ date: '2027-01-02', kind: 'workday', name: '元旦调休' }).expect(200);
-    expect(addWorkingDays(from, 1).toISOString()).toBe('2027-01-02T02:00:00.000Z');
-    await ops.post('/api/operator/knowledge/holidays').send({ date: '2027-13-01', kind: 'holiday', name: 'x' }).expect(400);
-    await ops.delete('/api/operator/knowledge/holidays/2027-01-02').expect(200);
-    const res = await ops.delete('/api/operator/knowledge/holidays/2027-01-01').expect(200);
-    expect(res.body.holidays).toHaveLength(BUILTIN_HOLIDAYS.length);
-    expect(addWorkingDays(from, 1).toISOString()).toBe('2027-01-01T02:00:00.000Z');
-    await ops.delete('/api/operator/knowledge/holidays/2027-01-01').expect(404);
-    expect(await logs('knowledge_holiday_change')).toEqual([
-      '设置 2027-01-01：元旦（放假）',
-      '设置 2027-01-02：元旦调休（调休上班）',
-      '删除 2027-01-02：元旦调休',
-      '删除 2027-01-01：元旦',
-    ]);
-  });
-});
-
 describe('知识库 · 节假日读不到或为空', () => {
   // 2026-10-01 国庆放假（内置表里有），往后 1 个工作日：按内置表是 10-08，只跳过周末是 10-02
   const from = new Date('2026-09-30T02:00:00Z');
@@ -258,35 +222,15 @@ describe('知识库 · 节假日读不到或为空', () => {
 });
 
 describe('知识库 · 工艺模板', () => {
-  it('新增草稿客户看不到；发布后版本加 1；停用后客户看不到，已选用的企业照常保存', async () => {
-    const ops = await as('ops@test.cn');
-    const list = (await ops.get('/api/operator/knowledge/templates').expect(200)).body as KnowledgeTemplatesView;
-    expect(list.templates.map((t) => t.id)).toEqual(BUILTIN_PROCESS_TEMPLATES.map((t) => t.id));
-    expect(list.templates.find((t) => t.id === 'metal_stamping')).toMatchObject({ state: 'published', version: 1, usedBy: 1, draft: null });
-
-    const created = await ops.post('/api/operator/knowledge/templates').send({ label: 'PCB 线路板', industry: '电子' }).expect(200);
-    const id = created.body.id as string;
-    expect(created.body.templates.find((t: { id: string }) => t.id === id)).toMatchObject({ state: 'draft', version: 0, published: null });
+  // 运营维护工艺模板的页面和接口已取消；表里的数据照常给客户选用、给生成读
+  it('客户只看到已发布、没停用的模板；已选用、后来停用的照常保存，新换的必须已发布、没停用', async () => {
     const customer = await as('admin@test.cn');
     const ids = async () => (await customer.get('/api/process-templates').expect(200)).body.templates.map((t: { id: string }) => t.id);
-    expect(await ids()).not.toContain(id);
-    await ops.post(`/api/operator/knowledge/templates/${id}/publish`).send({ label: 'PCB 线路板', steps: [] }).expect(400);
-
-    const steps = [{ name: '开料', equipment: ['开料机'], materials: ['覆铜板'], risks: ['机械伤害'] }];
-    await ops.put(`/api/operator/knowledge/templates/${id}/draft`).send({ label: 'PCB 线路板', industry: '电子', keywords: ['线路板'], steps }).expect(200);
-    expect(await ids()).not.toContain(id);
-    const published = await ops.post(`/api/operator/knowledge/templates/${id}/publish`).send({ label: 'PCB 线路板', industry: '电子', keywords: ['线路板'], steps }).expect(200);
-    expect(published.body.templates.find((t: { id: string }) => t.id === id)).toMatchObject({ state: 'published', version: 1, draft: null });
-    const forCustomer = (await customer.get('/api/process-templates').expect(200)).body.templates.find((t: { id: string }) => t.id === id);
-    // 客户只看到工序和设备，常见物料、风险提示不给客户
-    expect(forCustomer).toEqual({ id, label: 'PCB 线路板', keywords: ['线路板'], steps: [{ name: '开料', equipment: ['开料机'] }] });
-    await ops.post(`/api/operator/knowledge/templates/${id}/publish`).send({ label: 'PCB 线路板', keywords: ['线路板'], steps }).expect(200);
-    expect(((await ops.get('/api/operator/knowledge/templates')).body as KnowledgeTemplatesView).templates.find((t) => t.id === id)!.version).toBe(2);
-
-    await ops.post('/api/operator/knowledge/templates/metal_stamping/disable').expect(200);
+    await handle.db.insert(processTemplates).values({ id: 'pcb_draft', label: '草稿模板', version: 0 });
+    expect(await ids()).not.toContain('pcb_draft');
+    await handle.db.update(processTemplates).set({ disabledAt: new Date() }).where(eq(processTemplates.id, 'metal_stamping'));
     expect(await ids()).not.toContain('metal_stamping');
 
-    // 客户保存工艺流程：已选用、后来停用的照常保存；新换的模板必须已发布、没停用
     const [ent] = await handle.db.select({ id: enterprises.id }).from(enterprises);
     const url = `/api/enterprises/${ent!.id}/production-step`;
     const save = async (templateId: string) => {
@@ -294,22 +238,12 @@ describe('知识库 · 工艺模板', () => {
       return customer.put(url).send({ version: s.version, step: { ...s.step, process: { ...s.step.process, templateId } } });
     };
     expect((await save('metal_stamping')).status).toBe(200);
-    const draftId = (await ops.post('/api/operator/knowledge/templates').send({ label: '草稿模板' }).expect(200)).body.id as string;
-    expect((await save(draftId)).status).toBe(400);
-    expect((await save(id)).status).toBe(200);
+    expect((await save('pcb_draft')).status).toBe(400);
+    const other = BUILTIN_PROCESS_TEMPLATES.find((t) => t.id !== 'metal_stamping')!.id;
+    expect((await save(other)).status).toBe(200);
     expect((await save('metal_stamping')).status).toBe(400);
     expect((await save('no_such_template')).status).toBe(400);
-    await ops.post('/api/operator/knowledge/templates/metal_stamping/enable').expect(200);
+    await handle.db.update(processTemplates).set({ disabledAt: null }).where(eq(processTemplates.id, 'metal_stamping'));
     expect((await save('metal_stamping')).status).toBe(200);
-    await ops.post('/api/operator/knowledge/templates/nope/disable').expect(404);
-    expect(await logs('knowledge_template_change')).toEqual([
-      '新增工艺模板（草稿）：PCB 线路板',
-      '保存工艺模板草稿：PCB 线路板',
-      '发布工艺模板：PCB 线路板（第 1 版）',
-      '发布工艺模板：PCB 线路板（第 2 版）',
-      '停用工艺模板：五金冲压',
-      '新增工艺模板（草稿）：草稿模板',
-      '恢复工艺模板：五金冲压',
-    ]);
   });
 });

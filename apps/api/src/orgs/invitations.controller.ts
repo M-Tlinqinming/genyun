@@ -77,7 +77,7 @@ export class InvitationsController {
     if (problem) throw new BadRequestException(problem);
 
     // 只给新邮箱开账号；已有账号、还在某个组织里的人不能再接受邀请。
-    // 例外：被机构管理员移除（账号已停用、不在任何组织）的账号（M3 第 7 项），重新接受邀请时恢复这个账号，上传记录仍归他。
+    // 例外：被组织管理员移除（账号已停用、不在任何组织）的账号（M3 第 7 项），重新接受邀请时恢复这个账号，上传记录仍归他。
     // 运营停用的账号不算，只能由运营恢复
     const [existing] = await this.db
       .select({ id: users.id, disabledReason: users.disabledReason })
@@ -90,7 +90,7 @@ export class InvitationsController {
     }
 
     const passwordHash = await hashPassword(parsed.data.password);
-    // 首位管理员邀请由运营发；机构管理员自己邀请的管理员（第 7 项）不受「已有管理员」限制
+    // 首位管理员邀请由运营发；组织管理员自己邀请的管理员（第 7 项）不受「已有管理员」限制
     const firstAdmin = inv.role === 'customer_admin' && (await this.byOperator(inv.invitedBy));
     const userId = await this.db.transaction(async (tx) => {
       if (firstAdmin) {
@@ -101,7 +101,7 @@ export class InvitationsController {
           .from(memberships)
           .where(and(eq(memberships.orgId, inv.orgId), eq(memberships.role, 'customer_admin')))
           .limit(1);
-        if (admin) throw new ConflictException('这个组织已经有机构管理员了。请直接登录，或联系机构管理员');
+        if (admin) throw new ConflictException('这个组织已经有组织管理员了。请直接登录，或联系组织管理员');
       }
       // 并发接受、刚被撤销或刚过期时只有一次能成功
       const [claimed] = await tx
@@ -130,7 +130,7 @@ export class InvitationsController {
                 throw err;
               })
           )[0];
-      // 以前在这个组织里时的企业分配不带回来：重新加入后由机构管理员重新分配
+      // 以前在这个组织里时的企业分配不带回来：重新加入后由组织管理员重新分配
       await tx.delete(enterpriseAssignments).where(and(eq(enterpriseAssignments.orgId, inv.orgId), eq(enterpriseAssignments.userId, user!.id)));
       await tx
         .insert(memberships)
@@ -206,7 +206,7 @@ export class InvitationsController {
   }
 
   // 运营发的邀请：提醒进组织详情，对客户显示「耕云运营」（和邀请邮件一致）；
-  // 机构管理员发的（第 7 项）：提醒进组织管理，显示管理员姓名
+  // 组织管理员发的（第 7 项）：提醒进组织管理，显示管理员姓名
   private async byOperator(userId: string): Promise<boolean> {
     const [m] = await this.db
       .select({ role: memberships.role })
@@ -216,7 +216,7 @@ export class InvitationsController {
     return Boolean(m);
   }
 
-  // 邀请人还能处理这封邀请：账号没停用，并且是运营或这个组织的机构管理员
+  // 邀请人还能处理这封邀请：账号没停用，并且是运营或这个组织的组织管理员
   private async inviterActive(inv: { invitedBy: string; orgId: string }): Promise<boolean> {
     const [row] = await this.db
       .select({ userId: memberships.userId })

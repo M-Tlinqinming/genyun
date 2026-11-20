@@ -74,7 +74,7 @@ beforeAll(async () => {
     .returning();
   id.unassigned = rows[1]!.id;
   id.overdue = rows[3]!.id;
-  // 超时：客户 10.27 请专家电话联系，一直没联系
+  // 客户 10.27 请专家电话联系，一直没联系：超时兜底已下线，不再算进待办
   await db.insert(checklistItems).values({
     taskId: id.overdue,
     itemKey: 'fire_pool',
@@ -83,15 +83,13 @@ beforeAll(async () => {
     updatedBy: by,
     updatedAt: new Date('2026-10-27T06:00:00Z'),
   });
-  // 上门工单：一张新的，一张已转交
-  const [order] = await db
+  // 上门工单：一张新的，一张已转交（上门已下线，不再算进待办）
+  await db
     .insert(onSiteRequests)
     .values([
       { orgId: active!.id, enterpriseId: ents[0]!.id, contactName: '王建国', contactPhone: '13900000000', helpItems: ['消防水池'], createdBy: by },
       { orgId: active!.id, enterpriseId: ents[1]!.id, contactName: '李华', contactPhone: '13900000001', status: 'handed_over' as const, createdBy: by },
-    ])
-    .returning();
-  id.order = order!.id;
+    ]);
   // 本月交付 1 个任务（发了两版也只算一次）；上个月的不算
   const done = rows[4]!.id;
   const [batch] = await db
@@ -176,18 +174,16 @@ describe('运营概览', () => {
     // 已结束的任务不算在办
     expect(body.tasks).toEqual({ open: 4, preparing: 1, unassigned: 1, drafting: 2 });
     expect(body.deliveries).toEqual({ thisMonth: 1 });
-    expect(body.followUps).toEqual({ overdue: 1, onSiteNew: 1 });
+    expect(body).not.toHaveProperty('followUps');
     expect(body.feedback).toEqual({ new: 0, processing: 0 });
   });
 
-  it('今天先处理：待开通、邀请未接受、待分派、超时兜底、上门工单，等得最久的在前', async () => {
+  it('今天先处理：待开通、邀请未接受、待分派，等得最久的在前；不再有超时兜底和上门工单', async () => {
     const ops = await as('ops@test.cn');
     const { todos } = (await ops.get('/api/operator/overview').expect(200)).body as OperatorOverview;
-    expect(todos.map((t) => t.kind).sort()).toEqual(['invitation', 'on_site', 'org_pending', 'overdue', 'unassigned']);
+    expect(todos.map((t) => t.kind).sort()).toEqual(['invitation', 'org_pending', 'unassigned']);
     // 只有运营发的、过期 14 天内的邀请
     expect(todos.filter((t) => t.kind === 'invitation').map((t) => t.title)).toEqual(['boss@pending.cn']);
-    // 10.27 起等的超时在最前
-    expect(todos[0]).toMatchObject({ kind: 'overdue', id: id.overdue, link: `/operator/tasks?tab=overdue&task=${id.overdue}` });
     const since = todos.map((t) => t.since);
     expect([...since].sort()).toEqual(since);
     expect(todos.find((t) => t.kind === 'org_pending')).toMatchObject({ title: '待开通咨询公司', link: `/operator/organizations?open=${id.pending}` });
@@ -197,7 +193,6 @@ describe('运营概览', () => {
       link: `/operator/organizations/${id.pending}`,
     });
     expect(todos.find((t) => t.kind === 'unassigned')).toMatchObject({ link: `/operator/tasks?task=${id.unassigned}` });
-    expect(todos.find((t) => t.kind === 'on_site')).toMatchObject({ link: `/operator/tasks?tab=onsite&order=${id.order}` });
   });
 
   it('客户年度服务不含已到期的；最近操作不含登录退出', async () => {

@@ -64,7 +64,7 @@ test('首位管理员设姓名和密码后直接进入客户工作台；同一�
   await expect(page.getByRole('heading', { name: `加入${ORG}` })).toBeVisible();
   await expect(page.getByText('耕云运营邀请您加入耕云工作空间。')).toBeVisible();
   const info = page.locator('dl');
-  await expect(info).toContainText('身份机构管理员');
+  await expect(info).toContainText('身份组织管理员');
   await expect(info).toContainText('可见企业全部企业');
   await expect(info).toContainText(/邀请有效期至 \d\d\.\d\d \d\d:\d\d/);
   await expect(page.getByLabel('邮箱')).toHaveValue(EMAIL);

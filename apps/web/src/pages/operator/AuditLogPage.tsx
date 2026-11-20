@@ -28,8 +28,8 @@ export function AuditLogPage() {
   return (
     <>
       <PageHeader
-        eyebrow="耕云运营 / 操作日志"
-        title="操作日志"
+        eyebrow="耕云运营 / 运营概览"
+        title="全部记录"
         description="登录、退出、修改和重设密码等关键操作的记录（登录失败时记的是输入的邮箱），只能查看，不能修改。时间为北京时间。"
         extra={
           <Button icon={<ReloadOutlined />} onClick={() => void logs.refetch()} loading={logs.isFetching}>
@@ -40,7 +40,7 @@ export function AuditLogPage() {
       {logs.isError && !logs.data ? (
         <Notice
           tone="warning"
-          title="操作日志暂时打不开"
+          title="全部记录暂时打不开"
           text="请稍后点「重新加载」再试。"
           action={<Button onClick={() => void logs.refetch()}>重新加载</Button>}
         />

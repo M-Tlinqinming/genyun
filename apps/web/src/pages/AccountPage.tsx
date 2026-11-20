@@ -44,7 +44,7 @@ export function AccountPage() {
       <PageHeader
         eyebrow="个人账户"
         title="个人账户"
-        description={isCustomerAdmin ? '只影响您自己的登录。机构资料与成员请到「组织管理」。' : '只影响您自己的登录。'}
+        description={isCustomerAdmin ? '只影响您自己的登录。组织资料与成员请到「组织管理」。' : '只影响您自己的登录。'}
       />
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, marginTop: -8 }}>
         <nav aria-label="个人账户" style={{ width: 200, flexShrink: 0, display: 'flex', flexDirection: 'column', position: 'sticky', top: 88 }}>
@@ -142,7 +142,7 @@ function ProfileCard({ name, email, user }: { name: string; email: string; user:
   const { message } = App.useApp();
   const [editing, setEditing] = useState(false);
   const [form] = Form.useForm<{ name: string }>();
-  // 耕云员工（专业人员、运营管理员）没有机构管理员可找
+  // 耕云员工（专业人员、运营管理员）没有组织管理员可找
   const isStaff = user.memberships.every((m) => !m.role.startsWith('customer'));
   const rename = useMutation({
     mutationFn: accountApi.rename,
@@ -196,10 +196,10 @@ function ProfileCard({ name, email, user }: { name: string; email: string; user:
           name
         )}
       </Row>
-      <Row label="登录邮箱" aside={<span style={hint}>{isStaff ? '如需更换，请联系耕云' : '如需更换，请联系机构管理员或耕云'}</span>}>
+      <Row label="登录邮箱" aside={<span style={hint}>{isStaff ? '如需更换，请联系耕云' : '如需更换，请联系组织管理员或耕云'}</span>}>
         {email}
       </Row>
-      <Row label="所属机构与身份" last top={user.memberships.length > 1} aside={<span style={hint}>{isStaff ? '身份由耕云调整' : '身份由机构管理员调整'}</span>}>
+      <Row label="所属组织与身份" last top={user.memberships.length > 1} aside={<span style={hint}>{isStaff ? '身份由耕云调整' : '身份由组织管理员调整'}</span>}>
         <span style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {user.memberships.map((m) => (
             <span key={m.orgId} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

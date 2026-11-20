@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-// M3 第 7 项：客户组织管理。机构管理员邀请成员 → 成员接受 → 管理员分配一家企业 → 成员只看到这一家；
+// M3 第 7 项：客户组织管理。组织管理员邀请成员 → 成员接受 → 管理员分配一家企业 → 成员只看到这一家；
 // 企业分配、年度服务、组织资料三个标签能打开。只新增一位成员，不改演示数据里已有的人
 test.describe.configure({ mode: 'serial' });
 
@@ -45,7 +45,7 @@ test('成员与权限：列出自己（不能改自己），角色说明', async
   await page.getByRole('menuitem', { name: /组织管理/ }).click();
   await expect(page).toHaveURL(/\/customer\/organization$/);
   await expect(page.getByRole('heading', { name: '组织管理', level: 1 })).toBeVisible();
-  const list = page.getByRole('region', { name: '机构成员' });
+  const list = page.getByRole('region', { name: '组织成员' });
   await expect(list).toContainText('陈志刚 · 您');
   await expect(list).toContainText('全部企业');
   await expect(page.getByRole('button', { name: '移除陈志刚' })).toHaveCount(0);
@@ -107,7 +107,7 @@ test('调整企业：给王工分配一家企业，王工只看到这一家', as
   await other.screenshot({ path: 'out/m3-7-member-enterprises.png', fullPage: true });
   // 组织管理页成员打不开
   await other.goto('/customer/organization');
-  await expect(other.getByText('只有机构管理员可以管理组织')).toBeVisible();
+  await expect(other.getByText('只有组织管理员可以管理组织')).toBeVisible();
   await other.close();
 });
 

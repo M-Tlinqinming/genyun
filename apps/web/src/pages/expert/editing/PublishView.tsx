@@ -1,4 +1,7 @@
-import { DRAFT_KINDS, deliveryLabel, type DraftKind, type PublishView as View } from '@genyun/shared';
+import { DRAFT_KINDS, deliveredOnLabel, type DraftKind, type PublishView as View } from '@genyun/shared';
+
+// 不显示交付版本号：交付了的写交付日期，还没交付的写第几次交付
+const nth = (n: number) => `第 ${n} 次交付`;
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Result } from 'antd';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -15,7 +18,7 @@ import { stamp } from './EditDialogs';
 // 每次发布带页面生成的 publishId（存在 sessionStorage，刷新页面也还在）：
 // 连接中断、超时时不知道后台有没有发布成功，只给「查询本次发布结果」，不直接重发；
 // 查到后台没收到过，才用同一个 publishId 重新发布（后台按 publishId 只算一次）
-const STEPS = ['资料核实', '专业编制', '审核与修订', '成果发布'];
+const STEPS = ['资料核实', '专业编制', '审核与修订', '成果交付'];
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const text13: CSSProperties = { fontSize: 13, lineHeight: '20px' };
 const card: CSSProperties = { background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 8 };
@@ -100,7 +103,7 @@ export function PublishView({
     return (
       <Result
         status="info"
-        title="还不能发布"
+        title="还不能交付"
         subTitle={publication.error.message}
         extra={
           <Link to={`/expert/tasks/${taskId}`}>
@@ -155,10 +158,10 @@ export function PublishView({
         // 后台没收到过这一次：可以放心重新发布（仍用同一个 publishId）
         set(next);
         setPhase('idle');
-        message.info('后台没有收到这次发布，三份文稿还没有发布，可以重新发布');
+        message.info('后台没有收到这次交付，三份文稿还没有交付，可以重新交付');
       }
     } catch {
-      message.error('还是连不上耕云，暂时查不到发布结果，请稍后再查询');
+      message.error('还是连不上耕云，暂时查不到交付结果，请稍后再查询');
     } finally {
       setQuerying(false);
     }
@@ -176,52 +179,53 @@ export function PublishView({
     const version = shown === 'unknown' || shown === 'sending' ? view.nextVersion : (attempt?.version ?? view.nextVersion);
     const submittedAt = shown === 'unknown' || shown === 'sending' ? pending?.at : attempt?.startedAt;
     const delivered = shown === 'done' ? view.deliveries.find((d) => d.version === attempt?.version) : undefined;
+    const which = shown === 'done' && attempt?.publishedAt ? deliveredOnLabel(attempt.publishedAt) : nth(version);
     const screen = {
       sending: {
-        title: '正在发布三份文稿',
+        title: '正在交付三份文稿',
         tone: 'progress' as const,
         heading: '正在生成并存档三份 Word',
         lines: [
-          '发布请求已受理。请勿重复提交，三份 Word 都存好后任务显示“已交付”。',
-          `当前保存稿：${latestSaved ? stamp(latestSaved) : '—'} · 已审核通过。离开页面不会取消本次发布。`,
+          '交付请求已受理。请勿重复提交，三份 Word 都存好后任务显示“已交付”。',
+          `当前保存稿：${latestSaved ? stamp(latestSaved) : '—'} · 已审核通过。离开页面不会取消本次交付。`,
         ],
-        access: '发布处理中 · 客户暂不能看到本次成果',
-        aside: ['可以离开此页，稍后继续', '稍后返回时继续显示同一次发布的进度。', `长时间无进展？联系运营并提供任务编号 ${taskNumber}`],
+        access: '交付处理中 · 客户暂不能看到本次成果',
+        aside: ['可以离开此页，稍后继续', '稍后返回时继续显示同一次交付的进度。', `长时间无进展？联系运营并提供任务编号 ${taskNumber}`],
       },
       publishing: {
-        title: '正在发布三份文稿',
+        title: '正在交付三份文稿',
         tone: 'progress' as const,
         heading: '正在生成并存档三份 Word',
         lines: [
-          '发布请求已受理。请勿重复提交，三份 Word 都存好后任务显示“已交付”。',
-          `当前保存稿：${latestSaved ? stamp(latestSaved) : '—'} · 已审核通过。离开页面不会取消本次发布。`,
+          '交付请求已受理。请勿重复提交，三份 Word 都存好后任务显示“已交付”。',
+          `当前保存稿：${latestSaved ? stamp(latestSaved) : '—'} · 已审核通过。离开页面不会取消本次交付。`,
         ],
-        access: '发布处理中 · 客户暂不能看到本次成果',
-        aside: ['可以离开此页，稍后继续', '稍后返回时继续显示同一次发布的进度。', `长时间无进展？联系运营并提供任务编号 ${taskNumber}`],
+        access: '交付处理中 · 客户暂不能看到本次成果',
+        aside: ['可以离开此页，稍后继续', '稍后返回时继续显示同一次交付的进度。', `长时间无进展？联系运营并提供任务编号 ${taskNumber}`],
       },
       unknown: {
-        title: '发布结果暂未确认',
+        title: '交付结果暂未确认',
         tone: 'action' as const,
-        heading: '连接中断，尚未收到发布结果',
-        lines: ['后台可能仍在完成发布。请先查询本次结果，避免重复发布同一批文稿。', '三份保存稿与审核结论已保留，当前不需要重新编辑或再次审核。'],
-        access: '待确认 · 只有发布成功且三份 Word 都存好，才显示“已交付”',
-        aside: ['可以离开此页，稍后继续', '回到这一页时继续查询同一次发布，不会新建发布。', `持续无法确认？联系运营并附上任务编号 ${taskNumber}`],
+        heading: '连接中断，尚未收到交付结果',
+        lines: ['后台可能仍在完成交付。请先查询本次结果，避免重复交付同一批文稿。', '三份保存稿与审核结论已保留，当前不需要重新编辑或再次审核。'],
+        access: '待确认 · 只有交付成功且三份 Word 都存好，才显示“已交付”',
+        aside: ['可以离开此页，稍后继续', '回到这一页时继续查询同一次交付，不会新建交付。', `持续无法确认？联系运营并附上任务编号 ${taskNumber}`],
       },
       failed: {
-        title: '本次发布失败',
+        title: '本次交付失败',
         tone: 'error' as const,
-        heading: view.canPublish ? '已确认未形成交付，可重新发布' : '已确认未形成交付',
-        lines: [`查询结果：${attempt?.error ?? '本次没有形成交付'}`, view.canPublish ? '三份保存稿与审核结论仍有效；重试将继续发布同一批文稿，不修改内容。' : (view.blocker ?? '')],
-        access: `尚未交付 · 本次 ${deliveryLabel(version)} 未生效`,
-        aside: ['重试前无需重新编制', '若需修改文稿，先返回审核与修订；修改后重新核对并审核，再发布。', `再次发布失败？联系运营 · ${taskNumber}`],
+        heading: view.canPublish ? '已确认未形成交付，可重新交付' : '已确认未形成交付',
+        lines: [`查询结果：${attempt?.error ?? '本次没有形成交付'}`, view.canPublish ? '三份保存稿与审核结论仍有效；重试将继续交付同一批文稿，不修改内容。' : (view.blocker ?? '')],
+        access: `尚未交付 · 本次（${nth(version)}）未生效`,
+        aside: ['重试前无需重新编制', '若需修改文稿，先返回审核与修订；修改后重新核对并审核，再交付。', `再次失败？联系运营 · ${taskNumber}`],
       },
       done: {
-        title: `已发布为${deliveryLabel(version)}`,
+        title: '已交付',
         tone: 'done' as const,
         heading: '三份 Word 已定稿存档，任务已交付',
         lines: [
-          `${attempt?.publishedAt ? stamp(attempt.publishedAt) : ''} 由${attempt?.byName ?? reviewer}发布。客户已收到站内提醒，任务显示“已交付”。`,
-          '这批文稿已定稿，正文只读；需要更正请发起事实补件，重新生成后再发布为下一个交付版本。',
+          `${attempt?.publishedAt ? stamp(attempt.publishedAt) : ''} 由${attempt?.byName ?? reviewer}交付。客户已收到站内提醒，任务显示“已交付”。`,
+          '这批文稿已定稿，正文只读；要更正请回到资料核对，重新生成后再交付。',
         ],
         access: '已交付 · 客户在任务里看到“已交付”',
         aside: null,
@@ -237,13 +241,13 @@ export function PublishView({
             {screen.title}
           </h1>
           <span style={{ ...text14, color: gy.text }}>
-            {taskNumber} · 本次{shown === 'done' ? '' : '拟'}交付 V{version}
-            {submittedAt ? ` · 已于 ${stamp(submittedAt)} 提交发布` : ''}
+            {taskNumber} · {shown === 'done' ? which : `本次拟${nth(version)}`}
+            {submittedAt ? ` · 已于 ${stamp(submittedAt)} 提交交付` : ''}
           </span>
         </header>
 
         <section
-          aria-label="发布状态"
+          aria-label="交付状态"
           role="status"
           style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 32, borderRadius: 8, background: tone.bg }}
         >
@@ -256,7 +260,7 @@ export function PublishView({
           <div style={{ display: 'flex', gap: 12, paddingTop: 8 }}>
             {shown === 'unknown' && (
               <Button type="primary" size="large" loading={querying} onClick={() => void check()}>
-                查询本次发布结果
+                查询本次交付结果
               </Button>
             )}
             {(shown === 'publishing' || shown === 'sending') && (
@@ -267,12 +271,12 @@ export function PublishView({
                 disabled={shown === 'sending'}
                 onClick={() => void publication.refetch()}
               >
-                刷新发布进度
+                刷新交付进度
               </Button>
             )}
             {shown === 'failed' && view.editable && (
               <Button type="primary" size="large" disabled={!view.canPublish} onClick={() => void send(crypto.randomUUID())}>
-                重试发布三份 Word
+                重试交付三份 Word
               </Button>
             )}
             {shown === 'failed' && !view.canPublish && view.editable && <Button size="large" onClick={onEdit}>返回审核与修订</Button>}
@@ -287,8 +291,8 @@ export function PublishView({
           </div>
         </section>
 
-        <section aria-label="本次发布内容" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 20, padding: 24 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 500, lineHeight: '22px', color: gy.text }}>本次发布内容</h3>
+        <section aria-label="本次交付内容" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 20, padding: 24 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 500, lineHeight: '22px', color: gy.text }}>本次交付内容</h3>
           <Row label="对应保存稿" value={savedLine} />
           <Row label="审核结论" value={reviewLine} />
           {delivered && <Row label="交付文件" value={delivered.files.map((f) => f.name).join('、')} />}
@@ -307,7 +311,7 @@ export function PublishView({
   }
 
   // R03 确认发布
-  const chip = view.canPublish ? { text: '审核通过 · 待发布', ...stage.done } : { text: '暂不能发布', ...stage.action };
+  const chip = view.canPublish ? { text: '审核通过 · 待交付', ...stage.done } : { text: '暂不能交付', ...stage.action };
   return (
     <div className="gy-publish-page" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -366,11 +370,11 @@ export function PublishView({
         </span>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <h2 ref={titleRef} tabIndex={-1} data-page-title style={{ margin: 0, fontSize: 21, fontWeight: 500, lineHeight: '30px', color: gy.text }}>
-            {view.canPublish ? '审核已通过，等待发布' : '还不能发布'}
+            {view.canPublish ? '审核已通过，等待交付' : '还不能交付'}
           </h2>
           <p style={{ ...text14, margin: 0, color: gy.secondary }}>
             {view.canPublish
-              ? `三份文稿已完成全文、企业事实与 Word 版式核对；本次将${view.nextVersion === 1 ? '首次' : ''}发布为${deliveryLabel(view.nextVersion)}。`
+              ? `三份文稿已完成全文、企业事实与 Word 版式核对；本次将${view.nextVersion === 1 ? '首次交付' : `再次交付（${nth(view.nextVersion)}）`}。`
               : view.blocker}
           </p>
           {view.review && (
@@ -386,10 +390,10 @@ export function PublishView({
         </span>
       </section>
 
-      <section aria-label="本次待发布文件" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <section aria-label="本次待交付文件" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>本次待发布文件</h2>
-          <span style={{ ...text13, color: gy.secondary }}>{deliveryLabel(view.nextVersion)} · 同一批保存稿 · 三份齐全</span>
+          <h2 style={{ margin: 0, flex: 1, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>本次待交付文件</h2>
+          <span style={{ ...text13, color: gy.secondary }}>{nth(view.nextVersion)} · 同一批保存稿 · 三份齐全</span>
         </div>
         <div style={{ ...card, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -431,23 +435,23 @@ export function PublishView({
         </div>
       </section>
 
-      <section aria-label="发布后会发生什么" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 12, padding: '26px 27px' }}>
-        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>发布后会发生什么</h2>
+      <section aria-label="交付后会发生什么" style={{ ...card, display: 'flex', flexDirection: 'column', gap: 12, padding: '26px 27px' }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>交付后会发生什么</h2>
         <p style={{ ...text14, lineHeight: '26px', margin: 0, color: '#525D70' }}>
-          应急预案、风险评估报告和应急资源调查报告将一起定稿存档为{deliveryLabel(view.nextVersion)}。三份 Word 都存好后，任务才变为“已交付”，客户在任务里收到站内提醒。
+          应急预案、风险评估报告和应急资源调查报告将一起定稿存档，作为{nth(view.nextVersion)}。三份 Word 都存好后，任务才变为“已交付”，客户在任务里收到站内提醒。
         </p>
         <p style={{ ...text13, margin: 0, color: gy.secondary }}>
-          发布后这批文稿只读；需要更正请发起事实补件，重新生成后再发布为下一个交付版本。Word 文件属性里记有“AI 辅助起草、注册安全工程师审核”和审核人。
+          交付后这批文稿只读；要更正请回到资料核对，重新生成后再交付。Word 文件属性里记有“AI 辅助起草、注册安全工程师审核”和审核人。
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12, paddingTop: 24, borderTop: `1px solid ${gy.split}` }}>
           <Button onClick={onEdit}>返回修改</Button>
           <span style={{ flex: 1 }} />
           <span style={{ ...text13, color: gy.secondary }}>
-            {view.editable ? (view.canPublish ? '当前客户还不能下载本次稿件' : view.blocker) : '只有负责这个任务的专家可以发布'}
+            {view.editable ? (view.canPublish ? '当前客户还不能下载本次稿件' : view.blocker) : '只有负责这个任务的专家可以交付'}
           </span>
           {view.editable && (
             <Button type="primary" disabled={!view.canPublish} onClick={() => void send(pending?.publishId ?? crypto.randomUUID())}>
-              发布三份 Word
+              交付三份 Word
             </Button>
           )}
         </div>
@@ -478,7 +482,7 @@ function Crumbs({ taskId, enterpriseName }: { taskId: string; enterpriseName: st
       <Link to={`/expert/tasks/${taskId}`} style={{ color: gy.secondary }}>
         {enterpriseName}
       </Link>
-      {' / 成果发布'}
+      {' / 成果交付'}
     </nav>
   );
 }

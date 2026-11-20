@@ -28,11 +28,9 @@ import { InvitationsController } from './orgs/invitations.controller.ts';
 import { OperatorOrgsController } from './orgs/operator-orgs.controller.ts';
 import { InternalAccountsController } from './accounts/internal-accounts.controller.ts';
 import { OperatorOverviewController } from './operator/overview.controller.ts';
-import { OperatorOnSiteController } from './tasks/operator-on-site.controller.ts';
 import { OperatorTasksController } from './tasks/operator-tasks.controller.ts';
 import { OrgsController } from './orgs/orgs.controller.ts';
 import { OrgMembersController } from './orgs/org-members.controller.ts';
-import { ContactsController, ContactsService } from './tasks/contacts.service.ts';
 import { DRAWING_RENDERER, DrawingsController, DrawingsService } from './tasks/drawings.service.ts';
 import { DrawingRenderer } from './generation/drawings/renderer.ts';
 import { ExpertTasksController, ExpertTasksService } from './tasks/expert-tasks.service.ts';
@@ -40,7 +38,6 @@ import { EDIT_DRAFTER, EditingController, EditingService } from './tasks/editing
 import { DeliveriesController, DeliveriesService } from './tasks/deliveries.service.ts';
 import { PublishController, PublishService } from './tasks/publish.service.ts';
 import { ReviewController, ReviewService } from './tasks/review.service.ts';
-import { SupplementsController, SupplementsService } from './tasks/supplements.service.ts';
 import { defaultPdfConverter, PDF_CONVERTER, type PdfConverter } from './generation/word/preview-pdf.ts';
 import { GenerationController, GenerationService } from './tasks/generation.service.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
@@ -92,7 +89,6 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       OrgMembersController,
       OperatorOrgsController,
       OperatorTasksController,
-      OperatorOnSiteController,
       OperatorOverviewController,
       OperatorFeedbackController,
       FeedbackController,
@@ -111,8 +107,6 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       PublishController,
       DeliveriesController,
       DrawingsController,
-      ContactsController,
-      SupplementsController,
       NotificationsController,
       TaskDocumentsController,
       EnterpriseDocumentsController,
@@ -149,8 +143,6 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       TasksService,
       ExpertTasksService,
       WorkupService,
-      ContactsService,
-      SupplementsService,
       NotificationsService,
       LicenseReader,
       SubmissionService,

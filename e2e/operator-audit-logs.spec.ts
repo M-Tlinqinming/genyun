@@ -29,9 +29,11 @@ test.afterAll(async () => {
 });
 
 test('运营看到自己的登录记录，最新的在最上面', async () => {
-  await page.getByRole('menuitem', { name: /操作日志/ }).click();
+  // 操作日志不在菜单里，从运营概览「最近操作」的「全部记录」进入
+  await page.getByRole('menuitem', { name: /运营概览/ }).click();
+  await page.getByRole('link', { name: '全部记录' }).click();
   await expect(page).toHaveURL(/\/operator\/audit-logs$/);
-  await expect(page.getByRole('heading', { name: '操作日志' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '全部记录' })).toBeVisible();
   const first = page.getByRole('row').nth(1);
   await expect(first).toContainText('登录成功');
   await expect(first).toContainText('ops@demo.genyun.net.cn');
@@ -61,7 +63,7 @@ test('客户管理员调接口 403，菜单里也没有操作日志', async ({ b
   const admin = await browser.newPage();
   await login(admin, 'admin@demo.genyun.net.cn');
   await expect(admin).not.toHaveURL(/\/login/);
-  await expect(admin.getByRole('menuitem', { name: /操作日志/ })).toHaveCount(0);
+  await expect(admin.getByRole('menuitem', { name: /操作日志|全部记录/ })).toHaveCount(0);
   const res = await admin.request.get('/api/operator/audit-logs');
   expect(res.status()).toBe(403);
   await admin.close();

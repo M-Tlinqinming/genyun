@@ -7,7 +7,7 @@ import {
   type GenerationMaterials,
   type WorkupGap,
 } from '@genyun/shared';
-import { App, Button, Skeleton, Tooltip } from 'antd';
+import { App, Button, Skeleton } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState, type CSSProperties } from 'react';
 import { openFile } from '../../../api/documents';
@@ -136,7 +136,7 @@ export function ConfirmView({
       </div>
       <div style={{ ...text14, color: gy.text, padding: '12px 16px', borderRadius: 6, background: flagged ? gy.warningBg : gy.selected }}>
         {flagged
-          ? `有 ${flagged} 份资料在专业整理开始以后又有变化。如果会影响已整理的事实，请发起事实补件；不影响可以直接确认。`
+          ? `有 ${flagged} 份资料在专业整理开始以后又有变化。如果会影响已整理的事实，请先电话向客户问清并回到专业整理修改；不影响可以直接确认。`
           : '下面是专业整理时对照的客户资料。确认后锁定这些资料和本次整理结果，作为生成三份草稿的依据。'}
       </div>
 
@@ -265,11 +265,6 @@ function MaterialLine({ row, justChanged }: { row: AdoptedMaterial; justChanged:
           >
             查看原文件
           </button>
-        )}
-        {c && (
-          <Tooltip title="事实补件即将开放；现在可以先打电话向客户问清">
-            <span style={{ ...text14, color: gy.tertiary, cursor: 'not-allowed' }}>发起事实补件</span>
-          </Tooltip>
         )}
       </span>
     </li>

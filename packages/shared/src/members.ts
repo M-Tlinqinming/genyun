@@ -1,5 +1,5 @@
-// 客户组织管理（M3 第 7 项，Paper 11 页「组织管理」）：机构管理员管理成员、邀请、企业分配、组织资料，查看年度服务。前后端共用。
-// 成员只能访问分配给自己的企业；机构管理员访问全部企业。邀请沿用同一套邮件邀请（7 天有效）
+// 客户组织管理（M3 第 7 项，Paper 11 页「组织管理」）：组织管理员管理成员、邀请、企业分配、组织资料，查看年度服务。前后端共用。
+// 成员只能访问分配给自己的企业；组织管理员访问全部企业。邀请沿用同一套邮件邀请（7 天有效）
 import { z } from 'zod';
 import type { InvitationState } from './invitation.ts';
 import type { ContractState } from './task.ts';
@@ -7,12 +7,12 @@ import type { ServiceScopeKind } from './organization.ts';
 
 export const CUSTOMER_ROLES = ['customer_admin', 'customer_member'] as const;
 export type CustomerRole = (typeof CUSTOMER_ROLES)[number];
-export const CUSTOMER_ROLE_LABELS: Record<CustomerRole, string> = { customer_admin: '机构管理员', customer_member: '成员' };
+export const CUSTOMER_ROLE_LABELS: Record<CustomerRole, string> = { customer_admin: '组织管理员', customer_member: '成员' };
 
 // 角色说明（成员与权限下方的两张卡片）
 export const CUSTOMER_ROLE_DUTIES: Record<CustomerRole, string> = {
   customer_admin: '访问全部企业；邀请与移除成员、分配企业、查看年度服务。至少保留 1 名。',
-  customer_member: '只访问分配给自己的企业；可建任务、上传资料、提交申请、回应补件、下载成果。',
+  customer_member: '只访问分配给自己的企业；可建任务、上传资料、提交申请、下载成果。',
 };
 
 export const memberInviteSchema = z.object({
@@ -59,7 +59,7 @@ export interface OrgMember {
   email: string;
   role: CustomerRole;
   self: boolean;
-  // 分配到的企业（机构管理员可以看全部企业，这里只表示「负责」）
+  // 分配到的企业（组织管理员可以看全部企业，这里只表示「负责」）
   enterpriseIds: string[];
 }
 

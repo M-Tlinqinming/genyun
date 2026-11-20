@@ -1,5 +1,5 @@
 import type { Workspace } from '@genyun/shared';
-import { createBrowserRouter, Navigate, type RouteObject } from 'react-router';
+import { createBrowserRouter, Navigate, useParams, type RouteObject } from 'react-router';
 import { NAVIGATION } from './layouts/navigation';
 import { WorkspaceLayout } from './layouts/WorkspaceLayout';
 import { AccountPage, AccountLayout } from './pages/AccountPage';
@@ -8,15 +8,12 @@ import { LoginPage } from './pages/LoginPage';
 import { RecoverPage } from './pages/RecoverPage';
 import { PendingPage } from './pages/PendingPage';
 import { DeliveryPage } from './pages/customer/documents/DeliveryPage';
-import { DeliveryReaderPage } from './pages/customer/documents/DeliveryReaderPage';
 import { DocumentsPage } from './pages/customer/documents/DocumentsPage';
 import { EnterpriseCreatePage } from './pages/customer/EnterpriseCreatePage';
 import { EnterpriseDetailPage } from './pages/customer/EnterpriseDetailPage';
 import { EnterpriseListPage } from './pages/customer/EnterpriseListPage';
 import { MyFeedbackPage } from './pages/customer/MyFeedbackPage';
 import { OrganizationPage } from './pages/customer/OrganizationPage';
-import { SelfFillPage } from './pages/customer/fill/SelfFillPage';
-import { StartMethodPage } from './pages/customer/StartMethodPage';
 import { TaskCreatePage } from './pages/customer/TaskCreatePage';
 import { TaskListPage } from './pages/customer/TaskListPage';
 import { TaskPage } from './pages/customer/TaskPage';
@@ -36,7 +33,7 @@ import { OrganizationListPage } from './pages/operator/OrganizationListPage';
 
 const EYEBROW: Record<Workspace, string> = {
   customer: '客户工作台',
-  expert: '耕云内部 / 专业处理',
+  expert: '耕云专家',
   operator: '耕云运营',
 };
 
@@ -50,7 +47,15 @@ const HOME: Partial<Record<Workspace, RouteObject['element']>> = {
 // 不在菜单里的页面（从列表点进去）
 const EXTRA: Partial<Record<Workspace, RouteObject[]>> = {
   expert: [{ path: 'tasks/:taskId', element: <ExpertTaskPage /> }],
+  // 全部记录（操作日志）：从运营概览「最近操作」进入，菜单高亮运营概览
+  operator: [{ path: 'audit-logs', element: <AuditLogPage /> }],
 };
+
+// 旧地址（取消的填写向导、在线阅读）：收藏过的链接跳到现在对应的页面
+function Moved({ to }: { to: (taskId: string) => string }) {
+  const { taskId } = useParams();
+  return <Navigate to={to(taskId!)} replace />;
+}
 
 // 已做好的页面；菜单项下可以有子页面
 const PAGES: Partial<Record<string, RouteObject[]>> = {
@@ -60,15 +65,14 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
     { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
   ],
-  // 组织管理（仅机构管理员，侧栏只对机构管理员显示）；?tab= 切换组织资料、成员与权限、企业分配、年度服务
+  // 组织管理（仅组织管理员，侧栏只对组织管理员显示）；?tab= 切换组织资料、成员与权限、企业分配、年度服务
   '/customer/organization': [{ index: true, element: <OrganizationPage /> }],
   // 我的反馈（?id= 定位到某一条；平时不在菜单里）
   '/customer/feedback': [{ index: true, element: <MyFeedbackPage /> }],
-  '/operator/audit-logs': [{ index: true, element: <AuditLogPage /> }],
   // 反馈受理（?id= 打开某一条）
   '/operator/feedback': [{ index: true, element: <FeedbackPage /> }],
   '/operator/accounts': [{ index: true, element: <InternalAccountsPage /> }],
-  // 知识库：?tab= 切换属地应急机构、工艺模板、节假日
+  // 知识库：?tab= 切换页签（现在只有属地应急机构）
   '/operator/knowledge': [{ index: true, element: <KnowledgePage /> }],
   '/operator/organizations': [
     { index: true, element: <OrganizationListPage /> },
@@ -84,12 +88,14 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
     { path: ':taskId', element: <TaskPage /> },
+    { path: ':taskId/start', element: <Moved to={(id) => `/customer/tasks/${id}`} /> },
+    { path: ':taskId/fill/:step', element: <Moved to={(id) => `/customer/tasks/${id}`} /> },
   ],
-  // 成果文档：列表 → 某任务的交付详情（?v= 版本）→ 在线阅读
+  // 成果文档：列表 → 某任务的交付详情（客户只看最新一次交付）
   '/customer/documents': [
     { index: true, element: <DocumentsPage /> },
     { path: ':taskId', element: <DeliveryPage /> },
-    { path: ':taskId/read/:kind', element: <DeliveryReaderPage /> },
+    { path: ':taskId/read/:kind', element: <Moved to={(id) => `/customer/documents/${id}`} /> },
   ],
 };
 
@@ -128,12 +134,10 @@ export const router = createBrowserRouter([
   { path: '/account', element: <AccountLayout />, children: [{ index: true, element: <AccountPage /> }] },
   // 邮件里的邀请链接，不用登录
   { path: '/invite/:token', element: <InvitePage /> },
-  // 选择开始方式是全屏页，不在工作区框架里
-  { path: '/customer/tasks/:taskId/start', element: <StartMethodPage /> },
-  { path: '/customer/tasks/:taskId/fill/:step', element: <SelfFillPage /> },
   workspaceRoutes('customer'),
   workspaceRoutes('expert'),
   workspaceRoutes('operator'),
   ...DEV_ROUTES,
+  // 不存在的地址：登录页会把已登录的人送回自己的工作台
   { path: '*', element: <Navigate to="/login" replace /> },
 ]);

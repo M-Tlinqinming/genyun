@@ -15,14 +15,13 @@ export interface ExpertTask {
   closedAt: string | null;
   activityAt: string;
   verifyItems: { key: ChecklistItemKey; label: string; kind: 'photo' | 'call' }[];
-  contact: { requestedAt: string; requestedBy: string; labels: string[]; deadline: string; daysLeft: number } | null;
 }
 
 export interface ExpertEvent {
   at: string;
   taskId: string;
   text: string;
-  kind: 'submitted' | 'contact' | 'photo' | 'delivered';
+  kind: 'submitted' | 'photo' | 'delivered';
 }
 
 export function useExpertTasks() {

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enterpriseKeys, orgTasksKey } from './enterprises';
 import { request } from './request';
 
-// 组织管理（机构管理员）：成员、邀请、企业分配、组织资料、年度服务
+// 组织管理（组织管理员）：成员、邀请、企业分配、组织资料、年度服务
 export const orgManagementKey = (orgId: string) => ['orgs', orgId, 'management'] as const;
 
 export function useOrgManagement(orgId: string) {

@@ -30,7 +30,6 @@ import { Button, Input, InputNumber, Select, Upload } from 'antd';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import type { Task } from '../../../api/tasks';
 import { gy, source } from '../../../theme/tokens';
-import { OnSiteDialog } from '../OnSiteVisit';
 import { AFTER_FILLING, FillCard, FillFrame, SidePanel, StepTitle } from './FillFrame';
 import {
   AnswerSwitch,
@@ -66,7 +65,6 @@ const VISIBLE_CHIPS = 5;
 export function ResourcesStepPage({ task }: { task: Task }) {
   const { step, saved, fileNames, uploading, leaving, autosave, update, leave, upload, removeLinked } =
     useResourcesDraft(task);
-  const [booking, setBooking] = useState(false);
   const view = saved.current;
 
   const missingDrawings = step
@@ -223,7 +221,6 @@ export function ResourcesStepPage({ task }: { task: Task }) {
                   drawings: { ...s.drawings, [key]: s.drawings[key].filter((f) => f !== id) },
                 }))
               }
-              onOnSite={() => setBooking(true)}
             />
             <AssemblyPointCard step={step} onChange={update} />
             <NeighborsCard step={step} onChange={update} />
@@ -239,7 +236,6 @@ export function ResourcesStepPage({ task }: { task: Task }) {
         ]}
         after={AFTER_FILLING}
       />
-      <OnSiteDialog taskId={task.id} open={booking} onClose={() => setBooking(false)} />
     </FillFrame>
   );
 }
@@ -984,14 +980,12 @@ function DrawingsCard({
   uploading,
   onFile,
   onRemove,
-  onOnSite,
 }: {
   step: ResourcesStep;
   fileNames: Record<string, string>;
   uploading: string | null;
   onFile: (key: DrawingKey, file: File) => void;
   onRemove: (key: DrawingKey, fileId: string) => void;
-  onOnSite: () => void;
 }) {
   return (
     <FillCard gap={12}>
@@ -1064,21 +1058,6 @@ function DrawingsCard({
             </div>
           );
         })}
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '10px 12px',
-          borderRadius: 6,
-          background: gy.canvas,
-        }}
-      >
-        <span style={{ flex: 1, fontSize: 13, lineHeight: '20px', color: '#3F4A5C' }}>图纸都没有，或者没人手整理？</span>
-        <button type="button" style={{ ...linkButton, fontSize: 13, lineHeight: '20px' }} onClick={onOnSite}>
-          预约耕云专家上门
-        </button>
       </div>
     </FillCard>
   );

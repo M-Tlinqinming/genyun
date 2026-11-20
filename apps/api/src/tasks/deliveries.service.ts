@@ -1,7 +1,7 @@
-// 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05、R06）：已交付的三份 Word 按交付版本（V1、V2…）列出，
-// 在线阅读（发布时那一版的 PDF）、单份下载（走 /files/:id/download-url）、整套下载（三份打包成一个压缩包）。
+// 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05）：已交付的三份 Word 按交付先后列出（客户只看最新一次），
+// 单份下载（走 /files/:id/download-url）、整套下载（三份打包成一个压缩包）。在线阅读已取消。
 // 谁能看由 access.ts 的 canViewDeliveries / canViewOrganization 决定；别家客户、其他专家一律 404，不暴露任务是否存在
-import { DRAFT_KIND_KEYS, deliveryBundleName, safeFileName, type DeliveredVersion, type DraftKind, type TaskDeliveries } from '@genyun/shared';
+import { DRAFT_KIND_KEYS, deliveryBundleName, safeFileName, type DeliveredVersion, type TaskDeliveries } from '@genyun/shared';
 import {
   Controller,
   Get,
@@ -20,7 +20,7 @@ import { canViewDeliveries, canViewOrganization, enterpriseScope } from '../auth
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { deliveries, deliveryFiles, draftPreviews, enterprises, files, generatedDrafts, tasks } from '../db/schema.ts';
+import { deliveries, deliveryFiles, enterprises, files, tasks } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 
 const NOT_FOUND = '找不到该成果';
@@ -52,16 +52,6 @@ export class DeliveriesService {
     return built!;
   }
 
-  /** 在线阅读（R06）：发布时那一版的 PDF。没有转好的版式时 404，页面提示下载 Word */
-  async readingPdf(user: SessionUser, taskId: string, version: number, kind: string): Promise<Buffer> {
-    const task = await this.task(user, taskId);
-    if (!isKind(kind)) throw new NotFoundException(NOT_FOUND);
-    const delivery = await this.delivery(task.id, version);
-    const pdf = await this.pdfFor(delivery.batchId, kind, delivery.versions[kind]);
-    if (!pdf) throw new NotFoundException('这份成果暂时不能在线阅读，请下载 Word 查看');
-    return this.storage.read(pdf.storageKey);
-  }
-
   /** 整套下载：同一个交付版本的三份 Word 打成一个压缩包，避免混用版本 */
   async bundle(user: SessionUser, taskId: string, version: number): Promise<{ name: string; data: Buffer }> {
     const task = await this.task(user, taskId);
@@ -78,7 +68,7 @@ export class DeliveriesService {
     }
     // Word 本身已经压缩过，打包时不再压缩
     const data = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
-    return { name: deliveryBundleName(task.enterpriseName, version), data };
+    return { name: deliveryBundleName(task.enterpriseName, delivery.publishedAt ?? delivery.updatedAt), data };
   }
 
   private tasks() {
@@ -108,7 +98,7 @@ export class DeliveriesService {
       .from(deliveries)
       .where(and(eq(deliveries.taskId, taskId), eq(deliveries.version, version), eq(deliveries.status, 'done')))
       .limit(1);
-    if (!row) throw new NotFoundException('找不到这个交付版本');
+    if (!row) throw new NotFoundException('找不到这次交付');
     return row;
   }
 
@@ -127,7 +117,6 @@ export class DeliveriesService {
           .innerJoin(files, eq(files.id, deliveryFiles.fileId))
           .where(inArray(deliveryFiles.deliveryId, done.map((d) => d.id)))
       : [];
-    const readable = await this.readableSet(done);
 
     return list.flatMap((t): TaskDeliveries[] => {
       const versions = done
@@ -139,7 +128,7 @@ export class DeliveriesService {
             files: DRAFT_KIND_KEYS.flatMap((kind) =>
               fileRows
                 .filter((f) => f.deliveryId === d.id && f.kind === kind)
-                .map((f) => ({ kind, name: f.name, fileId: f.fileId, sizeBytes: f.sizeBytes, readable: readable.has(`${d.id}/${kind}`) })),
+                .map((f) => ({ kind, name: f.name, fileId: f.fileId, sizeBytes: f.sizeBytes })),
             ),
           }),
         );
@@ -147,52 +136,7 @@ export class DeliveriesService {
       return [{ taskId: t.id, taskNumber: t.number, taskName: t.name, enterpriseId: t.enterpriseId, enterpriseName: t.enterpriseName, versions }];
     });
   }
-
-  // 哪些交付版本的哪几份有可以在线阅读的 PDF：没改过的用生成时转好的，改过的用核对时按那一版转好的
-  private async readableSet(done: (typeof deliveries.$inferSelect)[]): Promise<Set<string>> {
-    const set = new Set<string>();
-    if (done.length === 0) return set;
-    const batchIds = done.map((d) => d.batchId);
-    const generated = await this.db
-      .select({ batchId: generatedDrafts.batchId, kind: generatedDrafts.kind, pdfFileId: generatedDrafts.pdfFileId })
-      .from(generatedDrafts)
-      .where(inArray(generatedDrafts.batchId, batchIds));
-    const previews = await this.db
-      .select({ batchId: draftPreviews.batchId, kind: draftPreviews.kind, version: draftPreviews.version, status: draftPreviews.status, fileId: draftPreviews.fileId })
-      .from(draftPreviews)
-      .where(inArray(draftPreviews.batchId, batchIds));
-    for (const d of done) {
-      for (const kind of DRAFT_KIND_KEYS) {
-        const v = d.versions[kind];
-        const fromGenerated = v === 0 && generated.some((g) => g.batchId === d.batchId && g.kind === kind && g.pdfFileId);
-        const fromPreview = previews.some((p) => p.batchId === d.batchId && p.kind === kind && p.version === v && p.status === 'done' && p.fileId);
-        if (fromGenerated || fromPreview) set.add(`${d.id}/${kind}`);
-      }
-    }
-    return set;
-  }
-
-  private async pdfFor(batchId: string, kind: DraftKind, version: number) {
-    if (version === 0) {
-      const [gen] = await this.db
-        .select({ storageKey: files.storageKey })
-        .from(generatedDrafts)
-        .innerJoin(files, eq(files.id, generatedDrafts.pdfFileId))
-        .where(and(eq(generatedDrafts.batchId, batchId), eq(generatedDrafts.kind, kind)))
-        .limit(1);
-      if (gen) return gen;
-    }
-    const [row] = await this.db
-      .select({ storageKey: files.storageKey })
-      .from(draftPreviews)
-      .innerJoin(files, eq(files.id, draftPreviews.fileId))
-      .where(and(eq(draftPreviews.batchId, batchId), eq(draftPreviews.kind, kind), eq(draftPreviews.version, version), eq(draftPreviews.status, 'done')))
-      .limit(1);
-    return row ?? null;
-  }
 }
-
-const isKind = (k: string): k is DraftKind => (DRAFT_KIND_KEYS as string[]).includes(k);
 
 // 中文文件名按 RFC 5987 写入下载头；encodeURIComponent 不转义 '()*，这里补上
 export function attachment(filename: string): string {
@@ -239,19 +183,6 @@ export class DeliveriesController {
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, no-store',
     });
-    res.send(data);
-  }
-
-  @Get('tasks/:id/deliveries/:version/:kind/pdf')
-  async pdf(
-    @CurrentUser() user: SessionUser,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('version', VersionPipe) version: number,
-    @Param('kind') kind: string,
-    @Res() res: Response,
-  ) {
-    const data = await this.service.readingPdf(user, id, version, kind);
-    res.set({ 'Content-Type': 'application/pdf', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
     res.send(data);
   }
 }

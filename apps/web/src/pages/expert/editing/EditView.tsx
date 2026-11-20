@@ -34,8 +34,6 @@ import { ApiError } from '../../../api/request';
 import { previewKey, reviewKey, useReview } from '../../../api/review';
 import { linkButton, Loading } from '../../../components/ui';
 import { gy, stage } from '../../../theme/tokens';
-import { ContactRecords } from '../workup/ContactRecords';
-import { FactsChangedNotice } from '../workup/SupplementView';
 import { ConflictDialog, copyText, LeaveDialog, RewriteDialog, stamp, ViewSwitch } from './EditDialogs';
 import { blocksToDoc, docToBlocks } from './editorDoc';
 import type { Editor } from '@tiptap/react';
@@ -47,7 +45,7 @@ import { currentParagraph, EditorPane, LockedContext, replaceParagraph } from '.
 // 按节改：左栏章节目录，中栏这一节的正文（表格和图锁定），右栏本次采用的企业资料；改完写修订说明再保存。
 // 切换文档、换节、离开任务都先检查未保存的修改；保存结果不明时先查上一次保存有没有记上，再决定重发还是重新保存。
 
-const STAGES = ['资料核实', '专业编制', '审核与修订', '成果发布'];
+const STAGES = ['资料核实', '专业编制', '审核与修订', '成果交付'];
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const panel: CSSProperties = { background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 6 };
 
@@ -105,7 +103,6 @@ export function EditView({
   const review = useReview(taskId);
   const client = useQueryClient();
   const { message, modal } = App.useApp();
-  const [showRecords, setShowRecords] = useState(false);
 
   const [baseline, setBaseline] = useState<EditBlock[] | null>(null);
   const [current, setCurrent] = useState<EditBlock[] | null>(null);
@@ -435,7 +432,7 @@ export function EditView({
   const thisDoc = r?.docs.find((x) => x.kind === kind);
   const published = d.published ?? null;
   const chip = published
-    ? { text: `已发布为交付 V${published.version} · 只读`, ...stage.done }
+    ? { text: '已交付 · 只读', ...stage.done }
     : !editable
     ? { text: '只读 · 由负责专家修改', color: gy.secondary, bg: gy.neutralBg }
     : dirty
@@ -496,15 +493,8 @@ export function EditView({
               </li>
             ))}
           </ol>
-          <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setParams({ view: 'supplement', start: '1' })}>
-            发起事实补件
-          </button>
-          <button type="button" style={{ ...linkButton, ...text14 }} onClick={() => setShowRecords(true)}>
-            处理记录
-          </button>
         </div>
       </header>
-      <FactsChangedNotice taskId={taskId} onRegenerate={editable ? () => setParams({ view: 'confirm' }) : undefined} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 28, paddingBottom: 12, borderBottom: `1px solid ${gy.split}` }}>
         <div role="tablist" aria-label="三份文档" style={{ display: 'flex', gap: 28 }} onKeyDown={(e) =>
@@ -675,7 +665,7 @@ export function EditView({
                 {generation.materials.length === 0 && <li style={{ ...text14, color: gy.secondary }}>本次按专业整理的内容生成，没有采用客户上传的文件</li>}
               </ul>
               <span style={{ ...text14, color: gy.secondary }}>
-                在这里修正文稿措辞与转录差异。企业事实存疑时，先回到专业整理核实或联系客户补件，再重新生成。
+                在这里修正文稿措辞与转录差异。企业事实存疑时，先回到专业整理核实（需要时电话联系客户），再重新生成。
               </span>
               <span style={{ ...text14, color: gy.secondary }}>表格和图来自专业整理，在正文里锁定。</span>
             </>
@@ -705,7 +695,7 @@ export function EditView({
       >
         {published ? (
           <span style={{ flex: 1, ...text14, color: gy.secondary }}>
-            这批文稿已发布为交付 V{published.version}，正文不能再修改。需要更正请发起事实补件，重新生成后再发布。
+            这批文稿已交付，正文不能再修改。要更正请回到资料核对，重新生成后再交付。
           </span>
         ) : !editable ? (
           <span style={{ flex: 1, ...text14, color: gy.secondary }}>只有负责这个任务的专家可以修改正文；可以下载当前稿 Word 查看。</span>
@@ -791,7 +781,6 @@ export function EditView({
         onCopyMine={() => void copyMine(current)}
       />
       <RewriteDialog preview={rewritePreview} onAdopt={adoptRewrite} onReject={() => setRewritePreview(null)} />
-      <ContactRecords taskId={taskId} open={showRecords} onClose={() => setShowRecords(false)} />
     </div>
   );
 }

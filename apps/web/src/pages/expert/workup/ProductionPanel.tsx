@@ -30,7 +30,6 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { linkButton } from '../../../components/ui';
 import { useListMotion } from '../../../theme/motion';
 import { gy, source, stage } from '../../../theme/tokens';
-import type { AskItem } from './ContactDialog';
 import { SourceTag } from './FactsPanel';
 
 // 页面补上版本号和对照的原件
@@ -48,7 +47,6 @@ export interface ProductionPanelProps {
   onOpenFile: (fileId: string) => void;
   // 某类资料的原件（设备台账、原辅材料台账），没有时返回 undefined
   onOpenItem: (itemKey: ChecklistItemKey) => (() => void) | undefined;
-  onAsk: (item: AskItem) => void;
   registerRow: (key: string, el: HTMLElement | null) => void;
 }
 
@@ -708,12 +706,6 @@ function SpecialTable(props: ProductionPanelProps & { rows: SpecialRow[]; compre
                   saving={props.saving}
                   onFill={() => setEditing(r.category)}
                   onNone={() => judge(r.category, { answer: 'no', items: [] })}
-                  onAsk={() =>
-                    props.onAsk({
-                      itemKey: 'special_equipment',
-                      question: `请确认厂里有没有${r.label}；有的话请拍铭牌，或写明${SPECIAL_FIELDS[r.category].map((f) => f.label.replace(/（.*）/, '')).join('、')}。`,
-                    })
-                  }
                 />
               )
             )}
@@ -775,14 +767,12 @@ function SpecialBar({
   saving,
   onFill,
   onNone,
-  onAsk,
 }: {
   row: SpecialRow;
   compressor: boolean;
   saving: boolean;
   onFill: () => void;
   onNone: () => void;
-  onAsk: () => void;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 6 }}>
@@ -790,9 +780,6 @@ function SpecialBar({
       <span style={{ ...small, flex: 1, minWidth: 0 }}>{specialHint(row, compressor)}</span>
       <button type="button" style={{ ...linkButton, fontSize: 13 }} onClick={onFill}>
         填参数
-      </button>
-      <button type="button" style={{ ...linkButton, fontSize: 13 }} onClick={onAsk}>
-        联系客户
       </button>
       <button type="button" disabled={saving} style={{ ...linkButton, fontSize: 13 }} onClick={onNone}>
         判定为无
@@ -1026,13 +1013,6 @@ function FirstAid(props: ProductionPanelProps & { kit: ReturnType<typeof product
               看照片
             </button>
           )}
-          <button
-            type="button"
-            style={linkButton}
-            onClick={() => props.onAsk({ itemKey: 'first_aid_kit', question: '请在任务里补充急救药箱的药品清单（药品名称和数量）。' })}
-          >
-            请客户补充
-          </button>
         </div>
         <div style={head}>药品清单由客户填写，专家不代为整理</div>
       </div>

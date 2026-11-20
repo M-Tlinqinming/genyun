@@ -122,7 +122,7 @@ test('待分派里有已提交、没有负责专家的任务；分派给周工�
 test('改派给吴工：可选理由告诉周工；吴工看到任务，周工打开旧链接看到已改派给谁', async ({ browser }) => {
   await page.goto(`/operator/tasks?task=${hardwareTask}`);
   const panel = page.getByRole('region', { name: '任务详情' });
-  await expect(panel).toContainText('联系记录 0 条');
+  await expect(panel).toContainText('专业整理还没开始');
   await panel.getByRole('button', { name: '改派专家' }).click();
   const dialog = page.getByRole('dialog', { name: /改派专家/ });
   // 当前负责专家不能再选

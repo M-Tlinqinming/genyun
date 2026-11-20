@@ -27,7 +27,7 @@ function subtitleOf(e: Enterprise): string {
   return e.registeredAddress ?? e.socialCreditCode ?? '尚未填写注册地址';
 }
 
-// 企业列表与筛选。成员只看到分配给自己的企业，也不能新建企业（由机构管理员新建并分配）
+// 企业列表与筛选。成员只看到分配给自己的企业，也不能新建企业（由组织管理员新建并分配）
 export function EnterpriseListPage() {
   const { orgId, role } = useWorkspace();
   const isAdmin = role === 'customer_admin';
@@ -66,7 +66,7 @@ export function EnterpriseListPage() {
     <>
       <PageHeader
         title="企业"
-        description={isAdmin ? '管理本机构服务的企业。企业资料可在多次编制任务中复用。' : '分配给您的企业。企业资料可在多次编制任务中复用。'}
+        description={isAdmin ? '管理本组织服务的企业。企业资料可在多次编制任务中复用。' : '分配给您的企业。企业资料可在多次编制任务中复用。'}
         extra={isAdmin ? newButton : undefined}
       />
       <div style={{ background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 8, overflow: 'hidden' }}>
@@ -108,7 +108,7 @@ export function EnterpriseListPage() {
                     {newButton}
                   </Empty>
                 ) : (
-                  <Empty description="还没有分配给您的企业。请联系机构管理员分配。" style={{ padding: '48px 0' }} />
+                  <Empty description="还没有分配给您的企业。请联系组织管理员分配。" style={{ padding: '48px 0' }} />
                 )
               ) : (
                 <Empty description="没有符合条件的企业" style={{ padding: '48px 0' }} />
@@ -181,7 +181,7 @@ export function EnterpriseListPage() {
         <div style={{ marginTop: 20, padding: '16px 20px', borderRadius: 8, background: gy.selected, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>找不到某家企业？</span>
           <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>
-            成员只能看到分配给自己的企业。请联系机构管理员确认企业是否已建立或已分配。
+            成员只能看到分配给自己的企业。请联系组织管理员确认企业是否已建立或已分配。
           </span>
         </div>
       )}

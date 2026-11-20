@@ -75,7 +75,7 @@ export function LoginPage() {
 
         <Divider style={{ margin: '24px 0' }} />
         <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-          尚未收到邀请？请联系机构管理员或耕云。
+          尚未收到邀请？请联系组织管理员或耕云。
         </Typography.Text>
       </section>
     </AccountShell>

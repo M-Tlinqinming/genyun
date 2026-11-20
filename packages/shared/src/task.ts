@@ -85,8 +85,6 @@ export interface TaskProgressFacts {
   closedAt: string | null;
   missing: string[];
   remaining: number;
-  // 专家发起、等客户回应的事实补件标题（M2 第 13 项）；没有为 null
-  supplement?: string | null;
 }
 
 // mine = 待我处理；gengyun = 耕云处理中；delivered = 已交付
@@ -104,14 +102,11 @@ export interface TaskTodo {
   action: string;
 }
 
-// 工作台和业务任务列表共用：任务归在哪一栏、下一步做什么、按钮叫什么。
-// M1 只有资料准备与已提交；专家补件请求（M2）来了以后也算待我处理
+// 工作台和任务列表共用：任务归在哪一栏、下一步做什么、按钮叫什么。
+// 系统里不再补件：提交以后有问题由负责专家或客服直接联系客户
 export function taskTodo(t: TaskProgressFacts): TaskTodo {
   if (t.closedAt !== null) {
-    return { bucket: 'delivered', stage: 3, stageText: '成果交付', next: '成果已发布，可查看和下载', action: '查看成果' };
-  }
-  if (t.status === 'submitted' && t.supplement) {
-    return { bucket: 'mine', stage: 2, stageText: '专家审核 · 等待您回应', next: t.supplement, action: '去回应' };
+    return { bucket: 'delivered', stage: 3, stageText: '成果交付', next: '成果已交付，可查看和下载', action: '查看成果' };
   }
   if (t.status === 'submitted') {
     return {
@@ -123,7 +118,7 @@ export function taskTodo(t: TaskProgressFacts): TaskTodo {
     };
   }
   if (t.startMethod === null) {
-    return { bucket: 'mine', stage: 0, stageText: '资料准备 · 尚未开始', next: '选择开始方式', action: '开始准备' };
+    return { bucket: 'mine', stage: 0, stageText: '资料准备 · 尚未开始', next: '下载资料模板，填好后上传', action: '开始准备' };
   }
   if (t.missing.length > 0) {
     const more = t.missing.length > 1 ? ` 等 ${t.missing.length} 项` : '';

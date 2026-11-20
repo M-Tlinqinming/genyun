@@ -292,7 +292,7 @@ export function RecoverPage() {
 
       <Divider style={{ margin: '20px 0' }} />
       <Typography.Text type="secondary" style={{ fontSize: 12, lineHeight: '20px', display: 'block' }}>
-        邮箱已无法使用？请联系机构管理员或耕云更换登录邮箱。
+        邮箱已无法使用？请联系组织管理员或耕云更换登录邮箱。
       </Typography.Text>
       </section>
     </AccountShell>

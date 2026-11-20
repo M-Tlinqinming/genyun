@@ -68,7 +68,7 @@ export class EnterprisesController {
   @Post('orgs/:orgId/enterprises')
   async create(@CurrentUser() user: SessionUser, @Param('orgId', ParseUUIDPipe) orgId: string, @Body() body: unknown) {
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
-    if (!canCreateEnterprise(user, orgId)) throw new ForbiddenException('新建企业请联系机构管理员');
+    if (!canCreateEnterprise(user, orgId)) throw new ForbiddenException('新建企业请联系组织管理员');
     const parsed = enterpriseInputSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     try {

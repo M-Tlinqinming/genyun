@@ -3,7 +3,6 @@ import {
   type ChecklistItemUpdate,
   type ChecklistState,
   type ItemState,
-  type OnSiteRequestInput,
   type TaskCreateInput,
   type TaskUpdateInput,
   CHECKLIST_ITEM_KEYS,
@@ -37,10 +36,8 @@ import {
   checklistItems,
   deliveries,
   enterprises,
-  factSupplements,
   files,
   notifications,
-  onSiteRequests,
   organizations,
   taskNumberCounters,
   taskSubmissions,
@@ -84,7 +81,7 @@ export class TasksService {
       .leftJoin(expert, eq(expert.id, tasks.assignedExpertId));
   }
 
-  // 工作台与业务任务列表（11 页 C01、C04）：每个任务附带进展——还缺的必需资料、提交后还没补的项、
+  // 工作台与任务列表（11 页 C01、C04）：每个任务附带进展——还缺的必需资料、提交后还没补的项、
   // 最近一次有人动过资料的时间
   async listForOrg(user: SessionUser, orgId: string) {
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
@@ -101,12 +98,7 @@ export class TasksService {
       .select({ taskId: taskSubmissions.taskId, pendingKeys: taskSubmissions.pendingKeys })
       .from(taskSubmissions)
       .where(inArray(taskSubmissions.taskId, ids));
-    // 专家发起、正在等客户回应的事实补件（工作台「待我处理」：去回应）
-    const asks = await this.db
-      .select({ taskId: factSupplements.taskId, title: factSupplements.title })
-      .from(factSupplements)
-      .where(and(inArray(factSupplements.taskId, ids), eq(factSupplements.status, 'awaiting_customer')));
-    // 已形成的交付版本（业务任务「已交付」、工作台「最近交付」显示最新一版）
+    // 已形成的交付版本（任务「已交付」、工作台「最近交付」显示最新一版）
     const delivered = await this.db
       .select({ taskId: deliveries.taskId, version: deliveries.version, publishedAt: deliveries.publishedAt })
       .from(deliveries)
@@ -126,7 +118,6 @@ export class TasksService {
         ...t,
         missing: checkChecklist(items).blocking.map((b) => b.label),
         remaining: progress.total - progress.done,
-        supplement: asks.find((a) => a.taskId === t.id)?.title ?? null,
         delivery: latestDelivery(delivered.filter((d) => d.taskId === t.id)),
         activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
       };
@@ -385,43 +376,7 @@ export class TasksService {
       review,
       contact: { name: basic.contactPerson ?? user.name, phone: basic.contactPhone ?? '' },
       contract: { startsAt: ent!.contractStartsAt, endsAt: ent!.contractEndsAt },
-      onSiteRequest: (await this.onSiteRequestsOf(id))[0] ?? null,
     };
-  }
-
-  // 预约耕云上门：只登记工单，运营在 M3 处理。同一任务可以多次预约（如补充新的需要）
-  async requestOnSite(user: SessionUser, id: string, input: OnSiteRequestInput) {
-    const task = await this.load(user, id);
-    if (!canEditEnterpriseData(user, task)) throw new ForbiddenException('上门需求由客户提交');
-    await this.db.insert(onSiteRequests).values({
-      orgId: task.orgId,
-      enterpriseId: task.enterpriseId,
-      taskId: id,
-      contactName: input.contactName,
-      contactPhone: input.contactPhone,
-      callTime: input.callTime,
-      helpItems: input.helpItems,
-      note: input.note || null,
-      createdBy: user.id,
-    });
-    return (await this.onSiteRequestsOf(id))[0]!;
-  }
-
-  // 客户看得到的字段（不含工单状态和运营内部备注：客户只看到「已收到上门需求」），新的在前
-  private onSiteRequestsOf(taskId: string) {
-    return this.db
-      .select({
-        id: onSiteRequests.id,
-        contactName: onSiteRequests.contactName,
-        contactPhone: onSiteRequests.contactPhone,
-        callTime: onSiteRequests.callTime,
-        helpItems: onSiteRequests.helpItems,
-        note: onSiteRequests.note,
-        createdAt: onSiteRequests.createdAt,
-      })
-      .from(onSiteRequests)
-      .where(eq(onSiteRequests.taskId, taskId))
-      .orderBy(desc(onSiteRequests.createdAt));
   }
 
   // 资料检查页（12 页 P05）：各项状态，加上挂的文件名、确认人姓名，页面按类别汇总

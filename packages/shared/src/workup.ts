@@ -76,8 +76,6 @@ export const factSaveSchema = z.object({
   source: z.enum(['expert', 'customer']).default('expert'),
   // 整理时对照的原件
   fileId: z.uuid().optional(),
-  // 采用客户在任务里的回答（联系记录）
-  contactId: z.uuid().optional(),
 });
 export type FactSave = z.infer<typeof factSaveSchema>;
 

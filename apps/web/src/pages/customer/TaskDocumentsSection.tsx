@@ -30,9 +30,10 @@ interface Pending {
   error?: string;
 }
 
-// 「上传已有资料」路线：任务页「资料与检查」（12 页 P03 上传、P03B 从企业资料中选用、P04 部分失败只重试失败项）。
-// 每个文件单独上传、单独登记进企业资料库并关联到任务，一个失败不影响其他文件
-export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: () => void }) {
+// 任务页「资料与检查」（12 页 P03 上传、P03B 从企业资料中选用、P04 部分失败只重试失败项）。
+// 每个文件单独上传、单独登记进企业资料库并关联到任务，一个失败不影响其他文件。
+// 原来的「检查资料」已取消；提交入口随新的上传资料表格流程接上
+export function TaskDocumentsSection({ task }: { task: Task }) {
   const docs = useTaskDocuments(task.id);
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -95,7 +96,6 @@ export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: (
 
   const saved = docs.data ?? [];
   const failed = pending.filter((p) => p.status === 'failed');
-  const uploading = pending.some((p) => p.status === 'uploading');
   const locked = task.status !== 'preparing';
 
   return (
@@ -119,7 +119,7 @@ export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: (
       ) : (
         <Heading
           title="先准备企业已有资料"
-          description="一个文件可支持多项事实检查。实际资料要求根据企业情况确定，无需凑齐固定文件数量。"
+          description="实际资料要求根据企业情况确定，无需凑齐固定文件数量。"
         />
       )}
 
@@ -261,14 +261,6 @@ export function TaskDocumentsSection({ task, onCheck }: { task: Task; onCheck: (
         <div style={{ display: 'flex', gap: 12 }}>
           <Button size="large" onClick={() => navigate(`/customer/enterprises/${task.enterpriseId}`)}>
             稍后继续
-          </Button>
-          <Button
-            size="large"
-            type="primary"
-            disabled={saved.length === 0 || uploading}
-            onClick={onCheck}
-          >
-            {failed.length > 0 ? '先检查已保存资料' : '检查资料'}
           </Button>
         </div>
       </div>

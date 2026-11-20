@@ -1,5 +1,5 @@
 // 反馈受理（M3 第 6 项，Paper 16 页「反馈受理」）。
-// 客户（机构管理员、成员）从成果文档页「反馈文稿问题」或顶栏「意见反馈」提交意见，可附文件、关联任务和交付版本；
+// 客户（组织管理员、成员）从成果文档页「反馈文稿问题」或顶栏「意见反馈」提交意见，可附文件、关联任务和交付版本；
 // 运营在反馈受理页受理、转给专家、写回复并关闭，客户在站内提醒和「我的反馈」里看到处理状态与结果（不发邮件）。
 // 与编制交付分开：这里不改任务状态、不触发重新生成、不改已交付版本。权限都在 access.ts
 import {
@@ -141,7 +141,7 @@ function toOperator(r: Row, names: Map<string, string>): OperatorFeedback {
   };
 }
 
-// 客户：提交反馈、看自己（机构管理员看本组织全部）的反馈
+// 客户：提交反馈、看自己（组织管理员看本组织全部）的反馈
 @Controller('orgs/:orgId/feedback')
 export class FeedbackController {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
@@ -178,7 +178,7 @@ export class FeedbackController {
           .select({ id: deliveries.id })
           .from(deliveries)
           .where(and(eq(deliveries.taskId, task.id), eq(deliveries.version, input.deliveryVersion), eq(deliveries.status, 'done')));
-        if (!d) throw new NotFoundException('找不到这个交付版本');
+        if (!d) throw new NotFoundException('找不到这次交付');
       }
     }
 
@@ -304,7 +304,7 @@ export class OperatorFeedbackController {
           {
             taskId: current.taskId!,
             title: '客户反馈了成果内容',
-            body: `${current.enterpriseName ?? ''} ${current.taskNumber ?? ''}${current.deliveryVersion ? ` 交付 V${current.deliveryVersion}` : ''}：「${current.content}」${note ? `运营说明：${note}` : ''}。${attached}是否另建修订任务由您决定，请与运营沟通；已交付版本保持不变。`,
+            body: `${current.enterpriseName ?? ''} ${current.taskNumber ?? ''}：「${current.content}」${note ? `运营说明：${note}` : ''}。${attached}要修改的话请和运营沟通。`,
             link: `/expert/tasks/${current.taskId}`,
           },
           tx,

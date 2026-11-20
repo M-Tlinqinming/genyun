@@ -5,12 +5,11 @@ import type { AgencyDistrict } from './plan/agencies.ts';
 import type { HolidayKind } from './workdays.ts';
 import { PROCESS_STEP_MAX } from './profile/process-flow.ts';
 
-export const KNOWLEDGE_TABS = ['agencies', 'templates', 'holidays'] as const;
+// 工艺模板、节假日页签已取消（表和数据保留）；生成仍用内置工艺模板
+export const KNOWLEDGE_TABS = ['agencies'] as const;
 export type KnowledgeTab = (typeof KNOWLEDGE_TABS)[number];
 export const KNOWLEDGE_TAB_LABELS: Record<KnowledgeTab, string> = {
   agencies: '属地应急机构',
-  templates: '工艺模板',
-  holidays: '节假日',
 };
 
 // ---------- 属地应急机构 ----------
@@ -152,27 +151,6 @@ export function agencyDistrictsOf(regions: readonly KnowledgeRegion[]): AgencyDi
   });
 }
 
-// ---------- 节假日 ----------
-
-export const holidayInputSchema = z.object({
-  date: z.iso.date('请选择日期'),
-  kind: z.enum(['holiday', 'workday'], { error: '请选择放假还是调休上班' }),
-  name: name('节日名称', 20),
-});
-export type HolidayInput = z.infer<typeof holidayInputSchema>;
-
-export interface KnowledgeHoliday {
-  date: string;
-  kind: HolidayKind;
-  name: string;
-  updatedAt: string;
-  updatedByName: string | null;
-}
-
-export interface KnowledgeHolidaysView {
-  holidays: KnowledgeHoliday[];
-}
-
 // ---------- 工艺模板 ----------
 
 // 运营维护的一道工序：常见物料、风险提示只给专家参考，客户选模板时只带出工序和设备
@@ -192,28 +170,3 @@ export const templateContentSchema = z.object({
   steps: z.array(templateStepSchema).max(PROCESS_STEP_MAX, `工序最多 ${PROCESS_STEP_MAX} 道`).default([]),
 });
 export type TemplateContent = z.infer<typeof templateContentSchema>;
-
-// 发布前要求至少一道工序
-export const templatePublishSchema = templateContentSchema.refine((v) => v.steps.length > 0, { path: ['steps'], message: '至少要有一道工序才能发布' });
-
-export type TemplateState = 'draft' | 'published' | 'disabled';
-export const TEMPLATE_STATE_LABELS: Record<TemplateState, string> = { draft: '草稿', published: '已发布', disabled: '已停用' };
-
-export interface KnowledgeTemplate {
-  id: string;
-  state: TemplateState;
-  // 已发布的版本号（从 1 起），从未发布为 0
-  version: number;
-  // 客户现在看到的内容（从未发布时为 null）
-  published: TemplateContent | null;
-  // 未发布的修改（没有为 null）
-  draft: TemplateContent | null;
-  // 选用过这个模板的企业数
-  usedBy: number;
-  updatedAt: string;
-  updatedByName: string | null;
-}
-
-export interface KnowledgeTemplatesView {
-  templates: KnowledgeTemplate[];
-}
