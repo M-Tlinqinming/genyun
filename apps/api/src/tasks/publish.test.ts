@@ -246,7 +246,7 @@ describe('发布', () => {
     expect((await zhou.get(`${publishUrl()}?publishId=${failedId}`).expect(200)).body.attempt.status).toBe('failed');
   });
 
-  it('正常发布形成交付 V1：任务已交付、客户收到站内提醒、Word 文件属性写 AI 标识和审核人', async () => {
+  it('正常交付：任务已交付、客户收到站内提醒、Word 文件属性写 AI 标识和审核人', async () => {
     const zhou = await as('zhou@test.cn');
     // 后台从没收到过的一次：查询结果为空，页面据此判断可以重新发布
     const unknown: PublishView = (await zhou.get(`${publishUrl()}?publishId=${randomUUID()}`).expect(200)).body;
@@ -378,7 +378,7 @@ describe('发布', () => {
     try {
       const zhou = await as('zhou@test.cn');
       const refused = (await zhou.post(publishUrl()).send(body()).expect(409)).body;
-      expect(refused).toMatchObject({ reason: 'publishing', message: '这批文稿正在发布或已经发布，请刷新查看发布结果' });
+      expect(refused).toMatchObject({ reason: 'publishing', message: '这批文稿正在交付或已经交付，请刷新查看交付结果' });
       expect((await handle.db.select().from(deliveries).where(eq(deliveries.taskId, taskId))).filter((d) => d.status !== 'failed')).toHaveLength(1);
 
       await handle.db.update(tasks).set({ reopenedAt: new Date() }).where(eq(tasks.id, taskId));
