@@ -34,6 +34,8 @@ export interface Task {
   updatedAt: string;
   submittedAt: string | null;
   closedAt: string | null;
+  /** intake = 新流程（下载资料模板、上传资料表格）；legacy = 旧任务，按旧页面显示。只有任务详情接口带 */
+  flow?: 'intake' | 'legacy';
 }
 
 export interface Organization extends ContractPeriod {
