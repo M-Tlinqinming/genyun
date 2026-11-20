@@ -129,5 +129,14 @@ export const router = createBrowserRouter([
   workspaceRoutes('customer'),
   workspaceRoutes('expert'),
   workspaceRoutes('operator'),
+  // 组件展示页只在本机开发时有，正式构建时整段连同页面代码一起去掉
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: '/dev/ui',
+          lazy: async () => ({ Component: (await import('./pages/dev/UiShowcasePage')).UiShowcasePage }),
+        } satisfies RouteObject,
+      ]
+    : []),
   { path: '*', element: <Navigate to="/login" replace /> },
 ]);
