@@ -56,7 +56,7 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
         ],
       },
       {
-        label: '组织管理',
+        label: '组织',
         roles: ['customer_admin'],
         items: [{ path: '/customer/organization', label: '组织管理', icon: <TeamOutlined /> }],
       },
@@ -65,10 +65,10 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
   expert: {
     headerTitle: '耕云内部工作台',
     showContact: false,
-    orgLabel: '耕云专业处理',
+    orgLabel: '耕云专家',
     groups: [
       {
-        label: '专业工作空间',
+        label: '专家工作台',
         items: [
           { path: '/expert', label: '任务中心', icon: <ProfileOutlined /> },
           // 我的资料：专家库这一轮再做页面，先占位
@@ -83,7 +83,7 @@ export const NAVIGATION: Record<Workspace, WorkspaceNav> = {
     orgLabel: '耕云运营',
     groups: [
       {
-        label: '运营工作空间',
+        label: '运营工作台',
         items: [
           { path: '/operator', label: '运营概览', icon: <AppstoreOutlined /> },
           { path: '/operator/organizations', label: '客户组织', icon: <BankOutlined /> },
