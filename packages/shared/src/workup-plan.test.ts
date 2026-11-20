@@ -76,4 +76,32 @@ describe('按整理结果拼生成输入', () => {
     expect(team.leader?.name).toBe(feiyuPlanInput.organization.commander?.name);
     expect(team.members.at(-1)).toEqual({ name: '赵六', title: '行政主管', duty: '资料收集' });
   });
+
+  it('资料核对第 1、2 步存的专家那份：联系电话、增删后的小组都按专家的', () => {
+    const basic = feiyuSnapshot.profile.basicStep!;
+    const org = feiyuSnapshot.profile.organizationStep!;
+    const kept = org.step.groups.filter((g) => g.kind !== 'logistics');
+    const medical = { id: 'g-medical', kind: 'medical' as const, name: '医疗救护组', leader: { id: 'p-m', name: '钱七', phone: '13800000009' }, members: [] };
+    const edited = planInputOf(
+      feiyuSnapshot,
+      {
+        overrides: {},
+        profile: {
+          basicStep: { ...basic, basic: { ...basic.basic, contactPhone: '13800000008' } },
+          organizationStep: { ...org, step: { ...org.step, groups: [...kept, medical] } },
+        },
+      },
+      '2026-11-01',
+    );
+    expect(edited.basic.contactPhone).toBe('13800000008');
+    expect(edited.organization.groups.map((g) => g.kind)).toEqual([...kept.map((g) => g.kind), 'medical']);
+    expect(edited.organization.groups.find((g) => g.kind === 'medical')?.leader).toMatchObject({ name: '钱七', phone: '13800000009' });
+    expect(edited.organization.groups.some((g) => g.kind === 'logistics')).toBe(false);
+  });
+
+  it('勾了「先留空」的项带到生成输入里，文稿写「（待补充）」', () => {
+    expect(input.expert.pending).toBeUndefined();
+    const blank = planInputOf(feiyuSnapshot, { overrides: {}, blank: ['technicalManagementCount', 'contactPerson'] }, '2026-11-01');
+    expect(blank.expert.pending).toEqual(['technicalManagementCount', 'contactPerson']);
+  });
 });

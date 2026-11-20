@@ -1,5 +1,5 @@
 // 企业自填第 2 步「人员与应急组织」（Paper 12 页 S02；体系图规则见 12 页「组织体系图 · 生成规则」）。
-// 边填边保存，所以姓名、电话都允许暂时空着；交付前由注册安全工程师按 organizationSchema 核对。
+// 边填边保存，所以姓名、电话都允许暂时空着；交付前由专家按 organizationSchema 核对。
 import { z } from 'zod';
 import { YES_NO_UNKNOWN } from './basic.ts';
 import { PRESET_GROUPS, type PresetGroupKey } from './organization.ts';
@@ -96,11 +96,10 @@ export const GROUP_DESCRIPTIONS: Record<GroupKind, string> = {
 // 体系图上小组的排列顺序：抢险救灾 → 警戒疏散 → 医疗救护 → 综合保障 → 通讯联络 → 自定义
 export const CHART_ORDER: GroupKind[] = ['rescue', 'evacuation', 'medical', 'logistics', 'communication', 'custom'];
 
-// 建议规模（Martin 10-26 确认）：50 人以下 3 组；50–100 人 3–4 组；100 人以上 5 组。
-// 危化品在第 3 步之后才知道，由专家审核时调整
-export function suggestedGroups(employeeCount: number | undefined): { min: number; max: number } {
-  if (employeeCount !== undefined && employeeCount >= 100) return { min: 5, max: 5 };
-  if (employeeCount !== undefined && employeeCount >= 50) return { min: 3, max: 4 };
+// 建议规模（业务方 11-14 确认）：100 人以下 3 组；100 人及以上或有危化品 5 组。
+// 有没有危化品在第 3 步（生产情况）才知道，客户自填时不传，专家核对时按生产情况传进来
+export function suggestedGroups(employeeCount: number | undefined, hazardous = false): { min: number; max: number } {
+  if (hazardous || (employeeCount !== undefined && employeeCount >= 100)) return { min: 5, max: 5 };
   return { min: 3, max: 3 };
 }
 

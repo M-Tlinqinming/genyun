@@ -17,6 +17,9 @@ export function WizardLayout({
   headerExtra,
   footer,
   paddingBlock = 48,
+  paddingTop,
+  paddingBottom,
+  sideWidth,
   children,
 }: {
   /** 顶栏左边第一行：在做什么 */
@@ -33,15 +36,21 @@ export function WizardLayout({
   footer?: ReactNode;
   /** 内容区上下内边距，默认 48 */
   paddingBlock?: number;
+  /** 只改上内边距（如资料核对上 24），不传用 paddingBlock */
+  paddingTop?: number;
+  /** 只改下内边距（如资料核对下 32），不传用 paddingBlock */
+  paddingBottom?: number;
+  /** 顶栏左右两块的宽度，默认 360；阶段多时可以窄一些 */
+  sideWidth?: number;
   /** 页面内容 */
   children: ReactNode;
 }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: gy.canvas }}>
       <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-        <WizardHeader title={title} enterpriseName={enterpriseName} stages={stages} current={current} extra={headerExtra} />
+        <WizardHeader title={title} enterpriseName={enterpriseName} stages={stages} current={current} extra={headerExtra} sideWidth={sideWidth} />
       </div>
-      <main style={{ flex: '1 0 auto', display: 'flex', justifyContent: 'center', padding: `${paddingBlock}px 24px` }}>
+      <main style={{ flex: '1 0 auto', display: 'flex', justifyContent: 'center', padding: `${paddingTop ?? paddingBlock}px 24px ${paddingBottom ?? paddingBlock}px` }}>
         <div style={{ width: '100%', maxWidth: layout.wizard }}>{children}</div>
       </main>
       {footer}

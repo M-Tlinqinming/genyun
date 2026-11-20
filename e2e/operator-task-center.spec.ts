@@ -86,8 +86,8 @@ test('待分派里有已提交、没有负责专家的任务；分派给周工�
   const dialog = page.getByRole('dialog', { name: /分配专家/ });
   // 还没选人时不能提交
   await expect(dialog.getByRole('button', { name: /^分\s*配$/ })).toBeDisabled();
-  // 周工手上已有飞宇演示客户的另一家企业（飞宇）；吴工手上有塑胶（超时兜底的演示任务）
-  await expect(dialog.getByRole('radio', { name: '周工 在办 1 个 · 正在处理该客户的另外 1 家企业' })).toBeVisible();
+  // 周工手上已有飞宇演示客户的另两家企业（飞宇、电子科技）；吴工手上有塑胶（超时兜底的演示任务）
+  await expect(dialog.getByRole('radio', { name: '周工 在办 2 个 · 正在处理该客户的另外 2 家企业' })).toBeVisible();
   await expect(dialog.getByRole('radio', { name: '吴工 在办 1 个 · 正在处理该客户的另外 1 家企业' })).toBeVisible();
   // 第一次分派不问改派理由
   await expect(dialog.getByText(/改派理由/)).toHaveCount(0);
@@ -143,7 +143,9 @@ test('改派给吴工：可选理由告诉周工；吴工看到任务，周工�
   const wu = await asExpert(browser, 'expert2@demo.genyun.net.cn');
   await wu.p.getByRole('row', { name: new RegExp(HARDWARE) }).click();
   await expect(wu.p).toHaveURL(new RegExp(`/expert/tasks/${hardwareTask}$`));
-  await expect(wu.p.getByRole('heading', { name: HARDWARE })).toBeVisible();
+  // 吴工打开即进资料核对向导，顶栏写着企业名称
+  await expect(wu.p.getByRole('heading', { name: '核对企业基本信息' })).toBeVisible();
+  await expect(wu.p.getByTitle(HARDWARE)).toBeVisible();
   await wu.close();
 
   const zhou = await asExpert(browser, 'expert@demo.genyun.net.cn');
