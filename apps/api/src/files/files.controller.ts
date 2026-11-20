@@ -31,6 +31,7 @@ import {
   generatedDrafts,
   generationBatches,
   taskDocuments,
+  taskIntakeFiles,
   tasks,
 } from '../db/schema.ts';
 import { linkedEnterpriseIds } from './file-links.ts';
@@ -60,7 +61,7 @@ export function receiveOne(req: Request, res: Response, maxBytes: number): Promi
 }
 
 // 中文文件名按 RFC 5987 写入下载头，旧浏览器退回到 ASCII 名称
-function contentDisposition(filename: string, inline = false): string {
+export function contentDisposition(filename: string, inline = false): string {
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, '_');
   return `${inline ? 'inline' : 'attachment'}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
@@ -207,6 +208,14 @@ export class FilesController {
       .where(and(eq(checklistItemFiles.fileId, fileId), eq(tasks.assignedExpertId, user.id)))
       .limit(1);
     if (row) return true;
+    // 准备资料里客户传的资料表格、图纸和照片
+    const [intake] = await this.db
+      .select({ taskId: taskIntakeFiles.taskId })
+      .from(taskIntakeFiles)
+      .innerJoin(tasks, eq(tasks.id, taskIntakeFiles.taskId))
+      .where(and(eq(taskIntakeFiles.fileId, fileId), eq(tasks.assignedExpertId, user.id)))
+      .limit(1);
+    if (intake) return true;
     // 任务关联的企业原始资料
     const [doc] = await this.db
       .select({ taskId: taskDocuments.taskId })

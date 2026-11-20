@@ -43,6 +43,8 @@ import { defaultPdfConverter, PDF_CONVERTER, type PdfConverter } from './generat
 import { GenerationController, GenerationService } from './tasks/generation.service.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
 import { TasksController } from './tasks/tasks.controller.ts';
+import { IntakeController } from './intake/intake.controller.ts';
+import { IntakeService } from './intake/intake.service.ts';
 import { TasksService } from './tasks/tasks.service.ts';
 import { HealthController } from './health/health.controller.ts';
 import { AuditLogsController, AuditService } from './audit/audit.ts';
@@ -101,6 +103,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       EnterprisesController,
       EnterpriseProfileController,
       TasksController,
+      IntakeController,
       ExpertTasksController,
       WorkupController,
       GenerationController,
@@ -145,6 +148,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       DeliveriesService,
       DrawingsService,
       TasksService,
+      IntakeService,
       ExpertTasksService,
       WorkupService,
       NotificationsService,

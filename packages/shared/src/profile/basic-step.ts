@@ -16,6 +16,10 @@ export const basicStepSchema = basicInfoSchema
       .string()
       .refine((v) => v in INDUSTRY_NAMES, '请从列表中选择所属行业')
       .optional(),
+    // 资料表格里写的所属行业对不上行业分类名称时，原样记在这里，专家核对时再选（选填）
+    industryText: z.string().trim().max(100).optional(),
+    // 资料表格里客户自己写的总建筑面积（㎡），给专家和建筑列表的合计对照；预案用的仍是建筑列表合计（选填）
+    totalBuildingAreaM2: z.number().min(0).optional(),
     // 设计稿为一行地址；属地机构匹配（M3 知识库）再按需拆成省市区
     siteAddress: z.string().trim().max(200).optional(),
     // 一照多址：其他生产经营地址（选填）
