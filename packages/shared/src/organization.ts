@@ -103,7 +103,18 @@ export const orgOpenSchema = z
     adminName: z.string().trim().min(1, '请填写首位管理员姓名').max(50, '姓名最多 50 个字'),
     adminPhone: phoneSchema,
     adminEmail: z.string().trim().toLowerCase().pipe(z.email('请填写正确的邮箱')),
+    // 次数（16 页开通弹窗）：这次接口先允许不传，K16 把弹窗加上后合同购买次数改成必填
+    purchasedCredits: z.number().int('次数要是整数').min(0, '次数不能小于 0').max(100000).optional(),
+    giftCredits: z.number().int('次数要是整数').min(0, '次数不能小于 0').max(100000).default(0),
+    giftCampaign: z
+      .string()
+      .trim()
+      .max(50, '活动名称最多 50 个字')
+      .nullable()
+      .optional()
+      .transform((v) => (v ? v : null)),
   })
+  .refine((v) => v.giftCredits === 0 || v.giftCampaign !== null, { message: '有赠送时请填活动名称', path: ['giftCampaign'] })
   .refine((v) => v.startsAt <= v.endsAt, { message: '合同到期日不能早于开始日', path: ['endsAt'] })
   .refine((v) => v.endsAt >= chinaToday(), { message: '合同有效期已过，请核对', path: ['endsAt'] })
   .refine((v) => v.scopeKind === 'single' || (v.scopeEnterprises ?? 0) >= 1, {
