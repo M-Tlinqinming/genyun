@@ -9,6 +9,9 @@ async function openFeiyu(page: Page) {
   await page.getByRole('button', { name: /登\s*录/ }).click();
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
+  // 默认打开资料核对向导；这几块还在原来的整理页
+  await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+/);
+  await page.goto(`${new URL(page.url()).pathname}?view=workup-old`);
   await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
 }
 
@@ -18,10 +21,8 @@ const impact = (page: Page) => page.getByLabel('本表影响的适用范围开�
 
 test('周工判定危化品、特种设备与耐火等级，补设备和物料', async ({ page }) => {
   await openFeiyu(page);
-  await expect(page.getByText('整理中 · 必需项 11 / 24')).toBeVisible();
-  // 「下一个缺失项」：企业事实的技术人员数之后，跳到原辅材料里第一项待确认的判断
-  await page.getByRole('button', { name: '下一个缺失项' }).click();
-  await expect(page.locator('[data-fact="technicalManagementCount"]')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 11 / 23')).toBeVisible();
+  // 「下一个缺失项」：在原来的整理页里先跳这页上的缺项（技术人员数在资料核对第 1 步），即原辅材料里第一项待确认的判断
   await page.getByRole('button', { name: '下一个缺失项' }).click();
   await expect(page.getByRole('region', { name: '原辅材料' })).toBeVisible();
   await expect(row(page, 'material:m3')).toBeInViewport();
@@ -81,11 +82,11 @@ test('周工判定危化品、特种设备与耐火等级，补设备和物料',
   await page.getByTitle('二级').click();
   await expect(row(page, 'building:b1').getByText('专家整理')).toBeVisible();
 
-  // 都判定完：模块打勾，剩企业事实的技术人员数、适用范围里靠名称推断的粉尘、粉尘专项、熔融三个开关和两张待采用的图
+  // 都判定完：模块打勾，剩企业事实的技术人员数、适用范围里靠名称推断的粉尘、粉尘专项、熔融三个开关和待采用的工艺流程图（组织体系图随资料生成，不用采用）
   await expect(page.getByRole('button', { name: /生产设备与物料\s*✓/ })).toBeVisible();
-  await expect(page.getByText('整理中 · 必需项 16 / 23')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 16 / 22')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText(
-    '还差 7 项：技术人员数 · 适用范围（4 个开关待确认） · 图件（2 张待采用）',
+    '还差 6 项：技术人员数 · 适用范围（4 个开关待确认） · 图件（1 张待采用）',
   );
 
   // 退出再进，判断都还在

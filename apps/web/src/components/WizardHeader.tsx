@@ -10,6 +10,7 @@ export function WizardHeader({
   stages,
   current = 0,
   extra,
+  sideWidth = 360,
 }: {
   /** 左边第一行：在做什么，如「编制应急预案」「资料核对」 */
   title?: ReactNode;
@@ -21,6 +22,8 @@ export function WizardHeader({
   current?: number;
   /** 右边：自动保存状态、「返回工作台」按钮等 */
   extra: ReactNode;
+  /** 左右两块的宽度，默认 360 */
+  sideWidth?: number;
 }) {
   return (
     <header
@@ -36,7 +39,8 @@ export function WizardHeader({
         borderBottom: `1px solid ${gy.split}`,
       }}
     >
-      <div style={{ flex: '0 0 360px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 24 }}>
+      {/* 左右栏收窄到 280 时（资料核对向导），Logo、分隔线、标题之间按设计稿收成 16 */}
+      <div style={{ flex: `0 0 ${sideWidth}px`, minWidth: 0, display: 'flex', alignItems: 'center', gap: sideWidth < 360 ? 16 : 24 }}>
         <Logo />
         <span style={{ width: 1, height: 24, flexShrink: 0, background: gy.split }} />
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -52,7 +56,7 @@ export function WizardHeader({
         </div>
       </div>
       {stages && <StageBar stages={stages} current={current} />}
-      <div style={{ flex: '0 0 360px', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 20 }}>
+      <div style={{ flex: `0 0 ${sideWidth}px`, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 20 }}>
         {extra}
       </div>
     </header>

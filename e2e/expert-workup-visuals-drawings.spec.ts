@@ -30,6 +30,9 @@ async function openFigures(page: Page) {
   await page.getByRole('button', { name: /登\s*录/ }).click();
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
+  // 默认打开资料核对向导；这几块还在原来的整理页
+  await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+/);
+  await page.goto(`${new URL(page.url()).pathname}?view=workup-old`);
   await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
   await page.getByRole('button', { name: /^图件/ }).click();
   await expect(page.getByRole('region', { name: '图件' })).toBeVisible();

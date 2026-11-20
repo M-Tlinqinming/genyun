@@ -143,7 +143,9 @@ test('改派给吴工：可选理由告诉周工；吴工看到任务，周工�
   const wu = await asExpert(browser, 'expert2@demo.genyun.net.cn');
   await wu.p.getByRole('row', { name: new RegExp(HARDWARE) }).click();
   await expect(wu.p).toHaveURL(new RegExp(`/expert/tasks/${hardwareTask}$`));
-  await expect(wu.p.getByRole('heading', { name: HARDWARE })).toBeVisible();
+  // 吴工打开即进资料核对向导，顶栏写着企业名称
+  await expect(wu.p.getByRole('heading', { name: '核对企业基本信息' })).toBeVisible();
+  await expect(wu.p.getByTitle(HARDWARE)).toBeVisible();
   await wu.close();
 
   const zhou = await asExpert(browser, 'expert@demo.genyun.net.cn');
