@@ -1,7 +1,7 @@
-import { CheckCircleFilled, ExclamationCircleFilled, InfoCircleFilled } from '@ant-design/icons';
 import { Skeleton } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { gy } from '../theme/tokens';
+import { NoticeBar, type NoticeTone } from './NoticeBar';
 
 // 页面上反复出现的几种基础样式与组件，只在这里写一份；页面里不再各写各的（设计对齐第 2 步）
 
@@ -30,15 +30,10 @@ export const linkButton: CSSProperties = {
 };
 
 // 卡片和抽屉里的小号文字链接
-export const linkButtonSmall: CSSProperties = { ...linkButton, fontSize: 13, lineHeight: '20px' };
+export const linkButtonSmall: CSSProperties = { ...linkButton, fontSize: 14, lineHeight: '22px' };
 
-const NOTICE_TONES = {
-  info: { bg: gy.selected, border: '#9DB7EE', icon: <InfoCircleFilled style={{ color: gy.primary }} /> },
-  warning: { bg: gy.warningBg, border: '#D9A441', icon: <ExclamationCircleFilled style={{ color: gy.warning }} /> },
-  success: { bg: gy.successBg, border: gy.success, icon: <CheckCircleFilled style={{ color: gy.success }} /> },
-} as const;
-
-// 页面顶部的提示条：一句标题、一句说明，右侧可放一个按钮（13 页 F03、F07；12 页 P05）
+// 页面上的提示条：已按设计系统改成无边框、圆角 8、上下 12 左右 16、16 号图标。
+// 新页面请用 NoticeBar（只有一句话、不带标题）；这里保留标题 + 说明两行的旧写法，给已有页面用。
 export function Notice({
   tone,
   title,
@@ -46,34 +41,28 @@ export function Notice({
   action,
   label,
 }: {
-  tone: keyof typeof NOTICE_TONES;
+  /** 颜色：info 告知 / success 做成了 / warning 要先处理 / error 出错了 */
+  tone: NoticeTone;
+  /** 第一行（有说明时加粗） */
   title: ReactNode;
+  /** 第二行说明，可不传 */
   text?: ReactNode;
+  /** 右侧一个按钮或链接 */
   action?: ReactNode;
+  /** 读屏用的名字 */
   label?: string;
 }) {
-  const t = NOTICE_TONES[tone];
   return (
-    <div
-      role="status"
-      aria-label={label}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        padding: '20px 24px',
-        borderRadius: 8,
-        background: t.bg,
-        border: `1px solid ${t.border}`,
-      }}
-    >
-      <span style={{ fontSize: 20, lineHeight: 0, flexShrink: 0 }}>{t.icon}</span>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>{title}</span>
-        {text && <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>{text}</span>}
-      </div>
-      {action}
-    </div>
+    <NoticeBar tone={tone} action={action} label={label}>
+      {text ? (
+        <span style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontWeight: 600 }}>{title}</span>
+          <span style={{ color: gy.secondary }}>{text}</span>
+        </span>
+      ) : (
+        title
+      )}
+    </NoticeBar>
   );
 }
 

@@ -1,31 +1,60 @@
 import type { ReactNode } from 'react';
-import { gy } from '../theme/tokens';
+import { gy, layout, type, weight } from '../theme/tokens';
 import { Logo } from './Logo';
+import { StageBar } from './StageBar';
 
-// 编制向导（选择开始方式、企业自填）的顶栏：不带侧栏，左侧写明在为哪家企业编制什么
-export function WizardHeader({ enterpriseName, extra }: { enterpriseName?: string; extra: ReactNode }) {
+// 向导顶栏（高 64，不带侧栏）：左边 Logo + 在做什么、为哪家企业；中间阶段条；右边保存状态和返回按钮
+export function WizardHeader({
+  title = '编制应急预案',
+  enterpriseName,
+  stages,
+  current = 0,
+  extra,
+}: {
+  /** 左边第一行：在做什么，如「编制应急预案」「资料核对」 */
+  title?: ReactNode;
+  /** 左边第二行：为哪家企业 */
+  enterpriseName?: string;
+  /** 中间阶段条的各阶段名；不传就不显示阶段条 */
+  stages?: readonly string[];
+  /** 当前阶段序号，从 0 开始 */
+  current?: number;
+  /** 右边：自动保存状态、「返回工作台」按钮等 */
+  extra: ReactNode;
+}) {
   return (
     <header
       style={{
-        height: 64,
+        height: layout.header,
         flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        gap: 24,
         padding: '0 32px',
         background: gy.surface,
         borderBottom: `1px solid ${gy.split}`,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+      <div style={{ flex: '0 0 360px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 24 }}>
         <Logo />
-        <span style={{ width: 1, height: 24, background: gy.split }} />
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>编制应急预案</span>
-          <span style={{ fontSize: 12, lineHeight: '18px', color: gy.tertiary }}>{enterpriseName}</span>
+        <span style={{ width: 1, height: 24, flexShrink: 0, background: gy.split }} />
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <span style={{ ...type.body, fontWeight: weight.strong, color: gy.text, whiteSpace: 'nowrap' }}>{title}</span>
+          {enterpriseName && (
+            <span
+              title={enterpriseName}
+              style={{ ...type.caption, color: gy.tertiary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {enterpriseName}
+            </span>
+          )}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>{extra}</div>
+      {stages && <StageBar stages={stages} current={current} />}
+      <div style={{ flex: '0 0 360px', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 20 }}>
+        {extra}
+      </div>
     </header>
   );
 }

@@ -6,6 +6,7 @@ import 'dayjs/locale/zh-cn';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
+import { requiredAfter } from './components/ui';
 import { router } from './router';
 import { theme } from './theme/theme';
 import './theme/global.css';
@@ -25,6 +26,8 @@ createRoot(document.getElementById('root')!).render(
       button={{ autoInsertSpace: false }}
       // 抽屉关闭按钮放右上角（设计稿如此；组件库默认在左）
       drawer={{ closable: { placement: 'end' } }}
+      // 必填星号统一放在标签后面（设计系统组件规范），页面不再各自设置
+      form={{ requiredMark: requiredAfter }}
     >
       <App>
         <QueryClientProvider client={queryClient}>

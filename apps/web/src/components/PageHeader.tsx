@@ -1,33 +1,49 @@
-import { Typography } from 'antd';
 import type { ReactNode } from 'react';
-import { gy } from '../theme/tokens';
+import { gy, type, weight } from '../theme/tokens';
+import { BackLink } from './BackLink';
 
-// 页面标题区：面包屑小字 / 28 号标题 / 一句说明 / 右侧主操作
+// 页头：（详情页）返回链接 / 24 号标题 + 阶段标签 / 一句说明，右侧最多一个入口按钮。
+// 页头距顶栏 32（由内容区留出），距下面的内容 24。
 export function PageHeader({
+  back,
   eyebrow,
   title,
+  tag,
   description,
+  actions,
   extra,
+  gap = 4,
 }: {
+  /** 详情页的返回链接；一级页面不传 */
+  back?: { to: string; label: string };
+  /** 旧写法：标题上方的一行小字。新页面请改用 back，不要再加 */
   eyebrow?: ReactNode;
+  /** 页面标题，24 号加粗 */
   title: ReactNode;
+  /** 跟在标题右边的阶段标签（StatusTag） */
+  tag?: ReactNode;
+  /** 标题下的一句说明，14 号次要色 */
   description?: ReactNode;
+  /** 右侧操作区：最多一个入口按钮，或一个开关 */
+  actions?: ReactNode;
+  /** 旧名，等同 actions，保留给已有页面 */
   extra?: ReactNode;
+  /** 左侧各行之间的间距：工作台页默认 4，向导页头用 8 */
+  gap?: number;
 }) {
+  const right = actions ?? extra;
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, marginBottom: 32 }}>
-      <div>
-        {eyebrow && <div style={{ fontSize: 12, lineHeight: '19px', color: gy.secondary, marginBottom: 4 }}>{eyebrow}</div>}
-        <Typography.Title level={1} style={{ fontSize: 28, lineHeight: '40px', fontWeight: 500, margin: 0 }}>
-          {title}
-        </Typography.Title>
-        {description && (
-          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
-            {description}
-          </Typography.Text>
-        )}
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24, marginBottom: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap, minWidth: 0 }}>
+        {back && <BackLink to={back.to} label={back.label} />}
+        {eyebrow && <div style={{ ...type.caption, color: gy.secondary }}>{eyebrow}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <h1 style={{ margin: 0, ...type.pageTitle, fontWeight: weight.strong, color: gy.text }}>{title}</h1>
+          {tag}
+        </div>
+        {description && <div style={{ ...type.body, color: gy.secondary }}>{description}</div>}
       </div>
-      {extra}
+      {right && <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, minHeight: 32 }}>{right}</div>}
     </div>
   );
 }
