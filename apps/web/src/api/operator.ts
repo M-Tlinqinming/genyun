@@ -2,13 +2,21 @@ import type {
   AdminInvitationInput,
   AssignExpertInput,
   BusinessType,
+  CreditAdjustInput,
+  CreditAdjustResult,
+  GiftCampaignStats,
   InvitationState,
+  OperatorOrgCredits,
+  OrgCreditsBrief,
   OperatorNote,
   OperatorNoteInput,
   OperatorTaskStage,
   OrgOpenDraft,
   OrgRegisterInput,
+  OrgRenewalInput,
+  OrgRenewalResult,
   OrgServiceState,
+  RegionParts,
   Role,
   ServiceScopeKind,
 } from '@genyun/shared';
@@ -20,6 +28,8 @@ export interface OperatorOrg {
   id: string;
   name: string;
   region: string | null;
+  // 省、市、区县三级；老数据只有文字时为 null
+  regionParts: RegionParts | null;
   socialCreditCode: string | null;
   contactName: string | null;
   contactPhone: string | null;
@@ -35,6 +45,8 @@ export interface OperatorOrg {
 }
 
 export interface OperatorOrgRow extends OperatorOrg {
+  // 次数汇总；待开通（还没有合同）为 null
+  credits: OrgCreditsBrief | null;
   enterprises: number;
   members: number;
   openTasks: number;
@@ -76,9 +88,25 @@ export interface OrgEnterpriseTask {
   task: { id: string; number: string; stage: OperatorTaskStage } | null;
 }
 
-// 组织详情（Paper 16 页 I03）：合同原件、成员、邀请记录（新的在前）、企业与当前任务
+// 组织的一份合同（详情「年度服务」页签，新的在前）。credits 按这份合同上各类型的台账行相加，不含交付扣减
+export interface OrgContract {
+  id: string;
+  number: string;
+  startsAt: string;
+  endsAt: string;
+  state: 'active' | 'upcoming' | 'expired';
+  scopeKind: ServiceScopeKind | null;
+  scopeEnterprises: number | null;
+  paymentConfirmedAt: string;
+  paymentConfirmedByName: string;
+  credits: { purchase: number; gift: number; topUp: number; compensation: number };
+  file: { id: string; originalName: string; createdAt: string } | null;
+}
+
+// 组织详情（Paper 16 页 I03）：还没挂到合同上的合同原件、合同列表、成员、邀请记录（新的在前）、企业与当前任务
 export interface OperatorOrgDetail extends OperatorOrg {
   contractFile: ContractFile | null;
+  contracts: OrgContract[];
   members: OrgMember[];
   invitations: OrgInvitation[];
   enterprises: OrgEnterpriseTask[];
@@ -96,7 +124,17 @@ export interface SentInvitation {
 export const operatorOrgKeys = {
   list: ['operator', 'organizations'] as const,
   detail: (id: string) => ['operator', 'organizations', id] as const,
+  credits: (id: string) => ['operator', 'organizations', id, 'credits'] as const,
+  giftCampaigns: (year: number | null) => ['operator', 'gift-campaigns', year ?? 'current'] as const,
 };
+
+// 次数变了以后要刷新的：列表、详情、次数、运营概览、赠送统计
+function invalidateCredits(client: ReturnType<typeof useQueryClient>, id: string) {
+  void client.invalidateQueries({ queryKey: operatorOrgKeys.list, exact: true });
+  void client.invalidateQueries({ queryKey: operatorOrgKeys.detail(id) });
+  void client.invalidateQueries({ queryKey: ['operator', 'overview'] });
+  void client.invalidateQueries({ queryKey: ['operator', 'gift-campaigns'] });
+}
 
 export function useOperatorOrgs() {
   return useQuery({ queryKey: operatorOrgKeys.list, queryFn: () => request<OperatorOrgRow[]>('/operator/organizations') });
@@ -153,6 +191,42 @@ export function useInviteAdmin(id: string) {
       void client.invalidateQueries({ queryKey: operatorOrgKeys.list });
       void client.invalidateQueries({ queryKey: operatorOrgKeys.detail(id) });
     },
+  });
+}
+
+// 一个组织的次数：汇总、等次数的成果、调整会记在哪份合同上、台账明细
+export function useOrgCredits(id: string, enabled = true) {
+  return useQuery({
+    queryKey: operatorOrgKeys.credits(id),
+    queryFn: () => request<OperatorOrgCredits>(`/operator/organizations/${id}/credits`),
+    enabled,
+  });
+}
+
+export function useAdjustCredits(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreditAdjustInput) =>
+      request<CreditAdjustResult>(`/operator/organizations/${id}/credits`, { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => invalidateCredits(client, id),
+  });
+}
+
+// 登记续约：新合同、次数、组织上的到期日一起改；返回放开了几份成果
+export function useRenewOrg(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OrgRenewalInput) =>
+      request<OrgRenewalResult>(`/operator/organizations/${id}/renewal`, { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => invalidateCredits(client, id),
+  });
+}
+
+// 赠送活动统计；year 为 null 时按今年
+export function useGiftCampaigns(year: number | null) {
+  return useQuery({
+    queryKey: operatorOrgKeys.giftCampaigns(year),
+    queryFn: () => request<GiftCampaignStats>(`/operator/credits/gift-campaigns${year ? `?year=${year}` : ''}`),
   });
 }
 

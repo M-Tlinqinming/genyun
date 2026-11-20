@@ -1,7 +1,8 @@
-import { orgRegisterSchema, type OrgRegisterInput } from '@genyun/shared';
+import { checkRegionParts, orgRegisterSchema, type OrgRegisterInput, type RegionParts } from '@genyun/shared';
 import { App, Form, Input, Modal } from 'antd';
 import { useEffect } from 'react';
 import { useOperatorOrg, useSaveOrg } from '../../api/operator';
+import { RegionSelect, useAreaList } from '../../components/RegionSelect';
 import { Loading, requiredAfter } from '../../components/ui';
 import { gy } from '../../theme/tokens';
 
@@ -9,13 +10,16 @@ import { gy } from '../../theme/tokens';
 const item = { marginBottom: 20 } as const;
 const half = { ...item, flex: 1, minWidth: 0 } as const;
 
-// 登记客户组织 / 修改资料。Paper 没有这个弹窗的高保真，按设计系统表单做（DESIGN-DIFF「M3 第 1 项」）
+// 登记客户组织 / 修改资料（16 页「登记客户组织」弹窗）。所在地区按省、市、区县三级选
 export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | null; open: boolean; onClose: () => void }) {
   const editing = orgId !== null;
   const detail = useOperatorOrg(orgId);
   const save = useSaveOrg(orgId);
   const { message, modal } = App.useApp();
   const [form] = Form.useForm<OrgRegisterInput>();
+  const area = useAreaList();
+  // 老数据只有地区文字：三个框空着，提示原来填的文字
+  const legacyRegion = editing && detail.data && !detail.data.regionParts ? detail.data.region : null;
 
   useEffect(() => {
     if (!open) return;
@@ -23,7 +27,7 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
       const d = detail.data;
       form.setFieldsValue({
         name: d.name,
-        region: d.region ?? '',
+        region: (d.regionParts ?? undefined) as RegionParts | undefined,
         socialCreditCode: d.socialCreditCode ?? '',
         contactName: d.contactName ?? '',
         contactPhone: d.contactPhone ?? '',
@@ -63,8 +67,14 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
 
   const fieldRule = (key: keyof OrgRegisterInput) => ({
     validator: (_: unknown, value: unknown) => {
-      const r = orgRegisterSchema.shape[key].safeParse(value ?? '');
-      return r.success ? Promise.resolve() : Promise.reject(new Error(r.error.issues[0]?.message));
+      const r = orgRegisterSchema.shape[key].safeParse(value ?? (key === 'region' ? undefined : ''));
+      if (!r.success) return Promise.reject(new Error(r.error.issues[0]?.message));
+      // 地区再按全国区划核对：这个市下面有区县却没选时请选到区县
+      if (key === 'region' && area) {
+        const problem = checkRegionParts(r.data as RegionParts, area);
+        if (problem) return Promise.reject(new Error(problem));
+      }
+      return Promise.resolve();
     },
   });
 
@@ -98,11 +108,25 @@ export function RegisterOrgModal({ orgId, open, onClose }: { orgId: string | nul
             <Input placeholder="与营业执照一致，如：华东安评服务有限公司" maxLength={100} />
           </Form.Item>
           <div style={{ display: 'flex', gap: 16 }}>
-            <Form.Item name="region" label="所在地区" required rules={[fieldRule('region')]} style={half}>
-              <Input placeholder="如：上海市闵行区" maxLength={50} />
+            <Form.Item
+              name="region"
+              label="所在地区"
+              required
+              rules={[fieldRule('region')]}
+              style={half}
+              extra="按省、市、区县依次选。开通时会按这里检查知识库有没有对应的属地机构。"
+            >
+              <RegionSelect legacyText={legacyRegion} />
             </Form.Item>
-            <Form.Item name="socialCreditCode" label="统一社会信用代码" required rules={[fieldRule('socialCreditCode')]} style={half}>
-              <Input placeholder="18 位，与营业执照一致" maxLength={18} />
+            <Form.Item
+              name="socialCreditCode"
+              label="统一社会信用代码"
+              required
+              rules={[fieldRule('socialCreditCode')]}
+              style={half}
+              extra="18 位，与营业执照一致。"
+            >
+              <Input maxLength={18} />
             </Form.Item>
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
