@@ -124,9 +124,10 @@ export interface TaskDeliveries {
   /**
    * 成果先锁住（次数用完或年度服务到期，任务等次数）时不为空：客户角色不能下载。
    * reason 按查看时的情况算：当天没有有效合同是 expired，否则是 credits。
-   * adminNames：本组织在职的组织管理员名字，用「、」连起来（没有时是「组织管理员」）
+   * adminNames：本组织在职的组织管理员名字，用「、」连起来（没有时是「组织管理员」）。
+   * 只给本组织的客户：reason 只有组织管理员拿得到，成员只有 adminNames；专家、运营拿到的一律是 null
    */
-  lock: { reason: 'credits' | 'expired'; adminNames: string } | null;
+  lock: { reason?: 'credits' | 'expired'; adminNames: string } | null;
 }
 
 /** 整套下载的压缩包名，括号里是交付日期（北京时间），例：某某有限公司编制成果（2026-11-20）.zip */

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { downloadBundle, downloadWord, useOrgDeliveries } from '../../../api/deliveries';
 import { useOrgTasks } from '../../../api/enterprises';
+import { ContactLink } from '../../../components/ContactLink';
 import { Loading } from '../../../components/ui';
 import { useWorkspace } from '../../../layouts/workspace';
 import { gy, stage } from '../../../theme/tokens';
@@ -90,8 +91,10 @@ function DeliveryCard({ task, version }: { task: TaskDeliveries; version: Delive
   const navigate = useNavigate();
   const { message } = App.useApp();
   const { role } = useWorkspace();
-  // 锁住的成果（C01·S02 状态 4）：标签和第二行换成锁住的说明，下载置灰，「查看交付详情」照常能点
-  const lock = task.lock ? lockText(task.lock, role === 'customer_admin') : null;
+  // 锁住的成果（C01·S02 状态 4）：任务那一行照常显示，标签和锁住的说明各占一栏；
+  // 管理员多一个「联系耕云续约」，成员看不到「次数」「续约」；下载置灰，「查看交付详情」照常能点
+  const isAdmin = role === 'customer_admin';
+  const lock = task.lock ? lockText(task.lock, isAdmin) : null;
   const [bundling, setBundling] = useState(false);
   const detail = `/customer/documents/${task.taskId}`;
   const tone = lock ? stage.action : stage.done;
@@ -118,23 +121,47 @@ function DeliveryCard({ task, version }: { task: TaskDeliveries; version: Delive
   return (
     <section aria-label={`${task.enterpriseName} ${task.taskNumber}`} style={{ ...card, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '20px 24px', borderBottom: `1px solid ${gy.split}` }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ flex: lock ? '3 1 0' : 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>{task.enterpriseName}</span>
-            <span style={{ padding: '0 8px', borderRadius: 4, fontSize: 13, lineHeight: '20px', color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
-              {lock ? lock.tag : state}
-            </span>
+            {!lock && (
+              <span style={{ padding: '0 8px', borderRadius: 4, fontSize: 13, lineHeight: '20px', color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
+                {state}
+              </span>
+            )}
           </div>
           <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
-            {lock
-              ? lock.line
-              : `${task.taskName} · ${task.taskNumber} · ${stampShort(version.publishedAt)} ${state === '已更新' ? '更新' : '交付'} · 专家审核通过`}
+            {`${task.taskName} · ${task.taskNumber} · ${stampShort(version.publishedAt)} `}
+            {lock ? '专家已完成' : `${state === '已更新' ? '更新' : '交付'} · 专家审核通过`}
           </span>
         </div>
+        {lock && (
+          <>
+            <div style={{ width: 180, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+              <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 12, lineHeight: '20px', color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
+                {lock.tag}
+              </span>
+            </div>
+            <span style={{ ...text14, flex: '2 1 0', minWidth: 0, color: gy.secondary }}>{lock.line}</span>
+          </>
+        )}
         <Button onClick={() => navigate(detail)}>查看交付详情</Button>
-        <Button type="primary" loading={bundling} disabled={Boolean(lock)} onClick={() => void bundle()}>
-          下载整套 Word
-        </Button>
+        {lock ? (
+          isAdmin && (
+            <ContactLink
+              title="联系耕云续约"
+              trigger={(open) => (
+                <Button type="primary" onClick={open} style={{ flexShrink: 0 }}>
+                  联系耕云续约
+                </Button>
+              )}
+            />
+          )
+        ) : (
+          <Button type="primary" loading={bundling} onClick={() => void bundle()}>
+            下载整套 Word
+          </Button>
+        )}
       </div>
       {version.files.map((f, i) => (
         <div

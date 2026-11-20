@@ -16,7 +16,7 @@ import {
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Response } from 'express';
 import JSZip from 'jszip';
-import { canViewDeliveries, canViewOrganization, enterpriseScope } from '../auth/access.ts';
+import { canViewDeliveries, canViewOrganization, customerMembership, enterpriseScope } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { assertDeliveryDownloadable, lockInfo } from '../credits/credits.service.ts';
@@ -51,14 +51,14 @@ export class DeliveriesService {
     const scope = enterpriseScope(user, orgId);
     if (Array.isArray(scope) && scope.length === 0) return [];
     const list = await this.tasks().where(and(eq(tasks.orgId, orgId), Array.isArray(scope) ? inArray(tasks.enterpriseId, scope) : undefined));
-    const built = await this.build(list);
+    const built = await this.build(user, list);
     return built.sort((a, b) => b.versions[0]!.publishedAt.localeCompare(a.versions[0]!.publishedAt));
   }
 
   /** 一个任务的成果（R05）；还没有交付版本时 versions 为空 */
   async forTask(user: SessionUser, taskId: string): Promise<TaskDeliveries> {
     const task = await this.task(user, taskId);
-    const [built] = await this.build([task], true);
+    const [built] = await this.build(user, [task], true);
     return built!;
   }
 
@@ -116,7 +116,7 @@ export class DeliveriesService {
   }
 
   // 每个任务只列已形成的交付版本（发布中、失败的不算）。keepEmpty：单个任务没有交付时也返回（versions 为空）
-  private async build(list: TaskRow[], keepEmpty = false): Promise<TaskDeliveries[]> {
+  private async build(user: SessionUser, list: TaskRow[], keepEmpty = false): Promise<TaskDeliveries[]> {
     if (list.length === 0) return [];
     const done = await this.db
       .select()
@@ -132,9 +132,17 @@ export class DeliveriesService {
       : [];
 
     // 等次数的任务：锁住的原因和管理员名字（同一组织只查一次）
+    // 只给本组织的客户看：管理员看原因和管理员名字，成员只看管理员名字；专家、运营一律不带
     const locks = new Map<string, TaskDeliveries['lock']>();
     for (const t of list) {
-      if (t.chargeStatus === 'awaiting_credits' && !locks.has(t.orgId)) locks.set(t.orgId, await lockInfo(this.db, t.orgId));
+      if (t.chargeStatus !== 'awaiting_credits' || locks.has(t.orgId)) continue;
+      const m = customerMembership(user, t.orgId);
+      if (!m) {
+        locks.set(t.orgId, null);
+        continue;
+      }
+      const info = await lockInfo(this.db, t.orgId);
+      locks.set(t.orgId, m.role === 'customer_admin' ? info : { adminNames: info.adminNames });
     }
 
     return list.flatMap((t): TaskDeliveries[] => {

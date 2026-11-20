@@ -38,7 +38,7 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { MulterError } from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
-import { AuditService, clientIp } from '../audit/audit.ts';
+import { clientIp } from '../audit/audit.ts';
 import { canManageOrganizations } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
@@ -95,7 +95,6 @@ export class OperatorOrgsController {
     @Inject(MAILER) private readonly mailer: Mailer,
     @Inject(MAIL_OUTBOX) private readonly mailOutbox: boolean,
     @Inject(CreditsService) private readonly credits: CreditsService,
-    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   @Get()
@@ -372,15 +371,13 @@ export class OperatorOrgsController {
     const parsed = creditAdjustSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     const d = parsed.data;
-    await this.credits.adjust(id, d, user.id);
-    await this.audit.record({
-      action: 'credits_adjust',
-      actorId: user.id,
+    // 次数记录和操作日志同一个事务写；减次数时 adjust 自己检查提醒
+    await this.credits.adjust(id, d, user.id, {
       actorEmail: user.email,
       ip: clientIp(req),
       target: `${org.name} · ${CREDIT_ENTRY_TYPE_LABELS[d.type]} ${d.delta > 0 ? '+' : ''}${d.delta} 次`,
     });
-    // 放开以后 releaseLocked 会按新余额检查一次提醒（没放开也查）
+    // 提交后放开锁住的成果；放开了（扣了次数）才检查提醒
     const released = await this.credits.releaseLocked(id, 'credits');
     return { summary: (await creditBriefs(this.db, [id])).get(id)!, released };
   }

@@ -284,6 +284,9 @@ describe('调整次数', () => {
     expect((await bells('chen@test.cn')).map((b) => b.title)).toContain('编制次数已经用完');
     const again = await adjust(org.a, { type: 'top_up', delta: -1, reason: '再退' });
     expect(again.body.message).toBe('这份合同的购买次数已经是 0 次，不能再减');
+    // 操作记录和次数记录同一个事务：被拒的调整不留操作记录
+    expect(log).toMatchObject({ actorId: uid['ops@test.cn'], actorEmail: 'ops@test.cn' });
+    expect(await handle.db.select().from(auditLogs).where(eq(auditLogs.action, 'credits_adjust'))).toHaveLength(1);
   });
 });
 
@@ -351,7 +354,13 @@ describe('扣不到：成果先锁住', () => {
     const list: TaskDeliveries[] = (await chen.get(`/api/orgs/${org.a}/deliveries`).expect(200)).body;
     expect(list.find((d) => d.taskId === t2)!.lock).toEqual({ reason: 'credits', adminNames: '陈志刚、王经理' });
     expect(list.find((d) => d.versions.length === 2)!.lock).toBeNull();
-    expect((await member.get(`/api/tasks/${t2}/deliveries`).expect(200)).body.lock).toMatchObject({ reason: 'credits' });
+    // 成员只拿到管理员名字，不带原因；专家、运营不带锁住信息
+    expect((await member.get(`/api/tasks/${t2}/deliveries`).expect(200)).body.lock).toEqual({ adminNames: '陈志刚、王经理' });
+    const memberList: TaskDeliveries[] = (await member.get(`/api/orgs/${org.a}/deliveries`).expect(200)).body;
+    expect(memberList.find((d) => d.taskId === t2)?.lock ?? { adminNames: '' }).not.toHaveProperty('reason');
+    for (const email of ['zhou@test.cn', 'ops@test.cn']) {
+      expect((await (await as(email)).get(`/api/tasks/${t2}/deliveries`).expect(200)).body.lock).toBeNull();
+    }
   });
 
   it('运营数据：次数记录、组织列表、概览的「次数用完」待办；组织管理员查自己的次数', async () => {
@@ -466,17 +475,25 @@ describe('次数提醒', () => {
     }
   };
 
-  it('剩 3、2、1 各一次；加次数后重新提醒；用完提醒一次', async () => {
+  it('剩 3、2、1 各一次；加次数本身不提醒，之后再扣到 3 次重新提醒；用完提醒一次', async () => {
+    const count = async (title: string) => (await lowTitles()).filter((t) => t === title).length;
     await deduct(1);
     await app.get(CreditsService).checkReminders(org.d);
     await deduct(2);
     expect((await lowTitles()).sort()).toEqual(['编制次数还剩 1 次', '编制次数还剩 2 次', '编制次数还剩 3 次']);
-    // 加次数（共几次变了）以后再降到 3 次，重新提醒
-    expect((await adjust(org.d, { type: 'top_up', delta: 2, reason: '加购' })).status).toBe(200);
-    expect((await lowTitles()).filter((t) => t === '编制次数还剩 3 次')).toHaveLength(2);
+    // 剩 1 次时加 3 次（剩 4 次）：加次数本身不提醒
+    expect((await adjust(org.d, { type: 'top_up', delta: 3, reason: '加购' })).status).toBe(200);
+    expect((await lowTitles()).length).toBe(3);
+    // 之后扣到 3 次（共几次变了），重新提醒
+    await deduct(1);
+    expect(await count('编制次数还剩 3 次')).toBe(2);
     await deduct(3);
     await app.get(CreditsService).checkReminders(org.d);
-    expect((await lowTitles()).filter((t) => t === '编制次数已经用完')).toHaveLength(1);
+    expect(await count('编制次数已经用完')).toBe(1);
+    // 用完后加 2 次（0 → 2）：不冒出「还剩 2 次」
+    const before = await count('编制次数还剩 2 次');
+    expect((await adjust(org.d, { type: 'top_up', delta: 2, reason: '加购' })).status).toBe(200);
+    expect(await count('编制次数还剩 2 次')).toBe(before);
     // 成员不收（d 组织这时还没有成员）；专家、运营不收
     expect((await bells('ops@test.cn')).some((b) => b.title.startsWith('编制次数'))).toBe(false);
   });

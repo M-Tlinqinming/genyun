@@ -11,7 +11,7 @@ export function isExpert(user: SessionUser): boolean {
 }
 
 // 本组织的客户账号（管理员或成员）
-function customerMembership(user: SessionUser, orgId: string) {
+export function customerMembership(user: SessionUser, orgId: string) {
   return user.memberships.find((m) => m.orgId === orgId && (m.role === 'customer_admin' || m.role === 'customer_member'));
 }
 

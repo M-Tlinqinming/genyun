@@ -28,6 +28,7 @@ import {
 } from '@genyun/shared';
 import { ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { type AuditEvent, insertAuditLog } from '../audit/audit.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import {
@@ -309,10 +310,10 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
         released.push(task.id);
       }
     });
-    await this.run([
-      ...released.map((taskId) => () => this.sendReleasedMail(taskId, releasedAt)),
-      () => this.checkReminders(orgId),
-    ]);
+    // 只有真的扣了次数才检查提醒；加次数本身不提醒（不然 0 → 2 会冒出「还剩 2 次」）
+    if (released.length > 0) {
+      await this.run([...released.map((taskId) => () => this.sendReleasedMail(taskId, releasedAt)), () => this.checkReminders(orgId)]);
+    }
     return released.length;
   }
 
@@ -345,9 +346,17 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  // 运营调整次数（16 页「调整次数」）：挂在当天有效、到期最晚的合同上；没有有效合同挂最早一份还没开始的
-  async adjust(orgId: string, input: CreditAdjust, operatorId: string): Promise<{ contractNumber: string }> {
-    return this.db.transaction(async (tx) => {
+  /**
+   * 运营调整次数（16 页「调整次数」）：挂在当天有效、到期最晚的合同上；没有有效合同挂最早一份还没开始的。
+   * 操作日志（audit，action 固定为 credits_adjust）和次数记录在同一个事务里写。减次数提交后检查一次提醒；加次数不提醒
+   */
+  async adjust(
+    orgId: string,
+    input: CreditAdjust,
+    operatorId: string,
+    audit: Omit<AuditEvent, 'action' | 'actorId'>,
+  ): Promise<{ contractNumber: string }> {
+    const result = await this.db.transaction(async (tx) => {
       await lockOrg(tx, orgId);
       const ledger = await loadLedger(tx, orgId);
       const today = chinaToday();
@@ -375,8 +384,11 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
         reason: input.reason,
         createdBy: operatorId,
       });
+      await insertAuditLog(tx, { ...audit, action: 'credits_adjust', actorId: operatorId });
       return { contractNumber: target.number };
     });
+    if (input.delta < 0) await this.run([() => this.checkReminders(orgId)]);
+    return result;
   }
 
   // 组织管理员看自己组织的次数：汇总加等次数的成果（任务编号、企业名称），按任务生成先后
