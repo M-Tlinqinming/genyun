@@ -9,6 +9,7 @@ import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import {
+  creditEntries,
   enterprises,
   memberships,
   organizationContracts,
@@ -231,6 +232,8 @@ describe('开通', () => {
     const contracts = await db.select().from(organizationContracts).where(eq(organizationContracts.orgId, created.id));
     expect(contracts).toHaveLength(1);
     expect(contracts[0]).toMatchObject({ number: 'GY-HT-2026-018', scopeKind: 'annual', scopeEnterprises: 5, fileId: up.body.id });
+    // 没带次数时不记台账
+    expect(await db.select().from(creditEntries).where(eq(creditEntries.orgId, created.id))).toEqual([]);
     const invites = await db.select().from(organizationInvitations).where(eq(organizationInvitations.orgId, created.id));
     expect(invites).toHaveLength(1);
     expect(invites[0]).toMatchObject({ email: 'sun@huadong-anping.cn', role: 'customer_admin', acceptedAt: null });
@@ -246,6 +249,30 @@ describe('开通', () => {
     // 已开通的不能再开通一次
     const again = await (await as('ops@test.cn')).post(`/api/operator/organizations/${created.id}/open`).send(opening(up.body.id));
     expect(again.status).toBe(409);
+  });
+});
+
+describe('开通时登记次数', () => {
+  it('带合同购买和赠送次数时记两行台账，原因是次数记录里的原话', async () => {
+    const created = await register({ ...registration, name: '华南安评服务有限公司', socialCreditCode: '91440300MA5XXXXXX7' });
+    const up = await uploadContract(created.id);
+    const ops = await as('ops@test.cn');
+    const body = { ...opening(up.body.id), adminEmail: 'li@huanan-anping.cn', purchasedCredits: 20, giftCredits: 2 };
+    // 有赠送时要写活动名称
+    expect((await ops.post(`/api/operator/organizations/${created.id}/open`).send(body)).body.message).toBe('有赠送时请填活动名称');
+    const res = await ops.post(`/api/operator/organizations/${created.id}/open`).send({ ...body, giftCampaign: ' 开通赠送 ' });
+    expect(res.status).toBe(200);
+    const { db } = handle;
+    const [contract] = await db.select().from(organizationContracts).where(eq(organizationContracts.orgId, created.id));
+    const rows = await db.select().from(creditEntries).where(eq(creditEntries.orgId, created.id));
+    expect(rows.map((r) => ({ type: r.type, delta: r.delta, pool: r.pool, campaign: r.campaign, reason: r.reason, contractId: r.contractId })).sort((a, b) => a.type.localeCompare(b.type))).toEqual([
+      { type: 'contract_purchase', delta: 20, pool: 'purchase', campaign: null, reason: '开通时按合同登记。', contractId: contract!.id },
+      { type: 'gift', delta: 2, pool: 'gift', campaign: '开通赠送', reason: '开通时按活动规则赠送，跟合同一起到期。', contractId: contract!.id },
+    ]);
+    // 运营列表带次数汇总；还没开通的为 null
+    const list = (await ops.get('/api/operator/organizations').expect(200)).body as { id: string; state: string; credits: unknown }[];
+    expect(list.find((o) => o.id === created.id)!.credits).toMatchObject({ remaining: { total: 22, gift: 2, purchase: 20 }, granted: 22, used: 0, awaiting: 0 });
+    expect(list.filter((o) => o.state === 'pending').every((o) => o.credits === null)).toBe(true);
   });
 });
 
