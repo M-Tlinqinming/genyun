@@ -1,4 +1,4 @@
-import { reviewValid, type ReviewView } from '@genyun/shared';
+import { reviewValid, type HistoryEntry, type ReviewView } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { draftPreviews, enterprises, generationBatches, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
+import { draftPreviews, enterprises, generationBatches, memberships, organizations, taskIntakeSubmissions, tasks, taskWorkups, users } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
@@ -301,6 +301,70 @@ describe('审核结论', () => {
   });
 });
 
+describe('接着上次的地方、待补充、处理记录', () => {
+  it('核对页带回自己最后保存的一节；别人保存的不算', async () => {
+    const zhou = await as('zhou@test.cn');
+    const view: ReviewView = (await zhou.get(reviewUrl()).expect(200)).body;
+    expect(view.lastSave).toMatchObject({ kind: 'risk', sectionId: 'ch1.1', sectionTitle: '1.1 编制目的', at: expect.any(String) });
+    const ops = await as('ops@test.cn');
+    expect((await ops.get(reviewUrl()).expect(200)).body.lastSave).toBeNull();
+  });
+
+  it('待补充：按章给出每章的节和处数；运营能看，别人看不到', async () => {
+    const zhou = await as('zhou@test.cn');
+    const pending = (await zhou.get(url('risk', '/pending')).expect(200)).body;
+    expect(pending.chapters).toEqual([
+      {
+        id: 'ch1',
+        title: '1 总则',
+        group: null,
+        pending: 0,
+        sections: [
+          { id: 'ch1', title: '1 总则', level: 0 },
+          { id: 'ch1.1', title: '1.1 编制目的', level: 1 },
+          { id: 'ch1.2', title: '1.2 应急通讯录', level: 1 },
+        ],
+      },
+    ]);
+    expect(pending.items).toEqual([]);
+    const ops = await as('ops@test.cn');
+    await ops.get(url('plan', '/pending')).expect(200);
+    for (const email of ['wu@test.cn', 'feiyu@test.cn']) await (await as(email)).get(url('plan', '/pending')).expect(404);
+  });
+
+  it('处理记录：各个来源都有，新的在前；运营能看，别的专家和客户看不到', async () => {
+    const zhou = await as('zhou@test.cn');
+    const [feiyu] = await handle.db.select().from(users).where(eq(users.email, 'feiyu@test.cn'));
+    await handle.db.insert(taskIntakeSubmissions).values({
+      taskId,
+      requestId: randomUUID(),
+      submittedBy: feiyu!.id,
+      submittedAt: new Date('2026-01-02T02:40:00Z'),
+      snapshot: { files: [], parse: null, templateVersion: null, noEvacuationMap: false, preferredExpertId: null },
+    });
+    const list: HistoryEntry[] = (await zhou.get(`/api/tasks/${taskId}/history`).expect(200)).body;
+    const times = list.map((e) => Date.parse(e.at));
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+    const lines = list.map((e) => [e.who, e.what, e.extra, e.check]);
+    expect(lines.at(-1)).toEqual([null, '客户提交资料', '陈志刚上传 Excel 模板', false]);
+    expect(lines.at(-2)).toEqual(['周工', '确认资料，开始生成', null, false]);
+    expect(lines).toContainEqual([null, '三份初稿生成完成', expect.stringMatching(/^用时 \d+ 分钟$/), false]);
+    expect(lines).toContainEqual(['周工', '保存「应急预案 · 1.1 编制目的」', '更正措辞', false]);
+    expect(lines).toContainEqual(['周工', '核对完成「风险评估报告」', '待补充全部处理', true]);
+    expect(lines).toContainEqual(['周工', '写审核结论', '我已核对本次三份文稿，内容与 Word 版式符合本次交付要求。', false]);
+    // 资源调查报告核对后又改一次
+    await saveSection(zhou, 'resource', '核对后又改。');
+    const after: HistoryEntry[] = (await zhou.get(`/api/tasks/${taskId}/history`).expect(200)).body;
+    expect(after[0]).toMatchObject({ who: '周工', what: '保存「应急资源调查报告 · 1.1 编制目的」' });
+    expect(after.find((e) => e.what === '核对完成「应急资源调查报告」')).toMatchObject({ extra: '之后又改过，要重新核对', check: true });
+
+    const ops = await as('ops@test.cn');
+    await ops.get(`/api/tasks/${taskId}/history`).expect(200);
+    for (const email of ['wu@test.cn', 'feiyu@test.cn', 'other@test.cn']) await (await as(email)).get(`/api/tasks/${taskId}/history`).expect(404);
+    await zhou.get(`/api/tasks/${randomUUID()}/history`).expect(404);
+  });
+});
+
 describe('当前稿 PDF', () => {
   async function waitFor(agent: request.Agent, kind: string, status: string) {
     let body: { status: string; version: number; error: string | null } = {
@@ -320,7 +384,7 @@ describe('当前稿 PDF', () => {
   it('打开时转当前稿，转好后可以取；改过正文按新稿重新转；转换失败可以重试', async () => {
     const zhou = await as('zhou@test.cn');
     const first = (await zhou.get(url('resource', '/preview')).expect(200)).body;
-    expect(first).toMatchObject({ status: 'converting', version: 0 });
+    expect(first).toMatchObject({ status: 'converting', version: 1 });
     await waitFor(zhou, 'resource', 'ready');
     const pdf = await zhou.get(url('resource', '/preview/file')).expect(200);
     expect(pdf.headers['content-type']).toContain('application/pdf');
@@ -333,14 +397,14 @@ describe('当前稿 PDF', () => {
     await saveSection(zhou, 'resource', '资源调查改过的措辞。');
     failNext = true;
     const changed = (await zhou.get(url('resource', '/preview')).expect(200)).body;
-    expect(changed).toMatchObject({ status: 'converting', version: 1 });
+    expect(changed).toMatchObject({ status: 'converting', version: 2 });
     const failed = await waitFor(zhou, 'resource', 'failed');
     expect(failed.error).toBe('转换没有成功，请重试');
     // 转好之前不给旧稿
     await zhou.get(url('resource', '/preview/file')).expect(404);
 
     await zhou.post(url('resource', '/preview/retry')).expect(201);
-    expect((await waitFor(zhou, 'resource', 'ready')).version).toBe(1);
+    expect((await waitFor(zhou, 'resource', 'ready')).version).toBe(2);
     expect(converted.length).toBe(count + 1);
 
     // 运营能看，别家看不到
