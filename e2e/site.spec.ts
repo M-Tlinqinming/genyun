@@ -88,12 +88,16 @@ test.describe('官网首页', () => {
     await expect(opener).toBeFocused();
   });
 
-  test('「上线时通知我」用同一个窗口，换成对应的说明；点关闭按钮关掉', async ({ page }) => {
+  // 2026-11-14：安全台账、培训 PPT、AI 隐患识别三张预告都删了，首页只剩「应急预案生成」一张卡
+  test('平台模块只有「应急预案生成」一张卡，没有「即将上线」和「上线时通知我」；点关闭按钮关掉联系窗口', async ({ page }) => {
     await page.goto(`${SITE}/`);
-    await page.getByRole('link', { name: '上线时通知我' }).first().click();
-    const dialog = page.getByRole('dialog', { name: '上线时通知我' });
+    const platform = page.locator('section', { has: page.getByRole('heading', { name: /从一份预案开始/ }) });
+    await expect(platform.getByRole('heading', { level: 3 })).toHaveText(['应急预案生成']);
+    await expect(page.getByText('即将上线')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: '上线时通知我' })).toHaveCount(0);
+    await platform.getByRole('link', { name: '预约演示' }).click();
+    const dialog = page.getByRole('dialog', { name: '预约演示' });
     await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('安全台账生成上线时，我们第一时间告诉您');
     await dialog.getByRole('button', { name: '关闭' }).click();
     await expect(dialog).toBeHidden();
   });
@@ -144,7 +148,7 @@ test.describe('官网首页', () => {
     await page.mouse.move(5, 880);
     await page.locator('h1').click();
     await page.waitForTimeout(6500);
-    await expect(pressed(page)).toHaveText('5 步填报');
+    await expect(pressed(page)).toHaveText('填一份表格');
   });
 
   test('入场动画结束后内容全部可见；自动播放只转一轮，停回第二屏', async ({ page }) => {
@@ -154,7 +158,7 @@ test.describe('官网首页', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('opacity', '1');
     await expect(page.locator('html')).not.toHaveClass(/js-enter/);
     await expect(pressed(page)).toHaveText('AI 风险辨识');
-    for (const label of ['专家审核', '下载整套 Word', '5 步填报', 'AI 风险辨识']) {
+    for (const label of ['专家审核', '下载整套 Word', '填一份表格', 'AI 风险辨识']) {
       await expect(pressed(page)).toHaveText(label, { timeout: 9000 });
     }
     await page.waitForTimeout(7000);

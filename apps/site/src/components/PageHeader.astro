@@ -18,7 +18,8 @@ const { active, eyebrow, compact = false } = Astro.props;
       <p class="eyebrow">{eyebrow}</p>
       <h1><slot /></h1>
     </div>
-    <div class="page-head__aside"><slot name="aside" /></div>
+    {/* 右侧说明没传就不占位（W02 的说明句 2026-11-14 删了） */}
+    {Astro.slots.has('aside') && <div class="page-head__aside"><slot name="aside" /></div>}
   </div>
 </div>
 
