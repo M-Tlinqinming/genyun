@@ -1,6 +1,6 @@
-// 专业整理（Paper 14 页 E18-00A、E18-00A2）：负责专家对照原件整理企业事实。前后端共用。
-// 每个任务单独存一份（Martin 10-29 确认）：专家第一次打开任务时复制企业资料（快照），
-// 之后客户再改企业资料不影响这里，变化走第 13 项事实补件；专家的修改只记在任务里，标为「专家整理」。
+// 资料核对：负责专家对照客户资料核对企业事实。前后端共用。
+// 每个任务单独存一份（Martin 10-29 确认）：专家第一次打开任务时复制客户资料（快照），
+// 之后客户再改企业资料不影响这里；专家的修改只记在任务里（专家那份见 workup-steps.ts），标为「您已修改」。
 import { z } from 'zod';
 import { WORKUP_STEP_COUNT } from './task-status.ts';
 import type { ChecklistItemKey } from './checklist/items.ts';
@@ -9,15 +9,11 @@ import { addressLabelOf, addressOptions } from './profile/addresses.ts';
 import { YES_NO_UNKNOWN_LABELS, type YesNoUnknown } from './profile/basic.ts';
 import { INDUSTRY_NAMES } from './profile/industries.ts';
 import { PRESET_GROUPS } from './profile/organization.ts';
-import {
-  defaultOrganizationStep,
-  type DraftGroup,
-  type DraftPerson,
-  type OrganizationStep,
-} from './profile/organization-step.ts';
+import type { DraftGroup, DraftPerson } from './profile/organization-step.ts';
 import { totalBuildingArea } from './profile/resources-step.ts';
 import { type AgencyDistrict, localAgenciesOf } from './plan/agencies.ts';
-import type { ProductionWorkup } from './workup-production.ts';
+import type { ProductionWorkup, Stamp } from './workup-production.ts';
+import { effectiveSnapshot, organizationOfSnapshot, type StepStamps } from './workup-steps.ts';
 import type { RiskWorkup } from './workup-risk.ts';
 import type { FiguresWorkup } from './workup-figures.ts';
 import type { ScopeWorkup } from './workup-scope.ts';
@@ -105,7 +101,17 @@ export interface WorkupData {
   figures?: FiguresWorkup;
   // 专家资料核对已完成几步（0–5），专家核对页保存时写
   stepsDone?: number;
+  // 专家那份的企业身份四项（向导第 1 步保存时整份写入），有它就不再用快照里的身份
+  identity?: WorkupSnapshot['identity'];
+  // 专家那份的企业资料，按步整块替换快照里的同名块：第 1 步写 basicStep，第 2 步写 organizationStep
+  profile?: Partial<EnterpriseProfile>;
+  // 专家勾了「先留空，文稿标『待补充』」的项（事实键）：不算缺项、不挡生成，文稿里写「（待补充）」
+  blank?: string[];
+  // 每一步最后是谁、什么时候保存的
+  steps?: StepStamps;
 }
+
+export type { Stamp };
 
 /** 资料核对做完了几步：没有或不是数字算 0，夹在 0 到 WORKUP_STEP_COUNT 之间 */
 export function workupStepsDone(data: Partial<WorkupData> | null | undefined): number {
@@ -139,7 +145,11 @@ export interface FactBase {
   hint?: string;
 }
 
-export type FactStatus = 'done' | 'missing' | 'later' | 'empty';
+// blank = 专家勾了「先留空」，算已处理
+export type FactStatus = 'done' | 'missing' | 'later' | 'empty' | 'blank';
+
+/** 这一项还算不算缺项：done 和 blank 都算处理过了 */
+export const factHandled = (f: Pick<Fact, 'status'>) => f.status === 'done' || f.status === 'blank';
 
 export interface Fact extends FactDef, FactBase {
   status: FactStatus;
@@ -166,10 +176,6 @@ const answerText = (answer: YesNoUnknown | undefined, detail?: string) =>
 // 同类小组有多个（分厂址各设一套）时，第二个起按 id 记
 const groupKey = (g: DraftGroup, groups: readonly DraftGroup[]) =>
   `group.${g.kind === 'custom' || groups.find((x) => x.kind === g.kind) !== g ? g.id : g.kind}`;
-
-export function organizationOf(snapshot: WorkupSnapshot): OrganizationStep {
-  return snapshot.profile.organizationStep?.step ?? defaultOrganizationStep(snapshot.profile.basicStep?.basic.employeeCount);
-}
 
 type Entry = [FactDef, FactBase];
 
@@ -254,7 +260,7 @@ function agencyEntries(snapshot: WorkupSnapshot, districts?: readonly AgencyDist
 }
 
 function organizationEntries(snapshot: WorkupSnapshot): Entry[] {
-  const org = organizationOf(snapshot);
+  const org = organizationOfSnapshot(snapshot);
   const roster = org.mode === 'roster';
   const rosterHint = roster ? '客户上传了花名册，请对照整理' : undefined;
   const person = (p: DraftPerson | undefined): FactBase => {
@@ -305,7 +311,7 @@ function organizationEntries(snapshot: WorkupSnapshot): Entry[] {
 }
 
 function compilationEntries(snapshot: WorkupSnapshot, commander: FactValue | undefined): Entry[] {
-  const org = organizationOf(snapshot);
+  const org = organizationOfSnapshot(snapshot);
   const members = [
     ...org.deputies.map((d) => d.name.trim()),
     ...org.groups.map((g) => g.leader?.name.trim() ?? ''),
@@ -336,16 +342,33 @@ function judgementEntries(): Entry[] {
   ];
 }
 
-function statusOf(def: FactDef, value: FactValue | undefined, later: boolean | undefined): FactStatus {
+function statusOf(def: FactDef, value: FactValue | undefined, later: boolean | undefined, blank: boolean): FactStatus {
   if (value !== undefined && filled(value)) return 'done';
+  if (blank) return 'blank';
   if (later) return 'later';
   return def.required ? 'missing' : 'empty';
 }
 
-// 按快照与专家的修改算出每一项现在的值、来源和状态。
+const sameValue = (a: FactValue | undefined, b: FactValue | undefined) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+function entriesOf(snapshot: WorkupSnapshot, districts?: readonly AgencyDistrict[]): Entry[] {
+  return [...basicEntries(snapshot), ...agencyEntries(snapshot, districts), ...organizationEntries(snapshot)];
+}
+
+// 按快照、专家那份与专家的单项修改算出每一项现在的值、来源和状态。
+// 专家那份里和客户原来的值不一样的，来源记为专家（「您已修改」）。
 // districts 是知识库里的属地机构（接口从数据库取来传进来）；不传时用内置数据
 export function workupFacts(snapshot: WorkupSnapshot, data: WorkupData, districts?: readonly AgencyDistrict[]): Fact[] {
-  const apply = ([def, base]: Entry): Fact => {
+  const eff = effectiveSnapshot(snapshot, data);
+  const changed = eff !== snapshot;
+  const original = changed ? new Map(entriesOf(snapshot, districts).map(([d, b]) => [d.key, b.value])) : undefined;
+  const blank = new Set(data.blank ?? []);
+  const apply = ([def, entry]: Entry): Fact => {
+    // 专家那份改过的值：来源换成专家
+    const base: FactBase =
+      original && !def.readonly && def.section !== 'agencies' && entry.value !== undefined && !sameValue(entry.value, original.get(def.key))
+        ? { value: entry.value, source: 'expert' }
+        : entry;
     const override = def.readonly ? undefined : data.overrides[def.key];
     const merged: FactBase = override
       ? {
@@ -362,15 +385,15 @@ export function workupFacts(snapshot: WorkupSnapshot, data: WorkupData, district
           fileId: override.fileId,
         }
       : base;
-    return { ...def, ...base, ...merged, override, status: statusOf(def, merged.value, base.later && !override) };
+    return { ...def, ...base, ...merged, override, status: statusOf(def, merged.value, base.later && !override, blank.has(def.key)) };
   };
-  const head = [...basicEntries(snapshot), ...agencyEntries(snapshot, districts), ...organizationEntries(snapshot)].map(apply);
+  const head = entriesOf(eff, districts).map(apply);
   const commander = head.find((f) => f.key === 'commander')?.value;
-  return [...head, ...compilationEntries(snapshot, commander).map(apply), ...judgementEntries().map(apply)];
+  return [...head, ...compilationEntries(eff, commander).map(apply), ...judgementEntries().map(apply)];
 }
 
-export function factDefOf(snapshot: WorkupSnapshot, key: string): FactDef | undefined {
-  return workupFacts(snapshot, { overrides: {} }).find((f) => f.key === key);
+export function factDefOf(snapshot: WorkupSnapshot, key: string, data?: Partial<WorkupData>): FactDef | undefined {
+  return workupFacts(snapshot, { overrides: {}, identity: data?.identity, profile: data?.profile }).find((f) => f.key === key);
 }
 
 // 保存前校验：这一项存在、能改，值的类型对得上
@@ -400,7 +423,7 @@ export interface WorkupProgress {
 // 必需项的进度、还差哪几项（底栏「还差 N 项」），以及每个小节缺几项
 export function workupProgress(facts: readonly Fact[]): WorkupProgress {
   const required = facts.filter((f) => f.required);
-  const missing = required.filter((f) => f.status !== 'done');
+  const missing = required.filter((f) => !factHandled(f));
   const sections = (Object.keys(FACT_SECTIONS) as FactSection[]).map((section) => ({
     section,
     label: FACT_SECTIONS[section],
@@ -411,7 +434,7 @@ export function workupProgress(facts: readonly Fact[]): WorkupProgress {
 
 // 「下一个缺失项」：从当前项往后找下一个没完成的必需项，到底了从头找
 export function nextMissing(facts: readonly Fact[], currentKey?: string): Fact | undefined {
-  const missing = facts.filter((f) => f.required && f.status !== 'done');
+  const missing = facts.filter((f) => f.required && !factHandled(f));
   if (missing.length === 0) return undefined;
   const at = currentKey ? facts.findIndex((f) => f.key === currentKey) : -1;
   return missing.find((f) => facts.indexOf(f) > at) ?? missing[0];

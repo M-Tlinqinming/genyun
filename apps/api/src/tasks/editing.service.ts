@@ -1,5 +1,5 @@
 // 正文编辑（M2 第 11 项，14 页 E18-03、E18-04、E18-07、E18-08）：负责专家按节修改最近一批生成的草稿。
-// 修订盖在生成时存下的文档结构上，存在 draft_edits；每次保存一节记一条修订（draft_revisions）。
+// 修改盖在生成时存下的文档结构上，存在 draft_edits；每次保存一节记一条保存记录（draft_revisions）。
 // 两人同时改同一节时后保存的被拒绝并带回最新保存稿；同一次保存重试（结果不确定时）不重复记。
 import {
   applyEdits,
@@ -9,6 +9,7 @@ import {
   editBlocksError,
   findSection,
   outlineOf,
+  pendingOf,
   rewriteRequestSchema,
   sameBlocks,
   sectionSaveSchema,
@@ -17,6 +18,7 @@ import {
   type EditBlock,
   type EditDocumentView,
   type LockedPreview,
+  type PendingView,
   type PlanInput,
   type RewriteResult,
   type SectionEdit,
@@ -139,7 +141,7 @@ export class EditingService {
           .from(draftEdits)
           .where(and(eq(draftEdits.batchId, d.batch.id), eq(draftEdits.kind, d.kind)))
           .for('update');
-        // 已发布（或正在发布）的这批文稿不能再改：放在锁住修订记录之后查，和发布时的最后核对不会交错
+        // 已交付（或正在交付）的这批文稿不能再改：放在锁住保存记录之后查，和交付时的最后核对不会交错
         throwIfLocked(await batchLock(tx, d.batch.id));
         const current = row!.sections[sectionId];
         const rev = current?.rev ?? 0;
@@ -218,13 +220,31 @@ export class EditingService {
     );
   }
 
-  // 当前稿的 Word：生成时的结构盖上各节修订（第 12 项起再转 PDF、记核对）
+  // 待补充清单（核对定稿页的左栏、右栏）：生成稿和盖过修改的正文对照
+  async pending(user: SessionUser, taskId: string, kind: string): Promise<PendingView> {
+    const d = await this.draft(user, taskId, kind);
+    return this.pendingOfDoc(d.batch.id, d.kind, d.doc);
+  }
+
+  // 指定那一批的待补充清单（处理记录、交付时用）。权限由调用方先查
+  async batchPending(batchId: string, kind: DraftKind): Promise<PendingView> {
+    const { doc } = await this.load(batchId, kind);
+    return this.pendingOfDoc(batchId, kind, doc);
+  }
+
+  private async pendingOfDoc(batchId: string, kind: DraftKind, doc: DeliveryDocument): Promise<PendingView> {
+    const edits = await this.edits(batchId, kind);
+    const blocks = Object.fromEntries(Object.entries(edits?.sections ?? {}).map(([id, e]) => [id, e.blocks]));
+    return pendingOf(doc, applyEdits(doc, blocks));
+  }
+
+  // 现在这份文稿的 Word：生成时的结构盖上各节保存的修改（Word 预览也用它转 PDF）
   async word(user: SessionUser, taskId: string, kind: string): Promise<{ name: string; data: Buffer }> {
     const d = await this.draft(user, taskId, kind);
     return this.batchWord(d.batch, d.kind, d.doc);
   }
 
-  // 指定那一批的当前稿 Word（转 PDF 用开始转换时的那一批，期间重新生成也不会串到新一批）。权限由调用方先查
+  // 指定那一批文稿现在的 Word（转 PDF 用开始转换时的那一批，期间重新生成也不会串到新一批）。权限由调用方先查
   async batchWord(
     batch: typeof generationBatches.$inferSelect,
     kind: DraftKind,
@@ -237,7 +257,7 @@ export class EditingService {
     return { name: `${batch.input.basic.companyName}${DRAFT_KINDS[kind]}（修订稿）.docx`, data };
   }
 
-  // 发布时的定稿：这批草稿的结构盖上各节修订，文件属性写上 AI 标识和审核人。权限由发布服务先查
+  // 定稿并交付时的文件：这批草稿的结构盖上各节保存的修改，文件属性写上 AI 标识和审核人。权限由交付服务先查
   async deliveryWord(batch: typeof generationBatches.$inferSelect, kind: DraftKind, meta: DeliveryMeta): Promise<{ name: string; data: Buffer }> {
     const { doc } = await this.load(batch.id, kind);
     const edits = await this.edits(batch.id, kind);
@@ -261,7 +281,7 @@ export class EditingService {
     return data;
   }
 
-  // 那一次保存记下的内容和修订次数（不是这一节现在的样子：之后可能又有人保存过）
+  // 那一次保存记下的内容和保存次数（不是这一节现在的样子：之后可能又有人保存过）
   private async replayed(d: Draft, saveId: string): Promise<(SectionView & { version: number }) | null> {
     const [rev] = await this.db
       .select({
@@ -271,6 +291,7 @@ export class EditingService {
         version: draftRevisions.version,
         note: draftRevisions.note,
         at: draftRevisions.createdAt,
+        by: draftRevisions.createdBy,
         byName: users.name,
       })
       .from(draftRevisions)
@@ -286,7 +307,7 @@ export class EditingService {
       path: found.path,
       blocks: rev.after,
       rev: rev.rev,
-      saved: { note: rev.note, byName: rev.byName, at: rev.at.toISOString() },
+      saved: { note: rev.note, by: rev.by, byName: rev.byName, at: rev.at.toISOString() },
       locked: lockedPreviews(found.section.blocks, figureBase(d, rev.sectionId)),
       version: rev.version,
     };
@@ -307,7 +328,7 @@ export class EditingService {
       path: found.path,
       blocks: edit?.blocks ?? editableOf(found.section.blocks),
       rev: edit?.rev ?? 0,
-      saved: edit ? { note: edit.note, byName: edit.byName, at: edit.at } : null,
+      saved: edit ? { note: edit.note, by: edit.by, byName: edit.byName, at: edit.at } : null,
       locked: lockedPreviews(found.section.blocks, figureBase(d, sectionId)),
     };
   }
@@ -418,6 +439,11 @@ export class EditingController {
   @Get('edit')
   document(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Param('kind') kind: string) {
     return this.service.document(user, id, kind);
+  }
+
+  @Get('pending')
+  pending(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Param('kind') kind: string) {
+    return this.service.pending(user, id, kind);
   }
 
   @Get('sections/:sectionId')

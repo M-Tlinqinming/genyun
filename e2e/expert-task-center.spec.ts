@@ -45,7 +45,9 @@ test('周工进任务中心：标题、四格统计，旧流程的飞宇任务�
 
   await row.getByRole('button', { name: /查\s*看/ }).click();
   await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+$/);
-  await expect(page.getByRole('heading', { name: FEIYU })).toBeVisible();
+  // 还没生成过草稿：打开资料核对向导
+  await expect(page.getByRole('heading', { name: '核对企业基本信息' })).toBeVisible();
+  await expect(page.getByTitle(FEIYU)).toBeVisible();
 });
 
 test('搜不到时显示空状态，「清空搜索和筛选」恢复列表', async ({ page }) => {

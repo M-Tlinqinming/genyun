@@ -5,6 +5,7 @@ import {
   listCounts,
   PRODUCTION_LIST_KEYS,
   PRODUCTION_LISTS,
+  workupStepsDone,
   productionView,
   riskRowValueOf,
   riskView,
@@ -27,7 +28,7 @@ import {
 } from '@genyun/shared';
 import { App, Button, Result, Tooltip } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useGeneration } from '../../api/generation';
 import { ApiError } from '../../api/request';
@@ -39,16 +40,20 @@ import { gy, stage } from '../../theme/tokens';
 import { ConfirmView } from './workup/ConfirmView';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { FiguresPanel, type FiguresSaveInput } from './workup/FiguresPanel';
-import { ConclusionView } from './editing/ConclusionView';
 import { PublishView } from './editing/PublishView';
-import { EditView } from './editing/EditView';
+import { ReviewWorkspace } from './editing/ReviewWorkspace';
 import { GenerationView, phaseOf } from './workup/GenerationView';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
 import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
 import { ScopePanel, ScopePreviewPanel } from './workup/ScopePanel';
+import { WorkupWizard } from './workup/wizard/WorkupWizard';
 
 const STAGES = ['资料核实', '专业编制', '审核与修订', '成果交付'];
+// 原来整理页里属于向导第 1、2 步的几块
+// 属地这一节仍在原来的整理页（第 1 步的弹窗只管应急管理、消防、街道 3 项）
+const WIZARD_STEP_OF_SECTION: Partial<Record<FactSection, number>> = { basic: 1, contact: 1, organization: 2, compilation: 2 };
+const WIZARD_AGENCY_KEYS = new Set(['agency.emergencyBureau', 'agency.fireDept', 'agency.streetOffice']);
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const text13: CSSProperties = { fontSize: 13, lineHeight: '22px' };
@@ -122,9 +127,24 @@ export function ExpertTaskPage() {
     [check.data],
   );
 
+  // 资料核对第 3–5 步先用原来的整理页：?view=workup-old&module=… 直接打开对应模块
+  const moduleParam = params.get('module');
+  useEffect(() => {
+    if (!moduleParam) return;
+    if (moduleParam === 'risks' || moduleParam === 'scope' || moduleParam === 'figures' || moduleParam in PRODUCTION_LISTS) {
+      setModule(moduleParam as typeof module);
+    }
+  }, [moduleParam]);
+
   const scrollTo = (el: HTMLElement | undefined) => el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+  // 企业基本信息、人员与应急组织已搬到资料核对第 1、2 步，原来整理页里点到这几处就去向导
   const goToSection = (section: FactSection) => {
+    const step = WIZARD_STEP_OF_SECTION[section];
+    if (step) {
+      setParams({ view: 'workup', step: String(step) });
+      return;
+    }
     setModule('facts');
     setActiveSection(section);
     setOnlyMissing(false);
@@ -137,11 +157,18 @@ export function ExpertTaskPage() {
     window.scrollTo({ top: 0 });
   };
 
+  // 原来的整理页里先轮流跳这页上的缺项；只剩向导第 1、2 步的缺项时回到向导那一步
   const goToNextMissing = () => {
-    if (gaps.length === 0) return;
-    if (params.get('view')) setParams({});
-    const at = gaps.findIndex((g) => g.key === focusKey);
-    const next = gaps[at + 1] ?? gaps[0]!;
+    const wizardStepOf = (g: (typeof gaps)[number]) => (WIZARD_AGENCY_KEYS.has(g.key) ? 1 : g.section ? WIZARD_STEP_OF_SECTION[g.section] : undefined);
+    const here = gaps.filter((g) => !wizardStepOf(g));
+    if (here.length === 0) {
+      const step = gaps[0] && wizardStepOf(gaps[0]);
+      if (step) setParams({ view: 'workup', step: String(step) });
+      return;
+    }
+    const at = here.findIndex((g) => g.key === focusKey);
+    const next = here[at + 1] ?? here[0]!;
+    if (params.get('view') !== 'workup-old') setParams({ view: 'workup-old' });
     setFocusKey(next.key);
     setModule(next.module);
     if (next.section) setActiveSection(next.section);
@@ -274,32 +301,22 @@ export function ExpertTaskPage() {
     );
   }
   if (workup.isError) {
-    return <Result status="info" title="还不能开始整理" subTitle={workup.error.message} extra={back} />;
+    return <Result status="info" title="还不能开始资料核对" subTitle={workup.error.message} extra={back} />;
   }
 
   const w = workup.data;
   const current = generation.data?.current ?? null;
   const requested = params.get('view');
+  // workup = 资料核对向导；workup-old = 原来的整理页（向导第 3–5 步还在用）
   const view =
     requested === 'confirm'
       ? requested
-      : requested !== 'workup' && current
-        ? 'generation'
-        : 'workup';
+      : requested === 'workup-old'
+        ? 'workup'
+        : requested !== 'workup' && current
+          ? 'generation'
+          : 'wizard';
   const phase = current ? phaseOf(current) : null;
-
-  // 审核结论（E18-06）：三份逐份核对后确认
-  if (requested === 'review' && current && phaseOf(current) === 'done') {
-    return (
-      <ConclusionView
-        taskId={taskId}
-        enterpriseName={task.data.enterpriseName}
-        taskNumber={task.data.number}
-        onOpen={(k) => setParams({ view: 'edit', doc: k, tab: 'preview' })}
-        onPublish={() => setParams({ view: 'publish' })}
-      />
-    );
-  }
 
   // 成果交付（R03–R04b）：审核结论有效时由负责专家交付
   if (requested === 'publish' && current && phaseOf(current) === 'done') {
@@ -308,15 +325,19 @@ export function ExpertTaskPage() {
         taskId={taskId}
         enterpriseName={task.data.enterpriseName}
         taskNumber={task.data.number}
-        onOpen={(k) => setParams({ view: 'edit', doc: k, tab: 'preview' })}
-        onEdit={() => setParams({ view: 'review' })}
+        onOpen={(k) => setParams({ view: 'edit', doc: k })}
+        onEdit={() => setParams({ view: 'edit', tab: 'conclusion' })}
       />
     );
   }
 
-  // 审核与修订 · 正文编辑（E18-03）：三份草稿都生成完才进得来
-  if (requested === 'edit' && current && phaseOf(current) === 'done') {
-    return <EditView taskId={taskId} enterpriseName={task.data.enterpriseName} taskNumber={task.data.number} generation={current} />;
+  // 核对定稿（E18-03 到 E18-15）：三份草稿都生成完才进得来；旧网址 ?view=review 打开审核结论页签
+  if ((requested === 'edit' || requested === 'review') && current && phaseOf(current) === 'done') {
+    return <ReviewWorkspace taskId={taskId} enterpriseName={task.data.enterpriseName} taskNumber={task.data.number} generation={current} />;
+  }
+
+  if (view === 'wizard') {
+    return <WorkupWizard taskId={taskId} enterpriseName={task.data.enterpriseName} workup={w} />;
   }
 
   if (view !== 'workup') {
@@ -404,8 +425,17 @@ export function ExpertTaskPage() {
           <Link to="/expert" style={{ color: gy.secondary }}>
             任务中心
           </Link>
-          {`　/　${task.data.enterpriseName}　/　专业整理`}
+          {`　/　${task.data.enterpriseName}　/　资料核对`}
         </nav>
+        <div
+          role="note"
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px', borderRadius: 8, background: gy.selected, ...text14, color: gy.text }}
+        >
+          <span style={{ flex: 1 }}>资料核对第 3–5 步正在换新样式，这里是原来的整理页</span>
+          <Link to={`?view=workup&step=${Math.min(Math.max(workupStepsDone(w.data) + 1, 3), 5)}`} style={{ color: gy.primary }}>
+            回到资料核对
+          </Link>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 500, lineHeight: '32px', color: gy.text }}>{task.data.enterpriseName}</h1>
           <span style={{ ...text14, color: gy.secondary }}>{task.data.number}</span>
@@ -586,7 +616,6 @@ export function ExpertTaskPage() {
             settings={w.data.figures ?? {}}
             saving={saveFigures.isPending}
             onSave={saveFigureLayout}
-            onGoOrganization={() => goToSection('organization')}
             onGoProcess={() => setModule('process')}
             registerRow={(key, el) => {
               if (el) rows.current.set(key, el);
@@ -702,7 +731,7 @@ export function ExpertTaskPage() {
         </span>
         <span style={{ width: 1, height: 16, background: gy.split }} />
         <span style={{ flex: 1, minWidth: 0, ...text14, color: gy.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {gaps.length ? `还差 ${gaps.length} 项：${missingLabels.join(' · ')}` : '专业整理的必需项已齐'}
+          {gaps.length ? `还差 ${gaps.length} 项：${missingLabels.join(' · ')}` : '资料核对的必需项已齐'}
         </span>
         <Button onClick={goToNextMissing} disabled={gaps.length === 0}>
           下一个缺失项

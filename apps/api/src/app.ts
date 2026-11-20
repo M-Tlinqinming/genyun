@@ -39,6 +39,7 @@ import { EDIT_DRAFTER, EditingController, EditingService } from './tasks/editing
 import { DeliveriesController, DeliveriesService } from './tasks/deliveries.service.ts';
 import { PublishController, PublishService } from './tasks/publish.service.ts';
 import { ReviewController, ReviewService } from './tasks/review.service.ts';
+import { HistoryController, HistoryService } from './tasks/history.service.ts';
 import { defaultPdfConverter, PDF_CONVERTER, type PdfConverter } from './generation/word/preview-pdf.ts';
 import { GenerationController, GenerationService } from './tasks/generation.service.ts';
 import { SubmissionService } from './tasks/submission.service.ts';
@@ -110,6 +111,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       GenerationController,
       EditingController,
       ReviewController,
+      HistoryController,
       PublishController,
       DeliveriesController,
       DrawingsController,
@@ -143,6 +145,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       GenerationService,
       EditingService,
       ReviewService,
+      HistoryService,
       PublishService,
       DeliveriesService,
       DrawingsService,

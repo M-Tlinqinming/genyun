@@ -225,7 +225,7 @@ function FactRow({
           </span>
         ) : (
           <span style={{ ...valueText, color: gy.tertiary }} title={fact.hint}>
-            {fact.status === 'later' ? '客户稍后补' : fact.hint ?? '未填写'}
+            {fact.status === 'later' ? '客户稍后补' : fact.status === 'blank' ? '先留空，文稿标「待补充」' : fact.hint ?? '未填写'}
           </span>
         )}
         <span style={{ width: 152, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>

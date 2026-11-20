@@ -54,9 +54,13 @@ describe('企业自填第 2 步 · 人员与应急组织', () => {
     expect(twice.error?.issues[0]?.message).toBe('同一个小组不能添加两次');
   });
 
-  it('按员工人数预设小组：50 人以下 3 组，100 人以上 5 组', () => {
+  it('按规模建议小组：100 人以下 3 组，100 人及以上或有危化品 5 组', () => {
     expect(suggestedGroups(20)).toEqual({ min: 3, max: 3 });
-    expect(suggestedGroups(86)).toEqual({ min: 3, max: 4 });
+    expect(suggestedGroups(86)).toEqual({ min: 3, max: 3 });
+    expect(suggestedGroups(99)).toEqual({ min: 3, max: 3 });
+    expect(suggestedGroups(100)).toEqual({ min: 5, max: 5 });
+    expect(suggestedGroups(20, true)).toEqual({ min: 5, max: 5 });
+    expect(suggestedGroups(undefined, true)).toEqual({ min: 5, max: 5 });
     expect(defaultOrganizationStep(86).groups.map((g) => g.name)).toEqual(['抢险救灾组', '综合保障组', '通讯联络组']);
     expect(defaultOrganizationStep(120).groups).toHaveLength(5);
   });

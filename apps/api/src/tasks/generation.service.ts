@@ -18,6 +18,7 @@ import {
   type LockedMaterial,
   type AdoptedMaterial,
   type WorkupSnapshot,
+  effectiveSnapshot,
 } from '@genyun/shared';
 import {
   BadRequestException,
@@ -105,13 +106,15 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     }
     // 属地应急机构按知识库现在的内容检查、写进这一批（之后运营再改，已生成的这批不变）
     const districts = await this.knowledge.agencyDistricts();
-    const { gaps } = workupGaps(row.snapshot, row.data, districts);
+    // 专家核对向导保存的那份盖在快照上（客户原表不动）
+    const snapshot = effectiveSnapshot(row.snapshot, row.data);
+    const { gaps } = workupGaps(snapshot, row.data, districts);
     if (gaps.length > 0) {
       throw new BadRequestException({ statusCode: 400, message: `还差 ${gaps.length} 项没有整理完，补齐后才能生成`, reason: 'gaps', gaps });
     }
     // 专家看确认页以后客户又传了文件或新版本：不生成，留在本页把变了的行标出来
     if (parsed.data.materials !== undefined) {
-      const now = await this.materialsOf(task.id, row.snapshot, row.snapshotAt);
+      const now = await this.materialsOf(task.id, snapshot, row.snapshotAt);
       if (now.fingerprint !== parsed.data.materials) {
         throw new ConflictException({
           statusCode: 409,
@@ -127,8 +130,8 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     }
 
     // 附件 7 的客户图纸：按专家选的页锁定（第 10c 项）；页数第一次算要读文件，放在事务外
-    const drawings = planDrawingsOf(await this.drawings.drawingsOf(task.id, task.orgId, row.snapshot, row.data));
-    const materials: LockedMaterial[] = (await this.workup.originals(task.id, row.snapshot)).map((o) => ({
+    const drawings = planDrawingsOf(await this.drawings.drawingsOf(task.id, task.orgId, snapshot, row.data));
+    const materials: LockedMaterial[] = (await this.workup.originals(task.id, snapshot)).map((o) => ({
       fileId: o.fileId,
       name: o.name,
       version: o.version,
@@ -141,7 +144,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
           taskId: task.id,
           workupVersion: row.version,
           snapshotAt: row.snapshotAt,
-          input: { ...planInputOf(row.snapshot, row.data, chinaToday(), districts), drawings },
+          input: { ...planInputOf(snapshot, row.data, chinaToday(), districts), drawings },
           materials,
           createdBy: user.id,
         })
@@ -158,7 +161,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     const task = await this.workup.task(user, id);
     const [row] = await this.db.select().from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
     if (!row) throw new BadRequestException('还没有开始整理');
-    return this.materialsOf(task.id, row.snapshot, row.snapshotAt);
+    return this.materialsOf(task.id, effectiveSnapshot(row.snapshot, row.data), row.snapshotAt);
   }
 
   private async materialsOf(taskId: string, snapshot: WorkupSnapshot, snapshotAt: Date): Promise<GenerationMaterials> {

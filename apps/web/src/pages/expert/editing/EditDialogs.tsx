@@ -1,10 +1,11 @@
 import { blocksText, type EditBlock, type SectionView } from '@genyun/shared';
+import { ExclamationCircleFilled } from '@ant-design/icons';
 import { Button, Modal } from 'antd';
 import type { CSSProperties } from 'react';
 import { linkButton } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
 
-// E18-07 编辑中的恢复状态：离开前保存、别人刚保存过（冲突）；以及「帮我改写这段」的改写前后对照
+// 核对定稿页的弹窗：离开前保存（E18-07）、别人刚保存过（冲突）、「帮我改写这段」的改写前后对照；以及时间的写法
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 
@@ -21,6 +22,33 @@ export function stamp(iso: string): string {
   return `${p('month')}.${p('day')} ${p('hour')}:${p('minute')}`;
 }
 
+const DAY = 24 * 60 * 60 * 1000;
+const dayKey = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(d);
+
+/** 按天说：今天、昨天、11 月 16 日 */
+export function dayLabel(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const k = dayKey(d);
+  if (k === dayKey(now)) return '今天';
+  if (k === dayKey(new Date(now.getTime() - DAY))) return '昨天';
+  const [, m, day] = k.split('-');
+  return `${Number(m)} 月 ${Number(day)} 日`;
+}
+
+/** 几点几分（北京时间） */
+export function clock(iso: string): string {
+  return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+}
+
+/** 「今天 16:20」「昨天 16:50」「11 月 16 日 09:30」 */
+export const when = (iso: string) => `${dayLabel(iso)} ${clock(iso)}`;
+
+/** 节标题前的编号当简称：「2.3 应急小组及职责」→「2.3 节」；没有编号的用书名号括起来 */
+export function sectionShort(title: string): string {
+  const m = /^(\d+(?:\.\d+)+|\d+)[.、]?\s/.exec(title);
+  return m ? `${m[1]} 节` : `「${title}」`;
+}
+
 export async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
@@ -32,7 +60,8 @@ export async function copyText(text: string): Promise<boolean> {
 
 export function LeaveDialog({
   open,
-  where,
+  section,
+  target,
   saving,
   keptOnly = false,
   onStay,
@@ -42,60 +71,50 @@ export function LeaveDialog({
 }: {
   open: boolean;
   afterClose?: () => void;
-  /** 如「应急预案「附件 · 应急通讯录」」 */
-  where: string;
+  /** 正在改的节的简称，如「2.3 节」 */
+  section: string;
+  /** 要去哪里，如「3 风险描述」「Word 预览」 */
+  target: string;
   saving: boolean;
-  /** 编辑区没有改动、只有右栏冲突前的输入没合并：没有可保存的，只能继续合并或放弃 */
+  /** 编辑区没有改动、只有冲突前的输入没合并：没有可保存的，只能继续合并或放弃 */
   keptOnly?: boolean;
   onStay: () => void;
   onDiscard: () => void;
   onSave: () => void;
 }) {
-  if (keptOnly) {
-    return (
-      <Modal
-        open={open}
-        title="还有内容没有合并"
-        focusTriggerAfterClose={false}
-        afterClose={afterClose}
-        onCancel={onStay}
-        width={560}
-        footer={[
-          <Button key="discard" danger onClick={onDiscard}>
-            放弃并离开
-          </Button>,
-          <Button key="stay" type="primary" onClick={onStay}>
-            继续合并
-          </Button>,
-        ]}
-      >
-        <p style={{ ...text14, color: gy.text, margin: '8px 0 16px' }}>
-          {where}的右栏还有你冲突前的输入没合并，编辑区目前没有改动。放弃就离开，这些输入会丢弃；已保存稿不变。
-        </p>
-      </Modal>
-    );
-  }
+  const title = keptOnly ? `${section}还有内容没合并` : `${section}改的内容还没保存`;
+  const body = keptOnly
+    ? `您要去「${target}」。编辑框下面还留着您冲突前写的内容，离开后就找不回来了。`
+    : `您要去「${target}」。不保存的话，刚才在 ${section}写的内容会丢掉。`;
   return (
     <Modal
       open={open}
-      title="离开前保存修改？"
+      title={null}
+      closable={false}
       focusTriggerAfterClose={false}
       afterClose={afterClose}
       onCancel={onStay}
-      width={560}
-      footer={[
-        <Button key="stay" onClick={onStay}>
-          继续编辑
-        </Button>,
-        <Button key="discard" danger onClick={onDiscard}>
-          不保存并离开
-        </Button>,
-        <Button key="save" type="primary" loading={saving} onClick={onSave}>
-          保存并离开
-        </Button>,
-      ]}
+      width={520}
+      footer={null}
     >
-      <p style={{ ...text14, color: gy.text, margin: '8px 0 16px' }}>{where}有未保存修订。不保存就离开，本次输入会丢弃；已保存稿不变。</p>
+      <div role="alertdialog" aria-label={title} style={{ display: 'flex', gap: 12 }}>
+        <ExclamationCircleFilled aria-hidden style={{ color: gy.warning, fontSize: 20, marginTop: 2 }} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 600, color: gy.text }}>{title}</span>
+          <span style={{ ...text14, color: gy.secondary }}>{body}</span>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <Button onClick={onStay}>{keptOnly ? '继续合并' : `留在 ${section}`}</Button>
+            <Button danger onClick={onDiscard}>
+              {keptOnly ? '放弃并离开' : '不保存，直接离开'}
+            </Button>
+            {!keptOnly && (
+              <Button type="primary" loading={saving} onClick={onSave}>
+                保存并离开
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -149,36 +168,37 @@ export function ConflictDialog({
   return (
     <Modal
       open={open}
-      title="当前稿件已被更新，请先对照变更"
+      title="这一节刚被别人保存过，请先对照"
       onCancel={onBack}
       width={960}
       footer={
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ flex: 1, ...text14, color: gy.secondary, textAlign: 'left' }}>保留你的输入。打开最新稿后逐项合并，不自动覆盖任何一方。</span>
+          <span style={{ flex: 1, ...text14, color: gy.secondary, textAlign: 'left' }}>您的输入会留着。打开最新的内容后逐项合并，不会自动覆盖任何一方。</span>
           <Button onClick={onBack}>返回继续编辑</Button>
           <Button type="primary" onClick={onOpenLatest}>
-            保留输入并打开最新稿
+            留着我的输入，打开最新的
           </Button>
         </div>
       }
     >
       <p style={{ ...text14, color: gy.text, margin: '8px 0 16px' }}>
-        你的修改尚未保存。其他人已保存了更新版本，直接保存会覆盖新内容；请对照后再提交修订。两边不同的段落已标出。
+        您的修改还没保存。别人刚保存了这一节，直接保存会盖掉对方的内容；请对照后再保存。两边不同的段落已标出。
       </p>
       <div style={{ display: 'flex', gap: 24 }}>
-        <section aria-label="你的未保存内容" style={box}>
-          <span style={{ ...text14, color: gy.text }}>你的未保存内容</span>
-          <Lines lines={mineLines} other={new Set(latestLines)} mark="与最新稿不同" />
+        <section aria-label="您没保存的内容" style={box}>
+          <span style={{ ...text14, color: gy.text }}>您没保存的内容</span>
+          <Lines lines={mineLines} other={new Set(latestLines)} mark="和最新的不同" />
           <button type="button" style={{ ...linkButton, ...text14, alignSelf: 'flex-start' }} onClick={onCopyMine}>
             复制我的内容
           </button>
         </section>
-        <section aria-label="最新保存稿" style={box}>
-          <span style={{ ...text14, color: gy.text }}>最新保存稿{latest?.saved ? `　·　${stamp(latest.saved.at)}` : ''}</span>
-          <Lines lines={latestLines} other={new Set(mineLines)} mark="与你的内容不同" />
+        <section aria-label="最新保存的内容" style={box}>
+          <span style={{ ...text14, color: gy.text }}>最新保存的内容{latest?.saved ? `　·　${stamp(latest.saved.at)}` : ''}</span>
+          <Lines lines={latestLines} other={new Set(mineLines)} mark="和您的内容不同" />
           {latest?.saved && (
             <span style={{ ...text14, color: gy.secondary }}>
-              更新人：{latest.saved.byName}　·　修订说明：{latest.saved.note}
+              保存人：{latest.saved.byName}
+              {latest.saved.note.trim() ? `　·　修改说明：${latest.saved.note}` : ''}
             </span>
           )}
         </section>
@@ -223,22 +243,7 @@ export function RewriteDialog({
           <p style={{ ...text14, color: gy.text, whiteSpace: 'pre-wrap', margin: 0 }}>{preview?.after}</p>
         </section>
       </div>
-      <span style={{ ...text14, color: gy.secondary }}>{preview?.note}。采用后仍可点「撤销」恢复原文。</span>
+      <span style={{ ...text14, color: gy.secondary }}>{preview?.note}。采用后还可以点「撤销」恢复原文。</span>
     </Modal>
-  );
-}
-
-/** 正文 / Word 预览：两个普通按钮，当前的标为按下 */
-export function ViewSwitch({ preview, onText, onPreview }: { preview: boolean; onText: () => void; onPreview: () => void }) {
-  const style = (on: boolean): CSSProperties => ({ ...linkButton, ...text14, color: on ? gy.primary : gy.text, fontWeight: on ? 500 : 400 });
-  return (
-    <div role="group" aria-label="查看方式" style={{ display: 'flex', gap: 24 }}>
-      <button type="button" aria-pressed={!preview} style={style(!preview)} onClick={() => !preview || onText()}>
-        正文
-      </button>
-      <button type="button" aria-pressed={preview} style={style(preview)} onClick={() => preview || onPreview()}>
-        Word 预览
-      </button>
-    </div>
   );
 }

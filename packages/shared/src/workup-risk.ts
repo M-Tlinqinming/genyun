@@ -15,6 +15,7 @@ export type RiskDimension = LecKey | LsrKey;
 import { isAddedRow, planProductionOf, productionView, type Judged, type ProductionList, type ProductionWorkup } from './workup-production.ts';
 import type { WorkupSnapshot } from './workup.ts';
 import { scopeView, type ScopeWorkup } from './workup-scope.ts';
+import { effectiveSnapshot, type ExpertCopy } from './workup-steps.ts';
 
 // ---------- LEC 取值表（与风险评估报告表 2.2-1 ~ 2.2-3 一致） ----------
 export type LecKey = 'l' | 'e' | 'c';
@@ -197,9 +198,10 @@ const quoted = (reason: string) => reason.match(/「(.+?)」/)?.[1];
 // 「厂（场）内车辆致害」与「厂内车辆致害」、「其他」与「其他伤害」（GB 6441-2025 前后的写法）算同一类
 const typeKey = (factor: string) => factor.replace(/（场）|\(场\)|事故|\s/g, '').replace(/^其他伤害$/, '其他');
 
-type RiskData = { production?: ProductionWorkup; scope?: ScopeWorkup; risks?: RiskWorkup };
+type RiskData = { production?: ProductionWorkup; scope?: ScopeWorkup; risks?: RiskWorkup } & Partial<ExpertCopy>;
 
 export function riskView(snapshot: WorkupSnapshot, data: RiskData): RiskView {
+  snapshot = effectiveSnapshot(snapshot, data);
   const production = productionView(snapshot, data);
   const plan = planProductionOf(snapshot, production);
   // 候选按专家确认后的适用范围（待确认的按系统建议）；开关关掉后改过的候选不显示，修改记录保留

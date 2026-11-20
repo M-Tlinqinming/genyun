@@ -1,4 +1,11 @@
-import type { AgencyDistrict, CustomerDrawing,FactSave, FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
+import type {
+  AgencyDistrict,
+  BasicStepWorkupSave,
+  CustomerDrawing,
+  FactSave,
+  OrganizationStepWorkupSave,
+  StepsDoneSave,
+  FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -22,6 +29,18 @@ export interface Workup {
   originals: WorkupOriginal[];
   // 知识库里的属地应急机构（企业事实里的属地机构按它算）
   agencyDistricts: AgencyDistrict[];
+  // intake = 客户下载资料表格、上传后读表建的任务；legacy = 客户逐项填写的老任务
+  flow: 'intake' | 'legacy';
+  // 客户这次提交时上传的文件（资料表格、营业执照、图纸照片），按上传先后
+  intakeFiles: WorkupIntakeFile[];
+}
+
+export interface WorkupIntakeFile {
+  fileId: string;
+  name: string;
+  contentType: string;
+  slot: string;
+  uploadedAt: string;
 }
 
 export const workupKey = (taskId: string) => ['tasks', taskId, 'workup'] as const;
@@ -100,3 +119,16 @@ export const drawingPageUrl = (taskId: string, fileId: string, page: number, siz
 export function inlineUrl(fileId: string) {
   return request<{ url: string }>(`/files/${fileId}/download-url?inline=1`);
 }
+
+// 资料核对向导：第 1、2 步整步保存；只记走到第几步（第 3–5 步还用原来的整理页时用）
+function useStepSave<T>(taskId: string, path: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: T) => request<Workup>(`/tasks/${taskId}/workup/steps/${path}`, { method: 'PUT', body: JSON.stringify(input) }),
+    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+  });
+}
+
+export const useSaveBasicStep = (taskId: string) => useStepSave<BasicStepWorkupSave>(taskId, 'basic');
+export const useSaveOrganizationStep = (taskId: string) => useStepSave<OrganizationStepWorkupSave>(taskId, 'organization');
+export const useSaveStepsDone = (taskId: string) => useStepSave<StepsDoneSave>(taskId, 'done');

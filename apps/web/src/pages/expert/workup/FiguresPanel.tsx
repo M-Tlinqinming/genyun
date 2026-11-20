@@ -1,7 +1,6 @@
 import {
   BRANCH_KINDS,
   FIGURES,
-  orgChartSvg,
   PER_ROW_OPTIONS,
   processFlowSvg,
   type BranchKind,
@@ -32,8 +31,7 @@ export interface FiguresPanelProps {
   settings: FiguresWorkup;
   saving: boolean;
   onSave: (input: FiguresSaveInput) => Promise<boolean>;
-  // 人员与工序回到对应模块修改
-  onGoOrganization: () => void;
+  // 工序回到对应模块修改
   onGoProcess: () => void;
   registerRow: (key: string, el: HTMLElement | null) => void;
 }
@@ -49,37 +47,19 @@ function day(iso: string): string {
 const svgUrl = (svg: string) =>
   `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.replace(/font-family="[^"]*"/, `font-family="'Microsoft YaHei', 'Noto Sans SC', sans-serif"`))}`;
 
-// 中栏「图件」（14 页 E18-00F）：两张图并排，各自调整画法后采用；人员和工序内容回到对应模块修改
+// 中栏「图件」（14 页 E18-00F）：工艺流程图调整画法后采用；组织体系图已搬到资料核对第 2 步（右栏实时生成）
 export function FiguresPanel(props: FiguresPanelProps) {
-  const { view, saving, onSave } = props;
-  const pending = view.pending.map((p) => p.key);
+  const { saving, onSave } = props;
 
   return (
     <section aria-label="图件" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>预案附图 · 系统生成，专家微调后采用</h2>
-          <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
-            图由客户填写的应急组织和工序自动画出。这里只改「怎么画」；人员和工序内容回到对应模块修改，改后图会重新生成。
-          </span>
-        </div>
-        <Popconfirm
-          title="两张图都恢复自动排版？"
-          description="去掉这里的调整和添加的支路，已采用的图要重新采用。"
-          okText="恢复"
-          cancelText="取消"
-          onConfirm={() => void onSave({ org: null, process: null })}
-        >
-          <Button disabled={saving || (!view.org.customized && !view.process.customized)}>全部恢复自动排版</Button>
-        </Popconfirm>
-        <Button type="primary" disabled={saving || pending.length === 0} onClick={() => void onSave({ adopt: pending })}>
-          {pending.length === 2 ? '两张图都采用' : pending.length === 1 ? `采用${FIGURES[pending[0]!]}` : '两张图都已采用'}
-        </Button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 500, lineHeight: '24px', color: gy.text }}>预案附图 · 系统生成，专家微调后采用</h2>
+        <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
+          工艺流程图由客户填写的工序自动画出。这里只改「怎么画」；工序内容回到对应模块修改，改后图会重新生成。组织体系图在资料核对第 2 步随人员实时生成，不用另外采用。
+        </span>
       </div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        <OrgCard {...props} />
-        <ProcessCard {...props} />
-      </div>
+      <ProcessCard {...props} />
       <DrawingsCard taskId={props.taskId} selection={props.settings.drawings} saving={saving} onSave={onSave} />
     </section>
   );
@@ -96,8 +76,7 @@ function StatusTag({ status, by, at }: { status: FigureStatus; by?: string; at?:
   );
 }
 
-// 体系图窄、流程图宽，两张卡片按 2 : 3 分
-const CARD_FLEX: Record<FigureKey, string> = { org: '2 1 0', process: '3 1 0' };
+const CARD_FLEX: Record<FigureKey, string> = { org: '1 1 0', process: '1 1 0' };
 
 function Card({
   figure,
@@ -176,124 +155,6 @@ function Row({ name, children }: { name: string; children: ReactNode }) {
       <span style={{ ...label, paddingTop: 4 }}>{name}</span>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minHeight: 28 }}>{children}</div>
     </div>
-  );
-}
-
-function ShowHide({ name, value, disabled, onChange }: { name: string; value: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <Radio.Group
-      aria-label={name}
-      size="small"
-      optionType="button"
-      buttonStyle="solid"
-      disabled={disabled}
-      value={value}
-      onChange={(e) => onChange(e.target.value as boolean)}
-      options={[
-        { label: '显示', value: true },
-        { label: '不显示', value: false },
-      ]}
-    />
-  );
-}
-
-function OrgCard({ view, settings, saving, onSave, onGoOrganization, registerRow }: FiguresPanelProps) {
-  const org = view.org;
-  const [ordering, setOrdering] = useState(false);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const saveOrg = (patch: Partial<NonNullable<FiguresWorkup['org']>>) => onSave({ org: { ...settings.org, ...patch } });
-  const svg = orgChartSvg({ deputy: org.deputy, office: org.office, groups: org.groups });
-
-  const moveBefore = (name: string, target: string) => {
-    if (name === target) return;
-    const rest = org.groups.filter((g) => g !== name);
-    const after = org.groups.indexOf(name) < org.groups.indexOf(target);
-    rest.splice(rest.indexOf(target) + (after ? 1 : 0), 0, name);
-    void saveOrg({ order: rest });
-  };
-
-  return (
-    <Card
-      figure="org"
-      status={org.status}
-      adopted={org.adopted}
-      customized={org.customized}
-      saving={saving}
-      onSave={onSave}
-      registerRow={registerRow}
-      svg={svg}
-    >
-      <Row name="副总指挥">
-        <ShowHide name="副总指挥" value={org.deputy} disabled={saving} onChange={(deputy) => void saveOrg({ deputy })} />
-        {org.deputy && !org.hasDeputy && <span style={{ fontSize: 12, lineHeight: '20px', color: stage.action.color }}>客户没有填副总指挥</span>}
-      </Row>
-      <Row name="应急办公室">
-        <ShowHide name="应急办公室" value={org.office} disabled={saving} onChange={(office) => void saveOrg({ office })} />
-      </Row>
-      <Row name="小组顺序">
-        <span style={small}>{org.customOrder ? '专家调整过' : '按规则排序'}</span>
-        {org.groups.length > 1 && (
-          <button type="button" style={link13} onClick={() => setOrdering(!ordering)}>
-            {ordering ? '完成' : '拖动调整'}
-          </button>
-        )}
-        {org.customOrder && (
-          <button type="button" style={link13} disabled={saving} onClick={() => void saveOrg({ order: undefined })}>
-            恢复规则排序
-          </button>
-        )}
-      </Row>
-      {ordering && (
-        <ol aria-label="小组顺序" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '0 0 0 108px', padding: 0, listStyle: 'none' }}>
-          {org.groups.map((g, i) => (
-            <li
-              key={g}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', g);
-                setDragging(g);
-              }}
-              onDragEnd={() => setDragging(null)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                moveBefore(e.dataTransfer.getData('text/plain') || dragging || '', g);
-                setDragging(null);
-              }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                height: 30,
-                padding: '0 10px 0 6px',
-                borderRadius: 6,
-                borderWidth: 1,
-                borderStyle: dragging && dragging !== g ? 'dashed' : 'solid',
-                borderColor: dragging && dragging !== g ? gy.primary : '#D9D9D9',
-                background: gy.surface,
-                opacity: dragging === g ? 0.4 : 1,
-                cursor: 'grab',
-                ...small,
-              }}
-            >
-              <span aria-hidden style={{ width: 18, height: 18, borderRadius: 9, background: gy.neutralBg, textAlign: 'center', fontSize: 12, lineHeight: '18px', color: gy.secondary }}>
-                {i + 1}
-              </span>
-              {g}
-            </li>
-          ))}
-        </ol>
-      )}
-      <Row name="人员">
-        <span style={small}>
-          {org.groups.length} 个小组{org.hasDeputy ? ' · 有副总指挥' : ''}
-        </span>
-        <button type="button" style={link13} onClick={onGoOrganization}>
-          去企业事实修改
-        </button>
-      </Row>
-    </Card>
   );
 }
 

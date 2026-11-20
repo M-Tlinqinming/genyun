@@ -203,7 +203,7 @@ describe('正文编辑', () => {
     await zhou.get(url('plan', '/sections/ch2/figures/0')).expect(404);
   });
 
-  it('保存一节：记修订说明，刷新后还在，下载的 Word 用修订后的内容', async () => {
+  it('保存一节：记修改说明，刷新后还在，下载的 Word 用修订后的内容', async () => {
     const zhou = await as('zhou@test.cn');
     const body = save([{ type: 'paragraph', text: ['应急办公室联系人：李某，电话 13800002601。'] }, lockedTable], 0);
     const saved = (await zhou.put(url('plan', '/sections/ch1.2')).send(body).expect(200)).body;
@@ -246,9 +246,15 @@ describe('正文编辑', () => {
     await zhou.put(url('risk', '/sections/ch1.1')).send(save([{ type: 'paragraph', text: ['第二次的写法。'] }], 1, '第二次')).expect(200);
 
     const query = (await zhou.get(url('risk', `/saves/${first}?batch=${batchId}`)).expect(200)).body;
-    expect(query.section).toMatchObject({ rev: 1, version: 1, blocks: [{ type: 'paragraph', text: ['第一次的写法。'] }], saved: { note: '第一次', byName: '周工' } });
+    // 带上保存人编号：页面按它判断显示「您已修改」还是「某某已修改」
+    expect(query.section).toMatchObject({
+      rev: 1,
+      version: 1,
+      blocks: [{ type: 'paragraph', text: ['第一次的写法。'] }],
+      saved: { note: '第一次', by: uid['zhou@test.cn'], byName: '周工' },
+    });
     const retry = (await zhou.put(url('risk', '/sections/ch1.1')).send(body).expect(200)).body;
-    expect(retry).toMatchObject({ rev: 1, blocks: [{ text: ['第一次的写法。'] }] });
+    expect(retry).toMatchObject({ rev: 1, blocks: [{ text: ['第一次的写法。'] }], saved: { by: uid['zhou@test.cn'], byName: '周工' } });
 
     const other = await zhou.put(url('risk', '/sections/ch1.2')).send(save([{ type: 'paragraph', text: ['别处'] }, lockedTable], 0, '别处', first)).expect(409);
     expect(other.body.reason).toBe('other_section');
@@ -278,11 +284,12 @@ describe('正文编辑', () => {
     expect(now.blocks[0].text).toEqual(['应急办公室联系人：李某，电话 13800002601。']);
   });
 
-  it('不能删表格、不能空着修订说明、没改不用保存', async () => {
+  it('不能删表格、修改说明不超过 200 字、没改不用保存', async () => {
     const zhou = await as('zhou@test.cn');
     const noTable = await zhou.put(url('plan', '/sections/ch1.2')).send(save([{ type: 'paragraph', text: ['只剩一段'] }], 1)).expect(400);
-    expect(noTable.body.message).toMatch(/表格和图/);
-    await zhou.put(url('plan', '/sections/ch1.1')).send(save([{ type: 'paragraph', text: ['再改'] }], 1, ' ')).expect(400);
+    expect(noTable.body.message).toBe('表格和图来自资料核对，不能在正文里删除或调整顺序；请撤销后再保存');
+    const long = await zhou.put(url('plan', '/sections/ch1.1')).send(save([{ type: 'paragraph', text: ['再改'] }], 1, '字'.repeat(201))).expect(400);
+    expect(long.body.message).toBe('修改说明不超过 200 字');
     const same = await zhou.put(url('plan', '/sections/ch1.1')).send(save([{ type: 'paragraph', text: ['新的编制目的。'] }], 1)).expect(400);
     expect(same.body.message).toMatch(/没有修改/);
   });

@@ -8,6 +8,7 @@ import { CREDIT_ENTRY_POOL, type ChecklistItemKey, type ChecklistState, chinaTod
 import { feiyuBasicInfo, feiyuChecklist } from '@genyun/shared/fixtures/feiyu';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import { and, asc, eq, sql } from 'drizzle-orm';
+import ExcelJS from 'exceljs';
 import type { Database } from '../db/client.ts';
 import {
   checklistItems,
@@ -19,12 +20,19 @@ import {
   organizationContracts,
   organizations,
   taskContacts,
+  taskIntakeFiles,
+  taskIntakes,
+  taskIntakeSubmissions,
   taskNumberCounters,
   taskSubmissions,
   tasks,
   users,
 } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
+import { analyzeSheet } from '../intake/analyze.ts';
+import { composeCheck } from '../intake/check.ts';
+import { TEMPLATE_PATH } from '../intake/template.ts';
+import { normalFill } from '../intake/test-workbooks.ts';
 
 export const DEMO_EMAILS = {
   agencyAdmin: 'admin@demo.genyun.net.cn',
@@ -38,6 +46,8 @@ export const DEMO_ORGS = { internal: '耕云', agency: '示例安全咨询机构
 export const DEMO_OTHER_ENTERPRISE = '示例五金制品有限公司';
 // 超时兜底演示：两周前提交、分派给吴工，吴工只打过一次未接通
 export const DEMO_OVERDUE_ENTERPRISE = '示例塑胶制品有限公司';
+// 新流程演示：客户下载资料模板、填好上传、已提交，分派给周工（专家端的「客户原表」卡片）
+export const DEMO_INTAKE_ENTERPRISE = '示例电子科技有限公司';
 
 export interface DemoSeedOptions {
   // 只给新建的账号用；已有账号的密码不动
@@ -181,7 +191,135 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
     submittedAt: overdueAt,
     unreachableCallAt: new Date(overdueAt.getTime() + 86_400_000),
   });
+
+  // —— 新流程演示任务（K10）——
+  // 电子科技：客户用资料模板填好上传（另有总平面布置图、紧急疏散示意图、一张现场照片），已提交、分派给周工。
+  // 读表结果用正式的读表代码从这份表格读出来，和真实上传后存的一样
+  const intakeEntId = await ensureEnterprise(db, report, { orgId: feiyuOrgId, name: DEMO_INTAKE_ENTERPRISE, createdBy: customer });
+  await ensureIntakeTask(db, opts.storage, report, {
+    label: `${DEMO_INTAKE_ENTERPRISE}（周工，资料表格）`,
+    orgId: feiyuOrgId,
+    enterpriseId: intakeEntId,
+    enterpriseName: DEMO_INTAKE_ENTERPRISE,
+    expertId: uid[DEMO_EMAILS.expert]!,
+    customerId: customer,
+    submittedAt: new Date(now.getTime() - 3_600_000),
+  });
   return report;
+}
+
+// 新流程（上传资料表格）的已提交任务：资料表格、图纸照片、读表结果、提交记录一起写。
+// 同样按企业判断：这家企业已有应急预案任务就不再建
+async function ensureIntakeTask(
+  db: Database,
+  storage: FileStorage,
+  report: DemoSeedReport,
+  t: { label: string; orgId: string; enterpriseId: string; enterpriseName: string; expertId: string; customerId: string; submittedAt: Date },
+) {
+  const [found] = await db
+    .select({ number: tasks.number })
+    .from(tasks)
+    .where(and(eq(tasks.enterpriseId, t.enterpriseId), eq(tasks.businessType, 'emergency_plan')))
+    .limit(1);
+  if (found) {
+    report.skipped.push(`任务 ${found.number} ${t.label}`);
+    return;
+  }
+  const sheetBuf = await demoDataSheet(t.enterpriseName);
+  const analysis = await analyzeSheet(sheetBuf, { enterprise: { id: t.enterpriseId, name: t.enterpriseName }, others: [] });
+  if (analysis.kind !== 'read') throw new Error('演示资料表格没读出来');
+
+  const uploadedAt = new Date(t.submittedAt.getTime() - 1_800_000);
+  const xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const png = demoPicture();
+  const uploads = [
+    { slot: 'data_sheet' as const, name: '电子科技-企业资料填报.xlsx', buf: sheetBuf, type: xlsx },
+    { slot: 'site_plan' as const, name: '总平面布置图.png', buf: png, type: 'image/png' },
+    { slot: 'evacuation_map' as const, name: '一楼紧急疏散示意图.png', buf: png, type: 'image/png' },
+    { slot: 'other' as const, name: '仓库现场照片.png', buf: png, type: 'image/png' },
+  ].map((u) => ({ ...u, id: randomUUID() }));
+  for (const u of uploads) await storage.put(`${t.orgId}/${u.id}`, u.buf, u.type);
+  const sheetId = uploads[0]!.id;
+
+  const number = await db.transaction(async (tx) => {
+    const { year, number } = await nextTaskNumber(tx);
+    const [task] = await tx
+      .insert(tasks)
+      .values({
+        orgId: t.orgId,
+        enterpriseId: t.enterpriseId,
+        number,
+        businessType: 'emergency_plan',
+        name: `${year} 年生产安全事故应急预案编制`,
+        status: 'submitted',
+        submittedAt: t.submittedAt,
+        createdAt: uploadedAt,
+        updatedAt: t.submittedAt,
+        assignedExpertId: t.expertId,
+        assignedAt: t.submittedAt,
+        createdBy: t.customerId,
+      })
+      .returning({ id: tasks.id });
+    const taskId = task!.id;
+    await tx.insert(files).values(
+      uploads.map((u) => ({
+        id: u.id,
+        orgId: t.orgId,
+        kind: 'customer_material' as const,
+        originalName: u.name,
+        contentType: u.type,
+        sizeBytes: u.buf.length,
+        sha256: createHash('sha256').update(u.buf).digest('hex'),
+        storageKey: `${t.orgId}/${u.id}`,
+        uploadedBy: t.customerId,
+      })),
+    );
+    await tx.insert(taskIntakeFiles).values(uploads.map((u) => ({ taskId, slot: u.slot, fileId: u.id, uploadedBy: t.customerId, uploadedAt })));
+    await tx.insert(taskIntakes).values({
+      taskId,
+      dataSheetFileId: sheetId,
+      templateVersion: analysis.parse.templateVersion,
+      parseResult: analysis.parse,
+      requiredCheck: composeCheck(analysis.sheet, { sitePlan: true, evacuationPlan: true, noEvacuationMap: false }, uploadedAt),
+      warnings: analysis.warnings,
+      preferredExpertId: t.expertId,
+      lastUploadedSide: 'customer',
+      createdAt: uploadedAt,
+      updatedAt: uploadedAt,
+      updatedBy: t.customerId,
+    });
+    await tx.insert(taskIntakeSubmissions).values({
+      taskId,
+      requestId: randomUUID(),
+      submittedBy: t.customerId,
+      submittedAt: t.submittedAt,
+      snapshot: {
+        files: uploads.map((u) => ({ fileId: u.id, slot: u.slot, originalName: u.name })),
+        parse: analysis.parse,
+        templateVersion: analysis.parse.templateVersion,
+        noEvacuationMap: false,
+        preferredExpertId: t.expertId,
+      },
+    });
+    return number;
+  });
+  report.created.push(`任务 ${number} ${t.label}`);
+}
+
+// 演示资料表格：以仓库里的资料模板为底，填一份必填全齐的虚构数据（和读表单测用的同一份）
+async function demoDataSheet(name: string): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(TEMPLATE_PATH);
+  for (const [sheet, cells] of Object.entries(normalFill(name))) {
+    const ws = wb.getWorksheet(sheet)!;
+    for (const [addr, v] of Object.entries(cells!)) ws.getCell(addr).value = v;
+  }
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+// 演示图纸照片：一张 1×1 的浅灰 PNG（只为演示列表和「查看」）
+function demoPicture(): Buffer {
+  return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4+/fvfwAJ0wPj0oO0VQAAAABJRU5ErkJggg==', 'base64');
 }
 
 type OrgFill = Partial<Pick<typeof organizations.$inferInsert, 'region' | 'regionProvince' | 'regionCity' | 'regionDistrict' | 'contactName' | 'contactPhone' | 'contractStartsAt' | 'contractEndsAt' | 'activatedAt'>>;

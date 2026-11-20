@@ -12,6 +12,9 @@ async function login(page: Page, email: string) {
 async function openFeiyu(page: Page) {
   await login(page, 'expert@demo.genyun.net.cn');
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
+  // 默认打开资料核对向导；这几块还在原来的整理页
+  await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+/);
+  await page.goto(`${new URL(page.url()).pathname}?view=workup-old`);
   await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
 }
 
@@ -45,8 +48,8 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
   await expect(row(page, 'agency.emergencyBureau')).toContainText('仲恺高新区应急管理局');
 
   // 只缺技术人员数：生产设备与物料的 6 项判断（含新增的乙炔）由 expert-workup-production 判定完，适用范围的 2 个开关由 expert-workup-scope 确认完，
-  // 两张图由 expert-workup-visuals 采用
-  await expect(page.getByText('整理中 · 必需项 22 / 23')).toBeVisible();
+  // 工艺流程图由 expert-workup-visuals 采用（组织体系图随资料生成，不用采用）
+  await expect(page.getByText('整理中 · 必需项 21 / 22')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 1 项：技术人员数');
 
   // 原件对照：客户补传的台账（expert-workup-visuals-drawings 还补传了一份消防设施布置图，切到台账）
@@ -55,35 +58,32 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
   await expect(originals.getByRole('tab', { name: /应急物资台账/ })).toHaveAttribute('aria-selected', 'true');
   await expect(originals.locator('iframe')).toHaveAttribute('src', /d=inline/);
 
-  // 下一个缺失项 → 直接填写，记下对照的原件
+  // 下一个缺失项：企业基本信息里的缺项回到资料核对第 1 步填
   await page.getByRole('button', { name: '下一个缺失项' }).click();
-  const missing = row(page, 'technicalManagementCount');
-  await expect(missing).toContainText('用于企业概况章节');
-  await missing.getByRole('button', { name: '直接填写' }).click();
-  await expect(missing).toContainText(/对照原件：应急物资台账/);
-  await missing.getByLabel('技术人员数').fill('8');
-  await missing.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(page).toHaveURL(/view=workup&step=1/);
+  await expect(page.getByRole('heading', { name: '核对企业基本信息' })).toBeVisible();
+  const basicSaved = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/workup/steps/basic') && r.ok());
+  await page.getByLabel('技术管理人员').fill('8');
+  await basicSaved;
 
-  await expect(missing).toContainText('8 人');
-  await expect(missing).toContainText('专家整理');
-  await expect(page.getByText('整理中 · 必需项 23 / 23')).toBeVisible();
-  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('专业整理的必需项已齐');
+  // 第 2 步改已有的值：值班电话
+  await page.getByRole('button', { name: '下一步：人员与应急组织' }).click();
+  await expect(page.getByRole('heading', { name: '核对应急指挥部和各小组' })).toBeVisible();
+  const orgSaved = page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/workup/steps/organization') && r.ok());
+  await page.getByRole('textbox', { name: '24 小时值班电话' }).fill('0752-3324000');
+  await orgSaved;
   await expect(page.getByRole('status')).toContainText(/已自动保存 \d\d:\d\d/);
 
-  // 改已有的值：值班电话
-  await row(page, 'dutyPhone').hover();
-  await row(page, 'dutyPhone').getByRole('button', { name: '修改值班电话' }).click();
-  await row(page, 'dutyPhone').getByLabel('值班电话').fill('0752-3324000');
-  await row(page, 'dutyPhone').getByLabel('值班电话').press('Enter');
-  await expect(row(page, 'dutyPhone')).toContainText('0752-3324000');
-
-  // 退出再进
-  await page.getByRole('link', { name: '任务中心' }).click();
+  // 退出再进：原来的整理页也看得到这两项
+  await page.getByRole('button', { name: '返回任务中心' }).click();
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
+  await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+/);
+  await page.goto(`${new URL(page.url()).pathname}?view=workup-old`);
   await expect(row(page, 'technicalManagementCount')).toContainText('8 人');
   await expect(row(page, 'dutyPhone')).toContainText('0752-3324000');
-  await expect(row(page, 'dutyPhone')).toContainText('专家整理');
+  await expect(page.getByText('整理中 · 必需项 22 / 22')).toBeVisible();
+  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('资料核对的必需项已齐');
 });
 
 test('只看缺失项、跳到小节、编制小组不能改', async ({ page }) => {

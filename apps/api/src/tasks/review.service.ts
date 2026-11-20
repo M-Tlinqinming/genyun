@@ -42,6 +42,7 @@ import {
   draftEdits,
   draftPreviews,
   draftReviews,
+  draftRevisions,
   factSupplements,
   files,
   generatedDrafts,
@@ -324,7 +325,7 @@ export class ReviewService {
 
   private async build(user: SessionUser, ctx: Ctx): Promise<ReviewView> {
     const batchId = ctx.batch.id;
-    const [drafts, edits, checks, [review], [changed], lock] = await Promise.all([
+    const [drafts, edits, checks, [review], [changed], lock, [last]] = await Promise.all([
       this.db
         .select({
           kind: generatedDrafts.kind,
@@ -369,6 +370,13 @@ export class ReviewService {
         .orderBy(desc(factSupplements.adoptedAt))
         .limit(1),
       batchLock(this.db, batchId),
+      // 当前账号在这批稿子里最近一次保存（「回来接着做」）
+      this.db
+        .select({ kind: draftRevisions.kind, sectionId: draftRevisions.sectionId, sectionTitle: draftRevisions.sectionTitle, at: draftRevisions.createdAt })
+        .from(draftRevisions)
+        .where(and(eq(draftRevisions.batchId, batchId), eq(draftRevisions.createdBy, user.id)))
+        .orderBy(desc(draftRevisions.createdAt))
+        .limit(1),
     ]);
     const docs: DraftCheckView[] = DRAFT_KIND_KEYS.map((kind) => {
       const e = edits.find((x) => x.kind === kind);
@@ -396,6 +404,7 @@ export class ReviewService {
       editable: canEditTaskWork(user, ctx.task) && !lock,
       factsChangedAt: changed?.at?.toISOString() ?? null,
       published: lock?.status === 'done' ? { version: lock.version, at: lock.publishedAt! } : null,
+      lastSave: last ? { kind: last.kind, sectionId: last.sectionId, sectionTitle: last.sectionTitle, at: last.at.toISOString() } : null,
     };
   }
 

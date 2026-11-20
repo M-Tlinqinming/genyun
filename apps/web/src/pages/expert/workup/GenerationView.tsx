@@ -110,7 +110,7 @@ export function GenerationView({
               ? '重试只处理失败的份，不清除已生成的草稿。'
               : '三份草稿已保存，下一步逐份编辑、核对与审核。'}
         </span>
-        {phase === 'done' && <Button onClick={onBackToWorkup}>查看专业整理</Button>}
+        {phase === 'done' && <Button onClick={onBackToWorkup}>查看资料核对</Button>}
         <Button onClick={onBackToCenter}>返回任务中心</Button>
         {phase === 'failed' && (
           <Button type="primary" loading={retry.isPending} onClick={() => void doRetry()}>
