@@ -124,8 +124,10 @@ test('逐份看 Word 版式并核对；改正文后该份回到待核对；三�
   await expect(page.getByText('人工核对 1 / 3', { exact: true })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: '正在人工核对' })).toBeVisible();
 
-  // 验收：核对完一份后改正文，该份回到待核对
+  // 验收：核对完一份后改正文，该份回到待核对（先等风险评估报告的核对栏出来，再切回应急预案）
+  await expect(checkBar(page)).toContainText('确认后记为 2 / 3');
   await docTab(page, '应急预案').click();
+  await expect(page).toHaveURL(/doc=plan/);
   await expect(checkBar(page)).toContainText('本份已核对');
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/acceptance/m2-12-checked-1440.png' });
