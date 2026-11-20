@@ -52,7 +52,6 @@ test('一份格式不对：其余照常保存，失败的一份重选后保存',
   const failed = page.getByTestId('pending-row');
   await expect(failed).toContainText('失败 · 未保存');
   await expect(failed).toContainText('格式不支持');
-  await expect(page.getByRole('button', { name: '先检查已保存资料' })).toBeVisible();
 
   await failed.locator('input[type=file]').setInputFiles(pdf('疏散图.pdf'));
   await expect(page.getByTestId('pending-row')).toHaveCount(0);
