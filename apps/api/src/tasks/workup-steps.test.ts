@@ -1,6 +1,6 @@
 // 资料核对向导第 1、2 步（K10）：快照从哪来、谁打开才写、两步的整步保存
 import { effectiveSnapshot, workupFacts } from '@genyun/shared';
-import { feiyuProfile, feiyuSnapshot } from '@genyun/shared/fixtures/feiyu-profile';
+import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
@@ -9,6 +9,9 @@ import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import { enterprises, memberships, organizations, taskIntakes, tasks, taskWorkups, users } from '../db/schema.ts';
+import { buildParseResult } from '../intake/profile.ts';
+import { loadWorkbook, readWorkbook } from '../intake/read.ts';
+import { newNormal, SAMPLE_NAME } from '../intake/test-workbooks.ts';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -62,10 +65,10 @@ beforeAll(async () => {
     ])
     .returning();
   [legacyTask, intakeTask, opsFirstTask, raceTask] = created.map((t) => t.id) as [string, string, string, string];
-  await db.insert(taskIntakes).values({
-    taskId: intakeTask,
-    parseResult: { templateVersion: null, identity: { ...feiyuSnapshot.identity, name: '飞宇（表格里读到的）' }, profile: feiyuProfile, parsedAt: '2026-11-20T08:00:00.000Z' },
-  });
+  // 读表结果用 K5 的读表代码从样例表格读出来，和真实上传后存的一样
+  const read = readWorkbook(await loadWorkbook(await newNormal()));
+  if (read.kind !== 'read') throw new Error('样例表格没读出来');
+  await db.insert(taskIntakes).values({ taskId: intakeTask, parseResult: buildParseResult(read.read) });
 
   app = await createApp(db, { loginLimitPerMinute: 1000 });
   await app.init();
@@ -88,8 +91,10 @@ describe('核对快照', () => {
   it('新流程从读表结果建快照', async () => {
     const res = await (await as('zhou@test.cn')).get(`/api/tasks/${intakeTask}/workup`).expect(200);
     expect(res.body.flow).toBe('intake');
-    expect(res.body.snapshot.identity.name).toBe('飞宇（表格里读到的）');
-    expect(res.body.snapshot.profile.basicStep.basic.employeeCount).toBe(86);
+    expect(res.body.snapshot.identity.name).toBe(SAMPLE_NAME);
+    expect(res.body.snapshot.identity.socialCreditCode).toBe('91441300MA5ABCD01X');
+    expect(res.body.snapshot.profile.basicStep.basic.employeeCount).toBe(45);
+    expect(res.body.snapshot.profile.basicStep.basic.contactPhone).toBe('13800000001');
   });
 
   it('老流程复制企业资料', async () => {

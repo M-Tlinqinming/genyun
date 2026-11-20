@@ -1,39 +1,31 @@
-import { App } from 'antd';
-import type { Workup, WorkupIntakeFile } from '../../../../api/workup';
-import { inlineUrl } from '../../../../api/workup';
-import { request } from '../../../../api/request';
+import type { IntakeFileView } from '@genyun/shared';
+import { App, Drawer } from 'antd';
+import { useState } from 'react';
+import { downloadFile, useIntake, viewFile } from '../../../../api/intake';
+import type { Workup } from '../../../../api/workup';
 import { gy, type } from '../../../../theme/tokens';
 import { caption, Chip, dayOf, link14, LockNote, SideCard, softLine } from './parts';
 
-// 右栏「客户原表」：客户上传的资料表格、这一步对应的工作表、图纸与照片；老流程（客户在线逐项填写）没有表格
-export function OriginalSheetCard({ workup, sheets, extra }: { workup: Workup; sheets: string[]; extra?: { label: string; files: WorkupIntakeFile[] } }) {
+// 右栏「客户原表」（第 1、2 步）：只在新流程任务显示，数据来自准备资料接口（GET /api/tasks/:taskId/intake）。
+// 资料表格的文件名、上传时间、共几张表和「下载 Excel」；这一步对应的工作表；图纸与照片列在抽屉里逐份查看
+export function OriginalSheetCard({ taskId, workup, sheets }: { taskId: string; workup: Workup; sheets: string[] }) {
+  const isIntake = workup.flow === 'intake';
+  const intake = useIntake(taskId, isIntake);
   const { message } = App.useApp();
-  const open = async (fileId: string, inline: boolean) => {
-    try {
-      const { url } = inline ? await inlineUrl(fileId) : await request<{ url: string }>(`/files/${fileId}/download-url`);
-      window.open(url, '_blank', 'noopener');
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : '打不开这份文件，请稍后再试');
-    }
-  };
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  if (!isIntake || !intake.data) return null;
 
-  if (workup.flow !== 'intake') {
-    return (
-      <SideCard title="客户填写的资料">
-        <span style={{ ...type.body, color: gy.secondary }}>客户在线逐项填写，没有上传资料表格。</span>
-        <LockNote text="客户填写的内容不会被改动，您的修改单独记录。" />
-      </SideCard>
-    );
-  }
+  const sheet = intake.data.dataSheet;
+  const pictures = [...(intake.data.sitePlan ? [intake.data.sitePlan] : []), ...intake.data.evacuationMaps, ...intake.data.others];
+  const run = (job: Promise<void>) => job.catch((err) => message.error(err instanceof Error ? err.message : '打不开这份文件，请稍后再试'));
+  const tableCount = sheet?.status === 'read' ? sheet.sheets.length : 0;
 
-  const sheet = workup.intakeFiles.find((f) => f.slot === 'data_sheet');
-  const pictures = workup.intakeFiles.filter((f) => f.slot === 'site_plan' || f.slot === 'evacuation_map' || f.slot === 'other');
   return (
     <SideCard
       title="客户原表"
       extra={
         sheet && (
-          <button type="button" style={link14} onClick={() => void open(sheet.fileId, false)}>
+          <button type="button" style={link14} onClick={() => void run(downloadFile(sheet.file.fileId))}>
             下载 Excel
           </button>
         )
@@ -41,11 +33,13 @@ export function OriginalSheetCard({ workup, sheets, extra }: { workup: Workup; s
     >
       {sheet ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ ...type.body, color: gy.text, overflowWrap: 'anywhere' }}>{sheet.name}</span>
-          <span style={caption}>{dayOf(sheet.uploadedAt, true)} 上传</span>
+          <span style={{ ...type.body, color: gy.text, overflowWrap: 'anywhere' }}>{sheet.file.originalName}</span>
+          <span style={caption}>
+            {dayOf(sheet.file.uploadedAt, true)} 上传{tableCount ? ` · 共 ${tableCount} 张表` : ''}
+          </span>
         </div>
       ) : (
-        <span style={{ ...type.body, color: gy.secondary }}>还没有读到客户的资料表格。</span>
+        <span style={{ ...type.body, color: gy.secondary }}>客户还没有上传资料表格。</span>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ ...type.caption, color: gy.secondary }}>这一步对应的工作表</span>
@@ -55,23 +49,41 @@ export function OriginalSheetCard({ workup, sheets, extra }: { workup: Workup; s
           ))}
         </span>
       </div>
-      {(extra?.files.length || pictures.length > 0) && <span aria-hidden style={{ height: 1, background: softLine }} />}
-      {extra && extra.files.length > 0 && (
-        <FileLine label={`${extra.label} ${extra.files.length} 份`} onOpen={() => void open(extra.files[0]!.fileId, true)} />
-      )}
-      {pictures.length > 0 && <FileLine label={`图纸与照片 ${pictures.length} 份`} onOpen={() => void open(pictures[0]!.fileId, true)} />}
+      <span aria-hidden style={{ height: 1, background: softLine }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ flex: 1, ...type.body, color: gy.text }}>图纸与照片 {pictures.length} 份</span>
+        {pictures.length > 0 && (
+          <button type="button" style={link14} onClick={() => setDrawerOpen(true)}>
+            查看
+          </button>
+        )}
+      </div>
       <LockNote />
+      <Drawer title={`图纸与照片 ${pictures.length} 份`} open={drawerOpen} onClose={() => setDrawerOpen(false)} width={420} zIndex={1100}>
+        <ul aria-label="图纸与照片" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {pictures.map((f, i) => (
+            <PictureRow key={f.id} file={f} first={i === 0} onView={() => void run(viewFile(f.fileId))} />
+          ))}
+        </ul>
+      </Drawer>
     </SideCard>
   );
 }
 
-function FileLine({ label, onOpen }: { label: string; onOpen: () => void }) {
+function PictureRow({ file, first, onView }: { file: IntakeFileView; first: boolean; onView: () => void }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ flex: 1, ...type.body, color: gy.text }}>{label}</span>
-      <button type="button" style={link14} onClick={onOpen}>
+    <li
+      aria-label={file.originalName}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: first ? undefined : `1px solid ${softLine}` }}
+    >
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ ...type.body, color: gy.text, overflowWrap: 'anywhere' }}>{file.originalName}</span>
+        <span style={caption}>{dayOf(file.uploadedAt, true)} 上传</span>
+      </div>
+      <button type="button" style={link14} onClick={onView}>
         查看
       </button>
-    </div>
+    </li>
   );
 }
+

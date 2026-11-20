@@ -140,3 +140,35 @@ test('第 3–5 步先用原来的整理页；第 5 步去确认并生成', asyn
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
   await expect(page.getByRole('heading', { name: '核对并生成' })).toBeVisible();
 });
+
+test('新流程任务：来源标「客户表格」，右栏有「客户原表」卡片，可下载 Excel、查看图纸与照片', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByPlaceholder('请输入邮箱').fill('expert@demo.genyun.net.cn');
+  await page.getByPlaceholder('请输入密码').fill('e2e-password');
+  await page.getByRole('button', { name: /登\s*录/ }).click();
+  await expect(page).toHaveURL(/\/expert$/);
+  await page.getByRole('row', { name: /示例电子科技有限公司/ }).click();
+  await expect(page.getByRole('heading', { name: '核对企业基本信息' })).toBeVisible();
+  await expect(page.getByLabel('来源图例')).toContainText('客户表格');
+
+  const side = page.getByRole('complementary', { name: '参考' });
+  await expect(side).toContainText('客户原表');
+  await expect(side).toContainText('电子科技-企业资料填报.xlsx');
+  await expect(side).toContainText('图纸与照片 3 份');
+  const download = page.waitForEvent('download');
+  await side.getByRole('button', { name: '下载 Excel' }).click();
+  expect((await download).suggestedFilename()).toMatch(/\.xlsx$/);
+  await side.getByRole('button', { name: '查看' }).click();
+  const list = page.getByRole('list', { name: '图纸与照片' });
+  await expect(list.getByRole('listitem')).toHaveCount(3);
+  await expect(list).toContainText('总平面布置图.png');
+  await page.screenshot({ path: 'test-results/acceptance/k10-intake-step1.png', fullPage: true });
+  await page.keyboard.press('Escape');
+
+  // 第 2 步也有这张卡片，对应的工作表是「应急组织」；新流程没有通讯录
+  await page.goto(`${new URL(page.url()).pathname}?view=workup&step=2`);
+  await expect(page.getByRole('heading', { name: '核对应急指挥部和各小组' })).toBeVisible();
+  await expect(side).toContainText('客户原表');
+  await expect(side).toContainText('应急组织');
+  await page.screenshot({ path: 'test-results/acceptance/k10-intake-step2.png', fullPage: true });
+});

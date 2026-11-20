@@ -566,7 +566,7 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
 
   const side = (
     <>
-      <OriginalSheetCard workup={workup} sheets={['企业信息']} />
+      <OriginalSheetCard taskId={taskId} workup={workup} sheets={['企业信息']} />
       <UseCard
         lines={[
           '预案封面、适用范围和报告对象都要写明企业身份；属地应急管理局由地址决定，系统已按地址匹配。',

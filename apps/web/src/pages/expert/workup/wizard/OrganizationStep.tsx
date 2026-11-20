@@ -351,7 +351,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
 
   const side = (
     <>
-      <OriginalSheetCard workup={workup} sheets={['应急组织']} />
+      <OriginalSheetCard taskId={taskId} workup={workup} sheets={['应急组织']} />
       <OrgChartCard taskId={taskId} workup={workup} step={stepForSave(step, saved.current)} autosave={autosave} latestVersion={latestVersion} />
       <UseCard
         lines={[
