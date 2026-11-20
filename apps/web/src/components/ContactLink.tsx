@@ -14,9 +14,13 @@ export function ContactLink({
   title = '联系耕云',
   hint,
 }: {
+  /** 文字链接的文字，默认「联系耕云」 */
   children?: ReactNode;
+  /** 自定义触发按钮（顶栏用图标加文字的按钮）；拿到 open 后自己决定什么时候打开 */
   trigger?: (open: () => void) => ReactNode;
+  /** 弹窗标题 */
   title?: string;
+  /** 弹窗里电话上方的一句说明 */
   hint?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -45,19 +49,19 @@ export function ContactLink({
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <PhoneOutlined style={{ fontSize: 18, color: gy.primary }} />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: 13, color: gy.secondary }}>电话</span>
-              <span style={{ fontSize: 20, lineHeight: '28px', fontWeight: 500, color: gy.text, userSelect: 'all' }}>{GENGYUN_PHONE}</span>
+              <span style={{ fontSize: 12, color: gy.secondary }}>电话</span>
+              <span style={{ fontSize: 20, lineHeight: '28px', fontWeight: 600, color: gy.text, userSelect: 'all' }}>{GENGYUN_PHONE}</span>
             </div>
             <Button onClick={() => void copy()}>复制</Button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingTop: 16, borderTop: `1px solid ${gy.split}` }}>
             <img src={wechatQr} alt="耕云微信二维码" width={120} height={120} style={{ borderRadius: 6, border: `1px solid ${gy.split}` }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 500, color: gy.text }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, color: gy.text }}>
                 <WechatOutlined style={{ color: gy.success }} />
                 微信扫码联系
               </span>
-              <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>用手机微信扫一扫，添加耕云客服。</span>
+              <span style={{ fontSize: 12, lineHeight: '20px', color: gy.secondary }}>用手机微信扫一扫，添加耕云客服。</span>
             </div>
           </div>
         </div>

@@ -5,7 +5,12 @@ import { fontFamily, gy } from './tokens';
 export const theme: ThemeConfig = {
   token: {
     colorPrimary: gy.primary,
+    colorPrimaryHover: gy.hover,
+    colorPrimaryActive: gy.active,
     colorInfo: gy.primary,
+    colorLink: gy.primary,
+    colorLinkHover: gy.hover,
+    colorLinkActive: gy.active,
     colorSuccess: gy.success,
     colorWarning: gy.warning,
     colorError: gy.error,
@@ -13,6 +18,8 @@ export const theme: ThemeConfig = {
     colorWarningBg: gy.warningBg,
     colorErrorBg: gy.errorBg,
     colorInfoBg: gy.selected,
+    colorPrimaryBg: gy.selected,
+    colorFillTertiary: gy.neutralBg,
 
     colorText: gy.text,
     colorTextHeading: gy.text,
@@ -32,7 +39,16 @@ export const theme: ThemeConfig = {
     fontFamily,
     fontSize: 14,
     lineHeight: 22 / 14,
-    fontWeightStrong: 500,
+    fontWeightStrong: 600,
+    fontSizeSM: 12,
+    fontSizeLG: 16,
+    fontSizeXL: 20,
+    fontSizeHeading1: 24,
+    fontSizeHeading2: 20,
+    fontSizeHeading3: 16,
+    lineHeightHeading1: 32 / 24,
+    lineHeightHeading2: 28 / 20,
+    lineHeightHeading3: 24 / 16,
 
     controlHeight: 32,
     controlHeightLG: 40,
@@ -74,6 +90,43 @@ export const theme: ThemeConfig = {
     Input: { inputFontSizeLG: 14 },
     Button: { contentFontSizeLG: 14 },
     // 表头：画布底色、正文色加粗
-    Table: { headerBg: gy.canvas, headerColor: gy.text, headerSplitColor: 'transparent' },
+    // 表格（统计格与表格规范）：表头画布底色、次要色加粗，表头上下 12、行上下 14、左右 24，行间分隔线
+    Table: {
+      headerBg: gy.canvas,
+      headerColor: gy.secondary,
+      headerSplitColor: 'transparent',
+      cellPaddingBlock: 14,
+      cellPaddingInline: 24,
+      headerBorderRadius: 0,
+      borderColor: gy.split,
+      rowHoverBg: gy.canvas,
+      footerBg: gy.surface,
+      footerColor: gy.tertiary,
+    },
+    // 页签：标签间距 32，选中加粗主色
+    Tabs: {
+      horizontalItemGutter: 32,
+      horizontalItemPadding: '14px 0 12px',
+      titleFontSize: 14,
+      itemColor: gy.secondary,
+      itemSelectedColor: gy.primary,
+      itemHoverColor: gy.hover,
+      inkBarColor: gy.primary,
+    },
+    // 标签：12 号字、高 22
+    Tag: { defaultBg: gy.neutralBg, defaultColor: gy.secondary, fontSizeSM: 12, lineHeightSM: 22 / 12 },
+    // 提示条：无边框、圆角 8、上下 12 左右 16
+    Alert: {
+      withDescriptionPadding: '12px 16px',
+      defaultPadding: '12px 16px',
+      colorInfoBorder: 'transparent',
+      colorSuccessBorder: 'transparent',
+      colorWarningBorder: 'transparent',
+      colorErrorBorder: 'transparent',
+    },
+    // 白底卡片：内边距 24
+    Card: { bodyPadding: 24, headerFontSize: 16 },
+    // 弹窗宽度另由页面设 520 / 800
+    Modal: { titleFontSize: 16 },
   },
 };

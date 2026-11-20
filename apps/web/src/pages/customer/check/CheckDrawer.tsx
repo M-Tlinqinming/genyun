@@ -138,7 +138,7 @@ function DoneRow({ task, item, check, first }: { task: Task; item: CategoryCheck
       tag =
         task.startMethod === 'self_fill' && !s.note && s.status === 'provided' && step
           ? { text: `企业自填第 ${step} 步`, tone: 'customer' }
-          : { text: `${check.userNames[s.confirmedBy] ?? '您'}已确认 · ${monthDay(s.confirmedAt)}`, tone: 'confirm' };
+          : { text: `${check.userNames[s.confirmedBy] ?? '您'}已确认 · ${monthDay(s.confirmedAt)}`, tone: 'customer' };
     }
   }
   return (

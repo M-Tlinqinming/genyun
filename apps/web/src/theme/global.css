@@ -4,11 +4,14 @@
   --gy-canvas: #f8f9fb;
   --gy-text: #18243b;
   --gy-secondary: #596170;
-  --gy-tertiary: #6B7484;
+  --gy-tertiary: #697386;
   --gy-split: #e5e7eb;
-  --gy-frame-line: #e8eaee;
+  /* 侧栏、顶栏分隔线已并入 split */
+  --gy-frame-line: #e5e7eb;
   --gy-primary: #245bdb;
+  --gy-hover: #1e4fc4;
   --gy-selected: #eff4ff;
+  --gy-focus: #a3c8ff;
 }
 
 html,
@@ -80,7 +83,7 @@ body {
 }
 /* 审核与修订各页（正文编辑、Word 预览、审核结论）的键盘焦点框统一为 3px #A3C8FF（14 页设计稿） */
 .gy-editor-box:focus-within {
-  outline: 3px solid #a3c8ff;
+  outline: 3px solid var(--gy-focus);
   outline-offset: 0;
 }
 .gy-edit-page :focus-visible,
@@ -89,7 +92,7 @@ body {
 .gy-review-page .ant-btn:focus-visible,
 .gy-edit-page .ant-checkbox-wrapper:has(:focus-visible) .ant-checkbox,
 .gy-review-page .ant-checkbox-wrapper:has(:focus-visible) .ant-checkbox {
-  outline: 3px solid #a3c8ff !important;
+  outline: 3px solid var(--gy-focus) !important;
   outline-offset: 1px;
 }
 .gy-edit-page .gy-section-editor:focus-visible {
@@ -110,11 +113,16 @@ body {
   }
 }
 
-/* 工作台内容区：上 36、左右 32、下 48，内容宽 1152 */
+/* 工作台内容区：上 32、左右 32、下 48，内容宽 1152 */
 .gy-content {
   box-sizing: border-box;
   margin: 0 auto;
-  padding: 36px 32px 48px;
+  padding: 32px 32px 48px;
+}
+
+/* 统计格、表格里的数字等宽，上下对齐 */
+.gy-tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 /* 专业整理右栏（原件对照、评价依据、生成结构预览）宽 360 */

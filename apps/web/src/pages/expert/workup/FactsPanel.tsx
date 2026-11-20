@@ -15,10 +15,10 @@ import { linkButton } from '../../../components/ui';
 import { FlashOnDone, useListMotion } from '../../../theme/motion';
 import { gy, source, stage } from '../../../theme/tokens';
 
-// 四类来源对应设计系统 gy-source 的颜色
+// 来源对应设计系统 gy-source 的颜色；客户原表和客户后来回答的都算客户来源（设计系统已取消「客户确认」色）
 const SOURCE_COLORS: Record<FactSource, { color: string; bg: string }> = {
   original: source.customer,
-  customer: source.confirm,
+  customer: source.customer,
   system: source.system,
   expert: source.expert,
 };
