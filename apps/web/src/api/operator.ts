@@ -20,7 +20,7 @@ import type {
   Role,
   ServiceScopeKind,
 } from '@genyun/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
 // 运营看到的客户组织（Paper 16 页 I02）
@@ -227,6 +227,8 @@ export function useGiftCampaigns(year: number | null) {
   return useQuery({
     queryKey: operatorOrgKeys.giftCampaigns(year),
     queryFn: () => request<GiftCampaignStats>(`/operator/credits/gift-campaigns${year ? `?year=${year}` : ''}`),
+    // 换年份时先留着上一年的，免得年份下拉和汇总一闪而空
+    placeholderData: keepPreviousData,
   });
 }
 
