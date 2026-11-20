@@ -5,10 +5,11 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { downloadBundle, downloadWord, useOrgDeliveries } from '../../../api/deliveries';
 import { useOrgTasks } from '../../../api/enterprises';
+import { ContactLink } from '../../../components/ContactLink';
 import { Loading } from '../../../components/ui';
 import { useWorkspace } from '../../../layouts/workspace';
 import { gy, stage } from '../../../theme/tokens';
-import { card, stampShort, text14, textLink, WordIcon } from './shared';
+import { card, lockText, stampShort, text14, textLink, textLinkDisabled, WordIcon } from './shared';
 
 // C06 成果文档｜已交付成果检索：每个已交付任务一张卡，最新一次交付的三份 Word 放在一起；
 // 客户只看最新一次交付；按企业、任务编号、文档名称搜索
@@ -89,9 +90,14 @@ export function DocumentsPage() {
 function DeliveryCard({ task, version }: { task: TaskDeliveries; version: DeliveredVersion }) {
   const navigate = useNavigate();
   const { message } = App.useApp();
+  const { role } = useWorkspace();
+  // 锁住的成果（C01·S02 状态 4）：任务那一行照常显示，标签和锁住的说明各占一栏；
+  // 管理员多一个「联系耕云续约」，成员看不到「次数」「续约」；下载置灰，「查看交付详情」照常能点
+  const isAdmin = role === 'customer_admin';
+  const lock = task.lock ? lockText(task.lock, isAdmin) : null;
   const [bundling, setBundling] = useState(false);
   const detail = `/customer/documents/${task.taskId}`;
-  const tone = stage.done;
+  const tone = lock ? stage.action : stage.done;
   const state = version.version > 1 ? '已更新' : '已交付';
 
   const bundle = async () => {
@@ -115,21 +121,47 @@ function DeliveryCard({ task, version }: { task: TaskDeliveries; version: Delive
   return (
     <section aria-label={`${task.enterpriseName} ${task.taskNumber}`} style={{ ...card, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '20px 24px', borderBottom: `1px solid ${gy.split}` }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ flex: lock ? '3 1 0' : 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>{task.enterpriseName}</span>
-            <span style={{ padding: '0 8px', borderRadius: 4, fontSize: 13, lineHeight: '20px', color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
-              {state}
-            </span>
+            {!lock && (
+              <span style={{ padding: '0 8px', borderRadius: 4, fontSize: 13, lineHeight: '20px', color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
+                {state}
+              </span>
+            )}
           </div>
           <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
-            {task.taskName} · {task.taskNumber} · {stampShort(version.publishedAt)} {state === '已更新' ? '更新' : '交付'} · 专家审核通过
+            {`${task.taskName} · ${task.taskNumber} · ${stampShort(version.publishedAt)} `}
+            {lock ? '专家已完成' : `${state === '已更新' ? '更新' : '交付'} · 专家审核通过`}
           </span>
         </div>
+        {lock && (
+          <>
+            <div style={{ width: 180, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+              <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 12, lineHeight: '20px', color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
+                {lock.tag}
+              </span>
+            </div>
+            <span style={{ ...text14, flex: '2 1 0', minWidth: 0, color: gy.secondary }}>{lock.line}</span>
+          </>
+        )}
         <Button onClick={() => navigate(detail)}>查看交付详情</Button>
-        <Button type="primary" loading={bundling} onClick={() => void bundle()}>
-          下载整套 Word
-        </Button>
+        {lock ? (
+          isAdmin && (
+            <ContactLink
+              title="联系耕云续约"
+              trigger={(open) => (
+                <Button type="primary" onClick={open} style={{ flexShrink: 0 }}>
+                  联系耕云续约
+                </Button>
+              )}
+            />
+          )
+        ) : (
+          <Button type="primary" loading={bundling} onClick={() => void bundle()}>
+            下载整套 Word
+          </Button>
+        )}
       </div>
       {version.files.map((f, i) => (
         <div
@@ -145,7 +177,13 @@ function DeliveryCard({ task, version }: { task: TaskDeliveries; version: Delive
         >
           <WordIcon />
           <span style={{ ...text14, flex: 1, minWidth: 0, color: gy.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-          <button type="button" style={textLink} aria-label={`下载 ${f.name}`} onClick={() => void one(f.fileId, f.name)}>
+          <button
+            type="button"
+            style={lock ? textLinkDisabled : textLink}
+            disabled={Boolean(lock)}
+            aria-label={`下载 ${f.name}`}
+            onClick={() => void one(f.fileId, f.name)}
+          >
             下载
           </button>
         </div>

@@ -22,6 +22,17 @@ export interface AuditEvent {
   target?: string | null;
 }
 
+// 在调用方的事务里写一条操作日志（和业务改动一起提交或一起回滚）
+export async function insertAuditLog(q: Pick<Database, 'insert'>, e: AuditEvent): Promise<void> {
+  await q.insert(auditLogs).values({
+    action: e.action,
+    actorId: e.actorId ?? null,
+    actorEmail: e.actorEmail ?? null,
+    ip: e.ip ?? null,
+    target: e.target ?? null,
+  });
+}
+
 // 记操作日志。记录失败不影响业务本身（登录照常成功），只在服务日志里报一行，不带邮箱等内容
 @Injectable()
 export class AuditService {
@@ -29,13 +40,7 @@ export class AuditService {
 
   async record(e: AuditEvent): Promise<void> {
     try {
-      await this.db.insert(auditLogs).values({
-        action: e.action,
-        actorId: e.actorId ?? null,
-        actorEmail: e.actorEmail ?? null,
-        ip: e.ip ?? null,
-        target: e.target ?? null,
-      });
+      await insertAuditLog(this.db, e);
     } catch (err) {
       console.error(`操作日志写入失败（${e.action}）：${err instanceof Error ? err.message : 'unknown'}`);
     }

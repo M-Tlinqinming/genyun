@@ -14,6 +14,9 @@ const KIND_LABEL: Record<NonNullable<OutboxMail['kind']>, string> = {
   invitation: '邀请',
   recovery_code: '找回密码验证码',
   password_reset: '密码已重设',
+  credits_locked_admin: '次数用完（管理员）',
+  credits_locked_submitter: '次数用完（提交人）',
+  delivery_released: '成果放开',
 };
 
 // 2026-11-01T01:30:00Z → 11.01 09:30（北京时间）

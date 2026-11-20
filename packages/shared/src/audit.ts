@@ -29,6 +29,7 @@ export const AUDIT_ACTIONS = [
   'feedback_close',
   'expert_pause',
   'expert_resume',
+  'credits_adjust',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -59,6 +60,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   feedback_close: '回复并关闭反馈',
   expert_pause: '暂停接单',
   expert_resume: '恢复接单',
+  credits_adjust: '调整次数',
 };
 
 export const AUDIT_PAGE_SIZE = 50;

@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
+import { grantCredits } from '../credits/test-credits.ts';
+import { MemoryMailer } from '../mail/mailer.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import { deliveries, deliveryFiles, enterpriseAssignments, enterprises, generationBatches, memberships, organizations, tasks, taskWorkups, users } from '../db/schema.ts';
@@ -120,7 +122,17 @@ beforeAll(async () => {
   // 成员只看分配给自己的企业：分到第一家
   await db.insert(enterpriseAssignments).values({ enterpriseId: ent!.id, userId: uid['member@test.cn']!, orgId: customer!.id });
 
-  app = await createApp(db, { loginLimitPerMinute: 1000, storage, queue, renderer, drafter: null, pdf: converter });
+  // 编制次数（K14）：首次交付要扣 1 次，没有次数时成果会先锁住
+  await grantCredits(db, customer!.id, uid['ops@test.cn']!, { purchase: 20 });
+  app = await createApp(db, {
+    loginLimitPerMinute: 1000,
+    storage,
+    queue,
+    renderer,
+    drafter: null,
+    pdf: converter,
+    mailer: new MemoryMailer(),
+  });
   await app.init();
 
   // 生成 → 三份核对 → 审核结论 → 发布交付 V1

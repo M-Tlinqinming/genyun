@@ -16,16 +16,26 @@ import {
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { Response } from 'express';
 import JSZip from 'jszip';
-import { canViewDeliveries, canViewOrganization, enterpriseScope } from '../auth/access.ts';
+import { canViewDeliveries, canViewOrganization, customerMembership, enterpriseScope } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
+import { assertDeliveryDownloadable, lockInfo } from '../credits/credits.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { deliveries, deliveryFiles, enterprises, files, tasks } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 
 const NOT_FOUND = '找不到该成果';
 
-type TaskRow = { id: string; orgId: string; assignedExpertId: string | null; number: string; name: string; enterpriseId: string; enterpriseName: string };
+type TaskRow = {
+  id: string;
+  orgId: string;
+  assignedExpertId: string | null;
+  number: string;
+  name: string;
+  enterpriseId: string;
+  enterpriseName: string;
+  chargeStatus: string | null;
+};
 
 @Injectable()
 export class DeliveriesService {
@@ -41,20 +51,22 @@ export class DeliveriesService {
     const scope = enterpriseScope(user, orgId);
     if (Array.isArray(scope) && scope.length === 0) return [];
     const list = await this.tasks().where(and(eq(tasks.orgId, orgId), Array.isArray(scope) ? inArray(tasks.enterpriseId, scope) : undefined));
-    const built = await this.build(list);
+    const built = await this.build(user, list);
     return built.sort((a, b) => b.versions[0]!.publishedAt.localeCompare(a.versions[0]!.publishedAt));
   }
 
   /** 一个任务的成果（R05）；还没有交付版本时 versions 为空 */
   async forTask(user: SessionUser, taskId: string): Promise<TaskDeliveries> {
     const task = await this.task(user, taskId);
-    const [built] = await this.build([task], true);
+    const [built] = await this.build(user, [task], true);
     return built!;
   }
 
   /** 整套下载：同一个交付版本的三份 Word 打成一个压缩包，避免混用版本 */
   async bundle(user: SessionUser, taskId: string, version: number): Promise<{ name: string; data: Buffer }> {
     const task = await this.task(user, taskId);
+    // 成果先锁住（等次数）时客户不能下载
+    await assertDeliveryDownloadable(this.db, user, task);
     const delivery = await this.delivery(task.id, version);
     const rows = await this.db
       .select({ kind: deliveryFiles.kind, name: files.originalName, storageKey: files.storageKey })
@@ -81,6 +93,7 @@ export class DeliveriesService {
         name: tasks.name,
         enterpriseId: tasks.enterpriseId,
         enterpriseName: enterprises.name,
+        chargeStatus: tasks.chargeStatus,
       })
       .from(tasks)
       .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId));
@@ -103,7 +116,7 @@ export class DeliveriesService {
   }
 
   // 每个任务只列已形成的交付版本（发布中、失败的不算）。keepEmpty：单个任务没有交付时也返回（versions 为空）
-  private async build(list: TaskRow[], keepEmpty = false): Promise<TaskDeliveries[]> {
+  private async build(user: SessionUser, list: TaskRow[], keepEmpty = false): Promise<TaskDeliveries[]> {
     if (list.length === 0) return [];
     const done = await this.db
       .select()
@@ -117,6 +130,20 @@ export class DeliveriesService {
           .innerJoin(files, eq(files.id, deliveryFiles.fileId))
           .where(inArray(deliveryFiles.deliveryId, done.map((d) => d.id)))
       : [];
+
+    // 等次数的任务：锁住的原因和管理员名字（同一组织只查一次）
+    // 只给本组织的客户看：管理员看原因和管理员名字，成员只看管理员名字；专家、运营一律不带
+    const locks = new Map<string, TaskDeliveries['lock']>();
+    for (const t of list) {
+      if (t.chargeStatus !== 'awaiting_credits' || locks.has(t.orgId)) continue;
+      const m = customerMembership(user, t.orgId);
+      if (!m) {
+        locks.set(t.orgId, null);
+        continue;
+      }
+      const info = await lockInfo(this.db, t.orgId);
+      locks.set(t.orgId, m.role === 'customer_admin' ? info : { adminNames: info.adminNames });
+    }
 
     return list.flatMap((t): TaskDeliveries[] => {
       const versions = done
@@ -133,7 +160,17 @@ export class DeliveriesService {
           }),
         );
       if (versions.length === 0 && !keepEmpty) return [];
-      return [{ taskId: t.id, taskNumber: t.number, taskName: t.name, enterpriseId: t.enterpriseId, enterpriseName: t.enterpriseName, versions }];
+      return [
+        {
+          taskId: t.id,
+          taskNumber: t.number,
+          taskName: t.name,
+          enterpriseId: t.enterpriseId,
+          enterpriseName: t.enterpriseName,
+          versions,
+          lock: t.chargeStatus === 'awaiting_credits' ? (locks.get(t.orgId) ?? null) : null,
+        },
+      ];
     });
   }
 }

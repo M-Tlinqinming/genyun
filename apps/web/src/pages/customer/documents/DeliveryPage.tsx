@@ -7,11 +7,12 @@ import { ContactLink } from '../../../components/ContactLink';
 import { FeedbackModal } from '../../../components/FeedbackModal';
 import { useWorkspace } from '../../../layouts/workspace';
 import { Loading } from '../../../components/ui';
-import { gy } from '../../../theme/tokens';
-import { card, stampFull, text14, textLink } from './shared';
+import { gy, stage } from '../../../theme/tokens';
+import { card, lockText, stampFull, text14, textLink, textLinkDisabled } from './shared';
 
 // R05 交付详情｜一个任务最新一次交付的三份 Word：单份下载、整套下载；下方是反馈入口。
-// 客户只看最新一次交付，不显示版本号
+// 客户只看最新一次交付，不显示版本号。
+// 编制次数用完或年度服务到期时成果先锁住（U4b 管理员 / U4c 成员）：提示条换成黄色，下载都置灰
 export function DeliveryPage() {
   const { taskId = '' } = useParams();
   const query = useTaskDeliveries(taskId);
@@ -35,9 +36,10 @@ export function DeliveryPage() {
 
 function Delivery({ data, current }: { data: TaskDeliveries; current: DeliveredVersion }) {
   const { message } = App.useApp();
-  const { orgId } = useWorkspace();
+  const { orgId, role } = useWorkspace();
   const [bundling, setBundling] = useState(false);
   const state = current.version > 1 ? '已更新' : '已交付';
+  const lock = data.lock ? lockText(data.lock, role === 'customer_admin') : null;
   const bundle = async () => {
     setBundling(true);
     try {
@@ -67,10 +69,47 @@ function Delivery({ data, current }: { data: TaskDeliveries; current: DeliveredV
         </nav>
         <h1 style={{ margin: 0, fontSize: 28, lineHeight: '40px', fontWeight: 500, color: gy.text }}>{data.enterpriseName} · 编制成果</h1>
         <span style={{ ...text14, color: gy.text }}>
-          {data.taskNumber} · {data.taskName} · {stampFull(current.publishedAt)} {state === '已更新' ? '更新' : '交付'}
+          {data.taskNumber} · {data.taskName} · {stampFull(current.publishedAt)} {lock ? '专家已完成' : state === '已更新' ? '更新' : '交付'}
         </span>
       </div>
 
+      {lock ? (
+        <div
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            padding: role === 'customer_admin' ? '12px 16px 12px 24px' : '12px 24px',
+            borderRadius: 8,
+            background: stage.action.bg,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+            <span style={{ ...text14, fontWeight: 600, color: gy.text }}>{lock.title}</span>
+            <span style={{ ...text14, color: gy.secondary }}>{lock.body}</span>
+          </div>
+          {role === 'customer_admin' ? (
+            <ContactLink
+              title="联系耕云续约"
+              trigger={(open) => (
+                <Button type="primary" onClick={open} style={{ flexShrink: 0 }}>
+                  联系耕云续约
+                </Button>
+              )}
+            />
+          ) : (
+            <ContactLink
+              title="联系客服"
+              trigger={(open) => (
+                <button type="button" style={{ ...textLink, flexShrink: 0 }} onClick={open}>
+                  联系客服
+                </button>
+              )}
+            />
+          )}
+        </div>
+      ) : (
       <div
         style={{
           display: 'flex',
@@ -90,10 +129,18 @@ function Delivery({ data, current }: { data: TaskDeliveries; current: DeliveredV
           下载整套 Word
         </Button>
       </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', padding: '12px 20px', borderBottom: `1px solid ${gy.split}`, ...text14, fontWeight: 500, color: gy.text }}>
-          <span style={{ flex: 1, minWidth: 0 }}>交付文件</span>
+          <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+            交付文件
+            {lock && (
+              <span style={{ padding: '0 8px', borderRadius: 4, fontSize: 12, lineHeight: '20px', fontWeight: 400, color: stage.action.color, background: stage.action.bg }}>
+                {lock.tag}
+              </span>
+            )}
+          </span>
           <span style={{ width: 200, flexShrink: 0 }}>交付时间</span>
           <span style={{ width: 340, flexShrink: 0 }}>操作</span>
         </div>
@@ -105,7 +152,13 @@ function Delivery({ data, current }: { data: TaskDeliveries; current: DeliveredV
             </div>
             <span style={{ ...text14, width: 200, flexShrink: 0, color: gy.text }}>{stampFull(current.publishedAt)}</span>
             <div style={{ width: 340, flexShrink: 0, display: 'flex', gap: 32 }}>
-              <button type="button" style={textLink} aria-label={`下载 ${f.name}`} onClick={() => void one(f.fileId, f.name)}>
+              <button
+                type="button"
+                style={lock ? textLinkDisabled : textLink}
+                disabled={Boolean(lock)}
+                aria-label={`下载 ${f.name}`}
+                onClick={() => void one(f.fileId, f.name)}
+              >
                 下载 Word
               </button>
             </div>

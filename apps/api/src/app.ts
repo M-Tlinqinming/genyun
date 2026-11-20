@@ -49,6 +49,7 @@ import { defaultProbes, HEALTH_PROBES, type HealthProbes } from './health/health
 import { WorkupController, WorkupService } from './tasks/workup.service.ts';
 import { KnowledgeController, ProcessTemplatesController } from './knowledge/knowledge.controller.ts';
 import { KnowledgeService } from './knowledge/knowledge.service.ts';
+import { CreditsService } from './credits/credits.service.ts';
 
 export interface AppOptions {
   loginLimitPerMinute?: number;
@@ -144,6 +145,7 @@ export async function createApp(db: Database, options: AppOptions = {}): Promise
       ExpertTasksService,
       WorkupService,
       NotificationsService,
+      CreditsService,
       LicenseReader,
       SubmissionService,
       DocumentsService,

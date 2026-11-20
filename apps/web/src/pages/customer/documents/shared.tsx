@@ -1,3 +1,4 @@
+import type { TaskDeliveries } from '@genyun/shared';
 import type { CSSProperties } from 'react';
 import { gy } from '../../../theme/tokens';
 
@@ -51,3 +52,25 @@ export const card: CSSProperties = {
   borderRadius: 8,
 };
 
+
+// 成果锁住（编制次数用完或年度服务到期，等续约）时的文字。次数、续约这些字只给管理员看
+export type DeliveryLock = NonNullable<TaskDeliveries['lock']>;
+
+export function lockText(lock: DeliveryLock, isAdmin: boolean) {
+  return isAdmin
+    ? {
+        tag: '已编制好 · 续约后可下载',
+        line: '三份文档都在，续约后自动放开，算 1 次',
+        title: lock.reason === 'expired' ? '年度服务已到期，续约后就能下载' : '编制次数已经用完，续约后就能下载',
+        body: '续约后这份成果自动放开，算 1 次，不用重新提交资料。',
+      }
+    : {
+        tag: '已编制好 · 暂不能下载',
+        line: `需要贵组织管理员处理，请联系${lock.adminNames}`,
+        title: '需要组织管理员处理后才能下载',
+        body: `请联系${lock.adminNames}，处理好后这里自动放开，不用重新提交资料。`,
+      };
+}
+
+// 锁住时下载按钮置灰（设计稿 U4b / U4c 的灰色按钮）
+export const textLinkDisabled: CSSProperties = { ...textLink, color: gy.tertiary, cursor: 'not-allowed' };

@@ -3,7 +3,8 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AliyunMailer, aliyunConfigFromEnv } from './aliyun.ts';
 
-// 发邮件只用于邀请和验证码（CLAUDE.md：不接短信；业务提醒只做站内提醒，不发邮件）。
+// 发邮件只用于邀请、验证码，以及成果交付相关的几封（次数用完成果先锁住、续约后放开）；
+// 不接短信，其他业务提醒只做站内提醒，不发邮件。
 // 两种发信方式，按环境变量 MAIL_DRIVER 选用：
 // - mock（本机、测试、预览环境）：不真的发出，写进发件箱目录，运营在「模拟发件箱」页面查看；
 // - aliyun（正式环境）：阿里云邮件推送，凭据见 aliyun.ts。
@@ -11,7 +12,15 @@ import { AliyunMailer, aliyunConfigFromEnv } from './aliyun.ts';
 // 免得以为邮件发出去了其实没有；本机和测试没配凭据时退回模拟发信。
 // 邮件内容用 templates.ts 生成。
 
-export type MailKind = 'invitation' | 'recovery_code' | 'password_reset';
+export type MailKind =
+  | 'invitation'
+  | 'recovery_code'
+  | 'password_reset'
+  // 次数用完（或年度服务到期）成果先锁住：给组织管理员、给提交人
+  | 'credits_locked_admin'
+  | 'credits_locked_submitter'
+  // 续约或加购后成果放开下载
+  | 'delivery_released';
 
 export interface MailMessage {
   to: string;

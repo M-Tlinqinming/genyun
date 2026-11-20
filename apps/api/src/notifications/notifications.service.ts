@@ -72,6 +72,16 @@ export class NotificationsService {
     await tx.insert(notifications).values(userIds.map((userId) => ({ userId, ...input })));
   }
 
+  // 带去重键、同一个人只发一次的提醒：撞上 (user_id, dedupe_key) 唯一索引时跳过，不报错，
+  // 在事务里调用也不会让整个事务失败（写法同 remindContracts）
+  async notifyOnce(userIds: readonly string[], input: NotificationInput & { dedupeKey: string }, tx: Pick<Database, 'insert'> = this.db) {
+    if (userIds.length === 0) return;
+    await tx
+      .insert(notifications)
+      .values(userIds.map((userId) => ({ userId, ...input })))
+      .onConflictDoNothing();
+  }
+
   async list(user: SessionUser) {
     await this.remindContracts(user);
     const items = await this.db
