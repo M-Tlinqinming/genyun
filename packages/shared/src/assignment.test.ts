@@ -24,6 +24,22 @@ describe('能不能分派', () => {
     expect(assignmentBlockedReason({ status: 'preparing', closedAt: null })).toBe('客户还没提交资料，提交后才能分派专家');
     expect(assignmentBlockedReason({ status: 'submitted', closedAt: '2026-11-01T00:00:00Z' })).toBe('任务已结束，不能再分派');
   });
+
+  it('目标专家暂停接单或审核状态不能派时说明原因', () => {
+    const task = { status: 'submitted' as const, closedAt: null };
+    expect(assignmentBlockedReason(task, { name: '王工', profile: null })).toBeNull();
+    expect(assignmentBlockedReason(task, { name: '王工', profile: { reviewStatus: 'approved', acceptingOrders: true } })).toBeNull();
+    expect(assignmentBlockedReason(task, { name: '王工', profile: { reviewStatus: null, acceptingOrders: true } })).toBeNull();
+    expect(assignmentBlockedReason(task, { name: '王工', profile: { reviewStatus: 'approved', acceptingOrders: false } })).toBe(
+      '王工已暂停接单，不能分配',
+    );
+    expect(assignmentBlockedReason(task, { name: '王工', profile: { reviewStatus: 'pending', acceptingOrders: true } })).toBe(
+      '这位专家现在不能接任务',
+    );
+    expect(assignmentBlockedReason(task, { name: '王工', profile: { reviewStatus: 'delisted', acceptingOrders: true } })).toBe(
+      '这位专家现在不能接任务',
+    );
+  });
 });
 
 describe('分派表单', () => {

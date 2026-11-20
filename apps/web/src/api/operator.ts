@@ -197,6 +197,8 @@ export interface AssignableExpert {
   openTasks: number;
   sameOrgEnterprises: number;
   current: boolean;
+  /** 专家已暂停接单：列出来但置灰、不能选 */
+  paused: boolean;
 }
 
 export const operatorTaskKeys = {

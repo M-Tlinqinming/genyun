@@ -1,32 +1,22 @@
-import type { ChecklistItemKey, StartMethod, TaskStatus } from '@genyun/shared';
-import { useQuery } from '@tanstack/react-query';
+import type { ExpertAcceptingInput, ExpertCenterData } from '@genyun/shared';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
-export interface ExpertTask {
-  id: string;
-  number: string;
-  name: string;
-  orgId: string;
-  orgName: string;
-  enterpriseName: string;
-  status: TaskStatus;
-  startMethod: StartMethod | null;
-  submittedAt: string | null;
-  closedAt: string | null;
-  activityAt: string;
-  verifyItems: { key: ChecklistItemKey; label: string; kind: 'photo' | 'call' }[];
-}
+export const expertTaskKeys = { list: ['expert', 'tasks'] as const };
 
-export interface ExpertEvent {
-  at: string;
-  taskId: string;
-  text: string;
-  kind: 'submitted' | 'photo' | 'delivered';
-}
-
+// 专家任务中心：分给自己的任务（已排好序）、四格统计、接单状态
 export function useExpertTasks() {
-  return useQuery({
-    queryKey: ['expert', 'tasks'],
-    queryFn: () => request<{ tasks: ExpertTask[]; events: ExpertEvent[] }>('/expert/tasks'),
+  return useQuery({ queryKey: expertTaskKeys.list, queryFn: () => request<ExpertCenterData>('/expert/tasks') });
+}
+
+// 暂停 / 恢复接单
+export function useSetAccepting() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ExpertAcceptingInput) =>
+      request<ExpertAcceptingInput>('/expert/accepting', { method: 'PUT', body: JSON.stringify(body) }),
+    onSuccess: (res) => {
+      client.setQueryData<ExpertCenterData>(expertTaskKeys.list, (old) => (old ? { ...old, acceptingOrders: res.acceptingOrders } : old));
+    },
   });
 }

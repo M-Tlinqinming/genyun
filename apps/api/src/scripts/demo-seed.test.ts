@@ -200,7 +200,7 @@ describe('演示数据', () => {
       const zhou = request.agent(app.getHttpServer());
       await zhou.post('/api/auth/login').send({ email: DEMO_EMAILS.expert, password: PASSWORD }).expect(200);
       const list = await zhou.get('/api/expert/tasks').expect(200);
-      const task = (list.body.tasks as { id: string; enterpriseName: string }[]).find((t) => t.enterpriseName === feiyuBasicInfo.companyName)!;
+      const task = (list.body.rows as { id: string; enterpriseName: string }[]).find((t) => t.enterpriseName === feiyuBasicInfo.companyName)!;
       expect(task).toBeTruthy();
 
       const opened = await zhou.get(`/api/tasks/${task.id}/workup`).expect(200);
