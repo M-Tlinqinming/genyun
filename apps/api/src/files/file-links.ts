@@ -13,12 +13,13 @@ import {
   enterprises,
   factSupplements,
   files,
+  taskIntakeFiles,
   tasks,
 } from '../db/schema.ts';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
-// 文件挂在哪些企业上（M3 第 7 项）：资料项、企业资料库、补件回复、交付、企业档案（执照、照片、台账、图纸）里引用的。
+// 文件挂在哪些企业上（M3 第 7 项）：资料项、准备资料、企业资料库、补件回复、交付、企业档案（执照、照片、台账、图纸）里引用的。
 // 只在判断成员能不能看、能不能引用时用；组织管理员、运营不需要查
 // within：只关心这些企业（成员被分配的企业）时传入，企业档案只读这几家
 export async function linkedEnterpriseIds(
@@ -51,6 +52,14 @@ export async function linkedEnterpriseIds(
       .innerJoin(deliveries, eq(deliveries.id, deliveryFiles.deliveryId))
       .innerJoin(tasks, eq(tasks.id, deliveries.taskId))
       .where(inArray(deliveryFiles.fileId, fileIds)),
+  );
+  // 准备资料上传的资料表格、图纸和照片（移除了的也算：提交快照、上次提交的表还会引用）
+  add(
+    await db
+      .select({ fileId: taskIntakeFiles.fileId, enterpriseId: tasks.enterpriseId })
+      .from(taskIntakeFiles)
+      .innerJoin(tasks, eq(tasks.id, taskIntakeFiles.taskId))
+      .where(inArray(taskIntakeFiles.fileId, fileIds)),
   );
   const idArray = sql`array[${sql.join(
     fileIds.map((id) => sql`${id}`),

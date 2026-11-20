@@ -63,7 +63,7 @@ export class TasksController {
 
   @Get('tasks/:id')
   get(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.tasks.load(user, id);
+    return this.tasks.loadWithFlow(user, id);
   }
 
   @Patch('tasks/:id')

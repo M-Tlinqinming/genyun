@@ -147,6 +147,13 @@ export class TasksService {
     return found;
   }
 
+  // 任务详情（GET /api/tasks/:id）：另带走哪套流程。有 task_intakes 那一行的走新流程（准备资料），没有的是旧任务
+  async loadWithFlow(user: SessionUser, id: string) {
+    const task = await this.load(user, id);
+    const [intake] = await this.db.select({ taskId: taskIntakes.taskId }).from(taskIntakes).where(eq(taskIntakes.taskId, id)).limit(1);
+    return { ...task, flow: intake ? ('intake' as const) : ('legacy' as const) };
+  }
+
   private async wasReassignedFrom(user: SessionUser, taskId: string) {
     const [hit] = await this.db
       .select({ id: notifications.id })

@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
 // 文件存储接口按阿里云对象存储设计：私有读写，只能通过短时效链接下载。
@@ -10,6 +10,8 @@ export interface FileStorage {
   read(key: string): Promise<Buffer>;
   // 生成短时效下载链接；filename 是客户看到的原文件名。inline = 在页面里直接显示（专家对照原件），不另存
   downloadUrl(key: string, opts: DownloadOptions): Promise<string>;
+  // 删掉一份没被任何记录引用的文件（如存好后写库失败）；不存在也算成功。没实现的存储就不删
+  remove?(key: string): Promise<void>;
 }
 
 export interface DownloadOptions {
@@ -84,6 +86,10 @@ export class LocalDiskStorage implements FileStorage {
 
   read(key: string): Promise<Buffer> {
     return readFile(this.path(key));
+  }
+
+  async remove(key: string): Promise<void> {
+    await rm(this.path(key), { force: true });
   }
 
   private sign(params: URLSearchParams): string {
