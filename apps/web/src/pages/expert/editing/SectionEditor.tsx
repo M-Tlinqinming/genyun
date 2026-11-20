@@ -11,12 +11,12 @@ import { linkButton } from '../../../components/ui';
 import { gy } from '../../../theme/tokens';
 import { blocksToDoc, docToBlocks, lockedOrder, type PmNode } from './editorDoc';
 
-/** 锁定块要显示的表格内容、图的缩略图，以及去专业整理修改的入口 */
+/** 锁定块要显示的表格内容、图的缩略图，以及去资料核对修改的入口 */
 export const LockedContext = createContext<{ previews: LockedPreview[]; workupHref: string | null }>({ previews: [], workupHref: null });
 
 const cell: CSSProperties = { padding: '4px 8px', border: `1px solid ${gy.split}`, textAlign: 'left', verticalAlign: 'top', fontWeight: 400 };
 
-// 表格和图：来自专业整理，正文里不能删、不能挪、不能改；表格内容只读展示（可收起），图显示缩略图
+// 表格和图：来自资料核对，正文里不能删、不能挪、不能改；表格内容只读展示（可收起），图显示缩略图
 function LockedView({ node }: { node: { attrs: Record<string, unknown> } }) {
   const { previews, workupHref } = useContext(LockedContext);
   const preview = previews.find((p) => p.index === Number(node.attrs.index));
@@ -48,16 +48,16 @@ function LockedView({ node }: { node: { attrs: Record<string, unknown> } }) {
             {open ? '收起表格' : '展开表格'}
           </button>
         )}
-        <span style={{ marginLeft: 'auto' }}>来自专业整理，正文里不能修改</span>
+        <span style={{ marginLeft: 'auto' }}>来自资料核对，正文里不能改</span>
         {workupHref && (
           <Link to={workupHref} style={{ color: gy.primary }}>
-            去专业整理修改
+            去资料核对修改
           </Link>
         )}
       </div>
       {preview?.kind === 'table' && open && (
         <div style={{ overflowX: 'auto', background: gy.surface }}>
-          <table aria-label={`${label}（只读）`} style={{ borderCollapse: 'collapse', width: '100%', color: gy.text, fontSize: 13, lineHeight: '20px' }}>
+          <table aria-label={`${label}（只读）`} style={{ borderCollapse: 'collapse', width: '100%', color: gy.text, fontSize: 14, lineHeight: '22px' }}>
             <thead>
               {preview.header.map((r, i) => (
                 <tr key={i} style={{ background: gy.canvas }}>
@@ -160,21 +160,26 @@ const extensions = [
   KeepLocked,
 ];
 
-// 每一节（以及放弃修改、换成最新稿时）重新挂一个编辑器，内容在创建时给定
+// 每一节（以及放弃修改、换成最新稿时）重新挂一个编辑器，内容在创建时给定。外框由页面画（E18-03 的蓝框）
 export function EditorPane({
   initial,
   editable,
-  dirty,
   onChange,
   editorRef,
+  label,
   extra,
+  children,
 }: {
   initial: EditBlock[];
   editable: boolean;
-  dirty: boolean;
   onChange: (blocks: EditBlock[]) => void;
   editorRef: React.RefObject<Editor | null>;
+  /** 工具栏上「正在修改 …」 */
+  label: string;
+  /** 工具栏最右边（「帮我改写这段」） */
   extra?: React.ReactNode;
+  /** 编辑区里正文上面（节标题） */
+  children?: React.ReactNode;
 }) {
   const editor = useEditor({
     extensions,
@@ -194,19 +199,9 @@ export function EditorPane({
   }, [editor, editorRef]);
   return (
     <>
-      <Toolbar editor={editor} extra={extra} />
-      <div
-        className="gy-editor-box"
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-          padding: '8px 16px',
-          borderRadius: 6,
-          border: `1px solid ${dirty ? gy.primary : gy.split}`,
-          background: editable ? gy.surface : gy.canvas,
-        }}
-      >
+      <Toolbar editor={editor} label={label} extra={extra} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 16px' }}>
+        {children}
         <EditorContent editor={editor} />
       </div>
     </>
@@ -234,19 +229,37 @@ export function replaceParagraph(editor: Editor, at: { from: number; to: number 
 }
 
 const tool: CSSProperties = {
-  padding: '0 10px',
+  width: 28,
+  height: 28,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 0,
   border: 'none',
   borderRadius: 4,
   background: 'none',
   cursor: 'pointer',
-  fontSize: 14,
-  lineHeight: '24px',
-  color: gy.text,
-  fontFamily: 'inherit',
+  color: gy.secondary,
 };
 
-// 工具栏：加粗、列表、撤销（E18-03）
-export function Toolbar({ editor, extra }: { editor: Editor; extra?: React.ReactNode }) {
+const sep = <span aria-hidden style={{ width: 1, height: 16, background: gy.split, margin: '0 4px' }} />;
+
+// 14px 线条图标：撤销、重做是弯箭头（旧的圆箭头看着像刷新）
+const icon = (d: string) => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d={d} />
+  </svg>
+);
+const ICONS = {
+  undo: icon('M6 3 2.5 6.5 6 10M2.5 6.5H10a3.5 3.5 0 0 1 0 7H8'),
+  redo: icon('M10 3l3.5 3.5L10 10M13.5 6.5H6a3.5 3.5 0 0 0 0 7h2'),
+  ordered: icon('M7 4h7M7 8h7M7 12h7M2.5 3h1v3M2.2 9.2c.3-.4 1.6-.5 1.6.4 0 .6-1.6 1.4-1.6 2.4h1.8'),
+  bullet: icon('M7 4h7M7 8h7M7 12h7M3 4h.01M3 8h.01M3 12h.01'),
+};
+
+// 工具栏（E18-03）：撤销、重做 | 加粗 | 编号列表、圆点列表；右边「正在修改 …」和「帮我改写这段」。
+// 文档格式只支持加粗，所以没有斜体、下划线、表格
+export function Toolbar({ editor, label, extra }: { editor: Editor; label: string; extra?: React.ReactNode }) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -254,70 +267,47 @@ export function Toolbar({ editor, extra }: { editor: Editor; extra?: React.React
       list: e.isActive('orderedList'),
       bullet: e.isActive('bulletList'),
       canUndo: e.can().undo(),
+      canRedo: e.can().redo(),
       editable: e.isEditable,
     }),
   });
-  const disabled = !state.editable;
-  // 只读（运营查看、非负责专家）时格式按钮置灰
-  const on = (active: boolean): CSSProperties =>
-    disabled
-      ? { ...tool, color: gy.tertiary, cursor: 'not-allowed' }
-      : active
-        ? { ...tool, background: gy.selected, color: gy.primary }
-        : tool;
+  const off = !state.editable;
+  const style = (active: boolean, disabled = off): CSSProperties =>
+    disabled ? { ...tool, color: gy.controlLine, cursor: 'not-allowed' } : active ? { ...tool, background: gy.selected, color: gy.primary } : tool;
+  const button = (name: string, content: React.ReactNode, run: () => void, opts: { active?: boolean; disabled?: boolean; pressed?: boolean } = {}) => (
+    <button
+      type="button"
+      aria-label={name}
+      title={name}
+      aria-pressed={opts.pressed}
+      disabled={opts.disabled ?? off}
+      style={style(opts.active ?? false, opts.disabled ?? off)}
+      onClick={run}
+    >
+      {content}
+    </button>
+  );
   return (
     <div
       role="toolbar"
       aria-label="正文格式"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '7px 8px',
-        borderRadius: 4,
-        border: `1px solid ${gy.split}`,
-        background: gy.canvas,
-      }}
+      style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 8px', borderBottom: `1px solid ${gy.split}` }}
     >
-      <button
-        type="button"
-        aria-label="加粗"
-        aria-pressed={state.bold}
-        disabled={disabled}
-        style={{ ...on(state.bold), fontWeight: 600 }}
-        onClick={() => editor.chain().focus().toggleBold().run()}
-      >
-        B
-      </button>
-      <button
-        type="button"
-        aria-pressed={state.list}
-        disabled={disabled}
-        style={on(state.list)}
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-      >
-        编号列表
-      </button>
-      <button
-        type="button"
-        aria-pressed={state.bullet}
-        disabled={disabled}
-        style={on(state.bullet)}
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-      >
-        圆点列表
-      </button>
-      <button
-        type="button"
-        disabled={disabled || !state.canUndo}
-        style={{ ...tool, color: disabled || !state.canUndo ? gy.tertiary : gy.text, cursor: disabled || !state.canUndo ? 'not-allowed' : 'pointer' }}
-        onClick={() => editor.chain().focus().undo().run()}
-      >
-        撤销
-      </button>
+      {button('撤销', ICONS.undo, () => editor.chain().focus().undo().run(), { disabled: off || !state.canUndo })}
+      {button('重做', ICONS.redo, () => editor.chain().focus().redo().run(), { disabled: off || !state.canRedo })}
+      {sep}
+      {button('加粗', <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 600 }}>B</span>, () => editor.chain().focus().toggleBold().run(), {
+        active: state.bold,
+        pressed: state.bold,
+      })}
+      {sep}
+      {button('编号列表', ICONS.ordered, () => editor.chain().focus().toggleOrderedList().run(), { active: state.list, pressed: state.list })}
+      {button('圆点列表', ICONS.bullet, () => editor.chain().focus().toggleBulletList().run(), { active: state.bullet, pressed: state.bullet })}
       <span style={{ flex: 1 }} />
+      <span style={{ fontSize: 12, lineHeight: '20px', color: gy.tertiary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+        正在修改 {label}
+      </span>
       {extra}
     </div>
   );
 }
-

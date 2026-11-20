@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router';
 import { useGeneration } from '../../api/generation';
 import { useTask } from '../../api/tasks';
 import { Loading } from '../../components/ui';
-import { EditView } from '../expert/editing/EditView';
+import { ReviewWorkspace } from '../expert/editing/ReviewWorkspace';
 import { phaseOf } from '../expert/workup/GenerationView';
 
 // 运营查看任务正文（只读）：网址 /operator/tasks/<任务>。任务中心（列表与分派）在 /operator/tasks?task=<任务>，
@@ -24,7 +24,7 @@ export function OperatorTaskPage() {
     return <Result status="info" title="还没有可查看的正文" subTitle="三份草稿生成完以后，这里可以查看正文。" extra={back} />;
   }
   return (
-    <EditView
+    <ReviewWorkspace
       taskId={taskId}
       enterpriseName={task.data.enterpriseName}
       taskNumber={task.data.number}

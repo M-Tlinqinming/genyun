@@ -40,9 +40,8 @@ import { gy, stage } from '../../theme/tokens';
 import { ConfirmView } from './workup/ConfirmView';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { FiguresPanel, type FiguresSaveInput } from './workup/FiguresPanel';
-import { ConclusionView } from './editing/ConclusionView';
 import { PublishView } from './editing/PublishView';
-import { EditView } from './editing/EditView';
+import { ReviewWorkspace } from './editing/ReviewWorkspace';
 import { GenerationView, phaseOf } from './workup/GenerationView';
 import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
 import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
@@ -319,19 +318,6 @@ export function ExpertTaskPage() {
           : 'wizard';
   const phase = current ? phaseOf(current) : null;
 
-  // 审核结论（E18-06）：三份逐份核对后确认
-  if (requested === 'review' && current && phaseOf(current) === 'done') {
-    return (
-      <ConclusionView
-        taskId={taskId}
-        enterpriseName={task.data.enterpriseName}
-        taskNumber={task.data.number}
-        onOpen={(k) => setParams({ view: 'edit', doc: k, tab: 'preview' })}
-        onPublish={() => setParams({ view: 'publish' })}
-      />
-    );
-  }
-
   // 成果交付（R03–R04b）：审核结论有效时由负责专家交付
   if (requested === 'publish' && current && phaseOf(current) === 'done') {
     return (
@@ -339,15 +325,15 @@ export function ExpertTaskPage() {
         taskId={taskId}
         enterpriseName={task.data.enterpriseName}
         taskNumber={task.data.number}
-        onOpen={(k) => setParams({ view: 'edit', doc: k, tab: 'preview' })}
-        onEdit={() => setParams({ view: 'review' })}
+        onOpen={(k) => setParams({ view: 'edit', doc: k })}
+        onEdit={() => setParams({ view: 'edit', tab: 'conclusion' })}
       />
     );
   }
 
-  // 审核与修订 · 正文编辑（E18-03）：三份草稿都生成完才进得来
-  if (requested === 'edit' && current && phaseOf(current) === 'done') {
-    return <EditView taskId={taskId} enterpriseName={task.data.enterpriseName} taskNumber={task.data.number} generation={current} />;
+  // 核对定稿（E18-03 到 E18-15）：三份草稿都生成完才进得来；旧网址 ?view=review 打开审核结论页签
+  if ((requested === 'edit' || requested === 'review') && current && phaseOf(current) === 'done') {
+    return <ReviewWorkspace taskId={taskId} enterpriseName={task.data.enterpriseName} taskNumber={task.data.number} generation={current} />;
   }
 
   if (view === 'wizard') {

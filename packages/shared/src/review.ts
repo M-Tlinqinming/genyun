@@ -40,6 +40,28 @@ export interface ReviewView {
   factsChangedAt?: string | null;
   /** 这批文稿已发布为哪个交付版本（M2 第 15 项）：发布后不能再核对、再确认结论。没发布为 null */
   published?: { version: number; at: string } | null;
+  /** 当前账号在这批稿子里最近一次保存（「回来接着做」用）；没保存过为 null */
+  lastSave?: LastSave | null;
+}
+
+export interface LastSave {
+  kind: DraftKind;
+  sectionId: string;
+  sectionTitle: string;
+  at: string;
+}
+
+/** 处理记录的一条（新的在前） */
+export interface HistoryEntry {
+  at: string;
+  /** 谁做的；系统做的（生成完成、生成失败）为 null */
+  who: string | null;
+  /** 做了什么，如「保存「应急预案 · 2.3 应急小组及职责」」 */
+  what: string;
+  /** 补充一句 */
+  extra: string | null;
+  /** 「核对完成」类，页面上用蓝点 */
+  check: boolean;
 }
 
 /** 这份的核对还对应当前稿 */
@@ -67,7 +89,6 @@ export function nextToCheck(docs: Pick<DraftCheckView, 'kind' | 'version' | 'che
   return null;
 }
 
-export const REVIEW_NOTE_DEFAULT = '我已核对本次三份文稿，企业名称、联系人等关键信息一致，内容与 Word 版式符合本次交付要求。';
 export const REVIEW_NOTE_MAX = 500;
 
 /** 核对一份：带上页面看到的修订次数，别人刚保存过（次数变了）就拒绝 */

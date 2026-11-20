@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import JSZip from 'jszip';
 
-// 审核与修订 · 正文编辑（14 页 E18-03、E18-04、E18-07、E18-08）。
+// 核对定稿 · 正文（14 页 E18-03、E18-04、E18-07、E18-08、E18-11、E18-13、E18-15）。
 // 文件名排在 generation.spec 之后（generation_xxx 会排到它前面）：那时飞宇的三份草稿已生成。
-async function openEditing(page: Page) {
+async function login(page: Page) {
   await page.goto('/login');
   await page.getByPlaceholder('请输入邮箱').fill('expert@demo.genyun.net.cn');
   await page.getByPlaceholder('请输入密码').fill('e2e-password');
@@ -11,33 +11,38 @@ async function openEditing(page: Page) {
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
   await expect(page.getByRole('heading', { name: '三份草稿已生成' })).toBeVisible();
-  await page.getByRole('button', { name: '进入正文编辑' }).click();
-  await expect(page).toHaveURL(/view=edit/);
-  await expect(page.getByRole('navigation', { name: '章节目录' })).toBeVisible();
-  await expect(editor(page)).toBeVisible();
 }
 
 const editor = (page: Page) => page.getByRole('textbox', { name: '本节正文' });
-const footer = (page: Page) => page.getByRole('region', { name: '保存本节' });
+const article = (page: Page) => page.getByRole('article', { name: '正文' });
+const docTab = (page: Page, name: string) => page.getByRole('tablist', { name: '三份文稿' }).getByRole('tab', { name: new RegExp(name) });
+const saveButton = (page: Page) => page.getByRole('button', { name: '保存这一节' });
+const editButtons = (page: Page) => article(page).getByRole('button', { name: /^修改这一节 / });
 
-interface Outline {
-  id: string;
-  children: Outline[];
+/** 点开正文里第一个「修改这一节」，返回那一节的标题和编号 */
+async function startEdit(page: Page) {
+  const button = editButtons(page).first();
+  const title = (await button.getAttribute('aria-label'))!.replace(/^修改这一节 /, '');
+  const id = await article(page).getByRole('region', { name: title, exact: true }).getAttribute('data-section');
+  await button.click();
+  await expect(editor(page)).toBeVisible();
+  return { title, id: id! };
 }
 
-async function firstSection(page: Page) {
-  const taskId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!;
-  const doc = (await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/edit`)).json()) as { outline: Outline[]; batchId: string };
-  let n = doc.outline[0]!;
-  while (n.children.length) n = n.children[0]!;
-  return { taskId, sectionId: n.id, batchId: doc.batchId, outline: doc.outline };
+async function typeAtEnd(page: Page, text: string) {
+  await editor(page).locator('p').first().click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(text);
 }
 
-/** 找一节带锁定表格（或图）的 */
-async function sectionWith(page: Page, taskId: string, outline: Outline[], kind: 'table' | 'figure') {
+type Outline = { id: string; children: Outline[] };
+
+/** 找应急预案里第一个带锁定表格（或图）的节 */
+async function sectionWith(page: Page, taskId: string, kind: 'table' | 'figure') {
+  const doc = (await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/edit`)).json()) as { outline: Outline[] };
   const ids: string[] = [];
   const walk = (list: Outline[]) => list.forEach((n) => (n.children.length ? walk(n.children) : ids.push(n.id)));
-  walk(outline);
+  walk(doc.outline);
   for (const id of ids) {
     const res = await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${id}`);
     const s = (await res.json()) as { locked: { kind: string; src?: string }[] };
@@ -55,217 +60,231 @@ async function shots(page: Page, name: string) {
   ] as const) {
     await page.setViewportSize({ width: w, height: h });
     await page.waitForTimeout(300);
+    // 没有横向滚动
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/acceptance/m2-11-${name}-${w}.png` });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
 }
 
-async function typeAtEnd(page: Page, text: string) {
-  await editor(page).locator('p').first().click();
-  await page.keyboard.press('End');
-  await page.keyboard.type(text);
-}
-
 test.setTimeout(300_000);
 
-test('改一节、写修订说明保存；离开前提醒；别人刚保存过要先对照；保存失败可重试', async ({ page }) => {
-  await openEditing(page);
-  await expect(page.getByRole('status').filter({ hasText: '待人工核对' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /应急预案/ })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByText('人工核对 0 / 3')).toBeVisible();
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: 'test-results/acceptance/m2-11-open.png' });
+test('按章读正文，改一节不写说明也能保存；离开前三个选择；保存失败可重试；别人刚保存过要先对照；处理记录；接着上次的地方', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: '进入正文编辑' }).click();
+  await expect(page).toHaveURL(/view=edit/);
+  await expect(page.getByRole('navigation', { name: '章节' })).toBeVisible();
+  await expect(editButtons(page).first()).toBeVisible();
+  await expect(docTab(page, '应急预案')).toHaveAttribute('aria-selected', 'true');
+  await expect(docTab(page, '应急预案')).toContainText('待核对');
+  await expect(page.getByText('已核对 0 / 3')).toBeVisible();
+  // 界面不出现旧说法
+  await expect(page.locator('body')).not.toContainText(/修订|人工核对|校对稿|专业整理|当前稿|发布/);
+  await shots(page, 'open');
 
-  // E18-03：改了就是未保存；没写修订说明不能保存
+  // E18-03：点「修改这一节」，改了就是没保存；修改说明选填，不写也能保存
+  const first = await startEdit(page);
+  await expect(page.getByRole('toolbar', { name: '正文格式' })).toContainText(`正在修改 ${first.title}`);
   await typeAtEnd(page, '（专家补充：按现场核实）');
-  await expect(page.getByText('● 未保存')).toBeVisible();
-  await expect(page.getByRole('status').filter({ hasText: '修订未保存' })).toBeVisible();
-  await expect(footer(page)).toContainText('有未保存修订 · 保存成功后才能进行全文核对');
-  await footer(page).getByRole('button', { name: '保存本节修订' }).click();
-  await expect(page.getByRole('alert').filter({ hasText: '请写修订说明' })).toBeVisible();
-  await page.getByLabel('修订说明').fill('按现场核实补充说明');
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: 'test-results/acceptance/m2-11-unsaved.png' });
+  await expect(page.getByText(/还没保存$/).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: '这一份核对完成' })).toBeDisabled();
+  await expect(page.getByText(/^先保存正在修改的 .+再点「这一份核对完成」$/)).toBeVisible();
+  await shots(page, 'unsaved');
+  await saveButton(page).click();
+  await expect(page.getByText(/^已保存 · /)).toBeVisible();
+  await expect(editor(page)).toHaveCount(0);
+  await expect(article(page).getByText(/^您已修改 · /)).toBeVisible();
+  await expect(article(page)).toContainText('专家补充：按现场核实');
+  await shots(page, 'saved');
 
-  // E18-04：保存后显示保存时间，目录标出已改，修订说明只读显示
-  await footer(page).getByRole('button', { name: '保存本节修订' }).click();
-  await expect(page.getByText(/✓ 已保存 \d\d\.\d\d \d\d:\d\d/)).toBeVisible();
-  await expect(footer(page)).toContainText('修订已保存 · 人工核对 0 / 3');
-  await expect(page.getByRole('status').filter({ hasText: '已保存 · 待人工核对' })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: '章节目录' }).getByLabel('已修订')).toHaveCount(1);
-  await expect(page.getByLabel('本节修订说明')).toContainText('修订说明：按现场核实补充说明');
-  await page.screenshot({ path: 'test-results/acceptance/m2-11-saved.png' });
-
-  // 当前稿 Word 带上了修订
-  const { taskId, sectionId, batchId, outline } = await firstSection(page);
+  // 下载的 Word 带上了刚才的修改
+  const taskId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!;
   const word = await JSZip.loadAsync(await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/word`)).body());
   expect(await word.file('word/document.xml')!.async('string')).toContain('专家补充：按现场核实');
 
-  // 刷新后还在：内容是保存后的
-  await page.reload();
-  await expect(editor(page)).toContainText('专家补充：按现场核实');
-
-  // E18-07 离开前保存：切换文档时提醒；继续编辑留在本页，不保存就离开丢掉输入
+  // E18-07 离开前：三个按钮
+  await startEdit(page);
   await typeAtEnd(page, '再改一处');
-  await page.getByRole('tab', { name: /风险评估报告/ }).click();
-  const leave = page.getByRole('dialog', { name: '离开前保存修改？' });
-  await expect(leave).toContainText('不保存就离开，本次输入会丢弃；已保存稿不变');
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: 'test-results/acceptance/m2-11-leave.png' });
-  // 没写修订说明就点「保存并离开」：留在本页，光标到修订说明
-  await leave.getByRole('button', { name: '保存并离开', exact: true }).click();
-  await expect(page.getByLabel('修订说明')).toBeFocused();
-  await expect(page).not.toHaveURL(/doc=risk/);
-  await page.getByRole('tab', { name: /风险评估报告/ }).click();
-  await page.getByRole('dialog', { name: '离开前保存修改？' }).getByRole('button', { name: '继续编辑' }).click();
+  await docTab(page, '风险评估报告').click();
+  const leave = page.getByRole('alertdialog', { name: /改的内容还没保存$/ });
+  await expect(leave).toContainText('您要去「风险评估报告」');
+  await shots(page, 'leave');
+  // 留在这一节：输入还在
+  await leave.getByRole('button', { name: /^留在 / }).click();
   await expect(page).not.toHaveURL(/doc=risk/);
   await expect(editor(page)).toContainText('再改一处');
-  await page.getByRole('tab', { name: /风险评估报告/ }).click();
-  await page.getByRole('dialog', { name: '离开前保存修改？' }).getByRole('button', { name: '不保存并离开' }).click();
+  // 不保存，直接离开：丢掉输入
+  await docTab(page, '风险评估报告').click();
+  await page.getByRole('alertdialog').getByRole('button', { name: '不保存，直接离开' }).click();
   await expect(page).toHaveURL(/doc=risk/);
-  await expect(page.getByRole('tab', { name: /风险评估报告/ })).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('tab', { name: /应急预案/ }).click();
-  await expect(editor(page)).toContainText('专家补充：按现场核实');
-  await expect(editor(page)).not.toContainText('再改一处');
+  await expect(docTab(page, '风险评估报告')).toHaveAttribute('aria-selected', 'true');
+  await docTab(page, '应急预案').click();
+  await expect(article(page)).toContainText('专家补充：按现场核实');
+  await expect(article(page)).not.toContainText('再改一处');
+  // 保存并离开：存上再走
+  await startEdit(page);
+  await typeAtEnd(page, '离开前存上');
+  await docTab(page, '风险评估报告').click();
+  await page.getByRole('alertdialog').getByRole('button', { name: '保存并离开' }).click();
+  await expect(page).toHaveURL(/doc=risk/);
+  await docTab(page, '应急预案').click();
+  await expect(article(page)).toContainText('离开前存上');
 
-  // 保存失败（连接中断）：输入保留；重试前先查这次保存，再重试同一次
+  // 保存失败（连接中断）：输入留在框里，「重新保存」后存上
+  await startEdit(page);
   await typeAtEnd(page, '断网时的修改');
-  await page.getByLabel('修订说明').fill('断网测试');
+  await page.getByLabel('修改说明').fill('断网测试');
   await page.route('**/api/tasks/*/drafts/plan/sections/*', (route) =>
     route.request().method() === 'PUT' ? route.abort('internetdisconnected') : route.continue(),
   );
-  await footer(page).getByRole('button', { name: '保存本节修订' }).click();
-  // 失败提示就在底栏里（同一块），修订说明不被盖住；只有「重试保存」是主按钮
-  const failed = page.getByRole('alert', { name: '保存本节' });
-  await expect(failed).toContainText('修订未保存成功');
-  await expect(failed).toContainText('连接中断');
-  await expect(failed.getByRole('button', { name: '保存本节修订' })).toHaveCount(0);
+  await saveButton(page).click();
+  const failed = article(page).getByRole('alert');
+  await expect(failed).toContainText('网络断了，没保存上');
+  await expect(page.getByText(/^没保存上 · /)).toBeVisible();
   await expect(editor(page)).toContainText('断网时的修改');
-  await page.unrouteAll();
-  await failed.getByRole('button', { name: '重试保存' }).click();
-  await expect(page.getByText(/✓ 已保存/)).toBeVisible();
-  await expect(failed).toBeHidden();
-  // 恢复后底栏边框回到浅灰（不是默认深色）
-  await expect(footer(page)).toHaveCSS('border-top-color', 'rgb(229, 231, 235)');
-
-  // 服务出错、其实已经存上了，之后又改了：重试先查到已存上，再以它为基准存新内容，新打的字不会丢
-  await typeAtEnd(page, '回包丢了的修改');
-  await page.getByLabel('修订说明').fill('回包丢失测试');
-  await page.route('**/api/tasks/*/drafts/plan/sections/*', async (route) => {
-    if (route.request().method() !== 'PUT') return route.continue();
-    await route.fetch();
-    await route.fulfill({ status: 502, contentType: 'application/json', body: '{}' });
-  });
-  await footer(page).getByRole('button', { name: '保存本节修订' }).click();
-  await expect(failed).toContainText('服务暂时出错');
-  await expect(page.getByLabel('修订说明')).toBeInViewport();
   await shots(page, 'failed');
   await page.unrouteAll();
-  await typeAtEnd(page, '失败后又补的字');
-  await failed.getByRole('button', { name: '重试保存' }).click();
-  await expect(page.getByText(/✓ 已保存/)).toBeVisible();
-  const afterRetry = await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${sectionId}`)).json();
-  expect(JSON.stringify(afterRetry.blocks)).toContain('失败后又补的字');
+  await failed.getByRole('button', { name: '重新保存' }).click();
+  await expect(page.getByText(/^已保存 · /)).toBeVisible();
+  await expect(article(page)).toContainText('断网时的修改');
 
-  // 别人刚保存过：保存时要先对照，保留输入并打开最新稿
-  const latest = await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${sectionId}`)).json();
-  const other = await page.request.put(`/api/tasks/${taskId}/drafts/plan/sections/${sectionId}`, {
+  // 别人刚保存过：保存时先对照，留着我的输入、打开最新的
+  const latest = await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${first.id}`)).json();
+  const doc = await (await page.request.get(`/api/tasks/${taskId}/drafts/plan/edit`)).json();
+  const other = await page.request.put(`/api/tasks/${taskId}/drafts/plan/sections/${first.id}`, {
     data: {
       saveId: crypto.randomUUID(),
-      batchId,
+      batchId: doc.batchId,
       baseRev: latest.rev,
       blocks: [{ type: 'paragraph', text: ['另一处保存的最新内容。'] }, ...latest.blocks.filter((b: { type: string }) => b.type === 'locked')],
-      note: '另一次保存',
+      note: '',
     },
   });
   expect(other.ok()).toBe(true);
+  await startEdit(page);
   await typeAtEnd(page, '我的未保存输入');
-  await page.getByLabel('修订说明').fill('冲突测试');
-  await footer(page).getByRole('button', { name: '保存本节修订' }).click();
-  const conflict = page.getByRole('dialog', { name: '当前稿件已被更新，请先对照变更' });
-  await expect(conflict.getByRole('region', { name: '最新保存稿' })).toContainText('另一处保存的最新内容。');
-  await expect(conflict.getByRole('region', { name: '你的未保存内容' })).toContainText('我的未保存输入');
-  await expect(conflict.getByLabel('与最新稿不同').first()).toBeVisible();
+  await saveButton(page).click();
+  const conflict = page.getByRole('dialog', { name: '这一节刚被别人保存过，请先对照' });
+  await expect(conflict.getByRole('region', { name: '最新保存的内容' })).toContainText('另一处保存的最新内容。');
+  await expect(conflict.getByRole('region', { name: '您没保存的内容' })).toContainText('我的未保存输入');
   await shots(page, 'conflict');
-  await conflict.getByRole('button', { name: '保留输入并打开最新稿' }).click();
+  await conflict.getByRole('button', { name: '留着我的输入，打开最新的' }).click();
   await expect(editor(page)).toContainText('另一处保存的最新内容。');
-  await expect(page.getByRole('complementary', { name: '企业资料依据' })).toContainText('我的未保存输入');
-  // 修订说明留着；待合并也算没保存：不显示「已保存」，离开要提醒
-  await expect(page.getByLabel('修订说明')).toHaveValue('冲突测试');
-  await expect(page.getByRole('status').filter({ hasText: '你的修改待合并' })).toBeVisible();
-  await expect(page.getByText(/✓ 已保存/)).toHaveCount(0);
-  // 编辑区没有改动、只有右栏没合并：没有可保存的，只给「继续合并」和「放弃并离开」
-  await page.getByRole('tab', { name: /风险评估报告/ }).click();
-  const unmerged = page.getByRole('dialog', { name: '还有内容没有合并' });
-  await expect(unmerged).toContainText('右栏还有你冲突前的输入没合并');
+  await expect(article(page).getByLabel('您没保存的内容')).toContainText('我的未保存输入');
+  // 编辑框没有改动、只剩冲突前的输入没合并：没有可保存的，离开只给「继续合并」「放弃并离开」
+  await docTab(page, '风险评估报告').click();
+  const unmerged = page.getByRole('alertdialog', { name: /还有内容没合并$/ });
+  await expect(unmerged).toContainText('冲突前写的内容');
   await expect(unmerged.getByRole('button', { name: '保存并离开' })).toHaveCount(0);
   await expect(unmerged.getByRole('button', { name: '放弃并离开' })).toBeVisible();
   await unmerged.getByRole('button', { name: '继续合并' }).click();
   await expect(unmerged).toBeHidden();
   await expect(page).not.toHaveURL(/doc=risk/);
-  await expect(page.getByRole('complementary', { name: '企业资料依据' })).toContainText('我的未保存输入');
-  // 编辑区一有改动，又回到「离开前保存修改？」
-  await typeAtEnd(page, '合并中');
-  await page.getByRole('tab', { name: /风险评估报告/ }).click();
-  await page.getByRole('dialog', { name: '离开前保存修改？' }).getByRole('button', { name: '继续编辑' }).click();
-  // 手动收起要先确认
-  await page.getByRole('complementary', { name: '企业资料依据' }).getByRole('button', { name: '收起' }).click();
-  const collapse = page.getByRole('dialog', { name: '收起你的未保存内容？' });
-  await collapse.getByRole('button', { name: '先不收起' }).click();
-  await expect(page.getByRole('complementary', { name: '企业资料依据' })).toContainText('我的未保存输入');
-  // 合并进正文保存后，右栏自动收起
+  await expect(article(page).getByLabel('您没保存的内容')).toContainText('我的未保存输入');
+  // 编辑框一有改动，又回到三个选择
   await typeAtEnd(page, '我的未保存输入');
-  await footer(page).getByRole('button', { name: '保存本节修订' }).click();
-  await expect(page.getByText(/✓ 已保存/)).toBeVisible();
-  await expect(page.getByRole('complementary', { name: '企业资料依据' })).not.toContainText('我的未保存输入');
+  await docTab(page, '风险评估报告').click();
+  const leaveAgain = page.getByRole('alertdialog', { name: /改的内容还没保存$/ });
+  await expect(leaveAgain.getByRole('button', { name: '保存并离开' })).toBeVisible();
+  await leaveAgain.getByRole('button', { name: /^留在 / }).click();
+  await expect(leaveAgain).toBeHidden();
+  // 合并进编辑框保存后，下面的那块自动收起
+  await saveButton(page).click();
+  await expect(page.getByText(/^已保存 · /)).toBeVisible();
+  await expect(article(page).getByLabel('您没保存的内容')).toHaveCount(0);
 
-  // 锁定的表格：只读显示内容，可收起，能去专业整理修改
-  const tableSection = await sectionWith(page, taskId, outline, 'table');
+  // E18-15：右栏点一条待补充，正文滚到那一处并闪一下
+  // 演示数据的应急预案里有正文中的待补充（不在表格里、还没处理），清单至少有一条可以点
+  const items = page.getByRole('list', { name: '待补充清单' }).getByRole('button').filter({ hasNotText: /已处理|表格里/ });
+  await expect(items.first()).toBeVisible();
+  await items.first().click();
+  await expect(article(page).locator('.gy-pending-flash')).toBeInViewport();
+  await shots(page, 'pending');
+
+  // E18-13：处理记录，按天分组，新的在前
+  await page.getByRole('button', { name: '处理记录', exact: true }).click();
+  const history = page.getByRole('dialog', { name: '处理记录' });
+  await expect(history.getByRole('region', { name: '今天' })).toContainText('保存「应急预案 · ');
+  await expect(history).toContainText('断网测试');
+  await shots(page, 'history');
+  await history.getByRole('button', { name: '关闭处理记录' }).click();
+  await expect(history).toHaveCount(0);
+
+  // E18-11：从任务进来，接着上次保存的地方打开
+  await page.goto(`/expert/tasks/${taskId}?view=edit`);
+  const resume = page.getByRole('status').filter({ hasText: '已接着上次的地方打开' });
+  await expect(resume).toContainText('您核对到「应急预案 · ');
+  await expect(page).toHaveURL(/section=/);
+  await shots(page, 'resume');
+  await resume.getByRole('button', { name: '知道了' }).click();
+  await expect(resume).toHaveCount(0);
+
+  // 锁定的表格：正文里只读显示，「去资料核对修改」去资料核对；改这一节时表格可以收起
+  const tableSection = await sectionWith(page, taskId, 'table');
   if (tableSection) {
     await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan&section=${tableSection.id}`);
+    const region = article(page).locator(`[data-section="${tableSection.id}"]`);
+    await expect(region.locator('[data-locked] table').first()).toBeVisible();
+    await expect(region.getByRole('textbox')).toHaveCount(0);
+    await shots(page, 'locked');
+    await region.getByRole('button', { name: /^修改这一节 / }).click();
     const lockedTable = editor(page).getByRole('table').first();
     await expect(lockedTable).toBeVisible();
-    await expect(editor(page).getByRole('link', { name: '去专业整理修改' }).first()).toBeVisible();
-    await expect(page.getByRole('navigation', { name: '章节目录' }).locator('[aria-current="true"]')).toBeInViewport();
-    await shots(page, 'locked');
     await editor(page).getByRole('button', { name: '收起表格' }).first().click();
     await expect(lockedTable).toBeHidden();
+    await editor(page).getByRole('button', { name: '展开表格' }).first().click();
+    await expect(lockedTable).toBeVisible();
+    await page.getByRole('button', { name: '放弃修改' }).click();
+    await region.getByRole('link', { name: '去资料核对修改' }).first().click();
+    await expect(page).toHaveURL(/view=workup/);
+  } else {
+    console.log('演示数据的应急预案里没有锁定表格，跳过表格检查');
   }
 
-  // 1366×768：底栏在一屏内，没有横向滚动
-  await page.setViewportSize({ width: 1366, height: 768 });
-  await page.waitForTimeout(300);
-  await expect(footer(page)).toBeInViewport();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: 'test-results/acceptance/m2-11-1366.png' });
-
-  // 锁定的图：节的内容里只带缩略图地址，图单独加载（长边 480 的 JPEG）
-  const figureSection = await sectionWith(page, taskId, outline, 'figure');
+  // 锁定的图：节的内容里只带缩略图地址，图单独加载（长边 480 的 JPEG），浏览器里真的画出来
+  const figureSection = await sectionWith(page, taskId, 'figure');
   if (figureSection) {
     expect(figureSection.body).not.toContain('base64');
     const img = await page.request.get(figureSection.src!);
     expect(img.status()).toBe(200);
     expect(img.headers()['content-type']).toBe('image/jpeg');
     await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan&section=${figureSection.id}`);
-    const figure = editor(page).getByRole('img').first();
+    const figure = article(page).locator(`[data-section="${figureSection.id}"] [data-locked] img`).first();
     await expect(figure).toBeVisible();
     await expect.poll(() => figure.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  } else {
+    console.log('演示数据的应急预案里没有锁定的图，跳过图的检查');
   }
   // 不是图的位置找不到
-  expect((await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${sectionId}/figures/0`)).status()).toBe(404);
+  expect((await page.request.get(`/api/tasks/${taskId}/drafts/plan/sections/${first.id}/figures/0`)).status()).toBe(404);
 
-  // 运营只读：运营任务中心的列表在 M3 做，在那之前从网址 /operator/tasks/<任务> 进
+  // 审核接口出错：不一直转圈，显示出错提示
+  await page.route('**/api/tasks/*/draft-review', (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '服务器出错了' }) }) : route.continue(),
+  );
+  await page.goto(`/expert/tasks/${taskId}?view=edit`);
+  await expect(page.getByText('还不能核对正文')).toBeVisible();
+  await page.unrouteAll();
+  await page.goto(`/expert/tasks/${taskId}?view=edit&doc=plan`);
+  await expect(article(page)).toBeVisible();
+
+  // 1366×768：底栏在一屏内
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await expect(page.getByRole('button', { name: '这一份核对完成' })).toBeInViewport();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // 运营只读：没有「修改这一节」，也不能核对
   const ops = await page.context().browser()!.newPage();
   await ops.goto('/login');
   await ops.getByPlaceholder('请输入邮箱').fill('ops@demo.genyun.net.cn');
   await ops.getByPlaceholder('请输入密码').fill('e2e-password');
   await ops.getByRole('button', { name: /登\s*录/ }).click();
   await expect(ops).toHaveURL(/\/operator$/);
-  await ops.goto(`/operator/tasks/${taskId}?doc=plan&section=${sectionId}`);
-  await expect(editor(ops)).toBeVisible();
-  await expect(ops.getByText('只读 · 由负责专家修改')).toBeVisible();
-  await expect(editor(ops)).toHaveAttribute('contenteditable', 'false');
-  await expect(footer(ops)).toContainText('只有负责这个任务的专家可以修改正文');
+  await ops.goto(`/operator/tasks/${taskId}?doc=plan`);
+  await expect(ops.getByText('只有负责这个任务的专家可以修改和核对；可以下载 Word 查看。')).toBeVisible();
+  await expect(article(ops)).toBeVisible();
+  await expect(editButtons(ops)).toHaveCount(0);
+  await expect(ops.getByRole('button', { name: '这一份核对完成' })).toHaveCount(0);
   await shots(ops, 'operator');
   await ops.close();
 });
