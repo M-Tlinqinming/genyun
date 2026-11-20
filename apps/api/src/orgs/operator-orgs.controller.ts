@@ -413,7 +413,7 @@ export class OperatorOrgsController {
   }
 
   private async latestContracts(orgIds: string[]) {
-    const map = new Map<string, { number: string; scopeKind: 'single' | 'annual'; scopeEnterprises: number | null }>();
+    const map = new Map<string, { number: string; scopeKind: 'single' | 'annual' | null; scopeEnterprises: number | null }>();
     if (orgIds.length === 0) return map;
     const rows = await this.db
       .select({

@@ -190,6 +190,13 @@
       "when": 1793573122854,
       "tag": "0026_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795159022120,
+      "tag": "0027_intake_credits_expert_profiles",
+      "breakpoints": true
     }
   ]
 }

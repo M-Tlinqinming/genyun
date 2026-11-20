@@ -87,10 +87,12 @@ export function canViewTask(user: SessionUser, task: { orgId: string; enterprise
 // 成员只看自己上传的，或挂在分配给自己的企业上的文件（linkedEnterpriseIds 由调用方查出：资料项、企业资料、补件、交付、企业档案里用到的）
 export function canViewFile(
   user: SessionUser,
-  file: { orgId: string; kind: 'customer_material' | 'contract' | 'draft' | 'delivery'; uploadedBy: string | null },
+  file: { orgId: string; kind: 'customer_material' | 'contract' | 'draft' | 'delivery' | 'expert_certificate'; uploadedBy: string | null },
   ctx: { usedInMyAssignedTask: boolean; linkedEnterpriseIds: string[] },
 ): boolean {
   if (file.kind === 'contract') return isOperator(user);
+  // 专家资质证书照片只给耕云审核看，专家本人也能看自己传的
+  if (file.kind === 'expert_certificate') return isOperator(user) || file.uploadedBy === user.id;
   // 生成的草稿发布前客户看不到，只有负责专家和运营
   if (file.kind === 'draft') return isOperator(user) || (ctx.usedInMyAssignedTask && isExpert(user));
   // 其余（客户资料、发布后的交付 Word）：运营、机构管理员、相关企业的成员；负责专家通过任务看到
