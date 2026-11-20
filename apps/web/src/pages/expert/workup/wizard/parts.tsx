@@ -119,7 +119,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <div style={{ flex, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div data-field={typeof label === 'string' ? label : undefined} style={{ flex, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 22 }}>
         <span style={{ ...type.body, color: gy.text }}>{label}</span>
         {tag}

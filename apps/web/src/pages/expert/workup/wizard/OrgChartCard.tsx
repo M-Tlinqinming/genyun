@@ -45,6 +45,7 @@ export function OrgChartCard({
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         message.warning(err.message);
+        await autosave.stale();
         return;
       }
       message.error(err instanceof ApiError ? err.message : '保存失败，请检查网络后重试');

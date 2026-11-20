@@ -208,6 +208,7 @@ export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn
       scope: planScopeOf(scopeView(snapshot, data)),
       facts: compact(factsOf(data, production.buildings)),
       figures: planFiguresOf(figuresView(snapshot, data)),
+      pending: data.blank?.length ? [...data.blank] : undefined,
     },
   };
 }

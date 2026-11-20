@@ -6,13 +6,17 @@ export type PersonField = 'name' | 'position' | 'phone';
 
 const filled = (v: string | undefined) => Boolean(v && v.trim());
 
-/** 手机号：只拦明显填错的（不是数字、1 开头却不是 11 位）；座机不拦，由客服核实 */
+/**
+ * 指挥部和小组成员的手机：必须是 11 位、1 开头的手机号（座机也报错，客户原来填了座机的一打开就标红，请客服向客户核实）。
+ * 只在页面上严格检查；服务端照旧宽松，客户原来填的座机能照常存下来。24 小时值班电话不走这里
+ */
 export function phoneError(phone: string | undefined): string | undefined {
   const v = (phone ?? '').trim();
   if (!v) return undefined;
   const digits = v.replace(/[\s-]/g, '');
   if (!/^\d+$/.test(digits)) return '手机号只能填数字';
-  if (digits.startsWith('1') && digits.length !== 11) {
+  if (!digits.startsWith('1')) return '手机号要以 1 开头';
+  if (digits.length !== 11) {
     return digits.length < 11 ? `手机号是 11 位，少了 ${11 - digits.length} 位` : `手机号是 11 位，多了 ${digits.length - 11} 位`;
   }
   return undefined;

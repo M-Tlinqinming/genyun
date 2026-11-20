@@ -7,18 +7,31 @@ import { gy, type, weight } from '../../../../theme/tokens';
 import { Card, link14, UseCard } from './parts';
 import type { StepProps } from './types';
 
-// 第 3–5 步还没换新样式：先用原来的整理页（对应模块），这里只管往下走
-const OLD_MODULE: Record<number, { module: string; text: string }> = {
-  3: { module: 'equipment', text: '生产设备、原辅材料、建构筑物和工艺流程' },
-  4: { module: 'supplies', text: '消防设施、应急物资、急救药箱和客户图纸' },
-  5: { module: 'risks', text: '危险源辨识、适用范围和预案附图' },
+// 第 3–5 步还没换新样式：先用原来的整理页，这里列出这一步要核对的几类，每类直达原来整理页的对应模块
+const OLD_MODULES: Record<number, [module: string, label: string][]> = {
+  3: [
+    ['equipment', '设备清单'],
+    ['special', '特种设备'],
+    ['materials', '原辅材料'],
+    ['buildings', '建构筑物'],
+    ['process', '工艺流程'],
+  ],
+  4: [
+    ['fire', '消防设施'],
+    ['supplies', '应急物资'],
+    ['firstAid', '急救药箱'],
+    ['figures', '图件'],
+  ],
+  5: [
+    ['risks', '危险源辨识'],
+    ['scope', '适用范围'],
+  ],
 };
 
 export function PlaceholderStep({ taskId, workup, frame, onGo, latestVersion, step }: StepProps & { step: 3 | 4 | 5 }) {
   const { message } = App.useApp();
   const saveDone = useSaveStepsDone(taskId);
-  const old = OLD_MODULE[step]!;
-  const oldUrl = `?view=workup-old&module=${old.module}`;
+  const modules = OLD_MODULES[step]!;
 
   const next = async () => {
     if (step === 5) {
@@ -39,10 +52,16 @@ export function PlaceholderStep({ taskId, workup, frame, onGo, latestVersion, st
         <h1 style={{ margin: 0, ...type.pageTitle, fontWeight: weight.strong, color: gy.text }}>{WORKUP_STEPS[step - 1]}</h1>
       </div>
       <Card title="这一步正在换新样式，先用原来的整理页">
-        <span style={{ ...type.body, color: gy.secondary }}>在原来的整理页里核对{old.text}。核对完回到这里继续下一步。</span>
-        <Link to={oldUrl} style={{ ...link14, alignSelf: 'flex-start' }}>
-          打开原来的整理页
-        </Link>
+        <span style={{ ...type.body, color: gy.secondary }}>
+          在原来的整理页里核对{modules.map(([, label]) => label).join('、')}。点下面任一类直接打开，核对完回到这里继续下一步。
+        </span>
+        <nav aria-label="打开原来的整理页" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px' }}>
+          {modules.map(([module, label]) => (
+            <Link key={module} to={`?view=workup-old&module=${module}`} style={link14}>
+              {label}
+            </Link>
+          ))}
+        </nav>
       </Card>
     </>
   );

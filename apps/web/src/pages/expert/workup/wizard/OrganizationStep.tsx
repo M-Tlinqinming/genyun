@@ -9,20 +9,21 @@ import {
   organizationStepView,
   PRESET_GROUPS,
   presetGroup,
+  productionView,
   suggestedGroups,
   wizardStepOfKey,
   type DraftGroup,
   type DraftPerson,
   type OrganizationStep as OrgStep,
 } from '@genyun/shared';
-import { Button, Input, Modal, Tooltip } from 'antd';
+import { App, Button, Input, Modal, Tooltip } from 'antd';
 import { useRef, useState, type CSSProperties } from 'react';
 import { useSaveOrganizationStep } from '../../../../api/workup';
 import { SourceTag } from '../../../../components/SourceTag';
 import { gy, source, type, weight } from '../../../../theme/tokens';
 import { AddMemberModal, type AddedMember } from './AddMemberModal';
 import { OrgChartCard } from './OrgChartCard';
-import { OriginalSheetCard } from './OriginalSheetCard';
+import { OriginalSheetCard, RosterCard } from './OriginalSheetCard';
 import { caption, Card, link14, softLine, StepTitle, UseCard } from './parts';
 import { groupTitle, stepErrors, stepForSave, updatePerson, type PersonField } from './people';
 import type { StepProps } from './types';
@@ -38,10 +39,12 @@ const roleCell: CSSProperties = { width: 120, flexShrink: 0, ...type.body, fontW
 // 资料核对第 2 步「核对应急指挥部和各小组」（13 页 E2-2、S06）：按客户表格预填，改动整步存进专家那份；右栏组织体系图随资料实时生成
 export function OrganizationStep({ taskId, workup, autosave, customerText, frame, onGo, latestVersion }: StepProps) {
   const save = useSaveOrganizationStep(taskId);
+  const { message } = App.useApp();
   // 只在进这一步时读一次（之后以页面上的为准；别人改过时外壳会重置这一步）
   const [initial] = useState(() => organizationStepView(workup.snapshot, workup.data));
   const [step, setStep] = useState<OrgStep>(initial);
-  const [touched, setTouched] = useState<Set<string>>(new Set());
+  // 客户原来填的手机号不合规（比如座机）：一打开就标红，不用等离开输入框
+  const [touched, setTouched] = useState<Set<string>>(() => new Set([...stepErrors(initial).keys()].filter((k) => k.endsWith(':phone'))));
   const [open, setOpen] = useState<Set<string>>(() => new Set(initial.groups[0] ? [initial.groups[0].id] : []));
   const [adding, setAdding] = useState<DraftGroup | null>(null);
   const [extraOpen, setExtraOpen] = useState(false);
@@ -53,7 +56,13 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
   const dutyError = step.dutyPhone && !DUTY_PHONE.test(step.dutyPhone) ? '电话只能填数字、空格和短横线' : undefined;
   const customerOrg = organizationOfSnapshot(workup.snapshot);
   const employeeCount = effectiveSnapshot(workup.snapshot, workup.data).profile.basicStep?.basic.employeeCount;
-  const suggested = suggestedGroups(employeeCount).min;
+  // 有没有危化品：专家在生产情况里判定过的以判定为准，没判定的按系统建议
+  const hazardous = productionView(workup.snapshot, workup.data).materials.some((m) => m.hazard.value ?? m.hazard.suggestion?.value);
+  const suggested = suggestedGroups(employeeCount, hazardous).min;
+  const offScale = step.groups.length !== suggested;
+  // 旧数据少于 3 个小组：琥珀提示，拦住「下一步」（保存照旧不拦）
+  const tooFew = step.groups.length < MIN_KEEP;
+  const groupsRef = useRef<HTMLDivElement | null>(null);
 
   const send = (next: OrgStep, stepsDone?: number) => {
     const forSave = stepForSave(next, saved.current);
@@ -164,11 +173,25 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
 
   const go = async (target: number) => {
     if (target > 2 && firstError()) return;
+    if (target > 2 && tooFew) {
+      groupsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      message.warning(`至少设 ${MIN_KEEP} 个小组，请先添加小组再进入下一步`);
+      return;
+    }
     const ok = await autosave.flush(send(step, target > 2 ? Math.max(workup.data.stepsDone ?? 0, 2) : undefined));
     if (ok) onGo(target);
   };
 
   const team = compilationTeamOf(stepForSave(step, saved.current));
+
+  // 顶部小结：客户填了几位指挥、几个小组、几名小组成员（同一人兼几组只算一次）；旧流程附了通讯录的加半句
+  const commanders = [customerOrg.commander, ...customerOrg.deputies].filter((p) => p?.name.trim()).length;
+  const groupPeople = new Set(customerOrg.groups.flatMap((g) => [g.leader, ...g.members]).filter((p) => p?.name.trim()).map((p) => p!.id)).size;
+  const rosterIds = workup.snapshot.profile.organizationStep?.rosterFileIds ?? [];
+  const rosterCount = workup.flow === 'intake' ? 0 : rosterIds.length;
+  const summary = `${customerText === '客户表格' ? '客户表格' : '客户'}填了 ${commanders} 位指挥、${customerOrg.groups.length} 个小组、${groupPeople} 名成员${
+    rosterCount ? `，另附通讯录 ${rosterCount} 份` : ''
+  }。`;
 
   const main = (
     <>
@@ -177,6 +200,12 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
         customerText={customerText}
         sub={`已按${customerText}「应急组织」预填。请核对各组负责人和手机号；右侧的组织体系图会随资料实时生成，不用自己画。`}
       />
+      <div
+        aria-label="客户填写小结"
+        style={{ padding: '12px 16px', background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 8, ...type.body, color: gy.secondary }}
+      >
+        {summary}
+      </div>
 
       <Card title="应急指挥部" tag={<SourceTag kind="customer" text={customerText} />} gap={16} hint="通常由总经理任总指挥、分管安全的负责人任副总指挥。">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -201,9 +230,25 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
         gap={14}
         hint={groupsHint}
         extra={
-          <span style={{ padding: '0 8px', borderRadius: 4, ...type.caption, color: source.system.color, background: source.system.bg }}>按规模 {suggested} 组</span>
+          <span
+            style={{
+              padding: '0 8px',
+              borderRadius: 4,
+              ...type.caption,
+              whiteSpace: 'nowrap',
+              color: offScale ? gy.warning : source.system.color,
+              background: offScale ? gy.warningBg : source.system.bg,
+            }}
+          >
+            {offScale ? `按规模建议 ${suggested} 组` : `按规模 ${suggested} 组`}
+          </span>
         }
       >
+        {tooFew && (
+          <div ref={groupsRef} role="alert" style={{ padding: '10px 14px', borderRadius: 6, border: '1px solid #F0D9A8', background: '#FFFBF2', ...type.body, color: gy.warning }}>
+            现在只有 {step.groups.length} 个小组，至少要设 {MIN_KEEP} 个。请在下面添加小组，补够后才能进入下一步。
+          </div>
+        )}
         {step.groups.map((g) => (
           <GroupBox
             key={g.id}
@@ -352,6 +397,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
   const side = (
     <>
       <OriginalSheetCard taskId={taskId} workup={workup} sheets={['应急组织']} />
+      <RosterCard workup={workup} roster={customerOrg.mode === 'roster'} fileIds={rosterIds} />
       <OrgChartCard taskId={taskId} workup={workup} step={stepForSave(step, saved.current)} autosave={autosave} latestVersion={latestVersion} />
       <UseCard
         lines={[
@@ -445,13 +491,13 @@ function GroupBox({
             {expanded ? <DownOutlined /> : <RightOutlined />}
           </span>
           <span style={{ ...type.body, fontWeight: weight.strong, color: gy.text, whiteSpace: 'nowrap' }}>{title}</span>
-          {expanded ? (
-            <span style={{ ...type.caption, color: '#8A93A3' }}>{GROUP_DESCRIPTIONS[group.kind]}</span>
-          ) : (
-            <span style={{ ...type.caption, color: warn ? gy.warning : gy.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
-          )}
+          <span style={{ ...type.caption, color: '#8A93A3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{GROUP_DESCRIPTIONS[group.kind]}</span>
           <span style={{ flex: 1 }} />
-          <span style={{ ...type.caption, color: gy.tertiary, whiteSpace: 'nowrap' }}>{people} 人</span>
+          {expanded ? (
+            <span style={{ ...type.caption, color: gy.tertiary, whiteSpace: 'nowrap' }}>{people} 人</span>
+          ) : (
+            <span style={{ ...type.body, color: warn ? gy.warning : gy.secondary, whiteSpace: 'nowrap' }}>{summary}</span>
+          )}
         </button>
         {remove}
       </div>

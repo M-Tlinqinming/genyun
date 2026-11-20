@@ -24,6 +24,8 @@ export interface Autosave {
   retry: () => void;
   /** 还有没存上的改动 */
   dirty: boolean;
+  /** 别人刚改过（409）：重新读取并重置当前这一步 */
+  stale: () => Promise<void>;
 }
 
 const DELAY = 800;
@@ -139,5 +141,8 @@ export function useAutosave({ onStale }: { onStale: () => Promise<void> | void }
     [],
   );
 
-  return { status, schedule, flush, retry, dirty };
+  const stale = useCallback(async () => {
+    await staleRef.current();
+  }, []);
+  return { status, schedule, flush, retry, dirty, stale };
 }

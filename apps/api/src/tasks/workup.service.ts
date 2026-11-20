@@ -378,12 +378,6 @@ export class WorkupService {
     return this.view(task.id, saved);
   }
 
-
-  // 还没写快照时只在内存里算，不写库（只有负责专家第一次打开才写）
-  async snapshotOf(task: { id: string; enterpriseId: string }) {
-    return (await this.row(task.id))?.snapshot ?? (await this.buildSnapshot(task));
-  }
-
   // 快照的来源：新流程（上传资料表格且已读出内容）取读表结果；老流程复制企业资料
   async buildSnapshot(task: { id: string; enterpriseId: string }): Promise<WorkupSnapshot> {
     const [intake] = await this.db

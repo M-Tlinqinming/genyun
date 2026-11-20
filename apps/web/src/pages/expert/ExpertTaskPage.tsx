@@ -52,7 +52,9 @@ import { WorkupWizard } from './workup/wizard/WorkupWizard';
 
 const STAGES = ['资料核实', '专业编制', '审核与修订', '成果交付'];
 // 原来整理页里属于向导第 1、2 步的几块
-const WIZARD_STEP_OF_SECTION: Partial<Record<FactSection, number>> = { basic: 1, contact: 1, agencies: 1, organization: 2, compilation: 2 };
+// 属地这一节仍在原来的整理页（第 1 步的弹窗只管应急管理、消防、街道 3 项）
+const WIZARD_STEP_OF_SECTION: Partial<Record<FactSection, number>> = { basic: 1, contact: 1, organization: 2, compilation: 2 };
+const WIZARD_AGENCY_KEYS = new Set(['agency.emergencyBureau', 'agency.fireDept', 'agency.streetOffice']);
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const text13: CSSProperties = { fontSize: 13, lineHeight: '22px' };
@@ -158,7 +160,7 @@ export function ExpertTaskPage() {
 
   // 原来的整理页里先轮流跳这页上的缺项；只剩向导第 1、2 步的缺项时回到向导那一步
   const goToNextMissing = () => {
-    const wizardStepOf = (g: (typeof gaps)[number]) => (g.section ? WIZARD_STEP_OF_SECTION[g.section] : undefined);
+    const wizardStepOf = (g: (typeof gaps)[number]) => (WIZARD_AGENCY_KEYS.has(g.key) ? 1 : g.section ? WIZARD_STEP_OF_SECTION[g.section] : undefined);
     const here = gaps.filter((g) => !wizardStepOf(g));
     if (here.length === 0) {
       const step = gaps[0] && wizardStepOf(gaps[0]);

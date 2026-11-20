@@ -175,7 +175,7 @@ export function AddMemberModal({
             onChange={setRole}
             options={[
               { value: 'member', label: '组员' },
-              { value: 'leader', label: group.leader?.name.trim() ? `组长（替换 ${group.leader.name.trim()}）` : '组长' },
+              ...(group.leader?.name.trim() ? [] : [{ value: 'leader' as const, label: '组长' }]),
             ]}
             style={{ height: 36 }}
           />

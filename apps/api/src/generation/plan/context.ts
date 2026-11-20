@@ -200,6 +200,8 @@ export const dash = (s: string | number | undefined | null) => {
   const v = s === undefined || s === null ? '' : String(s).trim();
   return v || '—';
 };
+/** 可不填的项：专家勾了「先留空」的写「（待补充）」，其余没填的写「—」 */
+export const optional = (input: PlanInput, key: string, s: string | number | undefined | null) => (input.expert.pending?.includes(key) ? fill(s) : dash(s));
 
 export function planContext(input: PlanInput): PlanContext {
   const scope = resolveScope(input);

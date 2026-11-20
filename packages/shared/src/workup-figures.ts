@@ -10,8 +10,8 @@ import { CHART_ORDER } from './profile/organization-step.ts';
 import { processTemplateLabel } from './profile/process-flow.ts';
 import { drawingsSaveSchema, type DrawingSelection } from './workup-drawings.ts';
 import type { Stamp } from './workup-production.ts';
-import { organizationOf, type WorkupData, type WorkupSnapshot } from './workup.ts';
-import { effectiveSnapshot, type ExpertCopy } from './workup-steps.ts';
+import type { WorkupData, WorkupSnapshot } from './workup.ts';
+import { effectiveSnapshot, organizationOfSnapshot, type ExpertCopy } from './workup-steps.ts';
 
 export const FIGURES = {
   org: '应急救援组织体系图',
@@ -143,7 +143,7 @@ export function figuresView(snapshot: WorkupSnapshot, data: Pick<WorkupData, 'ov
   const settings = data.figures ?? {};
 
   // ── 组织体系图：组名按规则排序（与客户自填页一致）；副总指挥有人才显示，专家可改 ──
-  const org = organizationOf(snapshot);
+  const org = organizationOfSnapshot(snapshot);
   // 分厂址各设同名小组时组名带厂址
   const basic = snapshot.profile.basicStep?.basic;
   const names = groupDisplayNames(

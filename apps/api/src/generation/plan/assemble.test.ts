@@ -567,3 +567,17 @@ describe('附件 7 放客户图纸（M2 第 10c 项）', () => {
     expect(media.filter((n) => /\.jpe?g$/.test(n))).toHaveLength(1);
   }, 60_000);
 });
+
+describe('专家勾了「先留空」的项', () => {
+  it('写「（待补充）」，没勾的空项仍写「—」', () => {
+    const basic = { ...feiyuPlanInput.basic, contactPerson: undefined, technicalManagementCount: undefined, safetyManagementCount: undefined };
+    const plain = allText(buildPlan({ ...feiyuPlanInput, basic }));
+    expect(plain).toContain('联系人 —');
+    expect(plain).toContain('技术管理 — 人');
+    const pending = allText(buildPlan({ ...feiyuPlanInput, basic, expert: { ...feiyuPlanInput.expert, pending: ['contactPerson', 'technicalManagementCount'] } }));
+    expect(pending).toContain('联系人 （待补充）');
+    expect(pending).toContain('技术管理（待补充）人');
+    expect(pending).toContain('安全管理 — 人');
+  }, 60_000);
+});
+

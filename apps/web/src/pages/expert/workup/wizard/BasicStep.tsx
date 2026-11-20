@@ -9,7 +9,7 @@ import {
   type BasicStep as BasicStepData,
   type WorkupSnapshot,
 } from '@genyun/shared';
-import { App, Button, Checkbox, Input, Modal, Select } from 'antd';
+import { App, Button, Checkbox, Image, Input, Modal, Select } from 'antd';
 import { useMemo, useRef, useState } from 'react';
 import { ApiError } from '../../../../api/request';
 import { inlineUrl, useSaveBasicStep, useSaveFact } from '../../../../api/workup';
@@ -269,11 +269,18 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
           const o = workup.originals.find((x) => x.fileId === id) ?? workup.originals.find((x) => x.itemKeys.includes('business_license'));
           return o && { fileId: o.fileId, name: o.name, uploadedAt: o.uploadedAt };
         })();
+  const [preview, setPreview] = useState<string | null>(null);
   const openLicense = async () => {
     if (!license) return;
+    const isPdf = /\.pdf$/i.test(license.name);
+    // PDF 开新标签；先同步开窗，免得被浏览器拦
+    const win = isPdf ? window.open('', '_blank') : null;
     try {
-      window.open((await inlineUrl(license.fileId)).url, '_blank', 'noopener');
+      const { url } = await inlineUrl(license.fileId);
+      if (win) win.location.href = url;
+      else setPreview(url);
     } catch (err) {
+      win?.close();
       message.error(err instanceof ApiError ? err.message : '打不开原图，请稍后再试');
     }
   };
@@ -310,13 +317,21 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
             <FileImageOutlined />
           </span>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ ...type.body, fontWeight: weight.strong, color: gy.text, overflowWrap: 'anywhere' }}>{license ? license.name : '客户没有上传营业执照'}</span>
+            <span style={{ ...type.body, fontWeight: weight.strong, color: gy.text, overflowWrap: 'anywhere' }}>{license ? license.name : '客户没有单独上传营业执照'}</span>
             <span style={caption}>{license ? `客户选传，供您核对时参考；下面各项以${customerText}为准` : `下面各项以${customerText}为准`}</span>
           </div>
           {license && (
             <button type="button" style={link14} onClick={() => void openLicense()}>
               查看原图
             </button>
+          )}
+          {preview && (
+            <Image
+              src={preview}
+              alt="营业执照原图"
+              style={{ display: 'none' }}
+              preview={{ open: true, src: preview, onOpenChange: (v) => !v && setPreview(null) }}
+            />
           )}
         </div>
       </Card>

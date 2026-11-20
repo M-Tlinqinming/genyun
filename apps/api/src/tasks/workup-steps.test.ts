@@ -37,6 +37,7 @@ beforeAll(async () => {
   for (const p of [
     { email: 'feiyu@test.cn', name: '陈志刚', orgId: customer!.id, role: 'customer_admin' as const },
     { email: 'zhou@test.cn', name: '周工', orgId: internal!.id, role: 'expert' as const },
+    { email: 'wu@test.cn', name: '吴工', orgId: internal!.id, role: 'expert' as const },
     { email: 'ops@test.cn', name: '赵运营', orgId: internal!.id, role: 'operator' as const },
   ]) {
     const [u] = await db.insert(users).values({ email: p.email, name: p.name, passwordHash }).returning();
@@ -189,5 +190,19 @@ describe('第 2 步整步保存', () => {
     expect(effectiveSnapshot(body.snapshot, body.data).profile.organizationStep?.step.dutyPhone).toBe('0752-1111111');
     // 第 1 步没动
     expect(body.data.profile.basicStep).toBeUndefined();
+  });
+
+  it('版本过期 409；运营 403；别的专家、客户 404', async () => {
+    const zhou = await as('zhou@test.cn');
+    const { body } = await zhou.get(`/api/tasks/${legacyTask}/workup`).expect(200);
+    const url = `/api/tasks/${legacyTask}/workup/steps/organization`;
+    const ok = { step: feiyuProfile.organizationStep!.step, blank: [] };
+    const stale = await zhou.put(url).send({ version: body.version - 1, ...ok }).expect(409);
+    expect(stale.body).toMatchObject({ reason: 'stale' });
+    await (await as('ops@test.cn')).put(url).send({ version: body.version, ...ok }).expect(403);
+    await (await as('wu@test.cn')).put(url).send({ version: body.version, ...ok }).expect(404);
+    await (await as('feiyu@test.cn')).put(url).send({ version: body.version, ...ok }).expect(404);
+    // 都没写进去
+    expect((await stored(legacyTask))!.version).toBe(body.version);
   });
 });

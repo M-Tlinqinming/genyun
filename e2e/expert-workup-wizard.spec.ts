@@ -68,12 +68,30 @@ test('第 1 步：还没生成过草稿时默认打开；改了自动保存，�
   await expect(page.getByLabel('邮政编码')).toHaveValue('516006');
   await expect(page.getByRole('complementary', { name: '参考' })).toContainText('这一步用在哪里');
   await page.screenshot({ path: 'test-results/acceptance/k10-step1.png', fullPage: true });
+
+  // 改了某一项，来源标签变「您已修改」；改回客户填的，标签也回到客户的
+  const contact = page.getByLabel('联系人', { exact: true });
+  const contactField = page.locator('[data-field="联系人"]');
+  const was = await contact.inputValue();
+  await expect(contactField).toContainText('客户填写');
+  const editing = stepSaved(page);
+  await contact.fill(`${was}（核）`);
+  await editing;
+  await expect(contactField).toContainText('您已修改');
+  await expect(contactField).not.toContainText('客户填写');
+  const reverting = stepSaved(page);
+  await contact.fill(was);
+  await reverting;
+  await expect(contactField).toContainText('客户填写');
 });
 
 test('第 2 步：手机号校验、从已填人员添加组员、至少 3 个小组、组织体系图实时生成', async ({ page }) => {
   await openWizard(page, 2);
   await expect(page.getByRole('heading', { name: '核对应急指挥部和各小组' })).toBeVisible();
   await expect(footer(page)).toContainText('第 2 步，共 5 步 · 3 个小组');
+  // 顶部小结：客户填了几位指挥、几个小组、几名成员（老流程没附通讯录，不写那半句）
+  await expect(page.getByLabel('客户填写小结')).toHaveText(/^客户填了 \d+ 位指挥、3 个小组、\d+ 名成员。$/);
+  await expect(page.getByRole('group', { name: '综合保障组' })).toContainText('组长 张丽华 · 组员 1 人');
 
   // 手机号少一位：提示差几位，不存这个人的改动；改回原号码
   const phone = page.getByLabel('总指挥手机');
@@ -81,6 +99,7 @@ test('第 2 步：手机号校验、从已填人员添加组员、至少 3 个�
   await phone.fill(original.slice(0, -1));
   await phone.blur();
   await expect(page.getByText('手机号是 11 位，少了 1 位')).toBeVisible();
+  await page.screenshot({ path: 'test-results/acceptance/k10-s06-4-field-error.png', fullPage: true });
   await phone.fill(original);
   await expect(page.getByText('手机号是 11 位，少了 1 位')).toHaveCount(0);
 
@@ -95,6 +114,7 @@ test('第 2 步：手机号校验、从已填人员添加组员、至少 3 个�
   const dialog = page.getByRole('dialog', { name: '给「通讯联络组」添加组员' });
   await dialog.getByLabel('搜姓名或岗位').fill('陈志刚');
   await dialog.getByRole('listitem').filter({ hasText: '陈志刚' }).click();
+  await page.screenshot({ path: 'test-results/acceptance/k10-s06-1-pick.png' });
   const adding = memberSaved(page, '陈志刚', true);
   await dialog.getByRole('button', { name: /^添\s*加$/ }).click();
   await expect(dialog).toHaveCount(0);
@@ -119,18 +139,109 @@ test('第 2 步：手机号校验、从已填人员添加组员、至少 3 个�
   await removing;
 });
 
+test('第 2 步：加一个预设小组再删掉；「新填一个人」；组里已有组长时不能再选组长', async ({ page }) => {
+  await openWizard(page, 2);
+  // 飞宇用酒精、天那水（危险化学品），按规模建议 5 组：现在 3 组，标签是「按规模建议 5 组」，不拦；
+  // 补上两个预设组后变「按规模 5 组」，再删回 3 组
+  const groupsCard = page.getByRole('region', { name: '应急小组', exact: true });
+  await expect(groupsCard).toContainText('按规模建议 5 组');
+  let adding = stepSaved(page);
+  await page.getByRole('button', { name: '+ 警戒疏散组' }).click();
+  await adding;
+  adding = stepSaved(page);
+  await page.getByRole('button', { name: '+ 医疗救护组' }).click();
+  await adding;
+  const guard = page.getByRole('group', { name: '警戒疏散组' });
+  const medical = page.getByRole('group', { name: '医疗救护组' });
+  await expect(medical).toBeVisible();
+  await expect(footer(page)).toContainText('5 个小组');
+  await expect(groupsCard).toContainText('按规模 5 组');
+  await expect(groupsCard).not.toContainText('按规模建议');
+  for (const [box, name] of [[medical, '医疗救护组'], [guard, '警戒疏散组']] as const) {
+    const deleting = stepSaved(page);
+    await box.getByRole('button', { name: `删除${name}` }).click();
+    await deleting;
+    await expect(box).toHaveCount(0);
+  }
+  await expect(footer(page)).toContainText('3 个小组');
+  await expect(groupsCard).toContainText('按规模建议 5 组');
+
+  // 新填一个人：手机号不以 1 开头报错；组里已有组长，职务只能选组员
+  const comms = page.getByRole('group', { name: '通讯联络组' });
+  await comms.getByRole('button', { name: /^通讯联络组/ }).click();
+  await comms.getByRole('button', { name: /添加组员/ }).click();
+  const dialog = page.getByRole('dialog', { name: '给「通讯联络组」添加组员' });
+  await dialog.getByText('新填一个人', { exact: true }).click();
+  await dialog.getByLabel('姓名').fill('测试组员');
+  await dialog.getByLabel('手机').fill('23800000009');
+  await dialog.getByRole('button', { name: /^添\s*加$/ }).click();
+  await expect(dialog.getByText('手机号要以 1 开头')).toBeVisible();
+  await page.screenshot({ path: 'test-results/acceptance/k10-s06-6-new-person.png' });
+  await dialog.getByLabel('手机').fill('13800000009');
+  await dialog.getByLabel('在组里的职务').click();
+  await expect(page.locator('.ant-select-item-option').filter({ hasText: '组员' })).toHaveCount(1);
+  await expect(page.locator('.ant-select-item-option').filter({ hasText: '组长' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  const saving = memberSaved(page, '测试组员', true);
+  await dialog.getByRole('button', { name: /^添\s*加$/ }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(comms.getByLabel('通讯联络组组员 测试组员姓名')).toHaveValue('测试组员');
+  await expect(comms.getByLabel('通讯联络组组员 测试组员手机')).toHaveValue('13800000009');
+  await saving;
+  const removing = memberSaved(page, '测试组员', false);
+  await comms.getByRole('button', { name: '移出这名组员' }).last().click();
+  await removing;
+
+  // 1366×768 下第 2 步不横向滚动；各组收起
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '核对应急指挥部和各小组' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/acceptance/k10-step2-1366.png' });
+});
+
+test('第 2 步：断网时标红并提示没保存上，重试后补存', async ({ page }) => {
+  await openWizard(page, 2);
+  const position = page.getByLabel('总指挥公司职位');
+  const was = await position.inputValue();
+
+  // 拦下保存请求，模拟断网
+  await page.route('**/workup/steps/organization', (route) => route.abort('internetdisconnected'));
+  await position.fill(`${was}兼`);
+  await expect(page.getByRole('status')).toContainText('没保存上，网络断了');
+  const banner = page.getByRole('alert').filter({ hasText: '以后的改动还没保存' });
+  await expect(banner).toBeVisible();
+
+  // 网络恢复，点「重试」补存
+  await page.unroute('**/workup/steps/organization');
+  const retrying = stepSaved(page);
+  await banner.getByRole('button', { name: /重\s*试/ }).click();
+  await retrying;
+  await expect(page.getByRole('status')).toContainText(/已自动保存 \d\d:\d\d/);
+  await expect(banner).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel('总指挥公司职位')).toHaveValue(`${was}兼`);
+  const reverting = stepSaved(page);
+  await page.getByLabel('总指挥公司职位').fill(was);
+  await reverting;
+});
+
 test('第 3–5 步先用原来的整理页；第 5 步去确认并生成', async ({ page }) => {
   await openWizard(page, 2);
   await page.getByRole('button', { name: '下一步：生产情况' }).click();
   await expect(page).toHaveURL(/view=workup&step=3/);
   await expect(page.getByRole('heading', { name: '生产情况' })).toBeVisible();
-  await page.getByRole('link', { name: '打开原来的整理页' }).click();
+  const oldLinks = page.getByRole('navigation', { name: '打开原来的整理页' });
+  await expect(oldLinks.getByRole('link')).toHaveText(['设备清单', '特种设备', '原辅材料', '建构筑物', '工艺流程']);
+  await oldLinks.getByRole('link', { name: '设备清单' }).click();
   await expect(page).toHaveURL(/view=workup-old&module=equipment/);
   await expect(page.getByText('资料核对第 3–5 步正在换新样式，这里是原来的整理页')).toBeVisible();
   await page.getByRole('link', { name: '回到资料核对' }).click();
   await expect(page.getByRole('heading', { name: '生产情况' })).toBeVisible();
   await page.getByRole('button', { name: '下一步：应急资源与图纸' }).click();
+  await expect(page.getByRole('navigation', { name: '打开原来的整理页' }).getByRole('link')).toHaveText(['消防设施', '应急物资', '急救药箱', '图件']);
   await page.getByRole('button', { name: '下一步：核对并生成' }).click();
+  await expect(page.getByRole('navigation', { name: '打开原来的整理页' }).getByRole('link')).toHaveText(['危险源辨识', '适用范围']);
   await expect(footer(page)).toContainText('第 5 步，共 5 步');
   await expect(page.getByRole('button', { name: '去确认并生成' })).toBeVisible();
 
@@ -141,7 +252,7 @@ test('第 3–5 步先用原来的整理页；第 5 步去确认并生成', asyn
   await expect(page.getByRole('heading', { name: '核对并生成' })).toBeVisible();
 });
 
-test('新流程任务：来源标「客户表格」，右栏有「客户原表」卡片，可下载 Excel、查看图纸与照片', async ({ page }) => {
+test('新流程任务：来源标「客户表格」，右栏有「客户原表」卡片，可下载 Excel、查看图纸与照片；走完第 2 步任务中心显示「资料核对 2 / 5 步」', async ({ page }) => {
   await page.goto('/login');
   await page.getByPlaceholder('请输入邮箱').fill('expert@demo.genyun.net.cn');
   await page.getByPlaceholder('请输入密码').fill('e2e-password');
@@ -170,5 +281,13 @@ test('新流程任务：来源标「客户表格」，右栏有「客户原表�
   await expect(page.getByRole('heading', { name: '核对应急指挥部和各小组' })).toBeVisible();
   await expect(side).toContainText('客户原表');
   await expect(side).toContainText('应急组织');
+  await expect(page.getByLabel('客户填写小结')).toHaveText(/^客户表格填了 \d+ 位指挥、\d+ 个小组、\d+ 名成员。$/);
   await page.screenshot({ path: 'test-results/acceptance/k10-intake-step2.png', fullPage: true });
+
+  // 走完第 2 步回任务中心：显示做到第几步
+  await page.getByRole('button', { name: '下一步：生产情况' }).click();
+  await expect(page).toHaveURL(/view=workup&step=3/);
+  await page.getByRole('button', { name: '返回任务中心' }).click();
+  await expect(page).toHaveURL(/\/expert$/);
+  await expect(page.getByRole('row', { name: /示例电子科技有限公司/ })).toContainText('资料核对 2 / 5 步');
 });

@@ -87,3 +87,22 @@ function PictureRow({ file, first, onView }: { file: IntakeFileView; first: bool
   );
 }
 
+// 旧流程第 2 步：客户上传的是花名册（不是逐项填写）时，右栏放花名册的「查看」
+export function RosterCard({ workup, roster, fileIds: ids }: { workup: Workup; roster: boolean; fileIds: string[] }) {
+  const { message } = App.useApp();
+  if (workup.flow === 'intake' || !roster || ids.length === 0) return null;
+  const run = (fileId: string) => viewFile(fileId).catch((err) => message.error(err instanceof Error ? err.message : '打不开这份文件，请稍后再试'));
+  return (
+    <SideCard title="客户上传的花名册">
+      <span style={{ ...type.body, color: gy.secondary }}>客户没有逐项填写，上传了花名册。表格里空着的由您对照花名册补上。</span>
+      {ids.map((id, i) => (
+        <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ flex: 1, ...type.body, color: gy.text }}>花名册{ids.length > 1 ? ` ${i + 1}` : ''}</span>
+          <button type="button" style={link14} onClick={() => void run(id)}>
+            查看
+          </button>
+        </div>
+      ))}
+    </SideCard>
+  );
+}

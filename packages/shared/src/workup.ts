@@ -9,16 +9,11 @@ import { addressLabelOf, addressOptions } from './profile/addresses.ts';
 import { YES_NO_UNKNOWN_LABELS, type YesNoUnknown } from './profile/basic.ts';
 import { INDUSTRY_NAMES } from './profile/industries.ts';
 import { PRESET_GROUPS } from './profile/organization.ts';
-import {
-  defaultOrganizationStep,
-  type DraftGroup,
-  type DraftPerson,
-  type OrganizationStep,
-} from './profile/organization-step.ts';
+import type { DraftGroup, DraftPerson } from './profile/organization-step.ts';
 import { totalBuildingArea } from './profile/resources-step.ts';
 import { type AgencyDistrict, localAgenciesOf } from './plan/agencies.ts';
 import type { ProductionWorkup, Stamp } from './workup-production.ts';
-import { effectiveSnapshot, type StepStamps } from './workup-steps.ts';
+import { effectiveSnapshot, organizationOfSnapshot, type StepStamps } from './workup-steps.ts';
 import type { RiskWorkup } from './workup-risk.ts';
 import type { FiguresWorkup } from './workup-figures.ts';
 import type { ScopeWorkup } from './workup-scope.ts';
@@ -182,10 +177,6 @@ const answerText = (answer: YesNoUnknown | undefined, detail?: string) =>
 const groupKey = (g: DraftGroup, groups: readonly DraftGroup[]) =>
   `group.${g.kind === 'custom' || groups.find((x) => x.kind === g.kind) !== g ? g.id : g.kind}`;
 
-export function organizationOf(snapshot: WorkupSnapshot): OrganizationStep {
-  return snapshot.profile.organizationStep?.step ?? defaultOrganizationStep(snapshot.profile.basicStep?.basic.employeeCount);
-}
-
 type Entry = [FactDef, FactBase];
 
 function basicEntries(snapshot: WorkupSnapshot): Entry[] {
@@ -269,7 +260,7 @@ function agencyEntries(snapshot: WorkupSnapshot, districts?: readonly AgencyDist
 }
 
 function organizationEntries(snapshot: WorkupSnapshot): Entry[] {
-  const org = organizationOf(snapshot);
+  const org = organizationOfSnapshot(snapshot);
   const roster = org.mode === 'roster';
   const rosterHint = roster ? '客户上传了花名册，请对照整理' : undefined;
   const person = (p: DraftPerson | undefined): FactBase => {
@@ -320,7 +311,7 @@ function organizationEntries(snapshot: WorkupSnapshot): Entry[] {
 }
 
 function compilationEntries(snapshot: WorkupSnapshot, commander: FactValue | undefined): Entry[] {
-  const org = organizationOf(snapshot);
+  const org = organizationOfSnapshot(snapshot);
   const members = [
     ...org.deputies.map((d) => d.name.trim()),
     ...org.groups.map((g) => g.leader?.name.trim() ?? ''),
