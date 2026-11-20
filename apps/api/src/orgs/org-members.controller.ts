@@ -57,14 +57,14 @@ import { createInvitation, EMAIL_HAS_ACCOUNT } from './invitations.ts';
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 const NO_MEMBER = '找不到这位成员';
-const LAST_ADMIN = '组织里至少要保留一位机构管理员。请先把另一位成员设为机构管理员';
+const LAST_ADMIN = '组织里至少要保留一位组织管理员。请先把另一位成员设为组织管理员';
 const RESENT_JUST_NOW = '这封邀请刚刚已经重新发送过了，请刷新页面查看最新的一封';
 const isCustomerRole = (r: string): r is CustomerRole => (CUSTOMER_ROLES as readonly string[]).includes(r);
 
 // 删掉某人和本组织有关的站内通知，避免通知里还能看到已经看不到的企业和任务：
 // - { only }：只删这些企业的任务通知（成员不再负责某几家企业）
-// - { except }：本组织其余企业的任务通知，加上本组织的机构管理员类通知（年度服务到期、邀请过期请重发）——管理员降为成员时，except = 仍分配给他的企业
-// - {}：本组织全部任务通知和机构管理员类通知（移出本组织）
+// - { except }：本组织其余企业的任务通知，加上本组织的组织管理员类通知（年度服务到期、邀请过期请重发）——管理员降为成员时，except = 仍分配给他的企业
+// - {}：本组织全部任务通知和组织管理员类通知（移出本组织）
 async function dropOrgNotifications(tx: Tx, userId: string, orgId: string, which: { only?: string[]; except?: string[] } = {}) {
   const orgTasks = tx
     .select({ id: tasks.id })
@@ -88,9 +88,9 @@ async function dropOrgNotifications(tx: Tx, userId: string, orgId: string, which
     );
 }
 
-// 客户组织管理（M3 第 7 项，Paper 11 页「组织管理」）：机构管理员管理成员（邀请、重新发送、撤销、移除、改角色）、
-// 把企业分配给成员、维护组织联系人、查看年度服务。只有本组织机构管理员；成员、运营 403，别家组织 404。
-// 不能移除自己、不能改自己的角色；组织里至少保留一位机构管理员（加锁判断，两位管理员互相降级时排队）。
+// 客户组织管理（M3 第 7 项，Paper 11 页「组织管理」）：组织管理员管理成员（邀请、重新发送、撤销、移除、改角色）、
+// 把企业分配给成员、维护组织联系人、查看年度服务。只有本组织的组织管理员；成员、运营 403，别家组织 404。
+// 不能移除自己、不能改自己的角色；组织里至少保留一位组织管理员（加锁判断，两位管理员互相降级时排队）。
 // 成员只能看到分配给自己的企业（access.ts 的 enterpriseScope）；改动后下一次请求就生效
 @Controller('orgs/:orgId/management')
 export class OrgMembersController {
@@ -195,7 +195,7 @@ export class OrgMembersController {
     return this.view(user, orgId);
   }
 
-  // 邀请成员或机构管理员：发邀请邮件（7 天有效），对方设好密码后加入本组织。
+  // 邀请成员或组织管理员：发邀请邮件（7 天有效），对方设好密码后加入本组织。
   // 同一邮箱还有没接受的邀请时，旧链接作废，以这一封为准
   @Post('invitations')
   @HttpCode(200)
@@ -248,7 +248,7 @@ export class OrgMembersController {
     return this.view(user, orgId);
   }
 
-  // 移除成员：不能移除自己；至少保留一位机构管理员。移除后不能再进入本组织，已登录的地方退出；
+  // 移除成员：不能移除自己；至少保留一位组织管理员。移除后不能再进入本组织，已登录的地方退出；
   // 上传的资料、操作记录都保留。以后再邀请同一邮箱，接受时恢复原账号
   @Post('members/:userId/remove')
   @HttpCode(200)
@@ -259,7 +259,7 @@ export class OrgMembersController {
     @Req() req: Request,
   ) {
     this.guard(user, orgId);
-    if (userId === user.id) throw new ConflictException('不能移除自己。需要退出组织请联系另一位机构管理员');
+    if (userId === user.id) throw new ConflictException('不能移除自己。需要退出组织请联系另一位组织管理员');
     const target = await this.member(orgId, userId);
     const outcome = await this.db.transaction(async (tx) => {
       // 先锁住账号这一行：和他同时接受别家组织的邀请、运营停用他排队，下面判断「还有没有别的组织」才可靠
@@ -275,9 +275,9 @@ export class OrgMembersController {
         .where(and(eq(enterpriseAssignments.orgId, orgId), eq(enterpriseAssignments.userId, userId)))
         .returning({ enterpriseId: enterpriseAssignments.enterpriseId });
       if (ents.length) await tx.update(enterprises).set({ membersChangedAt: new Date() }).where(inArray(enterprises.id, ents.map((e) => e.enterpriseId)));
-      // 他发出、还没接受的邀请作废（移除的是机构管理员时）
+      // 他发出、还没接受的邀请作废（移除的是组织管理员时）
       await this.revokeSentBy(tx, orgId, userId);
-      // 不在任何组织里了：账号停用（记明是被机构管理员移除，以后再邀请可以恢复）、已登录的地方全部退出、站内通知全部删掉；
+      // 不在任何组织里了：账号停用（记明是被组织管理员移除，以后再邀请可以恢复）、已登录的地方全部退出、站内通知全部删掉；
       // 还在别的组织：只删和本组织有关的通知
       const [other] = await tx.select({ orgId: memberships.orgId }).from(memberships).where(eq(memberships.userId, userId)).limit(1);
       if (!other) {
@@ -299,7 +299,7 @@ export class OrgMembersController {
     return this.view(user, orgId);
   }
 
-  // 改角色（成员 ↔ 机构管理员）：不能改自己的；降级时至少保留一位机构管理员
+  // 改角色（成员 ↔ 组织管理员）：不能改自己的；降级时至少保留一位组织管理员
   @Put('members/:userId/role')
   async changeRole(
     @CurrentUser() user: SessionUser,
@@ -387,7 +387,7 @@ export class OrgMembersController {
         : [];
       const touched = [...removed, ...added].map((r) => r.enterpriseId);
       if (touched.length) await tx.update(enterprises).set({ membersChangedAt: new Date() }).where(inArray(enterprises.id, touched));
-      // 成员不再负责的企业：这些企业任务的站内通知一并删掉（机构管理员本来就看全部企业，不删）
+      // 成员不再负责的企业：这些企业任务的站内通知一并删掉（组织管理员本来就看全部企业，不删）
       if (still.role === 'customer_member' && removed.length) {
         await dropOrgNotifications(tx, userId, orgId, { only: removed.map((r) => r.enterpriseId) });
       }
@@ -438,7 +438,7 @@ export class OrgMembersController {
         .delete(enterpriseAssignments)
         .where(and(eq(enterpriseAssignments.enterpriseId, enterpriseId), ids.length ? notInArray(enterpriseAssignments.userId, ids) : undefined))
         .returning({ userId: enterpriseAssignments.userId });
-      // 不再负责这家企业的成员（不是机构管理员）：删掉这家企业任务的站内通知
+      // 不再负责这家企业的成员（不是组织管理员）：删掉这家企业任务的站内通知
       if (removed.length) {
         const members = await tx
           .select({ userId: memberships.userId })
@@ -470,7 +470,7 @@ export class OrgMembersController {
   // 别家组织（或不存在）一律 404；本组织成员、运营 403
   private guard(user: SessionUser, orgId: string) {
     if (!canViewOrganization(user, orgId)) throw new NotFoundException('找不到该组织');
-    if (!canManageOrgMembers(user, orgId)) throw new ForbiddenException('只有机构管理员可以管理组织');
+    if (!canManageOrgMembers(user, orgId)) throw new ForbiddenException('只有组织管理员可以管理组织');
   }
 
   private orgName(user: SessionUser, orgId: string) {
@@ -481,7 +481,7 @@ export class OrgMembersController {
     return this.audit.record({ action, actorId: user.id, actorEmail: user.email, ip: clientIp(req), target });
   }
 
-  // 邮箱已有耕云账号：不能再邀请。例外是被机构管理员移除的旧账号（不在任何组织），可以重新邀请，接受时恢复；
+  // 邮箱已有耕云账号：不能再邀请。例外是被组织管理员移除的旧账号（不在任何组织），可以重新邀请，接受时恢复；
   // 运营停用的账号不算例外
   private async hasAccount(email: string): Promise<boolean> {
     const [row] = await this.db.select({ id: users.id, disabledReason: users.disabledReason }).from(users).where(eq(users.email, email)).limit(1);

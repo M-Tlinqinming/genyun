@@ -19,7 +19,7 @@ import {
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 // 文件挂在哪些企业上（M3 第 7 项）：资料项、企业资料库、补件回复、交付、企业档案（执照、照片、台账、图纸）里引用的。
-// 只在判断成员能不能看、能不能引用时用；机构管理员、运营不需要查
+// 只在判断成员能不能看、能不能引用时用；组织管理员、运营不需要查
 // within：只关心这些企业（成员被分配的企业）时传入，企业档案只读这几家
 export async function linkedEnterpriseIds(
   db: Database | Tx,

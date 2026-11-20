@@ -12,7 +12,7 @@ export interface Membership {
   orgId: string;
   orgName: string;
   role: Role;
-  // 客户账号在这个组织里被分配到的企业（成员只能看到这些；机构管理员不受限，这里只表示「负责」）
+  // 客户账号在这个组织里被分配到的企业（成员只能看到这些；组织管理员不受限，这里只表示「负责」）
   enterpriseIds?: string[];
 }
 

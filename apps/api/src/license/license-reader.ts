@@ -76,8 +76,8 @@ export class LicenseRecognitionController {
 
   @Post()
   async recognize(@CurrentUser() user: SessionUser, @Param('orgId', ParseUUIDPipe) orgId: string, @Body() body: unknown) {
-    // 只给新建企业用（已有企业在档案第 1 步里识别，走企业的权限）；新建企业只有机构管理员
-    if (!canCreateEnterprise(user, orgId)) throw new ForbiddenException('新建企业请联系机构管理员');
+    // 只给新建企业用（已有企业在档案第 1 步里识别，走企业的权限）；新建企业只有组织管理员
+    if (!canCreateEnterprise(user, orgId)) throw new ForbiddenException('新建企业请联系组织管理员');
     const parsed = fileIdSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请选择文件');
     return this.reader.read(orgId, parsed.data.fileId);

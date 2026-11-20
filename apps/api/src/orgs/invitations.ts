@@ -24,7 +24,7 @@ export interface NewInvitation {
 
 // 邀请邮件里的身份（内部成员也走这套邀请，M3 第 8 项）
 const INVITE_ROLE_LABELS: Record<Role, string> = {
-  customer_admin: '机构管理员',
+  customer_admin: '组织管理员',
   customer_member: '成员',
   expert: '专家',
   operator: '运营管理员',

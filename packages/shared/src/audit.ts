@@ -38,7 +38,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   password_reset: '找回密码并重设',
   task_assign: '分派专家',
   task_reassign: '改派专家',
-  publish: '发布',
+  publish: '交付',
   account_invite: '邀请内部成员',
   account_disable: '停用账号',
   account_enable: '恢复账号',

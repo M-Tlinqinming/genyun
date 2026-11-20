@@ -87,7 +87,7 @@ export interface InvitationMailInput {
   name: string;
   inviterName: string;
   orgName: string;
-  // 「机构管理员」或「成员」
+  // 「组织管理员」或「成员」
   roleLabel: string;
   link: string;
   expiresAt: Date;

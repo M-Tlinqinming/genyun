@@ -15,7 +15,7 @@ describe('邮件模板', () => {
       name: '林管理员',
       inviterName: '耕云运营',
       orgName: '示例安全咨询机构',
-      roleLabel: '机构管理员',
+      roleLabel: '组织管理员',
       link: 'https://preview.example.cn/invite/abc?x=1&y=2',
       expiresAt: new Date('2026-11-08T01:30:00Z'),
     }),
@@ -46,7 +46,7 @@ describe('邮件模板', () => {
   });
 
   it('重新发送的邀请写明以最新一封为准', () => {
-    const m = invitationMail({ to: 'a@b.cn', name: '张三', inviterName: '耕云运营', orgName: 'A', roleLabel: '机构管理员', link: 'https://x.cn/i', expiresAt: AT, resend: true });
+    const m = invitationMail({ to: 'a@b.cn', name: '张三', inviterName: '耕云运营', orgName: 'A', roleLabel: '组织管理员', link: 'https://x.cn/i', expiresAt: AT, resend: true });
     expect(m.text).toContain('之前的邀请链接已作废，请以最新一封为准');
   });
 
