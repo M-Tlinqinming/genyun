@@ -69,6 +69,8 @@ export function useCreateEnterprise(orgId: string) {
       request<Enterprise>(`/orgs/${orgId}/enterprises`, { method: 'POST', body: JSON.stringify(input) }),
     onSuccess: (created) => {
       client.setQueryData(enterpriseKeys.detail(created.id), created);
+      // 先放进列表，新建任务页的下拉马上能选中它；再从后台重读
+      client.setQueryData<Enterprise[]>(enterpriseKeys.list(orgId), (list) => (list ? [...list, created] : list));
       void client.invalidateQueries({ queryKey: enterpriseKeys.list(orgId) });
     },
   });

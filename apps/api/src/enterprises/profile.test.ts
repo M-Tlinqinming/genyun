@@ -622,7 +622,7 @@ describe('企业自填第 4 步 · 应急资源与图纸', () => {
   }
 
   it('第一次打开按第 3 步的场所列出建筑，带出第 2 步的人员和第 3 步的物料', async () => {
-    const id = await newEnterprise('丁一公司');
+    const id = await newEnterprise('丁八公司');
     const agent = await as('a-admin@test.cn');
     let v = (await resources(id)).version;
     const org2 = await agent.get(`/api/enterprises/${id}/organization-step`);
@@ -654,7 +654,7 @@ describe('企业自填第 4 步 · 应急资源与图纸', () => {
   });
 
   it('物资、药箱、水池、建筑、相邻企业填好后各自变为相应状态，撤回后回到未回答', async () => {
-    const { id, taskId, agent } = await withTask('丁二公司');
+    const { id, taskId, agent } = await withTask('丁九公司');
     let s = await resources(id);
     const save = async (step: object) => {
       const res = await agent.put(`/api/enterprises/${id}/resources-step`).send({ version: s.version, step });
@@ -701,7 +701,7 @@ describe('企业自填第 4 步 · 应急资源与图纸', () => {
   });
 
   it('以前只传药箱照片交给专家的：迁移后改为自己逐项填、清单待补，资料项为稍后补', async () => {
-    const { id, taskId, agent } = await withTask('丁三公司');
+    const { id, taskId, agent } = await withTask('丁十公司');
     const s = await resources(id);
     const photo = await agent.post(`/api/orgs/${org.a}/files?rule=image_or_pdf`).attach('file', PDF, '药箱.pdf');
     const saved = await agent
@@ -730,7 +730,7 @@ describe('企业自填第 4 步 · 应急资源与图纸', () => {
   });
 
   it('图纸挂到资料项上即已提供，内容里记着文件名', async () => {
-    const { id, taskId, agent } = await withTask('丁三公司');
+    const { id, taskId, agent } = await withTask('丁十一公司');
     const plan = await agent.post(`/api/orgs/${org.a}/files?rule=image_or_pdf`).attach('file', PDF, '总平面图.pdf');
     await agent.post(`/api/tasks/${taskId}/checklist/site_plan/files`).send({ fileId: plan.body.id });
     const s = await resources(id);

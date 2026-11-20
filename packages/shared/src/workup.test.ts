@@ -7,6 +7,7 @@ import {
   nextMissing,
   workupFacts,
   workupProgress,
+  workupStepsDone,
   type FactOverride,
   type WorkupSnapshot,
 } from './workup.ts';
@@ -109,5 +110,17 @@ describe('必需项进度与下一个缺失项', () => {
     expect(nextMissing(facts, 'socialCreditCode')?.key).toBe('legalRepresentative');
     expect(nextMissing(facts, 'dutyPhone')?.key).toBe('socialCreditCode');
     expect(nextMissing(workupFacts(feiyuSnapshot, none))).toBeUndefined();
+  });
+});
+
+describe('workupStepsDone 资料核对做完几步', () => {
+  it('没有或不是数字算 0，结果夹在 0 到 5', () => {
+    expect(workupStepsDone(undefined)).toBe(0);
+    expect(workupStepsDone({ overrides: {} })).toBe(0);
+    expect(workupStepsDone({ overrides: {}, stepsDone: '3' as unknown as number })).toBe(0);
+    expect(workupStepsDone({ overrides: {}, stepsDone: Number.NaN })).toBe(0);
+    expect(workupStepsDone({ overrides: {}, stepsDone: 3 })).toBe(3);
+    expect(workupStepsDone({ overrides: {}, stepsDone: -2 })).toBe(0);
+    expect(workupStepsDone({ overrides: {}, stepsDone: 9 })).toBe(5);
   });
 });

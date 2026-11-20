@@ -2,6 +2,7 @@
 // 每个任务单独存一份（Martin 10-29 确认）：专家第一次打开任务时复制企业资料（快照），
 // 之后客户再改企业资料不影响这里，变化走第 13 项事实补件；专家的修改只记在任务里，标为「专家整理」。
 import { z } from 'zod';
+import { WORKUP_STEP_COUNT } from './task-status.ts';
 import type { ChecklistItemKey } from './checklist/items.ts';
 import type { BasicStepAnyField, EnterpriseProfile } from './profile/basic-step.ts';
 import { addressLabelOf, addressOptions } from './profile/addresses.ts';
@@ -102,6 +103,15 @@ export interface WorkupData {
   scope?: ScopeWorkup;
   // 图件的画法与采用（workup-figures.ts），专家第一次调整或采用时才有
   figures?: FiguresWorkup;
+  // 专家资料核对已完成几步（0–5），专家核对页保存时写
+  stepsDone?: number;
+}
+
+/** 资料核对做完了几步：没有或不是数字算 0，夹在 0 到 WORKUP_STEP_COUNT 之间 */
+export function workupStepsDone(data: Partial<WorkupData> | null | undefined): number {
+  const n = data?.stepsDone;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(WORKUP_STEP_COUNT, Math.floor(n)));
 }
 
 export interface FactDef {

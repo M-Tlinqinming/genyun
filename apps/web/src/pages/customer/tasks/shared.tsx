@@ -1,12 +1,11 @@
 import { contractState, taskTodo, type TaskTodo } from '@genyun/shared';
 import { PlusOutlined } from '@ant-design/icons';
-import { Button, Modal, Select } from 'antd';
-import { useState, type CSSProperties } from 'react';
+import { Button, Tooltip } from 'antd';
+import type { CSSProperties } from 'react';
 import { useNavigate } from 'react-router';
-import { useEnterprises, type TaskSummary } from '../../../api/enterprises';
+import type { TaskSummary } from '../../../api/enterprises';
 import { useOrganization } from '../../../api/tasks';
-import { useWorkspace } from '../../../layouts/workspace';
-import { gy } from '../../../theme/tokens';
+import { gy, type } from '../../../theme/tokens';
 
 export interface TaskRow extends TaskSummary {
   todo: TaskTodo;
@@ -84,60 +83,53 @@ export function useContract(orgId: string) {
   };
 }
 
-// 「创建编制任务」：先选企业，再到该企业的建任务页（12 页 P02）。合同不在有效期内置灰
-export function CreateTaskButton({ orgId, canCreate, size = 'large' }: { orgId: string; canCreate: boolean; size?: 'large' | 'middle' }) {
-  const navigate = useNavigate();
-  const enterprises = useEnterprises(orgId);
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<string | null>(null);
-  const list = enterprises.data ?? [];
-  // 成员不能新建企业，只能在分配给自己的企业下建任务
-  const canNewEnterprise = useWorkspace().role !== 'customer_member';
+// 年度服务到期或组织还没开通时，「新建任务」旁边（或悬停）给的说明
+export const CREATE_BLOCKED = '续约生效后可创建新任务；已有资料与交付记录保留。';
 
+// 「新建任务」：到新建任务页选企业、填任务名称；在企业页里带上这家企业。
+// 年度服务到期或还没开通时置灰：explain="inline" 把说明写在按钮右边（工作台），默认悬停才显示
+export function CreateTaskButton({
+  canCreate,
+  enterpriseId,
+  size = 'large',
+  explain = 'tooltip',
+}: {
+  /** 能不能新建：年度服务不在有效期内或组织还没开通时为 false，按钮置灰 */
+  canCreate: boolean;
+  /** 从企业页进来时带上这家企业，新建任务页会预先选好 */
+  enterpriseId?: string;
+  /** 按钮大小：页头用 large，企业概览里用 middle */
+  size?: 'large' | 'middle';
+  /** 不能新建时原因怎么说：inline 写在按钮旁边，tooltip 悬停时显示 */
+  explain?: 'inline' | 'tooltip';
+}) {
+  const navigate = useNavigate();
+  const button = (
+    <Button
+      type={canCreate ? 'primary' : 'default'}
+      size={size}
+      icon={canCreate ? <PlusOutlined /> : undefined}
+      disabled={!canCreate}
+      style={size === 'large' ? { fontSize: 16 } : undefined}
+      onClick={() => navigate(enterpriseId ? `/customer/tasks/new?enterpriseId=${enterpriseId}` : '/customer/tasks/new')}
+    >
+      新建任务
+    </Button>
+  );
+  if (canCreate) return button;
+  if (explain === 'inline') {
+    return (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {button}
+        <span style={{ ...type.body, color: gy.secondary }}>{CREATE_BLOCKED}</span>
+      </span>
+    );
+  }
+  // 置灰的按钮收不到鼠标事件，外面包一层才能显示悬停说明
   return (
-    <>
-      <Button
-        type={canCreate ? 'primary' : 'default'}
-        size={size}
-        icon={<PlusOutlined />}
-        disabled={!canCreate}
-        style={size === 'large' ? { fontSize: 16 } : undefined}
-        onClick={() => (list.length === 0 && canNewEnterprise ? navigate('/customer/enterprises/new') : setOpen(true))}
-      >
-        创建编制任务
-      </Button>
-      <Modal
-        open={open}
-        title="为哪家企业创建编制任务？"
-        okText="下一步"
-        cancelText="取消"
-        okButtonProps={{ disabled: picked === null }}
-        onCancel={() => setOpen(false)}
-        onOk={() => navigate(`/customer/enterprises/${picked}/tasks/new`)}
-        destroyOnHidden
-      >
-        <Select
-          showSearch
-          aria-label="选择企业"
-          placeholder="搜索或选择企业"
-          style={{ width: '100%', margin: '8px 0' }}
-          optionFilterProp="label"
-          value={picked}
-          onChange={setPicked}
-          options={list.map((e) => ({ value: e.id, label: e.name }))}
-        />
-        {canNewEnterprise ? (
-          <span style={{ fontSize: 13, color: gy.secondary }}>
-            企业还没建档？
-            <button type="button" style={link} onClick={() => navigate('/customer/enterprises/new')}>
-              先新建企业
-            </button>
-          </span>
-        ) : (
-          <span style={{ fontSize: 13, color: gy.secondary }}>只列出分配给您的企业。找不到企业，请联系组织管理员新建或分配。</span>
-        )}
-      </Modal>
-    </>
+    <Tooltip title={CREATE_BLOCKED}>
+      <span style={{ display: 'inline-flex' }}>{button}</span>
+    </Tooltip>
   );
 }
 

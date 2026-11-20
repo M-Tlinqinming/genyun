@@ -104,7 +104,7 @@ export function EnterpriseListPage() {
             emptyText:
               total === 0 ? (
                 isAdmin ? (
-                  <Empty description="还没有企业。先建立企业档案，再为它创建编制任务。" style={{ padding: '48px 0' }}>
+                  <Empty description="还没有企业。先建立企业档案，再为它新建任务。" style={{ padding: '48px 0' }}>
                     {newButton}
                   </Empty>
                 ) : (

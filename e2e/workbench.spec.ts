@@ -114,31 +114,28 @@ test('任务：默认先看待我处理，可搜索任务编号、按企业筛�
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${task.id}$`));
 });
 
-test('创建编制任务：先选企业，再到该企业的建任务页', async () => {
-  const ent = await page.request.post(`/api/orgs/${orgId}/enterprises`, { data: { name: '工作台建任务有限公司' } });
-  const enterpriseId = ((await ent.json()) as { id: string }).id;
+test('新建任务：从工作台进入新建任务页，在页里选企业', async () => {
   await page.goto('/customer');
-  await page.getByRole('button', { name: '创建编制任务' }).click();
-  await page.getByLabel('选择企业').fill('工作台建任务');
-  await page.getByTitle('工作台建任务有限公司').click();
-  await page.getByRole('button', { name: '下一步' }).click();
-  await expect(page).toHaveURL(new RegExp(`/customer/enterprises/${enterpriseId}/tasks/new$`));
+  await page.getByRole('button', { name: '新建任务' }).click();
+  await expect(page).toHaveURL(/\/customer\/tasks\/new$/);
+  await expect(page.getByRole('heading', { name: '新建任务' })).toBeVisible();
 });
 
 test('年度服务 30 天内到期提醒；到期后不能新建任务，在办任务照常可看', async () => {
   await fakeContract(chinaDay(10));
   await page.goto('/customer');
   await expect(page.getByRole('status', { name: '年度服务提醒' })).toContainText('还有 10 天');
-  await expect(page.getByRole('button', { name: '创建编制任务' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '新建任务' })).toBeEnabled();
   await page.unroute(`**/api/orgs/${orgId}`);
 
   await fakeContract(chinaDay(-1));
   await page.goto('/customer');
   await expect(page.getByRole('status', { name: '年度服务提醒' })).toContainText('年度服务已到期');
-  await expect(page.getByRole('button', { name: '创建编制任务' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '新建任务' })).toBeDisabled();
+  await expect(page.getByText('续约生效后可创建新任务；已有资料与交付记录保留。')).toBeVisible();
   await expect(page.getByRole('region', { name: '待我处理' })).toContainText('继续准备');
   await page.screenshot({ path: 'test-results/workbench-s01.png' });
   await page.goto('/customer/tasks');
-  await expect(page.getByRole('button', { name: '创建编制任务' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '新建任务' })).toBeDisabled();
   await page.unroute(`**/api/orgs/${orgId}`);
 });

@@ -123,11 +123,13 @@ export function AssignExpertModal({
             >
               {experts.data.map((e) => {
                 const on = e.id === expertId;
+                // 已暂停接单：画布底、浅描边，文字一律浅灰（16 页弹窗）
+                const paused = e.paused && !e.current;
                 return (
                   <Radio
                     key={e.id}
                     value={e.id}
-                    disabled={e.current}
+                    disabled={e.current || paused}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -135,9 +137,9 @@ export function AssignExpertModal({
                       margin: 0,
                       padding: '12px 16px',
                       borderRadius: 6,
-                      border: `1px solid ${on ? gy.primary : '#D9D9D9'}`,
+                      border: `1px solid ${on ? gy.primary : paused ? gy.split : '#D9D9D9'}`,
                       // 当前负责人整张卡片置灰
-                      background: e.current ? gy.neutralBg : on ? '#F7F9FF' : gy.surface,
+                      background: e.current ? gy.neutralBg : paused ? gy.canvas : on ? '#F7F9FF' : gy.surface,
                       opacity: e.current ? 0.6 : 1,
                     }}
                   >
@@ -149,18 +151,20 @@ export function AssignExpertModal({
                           height: 32,
                           borderRadius: 16,
                           flexShrink: 0,
-                          background: '#F2F4F7',
+                          background: paused ? gy.neutralBg : '#F2F4F7',
                           textAlign: 'center',
                           ...body,
-                          color: gy.secondary,
+                          color: paused ? gy.tertiary : gy.secondary,
                           lineHeight: '32px',
                         }}
                       >
                         {e.name.slice(0, 1)}
                       </span>
                       <span style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={body}>{e.name}</span>
-                        <span style={small}>{e.current ? '当前负责专家' : expertLoadLine(e)}</span>
+                        <span style={paused ? { ...body, color: gy.tertiary } : body}>{e.name}</span>
+                        <span style={paused ? { ...small, color: gy.tertiary } : small}>
+                          {e.current ? '当前负责专家' : paused ? '已暂停接单，不能分配' : expertLoadLine(e)}
+                        </span>
                       </span>
                     </span>
                   </Radio>

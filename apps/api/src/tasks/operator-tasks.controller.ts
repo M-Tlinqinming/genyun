@@ -3,6 +3,10 @@ import {
   REASSIGN_REASONS,
   assignExpertSchema,
   assignmentBlockedReason,
+  type ExpertAvailability,
+  type ExpertReviewStatus,
+  isExpertPaused,
+  isOperatorAssignableExpert,
   needsAssignment,
   operatorNoteSchema,
   operatorTaskStage,
@@ -31,6 +35,7 @@ import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import {
   enterprises,
+  expertProfiles,
   memberships,
   organizations,
   taskOperatorNotes,
@@ -84,6 +89,12 @@ function selectTasks(db: Database) {
 // 名单和分派校验都用这一条，停用的账号两边都排除（第 8 项）
 const assignableExpert = and(eq(memberships.role, 'expert'), eq(organizations.kind, 'internal'), isNull(users.disabledAt));
 
+// 专家资料里判断能不能派的两项；没有资料行为 null（算接单中）
+const availability = { reviewStatus: expertProfiles.reviewStatus, acceptingOrders: expertProfiles.acceptingOrders };
+function profileOf(r: { reviewStatus: ExpertReviewStatus | null; acceptingOrders: boolean | null }): ExpertAvailability {
+  return r.acceptingOrders === null ? null : { reviewStatus: r.reviewStatus, acceptingOrders: r.acceptingOrders };
+}
+
 // 运营任务中心（Paper 16 页 I04「待分派」「全部任务」、分配专家弹窗）。
 // 只有运营能看和分派；客户、专家一律 403
 @Controller('operator/tasks')
@@ -114,29 +125,45 @@ export class OperatorTasksController {
     return { ...task, workupStartedAt: workup?.updatedAt ?? null };
   }
 
-  // 分配弹窗里的专家：在办任务数，以及正在处理这家客户的其他几家企业（同一客户交给同一人更顺）
+  // 分配弹窗里的专家：在办任务数，以及正在处理这家客户的其他几家企业（同一客户交给同一人更顺）。
+  // 暂停接单的照常列出、标 paused（弹窗里置灰）；待审核、未通过、已下架的不列
   @Get(':id/experts')
   async experts(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     this.guard(user);
     const task = await this.load(id);
-    const people = await this.db
-      .selectDistinct({ id: users.id, name: users.name, email: users.email })
+    const rows = await this.db
+      .selectDistinct({ id: users.id, name: users.name, email: users.email, ...availability })
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
       .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+      .leftJoin(expertProfiles, eq(expertProfiles.userId, users.id))
       .where(assignableExpert)
       .orderBy(users.name);
+    const people = rows
+      .map(({ reviewStatus, acceptingOrders, ...p }) => ({ ...p, profile: profileOf({ reviewStatus, acceptingOrders }) }))
+      // 审核状态不能派的不列；暂停的留着、置灰
+      .filter((p) => isOperatorAssignableExpert(p.profile && { ...p.profile, acceptingOrders: true }));
     if (people.length === 0) return [];
     const open = await this.db
       .select({ expertId: tasks.assignedExpertId, orgId: tasks.orgId, enterpriseId: tasks.enterpriseId })
       .from(tasks)
       .where(and(inArray(tasks.assignedExpertId, people.map((p) => p.id)), isNull(tasks.closedAt)));
-    return people.map((p) => {
+    // 接单中的在前、暂停的在后，各自仍按名字（sort 是稳定排序）
+    const ordered = [...people].sort((a, b) => Number(isExpertPaused(a.profile)) - Number(isExpertPaused(b.profile)));
+    return ordered.map((p) => {
       const mine = open.filter((t) => t.expertId === p.id);
       const sameOrg = new Set(
         mine.filter((t) => t.orgId === task.orgId && t.enterpriseId !== task.enterpriseId).map((t) => t.enterpriseId),
       );
-      return { ...p, openTasks: mine.length, sameOrgEnterprises: sameOrg.size, current: p.id === task.assignedExpertId };
+      return {
+        id: p.id,
+        name: p.name,
+        email: p.email,
+        openTasks: mine.length,
+        sameOrgEnterprises: sameOrg.size,
+        current: p.id === task.assignedExpertId,
+        paused: isExpertPaused(p.profile),
+      };
     });
   }
 
@@ -158,13 +185,17 @@ export class OperatorTasksController {
     if (expertId === task.assignedExpertId) throw new ConflictException(`${task.assignedExpertName ?? '这位专家'}已经是负责专家`);
 
     const [target] = await this.db
-      .select({ id: users.id, name: users.name })
+      .select({ id: users.id, name: users.name, ...availability })
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
       .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+      .leftJoin(expertProfiles, eq(expertProfiles.userId, users.id))
       .where(and(eq(users.id, expertId), assignableExpert))
       .limit(1);
     if (!target) throw new BadRequestException('请选择专家');
+    // 暂停接单、审核状态不能派的专家不派
+    const unavailable = assignmentBlockedReason(task, { name: target.name, profile: profileOf(target) });
+    if (unavailable) throw new ConflictException(unavailable);
 
     const what = `${task.enterpriseName} · ${task.name}`;
     const previous = task.assignedExpertId;
@@ -182,6 +213,10 @@ export class OperatorTasksController {
         .where(and(eq(users.id, expertId), assignableExpert))
         .for('update', { of: users });
       if (!active) throw new BadRequestException(`${target.name}已停用或不再是专家，请选择其他专家`);
+      // 锁住后再看一次接单状态：弹窗打开后专家刚暂停的，也不派
+      const [profile] = await tx.select(availability).from(expertProfiles).where(eq(expertProfiles.userId, expertId));
+      const stillBlocked = assignmentBlockedReason(task, { name: target.name, profile: profile ?? null });
+      if (stillBlocked) throw new ConflictException(stillBlocked);
       // 只在负责专家仍是运营打开弹窗时看到的那位时才改，别人刚分派过就提示刷新
       const [row] = await tx
         .update(tasks)

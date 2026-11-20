@@ -1,115 +1,115 @@
-import { CHECKLIST_ITEM_KEYS, type ChecklistItemKey, getItemDef } from '@genyun/shared';
-import { Controller, ForbiddenException, Get, Inject, Injectable } from '@nestjs/common';
-import { desc, eq, inArray } from 'drizzle-orm';
+import {
+  type ExpertCenterData,
+  type ExpertCenterRow,
+  expertAcceptingSchema,
+  expertCenterButton,
+  expertCenterStats,
+  expertCenterTime,
+  isDeliveredThisMonth,
+  isExpertCenterOpen,
+  sortExpertCenter,
+  taskView,
+} from '@genyun/shared';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Inject, Injectable, Put, Req } from '@nestjs/common';
+import { and, eq, isNull } from 'drizzle-orm';
+import type { Request } from 'express';
+import { AuditService, clientIp } from '../audit/audit.ts';
 import { isExpert } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
-import { checklistItems, enterprises, organizations, tasks, users } from '../db/schema.ts';
+import { enterprises, expertProfiles, organizations, tasks } from '../db/schema.ts';
+import { loadTaskViewInputs } from './task-view-input.ts';
 
-// 资料项按资料清单的固定顺序排（数据库查询不保证顺序）
-const ITEM_ORDER = new Map<string, number>(CHECKLIST_ITEM_KEYS.map((k, i) => [k, i]));
-function byChecklistOrder<T extends { itemKey: string }>(items: readonly T[]): T[] {
-  return [...items].sort((a, b) => (ITEM_ORDER.get(a.itemKey) ?? Infinity) - (ITEM_ORDER.get(b.itemKey) ?? Infinity));
-}
+const FORBIDDEN = '任务中心只对专家开放';
 
-export interface VerifyItem {
-  key: ChecklistItemKey;
-  label: string;
-  kind: 'photo' | 'call';
-}
-
-export interface ExpertEvent {
-  at: Date;
-  taskId: string;
-  text: string;
-  kind: 'submitted' | 'photo' | 'delivered';
-}
-
-const RECENT_EVENTS = 6;
-
-// 专家任务中心（14 页 I04）：只列分派给自己的任务；运营的任务中心在 M3 另做
+// 专家任务中心（13 页 E1 / E1b）：分给自己的任务、四格统计、接单开关
 @Injectable()
 export class ExpertTasksService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
 
-  async list(user: SessionUser) {
-    if (!isExpert(user)) throw new ForbiddenException('任务中心只对专家开放');
-    const list = await this.db
-      .select({
-        id: tasks.id,
-        number: tasks.number,
-        name: tasks.name,
-        orgId: tasks.orgId,
-        orgName: organizations.name,
-        enterpriseName: enterprises.name,
-        status: tasks.status,
-        startMethod: tasks.startMethod,
-        updatedAt: tasks.updatedAt,
-        submittedAt: tasks.submittedAt,
-        assignedAt: tasks.assignedAt,
-        closedAt: tasks.closedAt,
-      })
-      .from(tasks)
-      .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
-      .innerJoin(organizations, eq(organizations.id, tasks.orgId))
-      .where(eq(tasks.assignedExpertId, user.id))
-      .orderBy(desc(tasks.updatedAt));
-    if (list.length === 0) return { tasks: [], events: [] };
-
-    const items = await this.db
-      .select({
-        taskId: checklistItems.taskId,
-        itemKey: checklistItems.itemKey,
-        status: checklistItems.status,
-        callRequested: checklistItems.callRequested,
-        expertResult: checklistItems.expertResult,
-        updatedAt: checklistItems.updatedAt,
-        updatedByName: users.name,
-      })
-      .from(checklistItems)
-      .innerJoin(users, eq(users.id, checklistItems.updatedBy))
-      .where(
-        inArray(
-          checklistItems.taskId,
-          list.map((t) => t.id),
-        ),
-      );
-    // 等专家核实的项：拍照给耕云看、请专家电话联系，且专家还没判定
-    const pending = items.filter(
-      (i) =>
-        (i.status === 'photo_for_expert' || i.callRequested) && (i.expertResult === null || i.expertResult === 'pending'),
+  async list(user: SessionUser, now = new Date()): Promise<ExpertCenterData> {
+    if (!isExpert(user)) throw new ForbiddenException(FORBIDDEN);
+    const [list, acceptingOrders] = await Promise.all([
+      this.db
+        .select({
+          id: tasks.id,
+          number: tasks.number,
+          name: tasks.name,
+          enterpriseName: enterprises.name,
+          orgName: organizations.name,
+        })
+        .from(tasks)
+        .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
+        .innerJoin(organizations, eq(organizations.id, tasks.orgId))
+        .where(and(eq(tasks.assignedExpertId, user.id), isNull(tasks.deletedAt))),
+      this.acceptingOrders(user.id),
+    ]);
+    const facts = await loadTaskViewInputs(
+      this.db,
+      list.map((t) => t.id),
     );
 
-    const events: ExpertEvent[] = [];
-    const rows = list.map((t) => {
-      const mine = byChecklistOrder(pending.filter((p) => p.taskId === t.id));
-      const verifyItems: VerifyItem[] = mine.map((p) => ({
-        key: p.itemKey as ChecklistItemKey,
-        label: getItemDef(p.itemKey as ChecklistItemKey).label,
-        kind: p.callRequested ? 'call' : 'photo',
-      }));
-
-      if (t.submittedAt) events.push({ at: t.submittedAt, taskId: t.id, kind: 'submitted', text: `${t.enterpriseName}提交生成申请` });
-      const photos = mine.filter((p) => !p.callRequested);
-      if (t.submittedAt && photos.length > 0) {
-        const at = new Date(Math.max(t.submittedAt.getTime(), ...photos.map((p) => p.updatedAt.getTime())));
-        events.push({ at, taskId: t.id, kind: 'photo', text: `${t.enterpriseName}有 ${photos.length} 项拍照资料待核实` });
-      }
-      if (t.closedAt) events.push({ at: t.closedAt, taskId: t.id, kind: 'delivered', text: `${t.enterpriseName}三份成果已交付` });
-
-      const times = [t.updatedAt, t.submittedAt, ...items.filter((i) => i.taskId === t.id).map((i) => i.updatedAt)].filter(
-        (d): d is Date => d !== null,
-      );
-      return {
-        ...t,
-        verifyItems,
-        activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
+    const rows = list.flatMap((t) => {
+      const f = facts.get(t.id);
+      if (!f) return [];
+      // 还在准备资料、撤回了的，taskView 返回 null，不显示
+      const view = taskView({ ...f, now, viewer: { side: 'expert', userId: user.id } });
+      if (!view) return [];
+      const centerFacts = {
+        view,
+        draft: f.draft,
+        assignedAt: f.assignedAt,
+        activityAt: f.activityAt,
+        awaitingCustomerSince: f.awaitingCustomerSince,
+        lastDelivery: f.lastDelivery,
       };
+      const row: ExpertCenterRow = {
+        ...t,
+        view,
+        button: expertCenterButton(centerFacts),
+        time: expertCenterTime(centerFacts, now),
+        isOpen: isExpertCenterOpen(view),
+        deliveredThisMonth: isDeliveredThisMonth(centerFacts, now),
+      };
+      return [{ ...centerFacts, row }];
     });
 
-    events.sort((a, b) => b.at.getTime() - a.at.getTime());
-    return { tasks: rows, events: events.slice(0, RECENT_EVENTS) };
+    const sorted = sortExpertCenter(rows).map((r) => r.row);
+    return { acceptingOrders, rows: sorted, stats: expertCenterStats(sorted) };
+  }
+
+  // 暂停 / 恢复接单：没有资料行就建一行（其他字段留空），有就只改接单状态。立即生效，手上的任务照常
+  async setAccepting(user: SessionUser, body: unknown, ip: string | null): Promise<{ acceptingOrders: boolean }> {
+    if (!isExpert(user)) throw new ForbiddenException(FORBIDDEN);
+    const parsed = expertAcceptingSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException('接单状态不正确');
+    const { acceptingOrders } = parsed.data;
+    const [row] = await this.db
+      .insert(expertProfiles)
+      .values({ userId: user.id, acceptingOrders })
+      .onConflictDoUpdate({ target: expertProfiles.userId, set: { acceptingOrders, updatedAt: new Date() } })
+      .returning({ acceptingOrders: expertProfiles.acceptingOrders });
+    await this.audit.record({
+      action: acceptingOrders ? 'expert_resume' : 'expert_pause',
+      actorId: user.id,
+      actorEmail: user.email,
+      ip,
+      target: user.name,
+    });
+    return { acceptingOrders: row!.acceptingOrders };
+  }
+
+  private async acceptingOrders(userId: string): Promise<boolean> {
+    const [profile] = await this.db
+      .select({ acceptingOrders: expertProfiles.acceptingOrders })
+      .from(expertProfiles)
+      .where(eq(expertProfiles.userId, userId));
+    // 没有资料行算接单中
+    return profile?.acceptingOrders ?? true;
   }
 }
 
@@ -120,5 +120,10 @@ export class ExpertTasksController {
   @Get('tasks')
   list(@CurrentUser() user: SessionUser) {
     return this.service.list(user);
+  }
+
+  @Put('accepting')
+  setAccepting(@CurrentUser() user: SessionUser, @Body() body: unknown, @Req() req: Request) {
+    return this.service.setAccepting(user, body, clientIp(req));
   }
 }

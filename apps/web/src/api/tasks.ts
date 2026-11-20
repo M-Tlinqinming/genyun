@@ -41,11 +41,13 @@ export interface Organization extends ContractPeriod {
   name: string;
 }
 
-// 重复创建时后台随 409 返回的已有任务
+// 同一企业没办完的任务：选好企业时查一次，重复创建时后台也随 409 一起返回
 export interface ExistingTask {
   id: string;
   number: string;
   name: string;
+  /** preparing = 还没提交；submitted = 已经提交给专家 */
+  status: TaskStatus;
 }
 
 export const taskKey = (id: string) => ['tasks', id] as const;
@@ -64,16 +66,29 @@ export function useOrganization(orgId: string) {
   });
 }
 
-export function useCreateTask(enterpriseId: string) {
+// 这家企业有没有没办完的任务（新建任务页选好企业就查）
+export const openTaskKey = (enterpriseId: string) => ['enterprises', enterpriseId, 'open-task'] as const;
+
+export function useOpenTask(enterpriseId: string | null) {
+  return useQuery({
+    queryKey: openTaskKey(enterpriseId ?? ''),
+    queryFn: () => request<{ openTask: ExistingTask | null }>(`/enterprises/${enterpriseId}/open-task`),
+    enabled: enterpriseId !== null,
+    select: (r) => r.openTask,
+  });
+}
+
+export function useCreateTask() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: TaskCreateInput) =>
+    mutationFn: ({ enterpriseId, input }: { enterpriseId: string; input: TaskCreateInput }) =>
       request<Task>(`/enterprises/${enterpriseId}/tasks`, {
         method: 'POST',
         body: JSON.stringify(input),
       }),
     onSuccess: (created) => {
       client.setQueryData(taskKey(created.id), created);
+      void client.invalidateQueries({ queryKey: openTaskKey(created.enterpriseId) });
       void client.invalidateQueries({ queryKey: orgTasksKey(created.orgId) });
       void client.invalidateQueries({
         queryKey: enterpriseKeys.list(created.orgId),

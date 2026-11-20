@@ -1,4 +1,4 @@
-import { enterpriseInputSchema, enterpriseUpdateSchema } from '@genyun/shared';
+import { enterpriseInputSchema, enterpriseUpdateSchema, normalizeEnterpriseName } from '@genyun/shared';
 import {
   BadRequestException,
   Body,
@@ -23,6 +23,7 @@ import { enterpriseAssignments, enterprises, users } from '../db/schema.ts';
 
 const NOT_FOUND = '找不到该企业';
 const DUPLICATE_CODE = '本组织已有使用该统一社会信用代码的企业';
+const DUPLICATE_NAME = '组织里已经有这家企业了';
 
 const columns = {
   id: enterprises.id,
@@ -71,6 +72,12 @@ export class EnterprisesController {
     if (!canCreateEnterprise(user, orgId)) throw new ForbiddenException('新建企业请联系组织管理员');
     const parsed = enterpriseInputSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
+    // 同一组织里不建两家同名企业：名称去掉空白、括号不分全半角、字母不分大小写后再比
+    const key = normalizeEnterpriseName(parsed.data.name);
+    const same = (
+      await this.db.select({ id: enterprises.id, name: enterprises.name }).from(enterprises).where(eq(enterprises.orgId, orgId))
+    ).find((e) => normalizeEnterpriseName(e.name) === key);
+    if (same) throw new ConflictException({ statusCode: 409, message: DUPLICATE_NAME, existingEnterprise: same });
     try {
       const [created] = await this.db
         .insert(enterprises)
