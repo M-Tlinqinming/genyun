@@ -43,7 +43,7 @@ export function TaskListPage() {
       <PageHeader
         title="任务"
         description="跨企业查看编制进度，先处理需要您动手的任务。"
-        extra={<CreateTaskButton orgId={orgId} canCreate={contract.canCreate} />}
+        extra={<CreateTaskButton canCreate={contract.canCreate} />}
       />
       <ContractNotice state={contract.state} daysLeft={contract.daysLeft} endsAt={contract.endsAt} />
 

@@ -28,3 +28,9 @@ export type EnterpriseInput = z.infer<typeof enterpriseInputSchema>;
 // 修改时只传要改的字段
 export const enterpriseUpdateSchema = enterpriseInputSchema.partial();
 export type EnterpriseUpdate = z.infer<typeof enterpriseUpdateSchema>;
+
+// 同一组织里判断「是不是同一家企业」用的名称写法：去掉所有空白（含全角空格），
+// 全角括号当半角，英文字母不分大小写。只用来比较，存的仍是客户填的原样
+export function normalizeEnterpriseName(name: string): string {
+  return name.replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')').toLowerCase();
+}

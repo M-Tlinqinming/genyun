@@ -14,8 +14,9 @@ import { EnterpriseDetailPage } from './pages/customer/EnterpriseDetailPage';
 import { EnterpriseListPage } from './pages/customer/EnterpriseListPage';
 import { MyFeedbackPage } from './pages/customer/MyFeedbackPage';
 import { OrganizationPage } from './pages/customer/OrganizationPage';
-import { TaskCreatePage } from './pages/customer/TaskCreatePage';
 import { TaskListPage } from './pages/customer/TaskListPage';
+import { TaskNewPage } from './pages/customer/TaskNewPage';
+import { TaskPreparePage } from './pages/customer/prepare/TaskPreparePage';
 import { TaskPage } from './pages/customer/TaskPage';
 import { WorkbenchPage } from './pages/customer/WorkbenchPage';
 import { ExpertTaskPage } from './pages/expert/ExpertTaskPage';
@@ -57,13 +58,19 @@ function Moved({ to }: { to: (taskId: string) => string }) {
   return <Navigate to={to(taskId!)} replace />;
 }
 
+function MovedEnterprise() {
+  const { enterpriseId } = useParams();
+  return <Navigate to={`/customer/tasks/new?enterpriseId=${enterpriseId}`} replace />;
+}
+
 // 已做好的页面；菜单项下可以有子页面
 const PAGES: Partial<Record<string, RouteObject[]>> = {
   '/customer/enterprises': [
     { index: true, element: <EnterpriseListPage /> },
     { path: 'new', element: <EnterpriseCreatePage /> },
     { path: ':enterpriseId', element: <EnterpriseDetailPage /> },
-    { path: ':enterpriseId/tasks/new', element: <TaskCreatePage /> },
+    // 旧的「为这家企业建任务」地址：跳到新建任务页并带上这家企业
+    { path: ':enterpriseId/tasks/new', element: <MovedEnterprise /> },
   ],
   // 组织管理（仅组织管理员，侧栏只对组织管理员显示）；?tab= 切换组织资料、成员与权限、企业分配、年度服务
   '/customer/organization': [{ index: true, element: <OrganizationPage /> }],
@@ -87,6 +94,7 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
   '/operator/mail-outbox': [{ index: true, element: <MailOutboxPage /> }],
   '/customer/tasks': [
     { index: true, element: <TaskListPage /> },
+    { path: 'new', element: <TaskNewPage /> },
     { path: ':taskId', element: <TaskPage /> },
     { path: ':taskId/start', element: <Moved to={(id) => `/customer/tasks/${id}`} /> },
     { path: ':taskId/fill/:step', element: <Moved to={(id) => `/customer/tasks/${id}`} /> },
@@ -134,6 +142,8 @@ export const router = createBrowserRouter([
   { path: '/account', element: <AccountLayout />, children: [{ index: true, element: <AccountPage /> }] },
   // 邮件里的邀请链接，不用登录
   { path: '/invite/:token', element: <InvitePage /> },
+  // 准备资料是向导，不带侧栏，所以不放在客户工作空间里（页面自己检查登录）
+  { path: '/customer/tasks/:taskId/prepare', element: <TaskPreparePage /> },
   workspaceRoutes('customer'),
   workspaceRoutes('expert'),
   workspaceRoutes('operator'),

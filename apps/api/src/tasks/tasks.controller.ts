@@ -55,6 +55,12 @@ export class TasksController {
     return this.tasks.create(user, enterpriseId, parse(taskCreateSchema, body));
   }
 
+  // 这家企业有没有没办完的任务（新建任务页选好企业就要知道）；没有时 openTask 为 null
+  @Get('enterprises/:enterpriseId/open-task')
+  openTask(@CurrentUser() user: SessionUser, @Param('enterpriseId', ParseUUIDPipe) enterpriseId: string) {
+    return this.tasks.openTaskOf(user, enterpriseId);
+  }
+
   @Get('tasks/:id')
   get(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.tasks.load(user, id);
