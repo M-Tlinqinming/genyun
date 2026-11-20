@@ -7,7 +7,7 @@ export interface OutboxMail {
   subject: string;
   text: string;
   html?: string;
-  kind?: 'invitation' | 'recovery_code' | 'password_reset';
+  kind?: 'invitation' | 'recovery_code' | 'password_reset' | 'credits_locked_admin' | 'credits_locked_submitter' | 'delivery_released';
   at: string;
 }
 
