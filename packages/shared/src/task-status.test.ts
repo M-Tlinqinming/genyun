@@ -86,10 +86,10 @@ describe('客户端', () => {
     }
   });
   it('已交付', () => {
-    expect(taskView(input(delivered))!).toMatchObject({ key: 'delivered', label: '已交付', tone: 'done', nextStep: '成果已交付，三份 Word 可以下载', detail: '11 月 6 日专家已交付', stage: 2, needsAction: false, readOnly: true });
+    expect(taskView(input(delivered))!).toMatchObject({ key: 'delivered', label: '已交付', tone: 'done', nextStep: '成果已交付，三份 Word 可以下载', detail: '专家已交付', stage: 2, needsAction: false, readOnly: true });
   });
   it('再次交付后显示已更新', () => {
-    expect(taskView(input({ ...delivered, lastDelivery: { at: at('2026-11-13T01:00:00Z'), kind: 'update' } }))!.detail).toBe('今天已更新');
+    expect(taskView(input({ ...delivered, lastDelivery: { at: at('2026-11-13T01:00:00Z'), kind: 'update' } }))!.detail).toBe('已更新');
   });
   it('重新打开期间客户仍看到已交付', () => {
     expect(taskView(input({ ...delivered, reopenedAt: at('2026-11-12T00:00:00Z') }))!.key).toBe('delivered');
@@ -101,6 +101,14 @@ describe('客户端', () => {
     const m = taskView(input({ ...locked, viewer: member }))!;
     expect(m).toMatchObject({ key: 'delivered_locked', label: '已编制好 · 暂不能下载', needsAction: false });
     expect(`${m.label}${m.nextStep}${m.detail}`).not.toMatch(/次数|续约/);
+    expect(m.detail).toBe('需要贵组织管理员处理，请联系管理员');
+  });
+  it('等次数：传了管理员称呼，普通成员提示联系这位管理员（11 页 C01·S02）', () => {
+    const locked = { ...delivered, chargeStatus: 'awaiting_credits' as const };
+    const m = taskView(input({ ...locked, viewer: { ...member, adminName: '林管理员' } }))!;
+    expect(m.detail).toBe('需要贵组织管理员处理，请联系林管理员');
+    // 管理员自己看到的不受影响
+    expect(taskView(input({ ...locked, viewer: { ...customer, adminName: '林管理员' } }))!.detail).toBe('三份文档都在，续约后自动放开，算 1 次');
   });
   it('旧流程：交付了显示已交付，没交付的只读并指向客服', () => {
     expect(taskView(input({ ...delivered, flow: 'legacy' }))!.key).toBe('delivered');
@@ -147,13 +155,15 @@ describe('专家端', () => {
     const again = taskView(input({ ...delivered, reopenedAt: at('2026-11-12T00:00:00Z'), lastDelivery: { at: at('2026-11-12T05:00:00Z'), kind: 'update' }, viewer: expert }))!;
     expect(again).toMatchObject({ key: 'delivered', detail: '昨天再次交付' });
   });
-  it('旧流程按已有字段：没快照待核对、有快照编制中、交付了已交付', () => {
+  it('旧流程没交付：标签照常，只读，第二行说明按原来方式办理；交付了照常', () => {
     const l = { ...submitted, flow: 'legacy' as const, viewer: expert };
-    expect(taskView(input(l))!.key).toBe('to_check');
-    expect(taskView(input({ ...l, snapshotAt: now }))!.key).toBe('working');
-    expect(taskView(input({ ...l, ...delivered, flow: 'legacy', viewer: expert }))!.key).toBe('delivered');
+    const legacyLine = '这个任务按原来的方式办理，现在只能查看';
+    expect(taskView(input(l))!).toMatchObject({ key: 'legacy_readonly', label: '待核对资料', stage: 0, tone: 'progress', detail: legacyLine, readOnly: true, needsAction: false });
+    expect(taskView(input({ ...l, snapshotAt: now }))!).toMatchObject({ key: 'legacy_readonly', label: '编制中', stage: 1, readOnly: true });
     // 旧流程没有缺项清单这一步
-    expect(taskView(input({ ...l, snapshotAt: now, awaitingCustomerSince: now }))!.key).toBe('working');
+    expect(taskView(input({ ...l, snapshotAt: now, awaitingCustomerSince: now }))!.label).toBe('编制中');
+    expect(taskView(input({ ...l, ...delivered, flow: 'legacy', viewer: expert }))!).toMatchObject({ key: 'delivered', readOnly: true });
+    expect(taskView(input({ ...l, ...delivered, flow: 'legacy', reopenedAt: at('2026-11-13T01:00:00Z'), viewer: expert }))!).toMatchObject({ key: 'reopened', readOnly: false });
   });
 });
 
@@ -163,7 +173,12 @@ describe('运营端', () => {
     expect(taskView(input({ tableUploaded: true, missingCount: 4, viewer: operator }))!.detail).toBe('表格已上传，还差 4 项必填');
     expect(taskView(input({ tableUploaded: true, viewer: operator }))!.detail).toBe('必填都齐了，客户还没提交');
     expect(taskView(input({ tableUploaded: true, withdrawnBefore: true, viewer: operator }))!.detail).toBe('客户撤回了，改好后再提交');
-    expect(taskView(input({ flow: 'legacy', viewer: operator }))!.detail).toBe('客户还没提交');
+  });
+  it('旧流程没交付：运营端也只读，第二行说明按原来方式办理，不进待处理', () => {
+    const legacyLine = '这个任务按原来的方式办理，现在只能查看';
+    expect(taskView(input({ flow: 'legacy', viewer: operator }))!).toMatchObject({ key: 'legacy_readonly', label: '资料准备', detail: legacyLine, readOnly: true, needsAction: false });
+    expect(taskView(input({ ...submitted, flow: 'legacy', assignedExpertId: null, viewer: operator }))!).toMatchObject({ key: 'legacy_readonly', label: '待分配专家', stage: 1, tone: 'progress', readOnly: true, needsAction: false });
+    expect(taskView(input({ ...submitted, ...delivered, flow: 'legacy', viewer: operator }))!).toMatchObject({ key: 'delivered', tone: 'done' });
   });
   it('待分配专家', () => {
     expect(taskView(input({ ...submitted, assignedExpertId: null, viewer: operator }))!).toMatchObject({ key: 'to_assign', label: '待分配专家', tone: 'action', detail: '昨天 14:20 提交', stage: 1, needsAction: true });

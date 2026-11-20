@@ -368,7 +368,7 @@ function ContractCard({ org }: { org: OperatorOrgDetail }) {
   };
   const rows: [string, ReactNode][] = [
     ['合同编号', org.contract?.number ?? '—'],
-    ['服务范围', org.contract ? serviceScopeLabel(org.contract.scopeKind, org.contract.scopeEnterprises) : '—'],
+    ['服务范围', org.contract?.scopeKind ? serviceScopeLabel(org.contract.scopeKind, org.contract.scopeEnterprises) : '—'],
     [
       '合同有效期',
       org.contractStartsAt && org.contractEndsAt ? `${dotted(org.contractStartsAt)} – ${dotted(org.contractEndsAt)}` : '—',

@@ -304,7 +304,9 @@ export const taskIntakes = pgTable('task_intakes', {
   taskId: uuid('task_id')
     .primaryKey()
     .references(() => tasks.id, { onDelete: 'cascade' }),
-  // 当前这份资料表格；还没上传为空。历次上传都在 task_intake_files 里
+  // 当前这份资料表格；还没上传为空。它和下面的 parse_result、required_check 是一组，
+  // 表示「当前这份资料表格和它的读取结果」。task_intake_files 是上传记录（也存总平面图、疏散图、其他图纸照片）；
+  // 上传时两处在同一事务里写，读当前表格以这里为准
   dataSheetFileId: uuid('data_sheet_file_id').references(() => files.id),
   // 表格里读到的模板版本（「填写说明」B2），读不到为空
   templateVersion: text('template_version'),
@@ -995,13 +997,16 @@ export const creditEntries = pgTable(
     delta: integer('delta').notNull(),
     // 赠送时的活动名称（「开通赠送」「老客户续约活动」）
     campaign: text('campaign'),
-    // 这些次数跟哪份合同一起到期
-    contractId: uuid('contract_id').references(() => organizationContracts.id),
+    // 每一行都挂在合同上：赠送、加购、补偿跟这份合同一起到期；交付扣减记交付当天有效的那份合同
+    contractId: uuid('contract_id')
+      .notNull()
+      .references(() => organizationContracts.id),
     // 交付扣减：哪个任务、哪一次交付
     taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
     deliveryId: uuid('delivery_id').references(() => deliveries.id, { onDelete: 'set null' }),
-    // 交付扣减扣的是赠送还是购买；其他类型为空（池子由类型决定）
-    pool: creditPool('pool'),
+    // 记进哪一池：赠送、补偿 → 赠送池；合同购买、加购 → 购买池；交付扣减按实际扣的那一池（先赠送后购买）。
+    // 类型和池的对应写在共享代码 CREDIT_ENTRY_POOL 里，数据库不按类型约束
+    pool: creditPool('pool').notNull(),
     reason: text('reason'),
     // 登记人；交付扣减是交付的专家
     createdBy: uuid('created_by')
@@ -1015,6 +1020,9 @@ export const creditEntries = pgTable(
     uniqueIndex('credit_entries_one_deduction_per_task')
       .on(t.taskId)
       .where(sql`${t.type} = 'delivery_deduction'`),
+    // 不记 0 次；交付扣减每次就是 -1
+    check('credit_entries_delta_nonzero', sql`${t.delta} <> 0`),
+    check('credit_entries_deduction_one', sql`${t.type} <> 'delivery_deduction' or ${t.delta} = -1`),
   ],
 );
 
@@ -1024,14 +1032,16 @@ export const expertAvatar = pgEnum('expert_avatar', EXPERT_AVATARS);
 export const expertReviewStatus = pgEnum('expert_review_status', EXPERT_REVIEW_STATUSES);
 
 // 每位专家一行。还没有这一行的专家按「接单中」算（老专家不用先填资料）。
+// 没有资料行的专家点「暂停接单」时建一行，只写 accepting_orders，其他字段留空。
+// 审核状态为空 = 耕云内部建的专家账号、没走入驻审核：按可派算，客户选不到。
 // 头像从 8 个系统头像里选，不上传照片。改资质证书要重新审核，其他改动保存后直接生效
 export const expertProfiles = pgTable('expert_profiles', {
   userId: uuid('user_id')
     .primaryKey()
     .references(() => users.id, { onDelete: 'cascade' }),
   avatar: expertAvatar('avatar'),
-  // 客户看到的称呼，如「周工」「李老师」
-  displayName: text('display_name').notNull(),
+  // 客户看到的称呼，如「周工」「李老师」；只为暂停接单建的行留空
+  displayName: text('display_name'),
   yearsOfExperience: integer('years_of_experience'),
   // 擅长行业，和企业行业共用一套分类（行业代码）
   industries: jsonb('industries').$type<string[]>().notNull().default([]),
@@ -1043,7 +1053,8 @@ export const expertProfiles = pgTable('expert_profiles', {
   certificates: jsonb('certificates').$type<ExpertCertificate[]>().notNull().default([]),
   // 最早到期的那本证书的有效期，到期自动下架用
   certificateExpiresOn: date('certificate_expires_on', { mode: 'string' }),
-  reviewStatus: expertReviewStatus('review_status').notNull().default('pending'),
+  // 入驻审核：自己注册的专家一注册就记待审核；为空 = 耕云内部建的账号，没走入驻审核
+  reviewStatus: expertReviewStatus('review_status'),
   reviewedBy: uuid('reviewed_by').references(() => users.id),
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   // 接单中；暂停接单的专家不出现在客户可选列表里

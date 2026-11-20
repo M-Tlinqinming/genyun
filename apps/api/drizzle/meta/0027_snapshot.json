@@ -1,5 +1,5 @@
 {
-  "id": "4c416836-e09a-4ea5-866a-ea20c390498c",
+  "id": "5ee7c46b-e9a2-4345-a216-7cd74a0a5e24",
   "prevId": "dce5ad28-c1e3-4c21-aae2-dd7fd8ac0bd8",
   "version": "7",
   "dialect": "postgresql",
@@ -502,7 +502,7 @@
           "name": "contract_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "task_id": {
           "name": "task_id",
@@ -521,7 +521,7 @@
           "type": "credit_pool",
           "typeSchema": "public",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "reason": {
           "name": "reason",
@@ -652,7 +652,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "credit_entries_delta_nonzero": {
+          "name": "credit_entries_delta_nonzero",
+          "value": "\"credit_entries\".\"delta\" <> 0"
+        },
+        "credit_entries_deduction_one": {
+          "name": "credit_entries_deduction_one",
+          "value": "\"credit_entries\".\"type\" <> 'delivery_deduction' or \"credit_entries\".\"delta\" = -1"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.deliveries": {
@@ -2092,7 +2101,7 @@
           "name": "display_name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "years_of_experience": {
           "name": "years_of_experience",
@@ -2143,8 +2152,7 @@
           "type": "expert_review_status",
           "typeSchema": "public",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
+          "notNull": false
         },
         "reviewed_by": {
           "name": "reviewed_by",

@@ -12,19 +12,21 @@ CREATE TABLE "credit_entries" (
 	"type" "credit_entry_type" NOT NULL,
 	"delta" integer NOT NULL,
 	"campaign" text,
-	"contract_id" uuid,
+	"contract_id" uuid NOT NULL,
 	"task_id" uuid,
 	"delivery_id" uuid,
-	"pool" "credit_pool",
+	"pool" "credit_pool" NOT NULL,
 	"reason" text,
 	"created_by" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "credit_entries_delta_nonzero" CHECK ("credit_entries"."delta" <> 0),
+	CONSTRAINT "credit_entries_deduction_one" CHECK ("credit_entries"."type" <> 'delivery_deduction' or "credit_entries"."delta" = -1)
 );
 --> statement-breakpoint
 CREATE TABLE "expert_profiles" (
 	"user_id" uuid PRIMARY KEY NOT NULL,
 	"avatar" "expert_avatar",
-	"display_name" text NOT NULL,
+	"display_name" text,
 	"years_of_experience" integer,
 	"industries" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"intro" text,
@@ -32,7 +34,7 @@ CREATE TABLE "expert_profiles" (
 	"real_name" text,
 	"certificates" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"certificate_expires_on" date,
-	"review_status" "expert_review_status" DEFAULT 'pending' NOT NULL,
+	"review_status" "expert_review_status",
 	"reviewed_by" uuid,
 	"reviewed_at" timestamp with time zone,
 	"accepting_orders" boolean DEFAULT true NOT NULL,

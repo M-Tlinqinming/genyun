@@ -23,7 +23,11 @@ export const CREDIT_ENTRY_TYPE_LABELS: Record<CreditEntryType, string> = {
 export const CREDIT_POOLS = ['gift', 'purchase'] as const;
 export type CreditPool = (typeof CREDIT_POOLS)[number];
 
-/** 各类型记进哪一池；补偿不算收入，记进赠送池（待业务确认） */
+/**
+ * 各类型记进哪一池（K14、K16 写台账时用；数据库只要求每行都有池，不按类型约束）：
+ * 赠送、补偿 → 赠送池；合同购买、加购 → 购买池；交付扣减按实际扣的那一池记（先赠送后购买）。
+ * 每一行都挂在合同上：赠送、加购、补偿跟着那份合同一起到期；扣减记交付当天有效的合同。
+ */
 export const CREDIT_ENTRY_POOL: Record<Exclude<CreditEntryType, 'delivery_deduction'>, CreditPool> = {
   contract_purchase: 'purchase',
   top_up: 'purchase',

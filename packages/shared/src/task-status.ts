@@ -16,6 +16,8 @@ export interface TaskViewer {
   side: TaskViewSide;
   /** 客户端：是不是组织管理员（只有管理员看得到次数） */
   isCustomerAdmin?: boolean;
+  /** 客户端：本组织管理员的称呼（如「林管理员」），普通成员被锁时提示联系谁；不传就写「管理员」 */
+  adminName?: string;
   /** 专家端：当前专家的用户 ID；只看得到分给自己的任务 */
   userId?: string;
 }
@@ -127,9 +129,9 @@ export function taskView(input: TaskViewInput): TaskView | null {
     case 'customer':
       return customerView(input);
     case 'expert':
-      return expertView(input);
+      return legacyReadonly(input, expertView(input));
     case 'operator':
-      return operatorView(input);
+      return legacyReadonly(input, operatorView(input));
   }
 }
 
@@ -148,22 +150,20 @@ function customerView(i: TaskViewInput): TaskView {
         label: isAdmin ? '已编制好 · 续约后可下载' : '已编制好 · 暂不能下载',
         tone: 'action',
         nextStep: isAdmin ? '编制次数已经用完，续约后就能下载' : '需要组织管理员处理后才能下载',
-        detail: isAdmin ? '三份文档都在，续约后自动放开，算 1 次' : '需要贵组织管理员处理，请联系管理员',
+        detail: isAdmin ? '三份文档都在，续约后自动放开，算 1 次' : `需要贵组织管理员处理，请联系${i.viewer.adminName || '管理员'}`,
         stageLabel: '已交付',
         needsAction: isAdmin,
         readOnly: true,
       });
     }
-    // 重新打开期间客户照常看到已交付，仍能下载上一次交付的那一版
+    // 重新打开期间客户照常看到已交付，仍能下载上一次交付的那一版。
+    // 11 页 C04：第二行不带日期（日期在「更新」列），首次交付写「专家已交付」，再次交付写「已更新」
     return view('customer', {
       key: 'delivered',
       label: '已交付',
       tone: 'done',
       nextStep: '成果已交付，三份 Word 可以下载',
-      detail:
-        i.lastDelivery.kind === 'update'
-          ? `${formatTaskDay(i.lastDelivery.at, i.now)}已更新`
-          : `${formatTaskDay(i.lastDelivery.at, i.now)}专家已交付`,
+      detail: i.lastDelivery.kind === 'update' ? '已更新' : '专家已交付',
       stageLabel: '已交付',
       needsAction: false,
       readOnly: true,
@@ -177,7 +177,7 @@ function customerView(i: TaskViewInput): TaskView {
       key: 'legacy_readonly',
       label: submitted ? '专家编制' : '准备资料',
       tone: 'progress',
-      nextStep: '这个任务按原来的方式办理，现在只能查看',
+      nextStep: LEGACY_LINE,
       detail: '有要改的地方，请联系耕云客服',
       stageLabel: submitted ? '专家编制' : '准备资料',
       needsAction: false,
@@ -221,6 +221,15 @@ function customerView(i: TaskViewInput): TaskView {
     nextStep: '必填都齐了，可以提交给专家',
     detail: i.withdrawnBefore ? '已撤回，这次提交后不能再撤回' : '资料表格已上传',
   });
+}
+
+const LEGACY_LINE = '这个任务按原来的方式办理，现在只能查看';
+
+// 旧流程、还没交付的任务：专家、运营端也只读显示（DEV-PLAN 第七节第 10 条），
+// 标签和分组照常，第二行换成旧流程说明，不进「待我处理」。已交付的照常显示
+function legacyReadonly(i: TaskViewInput, v: TaskView | null): TaskView | null {
+  if (!v || i.flow !== 'legacy' || i.lastDelivery) return v;
+  return { ...v, key: 'legacy_readonly', tone: 'progress', detail: LEGACY_LINE, needsAction: false, readOnly: true };
 }
 
 function expertView(i: TaskViewInput): TaskView | null {
@@ -334,8 +343,7 @@ function operatorView(i: TaskViewInput): TaskView {
 
   if (i.status === 'preparing') {
     let detail: string;
-    if (i.flow === 'legacy') detail = '客户还没提交';
-    else if (i.withdrawnBefore) detail = '客户撤回了，改好后再提交';
+    if (i.withdrawnBefore) detail = '客户撤回了，改好后再提交';
     else if (!i.tableUploaded) detail = '还没上传资料表格';
     else if (i.missingCount > 0) detail = `表格已上传，还差 ${i.missingCount} 项必填`;
     else detail = '必填都齐了，客户还没提交';

@@ -4,7 +4,7 @@
 // 编制任务按企业（这家企业已有应急预案任务就不再建）、合同按组织（已登记过合同就不再登记）、
 // 次数台账按合同 + 类型 + 活动名称、专家资料按专家账号。
 import { createHash, randomUUID } from 'node:crypto';
-import { type ChecklistItemKey, type ChecklistState, chinaToday, formatTaskNumber } from '@genyun/shared';
+import { CREDIT_ENTRY_POOL, type ChecklistItemKey, type ChecklistState, chinaToday, formatTaskNumber } from '@genyun/shared';
 import { feiyuBasicInfo, feiyuChecklist } from '@genyun/shared/fixtures/feiyu';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -97,7 +97,7 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
   await ensureCredit(db, report, { orgId: feiyuOrgId, contractNumber: 'GY-DEMO-2026-02', type: 'contract_purchase', delta: 3, by: operator });
 
   // 专家资料：两位演示专家都已上架、接单中（客户选专家时看到的卡片）
-  await ensureExpertProfile(db, report, uid[DEMO_EMAILS.expert]!, {
+  await ensureExpertProfile(db, report, uid[DEMO_EMAILS.expert]!, operator, {
     avatar: 'gy3',
     displayName: '周工',
     yearsOfExperience: 12,
@@ -108,7 +108,7 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
     certificates: [{ name: '注册安全工程师', number: 'DEMO-0000-0001', expiresOn: '2028-06', fileId: null }],
     certificateExpiresOn: '2028-06-30',
   });
-  await ensureExpertProfile(db, report, uid[DEMO_EMAILS.expert2]!, {
+  await ensureExpertProfile(db, report, uid[DEMO_EMAILS.expert2]!, operator, {
     avatar: 'gy5',
     displayName: '吴工',
     yearsOfExperience: 8,
@@ -317,6 +317,7 @@ async function ensureCredit(
     delta: c.delta,
     campaign: c.campaign ?? null,
     contractId: contract.id,
+    pool: CREDIT_ENTRY_POOL[c.type],
     reason: '演示数据',
     createdBy: c.by,
   });
@@ -327,14 +328,15 @@ async function ensureExpertProfile(
   db: Database,
   report: DemoSeedReport,
   userId: string,
-  p: Omit<typeof expertProfiles.$inferInsert, 'userId' | 'reviewStatus' | 'acceptingOrders'>,
+  reviewedBy: string,
+  p: Omit<typeof expertProfiles.$inferInsert, 'userId' | 'reviewStatus' | 'reviewedBy' | 'reviewedAt' | 'acceptingOrders'>,
 ) {
   const [existing] = await db.select({ userId: expertProfiles.userId }).from(expertProfiles).where(eq(expertProfiles.userId, userId)).limit(1);
   if (existing) {
     report.skipped.push(`专家资料「${p.displayName}」`);
     return;
   }
-  await db.insert(expertProfiles).values({ ...p, userId, reviewStatus: 'approved', reviewedAt: new Date(), acceptingOrders: true });
+  await db.insert(expertProfiles).values({ ...p, userId, reviewStatus: 'approved', reviewedBy, reviewedAt: new Date(), acceptingOrders: true });
   report.created.push(`专家资料「${p.displayName}」`);
 }
 
