@@ -1,10 +1,11 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { checklistItems, enterprises, memberships, organizations, tasks, users } from '../db/schema.ts';
+import { checklistItems, enterprises, expertProfiles, memberships, organizations, tasks, users } from '../db/schema.ts';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -132,7 +133,7 @@ describe('运营任务中心', () => {
 
     const zhou = await as('zhou@test.cn');
     const list = await zhou.get('/api/expert/tasks');
-    expect((list.body.tasks as { id: string }[]).map((t) => t.id)).toContain(task.fresh);
+    expect((list.body.rows as { id: string }[]).map((t) => t.id)).toContain(task.fresh);
     expect((await zhou.get(`/api/tasks/${task.fresh}`)).status).toBe(200);
     const bell = await zhou.get('/api/notifications');
     expect(bell.body.items[0]).toMatchObject({ title: '分配给你的新任务', link: `/expert/tasks/${task.fresh}` });
@@ -158,7 +159,7 @@ describe('运营任务中心', () => {
 
     const wu = await as('wu@test.cn');
     expect((await wu.get(`/api/tasks/${task.fresh}`)).status).toBe(200);
-    expect(((await wu.get('/api/expert/tasks')).body.tasks as { id: string }[]).map((t) => t.id)).toContain(task.fresh);
+    expect(((await wu.get('/api/expert/tasks')).body.rows as { id: string }[]).map((t) => t.id)).toContain(task.fresh);
     expect((await wu.get('/api/notifications')).body.items[0]).toMatchObject({ title: '改派给你的任务' });
 
     const zhou = await as('zhou@test.cn');
@@ -166,7 +167,7 @@ describe('运营任务中心', () => {
     const old = await zhou.get(`/api/tasks/${task.fresh}`);
     expect(old.status).toBe(404);
     expect(old.body.message).toBe('这个任务已改派给吴工');
-    expect(((await zhou.get('/api/expert/tasks')).body.tasks as { id: string }[]).map((t) => t.id)).not.toContain(task.fresh);
+    expect(((await zhou.get('/api/expert/tasks')).body.rows as { id: string }[]).map((t) => t.id)).not.toContain(task.fresh);
     const bell = (await zhou.get('/api/notifications')).body.items[0];
     expect(bell).toMatchObject({ title: '任务已改派', link: `/expert/tasks/${task.fresh}` });
     expect(bell.body).toMatch(/^改派理由：请假 /);
@@ -262,5 +263,46 @@ describe('运营任务中心', () => {
     expect((await ops.get('/api/operator/tasks/00000000-0000-4000-8000-000000000000')).status).toBe(404);
     // 越权请求没有改动任何东西
     expect((await ops.get(`/api/operator/tasks/${task.busy}`)).body.assignedExpertName).toBe('吴工');
+  });
+});
+
+describe('暂停接单的专家', () => {
+  it('名单里标出暂停的，审核状态不能派的不列；派给暂停的被拒，派给正常专家照常成功', async () => {
+    const { db } = handle;
+    const passwordHash = await hashPassword(PASSWORD);
+    const [internal] = await db.select().from(organizations).where(eq(organizations.kind, 'internal'));
+    const add = async (email: string, name: string, profile: { reviewStatus: 'approved' | 'pending' | 'delisted' | null; acceptingOrders: boolean }) => {
+      const [u] = await db.insert(users).values({ email, name, passwordHash }).returning();
+      await db.insert(memberships).values({ userId: u!.id, orgId: internal!.id, role: 'expert' });
+      await db.insert(expertProfiles).values({ userId: u!.id, ...profile });
+      uid[email] = u!.id;
+    };
+    await add('wang@test.cn', '王工', { reviewStatus: 'approved', acceptingOrders: false });
+    await add('li@test.cn', '李工', { reviewStatus: 'pending', acceptingOrders: true });
+    await add('qian@test.cn', '钱工', { reviewStatus: 'delisted', acceptingOrders: true });
+    await add('sun@test.cn', '孙工', { reviewStatus: null, acceptingOrders: true });
+
+    const ops = await as('ops@test.cn');
+    const res = await ops.get(`/api/operator/tasks/${task.busy}/experts`);
+    expect(res.status).toBe(200);
+    const list = res.body as { name: string; paused: boolean }[];
+    expect(list.map((e) => e.name).sort()).toEqual(['吴工', '周工', '孙工', '王工'].sort());
+    expect(list.find((e) => e.name === '王工')!.paused).toBe(true);
+    expect(list.filter((e) => e.paused).map((e) => e.name)).toEqual(['王工']);
+
+    const send = (expertId: string) => ops.post(`/api/operator/tasks/${task.busy}/assign`).send({ expertId, currentExpertId: uid['wu@test.cn'] });
+    const paused = await send(uid['wang@test.cn']!);
+    expect(paused.status).toBe(409);
+    expect(paused.body.message).toBe('王工已暂停接单，不能分配');
+    // 不在名单里的（待审核）直接派也不行
+    const pending = await send(uid['li@test.cn']!);
+    expect(pending.status).toBe(409);
+    expect(pending.body.message).toBe('这位专家现在不能接任务');
+    expect((await ops.get(`/api/operator/tasks/${task.busy}`)).body.assignedExpertName).toBe('吴工');
+
+    // 内部建的专家资料（审核状态为空）照常能派
+    const ok = await send(uid['sun@test.cn']!);
+    expect(ok.status).toBe(201);
+    expect(ok.body.assignedExpertName).toBe('孙工');
   });
 });
