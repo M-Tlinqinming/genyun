@@ -38,7 +38,7 @@ export function WorkbenchPage() {
         eyebrow={`客户工作台 · ${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric' }).format(now)}`}
         title={`${greeting(now)}，${session.data?.name ?? ''}`}
         description="先处理需要您回应的事项，再查看正在办理的任务。"
-        extra={<CreateTaskButton orgId={orgId} canCreate={contract.canCreate} />}
+        extra={<CreateTaskButton canCreate={contract.canCreate} explain="inline" />}
       />
 
       <ContractNotice state={contract.state} daysLeft={contract.daysLeft} endsAt={contract.endsAt} />
@@ -64,7 +64,7 @@ export function WorkbenchPage() {
             </div>
             {mine.length === 0 ? (
               <div style={{ padding: '24px 28px 28px', borderTop: `1px solid ${gy.split}`, fontSize: 14, color: gy.secondary }}>
-                暂时没有需要您处理的事项。有新任务时，点右上角「创建编制任务」。
+                暂时没有需要您处理的事项。有新任务时，点右上角「新建任务」。
               </div>
             ) : (
               mine.slice(0, MAX_TODO).map((t, i) => <TodoRow key={t.id} task={t} primary={i === 0} now={now} />)

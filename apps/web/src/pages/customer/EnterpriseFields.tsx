@@ -57,7 +57,8 @@ export function enterpriseRequiredMark(label: ReactNode, { required }: { require
 // 信用代码重复时把提示放到字段下方；其他错误返回给调用方弹出
 export function showEnterpriseError(form: FormInstance, err: unknown): string | null {
   if (err instanceof ApiError && err.status === 409) {
-    form.setFields([{ name: 'socialCreditCode', errors: [err.message] }]);
+    // 重名报在企业名称上，统一社会信用代码重复报在代码上
+    form.setFields([{ name: err.body?.existingEnterprise ? 'name' : 'socialCreditCode', errors: [err.message] }]);
     return null;
   }
   return err instanceof Error ? err.message : '保存失败，请稍后重试';

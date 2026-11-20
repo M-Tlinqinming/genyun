@@ -19,6 +19,7 @@ import { gy } from '../../theme/tokens';
 import { EnterpriseDocumentsTab } from './EnterpriseDocumentsTab';
 import { EnterpriseFields, enterpriseRequiredMark, showEnterpriseError } from './EnterpriseFields';
 import { Loading, panel } from '../../components/ui';
+import { CreateTaskButton, useContract } from './tasks/shared';
 
 const card = panel;
 
@@ -127,6 +128,7 @@ function Overview({
   basic: BasicStepView | undefined;
   documentCount: number | undefined;
 }) {
+  const contract = useContract(e.orgId);
   const current = open[0];
   const b = basic?.basic;
   const sourceOf = (field: string, value: unknown) => {
@@ -219,9 +221,9 @@ function Overview({
           >
             <h2 style={{ ...cardTitle, margin: 0 }}>新的编制需求？</h2>
             <Typography.Text type="secondary">同一企业已有在办任务时，建议先完成当前任务。</Typography.Text>
-            <Link to={`/customer/enterprises/${e.id}/tasks/new`} style={{ alignSelf: 'flex-start' }}>
-              <Button>创建编制任务</Button>
-            </Link>
+            <span style={{ alignSelf: 'flex-start' }}>
+              <CreateTaskButton canCreate={contract.canCreate} enterpriseId={e.id} size="middle" />
+            </span>
           </section>
         </div>
       </div>
