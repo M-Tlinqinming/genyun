@@ -126,8 +126,9 @@ export function ConclusionTab({
   const who = editable ? reviewer : (last?.byName ?? '—');
   // 交付没成功、结果没确认、正在交付：底栏上方的提示条，「定稿并交付」禁用
   const blocked = editable && (status === 'failed' || status === 'unknown' || status === 'publishing' || status === 'sending');
-  // 后台正在交付时文稿锁住（editable 为 false），刷新或换人打开也要看到「正在交付」
-  const inFlight = status === 'publishing' || status === 'sending';
+  // 后台正在交付时文稿锁住（editable 为 false），刷新或换人打开也要看到「正在交付」；
+  // 回复丢了但后台其实已交付时文稿也锁住了，「查询交付结果」仍要留着，查到后去已交付页
+  const inFlight = status === 'publishing' || status === 'sending' || status === 'unknown';
   const notice: { tone: 'error' | 'warning' | 'progress'; icon: ReactNode; text: string; action?: ReactNode } | null = !editable && !inFlight
     ? null
     : status === 'failed'
