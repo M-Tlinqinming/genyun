@@ -126,7 +126,9 @@ export function ConclusionTab({
   const who = editable ? reviewer : (last?.byName ?? '—');
   // 交付没成功、结果没确认、正在交付：底栏上方的提示条，「定稿并交付」禁用
   const blocked = editable && (status === 'failed' || status === 'unknown' || status === 'publishing' || status === 'sending');
-  const notice: { tone: 'error' | 'warning' | 'progress'; icon: ReactNode; text: string; action?: ReactNode } | null = !editable
+  // 后台正在交付时文稿锁住（editable 为 false），刷新或换人打开也要看到「正在交付」
+  const inFlight = status === 'publishing' || status === 'sending';
+  const notice: { tone: 'error' | 'warning' | 'progress'; icon: ReactNode; text: string; action?: ReactNode } | null = !editable && !inFlight
     ? null
     : status === 'failed'
       ? {
@@ -169,14 +171,14 @@ export function ConclusionTab({
     <span style={{ ...text14, color: gy.error }}>审核结论还没写 · 写好后再点「定稿并交付」</span>
   ) : (
     <span style={{ ...text14, color: gy.tertiary }}>
-      审核人：{who} · {editable ? reasonText : '点「定稿并交付」后，客户才能下载'}
+      审核人：{who} · {editable || inFlight ? reasonText : '点「定稿并交付」后，客户才能下载'}
     </span>
   );
 
   return (
     <>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: gy.canvas }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '48px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ maxWidth: 1144, margin: '0 auto', padding: '48px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <h2 tabIndex={-1} data-page-title style={{ margin: 0, fontSize: 24, lineHeight: '32px', fontWeight: 600, color: gy.text }}>
               三份都已核对，写下审核结论
