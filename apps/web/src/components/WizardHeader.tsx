@@ -11,6 +11,8 @@ export function WizardHeader({
   current = 0,
   extra,
   sideWidth = 360,
+  stageNotes,
+  stageLinks,
 }: {
   /** 左边第一行：在做什么，如「编制应急预案」「资料核对」 */
   title?: ReactNode;
@@ -24,6 +26,10 @@ export function WizardHeader({
   extra: ReactNode;
   /** 左右两块的宽度，默认 360 */
   sideWidth?: number;
+  /** 阶段名后面的灰字，原样传给阶段条 */
+  stageNotes?: Partial<Record<number, string>>;
+  /** 做完的阶段可以点回去，原样传给阶段条 */
+  stageLinks?: Partial<Record<number, { to: string; title: string }>>;
 }) {
   return (
     <header
@@ -55,7 +61,7 @@ export function WizardHeader({
           )}
         </div>
       </div>
-      {stages && <StageBar stages={stages} current={current} />}
+      {stages && <StageBar stages={stages} current={current} notes={stageNotes} links={stageLinks} />}
       <div style={{ flex: `0 0 ${sideWidth}px`, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 20 }}>
         {extra}
       </div>

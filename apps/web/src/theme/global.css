@@ -165,3 +165,11 @@ body {
 .gy-form-gap .ant-form-item-explain-connected {
   padding-bottom: 4px;
 }
+
+/* 向导顶栏阶段条：做完的段可以点回去，颜色不变，鼠标移上去加下划线 */
+.gy-stage-link {
+  text-decoration: none;
+}
+.gy-stage-link:hover {
+  text-decoration: underline;
+}

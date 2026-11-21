@@ -309,7 +309,18 @@ export function SidePanel({
 }
 
 /** 处理记录抽屉（E18-13）：从右边滑入、关时滑出，盖在右栏上面（不盖文稿页签栏），按天分组 */
-export function HistoryDrawer({ taskId, open, onClose }: { taskId: string; open: boolean; onClose: () => void }) {
+export function HistoryDrawer({
+  taskId,
+  open,
+  onClose,
+  top = DOC_BAR_HEIGHT,
+}: {
+  taskId: string;
+  open: boolean;
+  onClose: () => void;
+  /** 离主体顶边多远；核对定稿要让开文稿页签栏，生成页贴顶 */
+  top?: number;
+}) {
   const reduce = useReducedMotion();
   return (
     <AnimatePresence>
@@ -325,7 +336,7 @@ export function HistoryDrawer({ taskId, open, onClose }: { taskId: string; open:
           onKeyDown={(e) => e.key === 'Escape' && onClose()}
           style={{
             position: 'absolute',
-            top: DOC_BAR_HEIGHT,
+            top,
             right: 0,
             bottom: 0,
             width: 480,
