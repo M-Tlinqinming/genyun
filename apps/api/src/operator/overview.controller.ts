@@ -239,7 +239,7 @@ export class OperatorOverviewController {
         note: `有 ${c.awaiting} 份成果已编制好，等次数到账后放开；客户加购或续约后在这里登记`,
         since: (at ? new Date(at) : now).toISOString(),
         action: '调整次数',
-        link: `/operator/organizations/${o.id}`,
+        link: `/operator/organizations/${o.id}?adjust=1`,
       });
     }
     // 等得最久的在前

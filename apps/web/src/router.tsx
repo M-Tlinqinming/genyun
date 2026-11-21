@@ -28,6 +28,7 @@ import { KnowledgePage } from './pages/operator/knowledge/KnowledgePage';
 import { OperatorOverviewPage } from './pages/operator/OperatorOverviewPage';
 import { OperatorTaskPage } from './pages/operator/OperatorTaskPage';
 import { MailOutboxPage } from './pages/operator/MailOutboxPage';
+import { GiftCampaignsPage } from './pages/operator/GiftCampaignsPage';
 import { OrganizationDetailPage } from './pages/operator/OrganizationDetailPage';
 import { OperatorTaskCenterPage } from './pages/operator/OperatorTaskCenterPage';
 import { OrganizationListPage } from './pages/operator/OrganizationListPage';
@@ -83,6 +84,8 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
   '/operator/knowledge': [{ index: true, element: <KnowledgePage /> }],
   '/operator/organizations': [
     { index: true, element: <OrganizationListPage /> },
+    // 赠送活动统计要排在 :orgId 前面
+    { path: 'gift-campaigns', element: <GiftCampaignsPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },
   ],
   // 任务中心（列表、分派，?task= 打开某个任务）；任务正文只读查看在 /operator/tasks/<任务>

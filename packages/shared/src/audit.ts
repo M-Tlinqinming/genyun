@@ -30,6 +30,8 @@ export const AUDIT_ACTIONS = [
   'expert_pause',
   'expert_resume',
   'credits_adjust',
+  'org_open',
+  'contract_renew',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -61,6 +63,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   expert_pause: '暂停接单',
   expert_resume: '恢复接单',
   credits_adjust: '调整次数',
+  org_open: '开通客户组织',
+  contract_renew: '登记续约',
 };
 
 export const AUDIT_PAGE_SIZE = 50;

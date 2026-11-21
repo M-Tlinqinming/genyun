@@ -5,6 +5,10 @@ test.describe.configure({ mode: 'serial' });
 
 const pdf = { name: '华东安评-年度服务合同-盖章版.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') };
 const ORG = '华东安评服务有限公司';
+// 开通的合同有效期按北京时间的今年算，不写死年份：今年 1 月 1 日到明年 12 月 31 日
+const YEAR = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date()).slice(0, 4));
+const OPEN_STARTS = `${YEAR}.01.01`;
+const OPEN_ENDS = `${YEAR + 1}.12.31`;
 
 let page: Page;
 
@@ -23,13 +27,35 @@ test.afterAll(async () => {
 
 const row = (name: string) => page.getByRole('row').filter({ hasText: name });
 
+// 省市区下拉：输入名称搜索后点选
+async function pickRegion(scope: ReturnType<Page['getByRole']>, label: '省' | '市' | '区县', name: string) {
+  const box = scope.getByRole('combobox', { name: label });
+  await box.click();
+  await box.fill(name);
+  // 只在这个下拉自己的弹层里点：打开时 combobox 的 aria-controls 指向弹层里的列表。
+  // 省和市都叫「上海市」，按「看得见的弹层里最后一个」去找，上一个弹层还在收起时会点错地方、一直等到超时
+  const listId = await box.getAttribute('aria-controls');
+  expect(listId).toBeTruthy();
+  await page.locator(`.ant-select-dropdown:has([id="${listId}"]) .ant-select-item-option[title="${name}"]`).click();
+  // 选中后弹层收起、框里显示所选的名称，再去选下一级
+  await expect(box).not.toHaveAttribute('aria-expanded', 'true');
+  await expect(box.locator('xpath=ancestor::*[contains(concat(" ", @class, " "), " ant-select ")][1]')).toContainText(name);
+}
+
 test('列表：演示组织为服务中', async () => {
   await page.getByRole('menuitem', { name: /客户组织/ }).click();
   await expect(page.getByRole('heading', { name: '客户组织' })).toBeVisible();
   await expect(row('示例安全咨询机构')).toContainText('服务中');
   await expect(row('示例安全咨询机构')).toContainText('2026.01.01 – 2027.12.31');
-  // 飞宇：四家企业（飞宇、五金、塑胶、电子科技）、一个管理员
-  await expect(row('飞宇演示客户')).toContainText('4 / 1');
+  // 四个统计格、两个筛选、剩余次数列、底部的赠送活动统计入口
+  const stats = page.getByRole('group', { name: '按服务状态筛选' });
+  for (const label of ['服务中', '待开通', '快到期或快用完', '已到期']) await expect(stats).toContainText(label);
+  await expect(page.getByRole('combobox', { name: '所在地区' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: '服务到期' })).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: '剩余次数' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重置' })).toBeDisabled();
+  await expect(row('飞宇演示客户')).toContainText(/\d+ 次( · 快用完)?共 \d+ 次|已用完/);
+  await expect(page.getByRole('link', { name: '赠送活动统计' })).toHaveAttribute('href', '/operator/organizations/gift-campaigns');
   await page.screenshot({ path: 'out/m3-1-I02-list.png', fullPage: true });
 });
 
@@ -39,14 +65,18 @@ test('登记：新组织进入待开通', async () => {
   await dialog.getByRole('button', { name: '登记' }).click();
   await expect(dialog).toContainText('请填写组织名称');
   // 出错提示和下一个字段的标题之间至少留 8px（浏览器亚像素取整会出 7.98，门槛放宽到 7.5）
-  await expect(dialog.getByText('请填写所在地区')).toBeVisible();
+  await expect(dialog.getByText('请选择所在地区')).toBeVisible();
   const explain = await dialog.getByText('请填写组织名称').boundingBox();
   const nextLabel = await dialog.locator('label', { hasText: '所在地区' }).boundingBox();
   expect(nextLabel!.y - (explain!.y + explain!.height)).toBeGreaterThanOrEqual(7.5);
   await page.screenshot({ path: 'out/m3-1-register-errors.png' });
 
   await dialog.getByLabel('组织名称').fill(ORG);
-  await dialog.getByLabel('所在地区').fill('上海市闵行区');
+  // 省 → 市 → 区县；没选省时市、区县不能选
+  await expect(dialog.getByRole('combobox', { name: '市' })).toBeDisabled();
+  await pickRegion(dialog, '省', '上海市');
+  await pickRegion(dialog, '市', '上海市');
+  await pickRegion(dialog, '区县', '闵行区');
   await dialog.getByLabel('统一社会信用代码').fill('91310112MA1XXXXXX3');
   await dialog.getByLabel('主联系人').fill('孙经理');
   await dialog.getByLabel('手机号').fill('136 2254 1234');
@@ -57,9 +87,18 @@ test('登记：新组织进入待开通', async () => {
 
   await expect(row(ORG)).toContainText('待开通');
   await expect(row(ORG)).toContainText('136 **** 1234');
-  await page.getByRole('tab', { name: /待开通/ }).click();
+  await expect(row(ORG)).toContainText('上海市闵行区');
+  await expect(row(ORG)).toContainText('开通时登记');
+  const pendingCell = page.getByRole('button', { name: /待开通/ });
+  await pendingCell.click();
+  await expect(pendingCell).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('row')).toHaveCount(2);
-  await page.getByRole('tab', { name: /全部/ }).click();
+  await pendingCell.click();
+  // 地区筛选：只看上海
+  await page.getByRole('combobox', { name: '所在地区' }).click();
+  await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="上海市"]').click();
+  await expect(page.getByRole('row')).toHaveCount(2);
+  await page.getByRole('button', { name: '重置' }).click();
 });
 
 test('开通：缺合同原件或到账时不能开通，填齐后变为服务中', async () => {
@@ -74,15 +113,23 @@ test('开通：缺合同原件或到账时不能开通，填齐后变为服务�
 
   const openButton = dialog.getByRole('button', { name: '开通并发送邀请' });
   await expect(openButton).toBeDisabled();
-  await expect(dialog).toContainText('还差：合同编号、服务范围、已签合同原件、合同款已到账、合同有效期');
+  await expect(dialog).toContainText('还差：合同编号、合同购买次数、合同款已到账、合同有效期');
+  // 不再登记服务范围
+  await expect(dialog).not.toContainText('服务范围');
 
   await dialog.getByLabel('合同编号').fill('GY-HT-2026-018');
-  await dialog.getByLabel('年度服务包含几家企业').fill('5');
+  await dialog.getByLabel('合同购买次数').fill('10');
+  // 有赠送就要写活动名称
+  await expect(dialog.getByLabel('活动名称（有赠送时填）')).toBeDisabled();
+  await dialog.getByLabel('赠送次数（没有填 0）').fill('3');
+  await expect(dialog).toContainText('还差：活动名称、合同款已到账、合同有效期');
+  await dialog.getByLabel('活动名称（有赠送时填）').fill('新客户开通活动');
+  // 合同原件选填：先传上，下面开通时带上
   await dialog.getByLabel('选择已签合同原件').setInputFiles(pdf);
   await expect(dialog).toContainText(pdf.name);
   await dialog.getByLabel('合同有效期').click();
-  await page.getByPlaceholder('开始日').fill('2026.11.01');
-  await page.getByPlaceholder('到期日').fill('2027.10.31');
+  await page.getByPlaceholder('开始日').fill(OPEN_STARTS);
+  await page.getByPlaceholder('到期日').fill(OPEN_ENDS);
   await page.getByPlaceholder('到期日').press('Enter');
   await expect(dialog).toContainText('还差：合同款已到账');
   await expect(openButton).toBeDisabled();
@@ -95,8 +142,9 @@ test('开通：缺合同原件或到账时不能开通，填齐后变为服务�
   await expect(page.getByText('已开通，邀请已发到 sun@huadong-anping.cn')).toBeVisible();
   await expect(dialog).toBeHidden();
   await expect(row(ORG)).toContainText('服务中');
-  await expect(row(ORG)).toContainText('2026.11.01 – 2027.10.31');
-  await expect(row(ORG)).toContainText('0 / 0');
+  await expect(row(ORG)).toContainText(`${OPEN_STARTS} – ${OPEN_ENDS}`);
+  // 剩余次数：购买 10 + 赠送 3
+  await expect(row(ORG)).toContainText('13 次共 13 次');
   await page.screenshot({ path: 'out/m3-1-I02-after-open.png', fullPage: true });
 
   // 小屏不出现横向滚动条

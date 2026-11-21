@@ -65,6 +65,8 @@ export interface DemoSeedReport {
 // 两家演示客户组织都按已开通处理
 const CONTRACT = { contractStartsAt: '2026-01-01', contractEndsAt: '2027-12-31' };
 const ACTIVATED_AT = new Date('2026-01-01T00:00:00+08:00');
+// 演示组织的所在地区：只选到市（K16 三级地区；区县空着）
+const HUIZHOU = { region: '广东省惠州市', regionProvince: '广东省', regionCity: '惠州市' } as const;
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -77,13 +79,13 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
   const agencyId = await ensureOrg(db, report, {
     name: DEMO_ORGS.agency,
     kind: 'customer',
-    fill: { region: '广东省惠州市', contactName: '林管理员', contactPhone: '138 0000 6201', ...CONTRACT, activatedAt: ACTIVATED_AT },
+    fill: { ...HUIZHOU, contactName: '林管理员', contactPhone: '138 0000 6201', ...CONTRACT, activatedAt: ACTIVATED_AT },
   });
   // 飞宇单独一个客户组织：专家处理用的演示任务放这里，不影响上面机构的演示与测试数据
   const feiyuOrgId = await ensureOrg(db, report, {
     name: DEMO_ORGS.feiyu,
     kind: 'customer',
-    fill: { region: '广东省惠州市', contactName: '陈志刚', contactPhone: '139 0000 3388', ...CONTRACT, activatedAt: ACTIVATED_AT },
+    fill: { ...HUIZHOU, contactName: '陈志刚', contactPhone: '139 0000 3388', ...CONTRACT, activatedAt: ACTIVATED_AT },
   });
 
   const people = [
@@ -320,7 +322,7 @@ function demoPicture(): Buffer {
   return Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4+/fvfwAJ0wPj0oO0VQAAAABJRU5ErkJggg==', 'base64');
 }
 
-type OrgFill = Partial<Pick<typeof organizations.$inferInsert, 'region' | 'contactName' | 'contactPhone' | 'contractStartsAt' | 'contractEndsAt' | 'activatedAt'>>;
+type OrgFill = Partial<Pick<typeof organizations.$inferInsert, 'region' | 'regionProvince' | 'regionCity' | 'regionDistrict' | 'contactName' | 'contactPhone' | 'contractStartsAt' | 'contractEndsAt' | 'activatedAt'>>;
 
 async function ensureOrg(db: Database, report: DemoSeedReport, spec: { name: string; kind: 'internal' | 'customer'; fill?: OrgFill }) {
   const fill = spec.fill ?? {};

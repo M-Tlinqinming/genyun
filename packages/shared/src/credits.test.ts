@@ -6,8 +6,11 @@ import {
   creditSummary,
   formatAdminNames,
   giftCampaignTotals,
+  giftUsage,
+  pickAdjustContract,
   pickDeduction,
   type CreditContract,
+  type GiftUsageRow,
   type CreditLedgerRow,
 } from './credits.ts';
 import { orgOpenSchema } from './organization.ts';
@@ -88,6 +91,8 @@ describe('汇总', () => {
     expect(s.remaining).toEqual({ total: 20, gift: 2, purchase: 18 });
     expect(s.granted - s.used).toBe(s.remaining.total);
     expect(s.validUntil).toBe('2027-10-31');
+    // 按池：赠送 2 + 补偿 1 = 3；购买 20 − 1 = 19
+    expect(s.grantedByPool).toEqual({ gift: 3, purchase: 19 });
   });
 
   it('赠送按活动名称统计', () => {
@@ -139,7 +144,6 @@ describe('调整次数的请求体', () => {
 describe('开通时登记次数', () => {
   const base = {
     contractNumber: 'GY-1',
-    scopeKind: 'single',
     startsAt: '2026-01-01',
     endsAt: '2099-12-31',
     contractFileId: '00000000-0000-4000-8000-000000000000',
@@ -148,9 +152,10 @@ describe('开通时登记次数', () => {
     adminPhone: '0752 5200831',
     adminEmail: 'lin@example.cn',
   };
-  it('次数可以不传，赠送按 0', () => {
-    const r = orgOpenSchema.parse(base);
-    expect(r.purchasedCredits).toBeUndefined();
+  it('购买次数必填，赠送按 0', () => {
+    expect(orgOpenSchema.safeParse(base).error?.issues[0]?.message).toBe('请填合同购买次数');
+    const r = orgOpenSchema.parse({ ...base, purchasedCredits: 0 });
+    expect(r.purchasedCredits).toBe(0);
     expect(r.giftCredits).toBe(0);
     expect(r.giftCampaign).toBeNull();
   });
@@ -163,5 +168,83 @@ describe('开通时登记次数', () => {
   });
   it('次数不能是负数', () => {
     expect(orgOpenSchema.safeParse({ ...base, purchasedCredits: -1 }).success).toBe(false);
+  });
+});
+
+describe('调整次数挑哪份合同', () => {
+  it('生效的里到期最晚的；没有就挑还没开始的里最早开始的；都没有为 null', () => {
+    expect(pickAdjustContract([a, b, past], today)?.id).toBe('b');
+    const later: CreditContract = { id: 'later', startsAt: '2028-01-01', endsAt: '2028-12-31' };
+    expect(pickAdjustContract([past, later, future], today)?.id).toBe('future');
+    expect(pickAdjustContract([past], today)).toBeNull();
+  });
+});
+
+describe('赠送用掉多少', () => {
+  let n = 0;
+  const g = (
+    contractId: string,
+    type: GiftUsageRow['type'],
+    delta: number,
+    campaign: string | null = null,
+    pool: GiftUsageRow['pool'] = 'gift',
+  ): GiftUsageRow => {
+    n += 1;
+    return { id: `r${String(n).padStart(3, '0')}`, contractId, type, pool, delta, campaign, createdAt: `2026-01-01T00:00:${String(n).padStart(2, '0')}Z` };
+  };
+
+  it('先送先用', () => {
+    const rows = [
+      g('a', 'gift', 2, '开通赠送'),
+      g('a', 'gift', 3, '老客户回馈'),
+      g('a', 'delivery_deduction', -1),
+      g('a', 'delivery_deduction', -1),
+      g('a', 'delivery_deduction', -1),
+      g('a', 'delivery_deduction', -1, null, 'purchase'),
+    ];
+    const r = giftUsage(rows);
+    expect(r.map((x) => [x.campaign, x.granted, x.used, x.unused])).toEqual([
+      ['开通赠送', 2, 2, 0],
+      ['老客户回馈', 3, 1, 2],
+    ]);
+  });
+
+  it('两份合同各算各的', () => {
+    const rows = [g('a', 'gift', 2, '开通赠送'), g('b', 'gift', 2, '开通赠送'), g('b', 'delivery_deduction', -1)];
+    const r = giftUsage(rows);
+    expect(r.find((x) => x.contractId === 'a')).toMatchObject({ granted: 2, used: 0, unused: 2 });
+    expect(r.find((x) => x.contractId === 'b')).toMatchObject({ granted: 2, used: 1, unused: 1 });
+  });
+
+  it('负数先冲同类型同活动最晚那笔，不够再往前、再同类型、再任意一笔；冲掉的算没送出', () => {
+    const rows = [
+      g('a', 'gift', 2, '开通赠送'),
+      g('a', 'compensation', 1),
+      g('a', 'gift', 2, '开通赠送'),
+      g('a', 'gift', 1, '老客户回馈'),
+      g('a', 'gift', -5, '开通赠送'),
+      g('a', 'compensation', -2),
+    ];
+    const r = giftUsage(rows);
+    // 「开通赠送」两笔 4 次被冲 4；剩下 1 次再冲同类型的「老客户回馈」；补偿 −2 冲掉补偿 1，再冲任意一笔（已经都是 0）
+    expect(r.map((x) => [x.type, x.campaign, x.granted])).toEqual([
+      ['gift', '开通赠送', 0],
+      ['compensation', null, 0],
+      ['gift', '开通赠送', 0],
+      ['gift', '老客户回馈', 0],
+    ]);
+  });
+
+  it('冲掉以后交付扣减跳过已经冲空的那笔', () => {
+    const rows = [g('a', 'gift', 2, '甲'), g('a', 'gift', 2, '乙'), g('a', 'gift', -2, '甲'), g('a', 'delivery_deduction', -1)];
+    const r = giftUsage(rows);
+    expect(r.map((x) => [x.campaign, x.granted, x.used])).toEqual([
+      ['甲', 0, 0],
+      ['乙', 2, 1],
+    ]);
+  });
+
+  it('购买池的行不算', () => {
+    expect(giftUsage([g('a', 'contract_purchase', 10, null, 'purchase'), g('a', 'top_up', 2, null, 'purchase')])).toEqual([]);
   });
 });
