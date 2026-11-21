@@ -35,9 +35,11 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  UseGuards,
   type OnApplicationShutdown,
   type OnModuleInit,
 } from '@nestjs/common';
+import { DeliveredWriteGuard } from './delivered-write.guard.ts';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
 import type { SessionUser } from '../auth/auth.service.ts';
@@ -432,6 +434,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
 }
 
 @Controller('tasks/:id/generation')
+@UseGuards(DeliveredWriteGuard)
 export class GenerationController {
   constructor(@Inject(GenerationService) private readonly service: GenerationService) {}
 

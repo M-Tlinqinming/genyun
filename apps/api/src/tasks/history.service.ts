@@ -18,6 +18,7 @@ import {
   generatedDrafts,
   generationBatches,
   taskIntakeSubmissions,
+  taskReopens,
   tasks,
   taskSubmissions,
   taskWorkups,
@@ -65,6 +66,7 @@ export class HistoryService {
       ids.length ? this.reviews(ids) : [],
       this.deliveries(taskId),
       this.workup(taskId),
+      this.reopens(taskId),
     ]);
     // 新的在前；同一时刻按来源顺序倒过来（后发生的事排前面）
     const all = parts.flat().map((e, i) => ({ e, i }));
@@ -222,11 +224,22 @@ export class HistoryService {
   /** 定稿并交付（只取成功的） */
   private async deliveries(taskId: string): Promise<Entry[]> {
     const rows = await this.db
-      .select({ at: deliveries.publishedAt, updated: deliveries.updatedAt, name: users.name })
+      .select({ at: deliveries.publishedAt, updated: deliveries.updatedAt, name: users.name, version: deliveries.version, note: deliveries.updateNote })
       .from(deliveries)
       .innerJoin(users, eq(users.id, deliveries.publishedBy))
       .where(and(eq(deliveries.taskId, taskId), eq(deliveries.status, 'done')));
-    return rows.map((r) => entry(r.at ?? r.updated, r.name, '定稿并交付'));
+    // 再次交付时写了「这次更新了什么」就带上
+    return rows.map((r) => entry(r.at ?? r.updated, r.name, '定稿并交付', r.version >= 2 ? r.note : null));
+  }
+
+  /** 交付后重新打开 */
+  private async reopens(taskId: string): Promise<Entry[]> {
+    const rows = await this.db
+      .select({ at: taskReopens.reopenedAt, name: users.name })
+      .from(taskReopens)
+      .leftJoin(users, eq(users.id, taskReopens.reopenedBy))
+      .where(eq(taskReopens.taskId, taskId));
+    return rows.map((r) => entry(r.at, r.name, '重新打开'));
   }
 }
 

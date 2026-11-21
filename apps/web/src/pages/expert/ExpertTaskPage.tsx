@@ -3,11 +3,12 @@ import { Result } from 'antd';
 import { useEffect, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useGeneration } from '../../api/generation';
+import { usePublication } from '../../api/publish';
 import { useTask } from '../../api/tasks';
 import { useWorkup } from '../../api/workup';
 import { linkButton, Loading } from '../../components/ui';
 import { gy, stage } from '../../theme/tokens';
-import { PublishView } from './editing/PublishView';
+import { DeliveredView } from './editing/DeliveredView';
 import { ReviewWorkspace } from './editing/ReviewWorkspace';
 import { GenerationPage } from './generation/GenerationPage';
 import { GenerationView, phaseOf } from './workup/GenerationView';
@@ -30,6 +31,15 @@ export function ExpertTaskPage() {
   const navigate = useNavigate();
   const requested = params.get('view');
   const legacy = requested === 'confirm' || requested === 'workup-old';
+  // 已交付页的数据：三份初稿都生成完才问
+  const generated = generation.data?.current ?? null;
+  const publication = usePublication(taskId, !!generated && phaseOf(generated) === 'done');
+  const delivered = publication.data?.delivered ?? null;
+  // 没交付却带了 ?view=publish：去审核结论页签（不留历史）
+  const notDelivered = requested === 'publish' && !!publication.data && !delivered;
+  useEffect(() => {
+    if (notDelivered) setParams({ view: 'edit', tab: 'conclusion' }, { replace: true });
+  }, [notDelivered, setParams]);
 
   // 旧网址：确认采用资料（?view=confirm）、原来的整理页（?view=workup-old）
   useEffect(() => {
@@ -41,14 +51,14 @@ export function ExpertTaskPage() {
       <ArrowLeftOutlined /> 返回任务中心
     </button>
   );
-  if (task.isPending || workup.isPending || generation.isPending || legacy) return <Loading rows={6} />;
+  if (task.isPending || workup.isPending || generation.isPending || publication.isLoading || legacy) return <Loading rows={6} />;
   if (task.isError) {
     // 原负责专家打开旧链接：接口说明已改派给谁
     const moved = task.error.message.startsWith('这个任务已改派给');
     return moved ? (
       <Result status="info" title={task.error.message} subTitle="您不用再处理。已整理的内容都随任务交给了对方。" extra={back} />
     ) : (
-      <Result status="404" title="找不到该任务" subTitle="任务不存在，或没有分派给您。" extra={back} />
+      <Result status="404" title="找不到该任务" subTitle="任务不存在，或没有分配给您。" extra={back} />
     );
   }
   if (workup.isError) {
@@ -59,18 +69,11 @@ export function ExpertTaskPage() {
   const current = generation.data?.current ?? null;
   const phase = current ? phaseOf(current) : null;
 
-  // 成果交付（R03–R04b）：审核结论有效时由负责专家交付
-  if (requested === 'publish' && current && phase === 'done') {
-    return (
-      <PublishView
-        taskId={taskId}
-        enterpriseName={task.data.enterpriseName}
-        taskNumber={task.data.number}
-        onOpen={(k) => setParams({ view: 'edit', doc: k })}
-        onEdit={() => setParams({ view: 'edit', tab: 'conclusion' })}
-      />
-    );
+  // 已交付（15 页 R11）：没带 view 或 ?view=publish 时看已交付页；看正文照样进核对定稿（只读）
+  if (delivered && current && (requested === null || requested === 'publish')) {
+    return <DeliveredView taskId={taskId} enterpriseName={task.data.enterpriseName} taskNumber={task.data.number} view={publication.data!} />;
   }
+  if (notDelivered) return <Loading rows={6} />;
 
   // 核对定稿（E18-03 到 E18-15）：三份草稿都生成完才进得来；旧网址 ?view=review 打开审核结论页签
   if ((requested === 'edit' || requested === 'review') && current && phase === 'done') {

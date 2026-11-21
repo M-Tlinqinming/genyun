@@ -59,7 +59,23 @@ export interface PublishView {
   attempt: PublishAttempt | null;
   /** 这个任务已形成的交付版本，新的在前 */
   deliveries: DeliveryVersion[];
+  /**
+   * 已交付页（15 页 R11）：任务已交付、没重新打开时给最近一次交付的情况；重新打开以后、正在交付时为 null
+   */
+  delivered?: {
+    version: number;
+    /** 交付时间 */
+    at: string;
+    reviewerName: string;
+    /** 那一批的审核结论 */
+    note: string;
+    /** 三份 Word；pages 是交付时那一版的页数，拿不到为 null */
+    files: { kind: DraftKind; name: string; fileId: string; pages: number | null }[];
+  } | null;
 }
+
+/** 「这次更新了什么」最多几个字 */
+export const UPDATE_NOTE_MAX = 40;
 
 export const publishRequestSchema = z.object({
   publishId: z.uuid(),
@@ -67,6 +83,8 @@ export const publishRequestSchema = z.object({
   batchId: z.uuid(),
   /** 页面看到的三份修订次数，与审核结论对应的不一致就拒绝 */
   versions: z.object(Object.fromEntries(DRAFT_KIND_KEYS.map((k) => [k, z.number().int().min(0)])) as Record<DraftKind, z.ZodNumber>),
+  /** 再次交付时专家写的「这次更新了什么」（选填，最多 40 个字；首次交付不存） */
+  updateNote: z.string().optional(),
 });
 export type PublishRequest = z.infer<typeof publishRequestSchema>;
 

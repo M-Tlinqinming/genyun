@@ -111,6 +111,8 @@ describe('最近操作的一句话', () => {
     );
     expect(activitySentence('publish', 'GY-2026-0001 · 第 1 次交付', { enterpriseName: '示例模具' })).toBe('示例模具的成果已交付');
     expect(activitySentence('publish', 'GY-2026-0001 · 第 2 次交付', { enterpriseName: '示例模具' })).toBe('示例模具的成果已更新');
+    expect(activitySentence('reopen', 'GY-2026-0001 · 重新打开', { enterpriseName: '示例模具' })).toBe('示例模具的任务已重新打开');
+    expect(activitySentence('reopen', 'GY-2026-0001 · 重新打开')).toBe('GY-2026-0001的任务已重新打开');
   });
 
   it('开通、续约、调整次数、邀请组织成员', () => {
@@ -131,6 +133,7 @@ describe('最近操作的一句话', () => {
 
   it('任务类的取出任务编号', () => {
     expect(activityTaskNumber('publish', 'GY-2026-0001 · 第 1 次交付')).toBe('GY-2026-0001');
+    expect(activityTaskNumber('reopen', 'GY-2026-0001 · 重新打开')).toBe('GY-2026-0001');
     expect(activityTaskNumber('org_open', '示例组织 · 合同 1')).toBeNull();
   });
 

@@ -56,7 +56,7 @@ import { polishParagraph } from '../generation/ai/polish.ts';
 import { riskFacts } from '../generation/ai/risk.ts';
 import { parseDocument } from '../generation/document-json.ts';
 import { renderWord, type DeliveryMeta } from '../generation/word/render.ts';
-import { batchLock, throwIfLocked } from './delivery-lock.ts';
+import { taskLock, throwIfLocked } from './delivery-lock.ts';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { THUMB_SIDE } from '../generation/drawings/renderer.ts';
 
@@ -88,7 +88,7 @@ export class EditingService {
 
   async document(user: SessionUser, taskId: string, kind: string): Promise<EditDocumentView> {
     const d = await this.draft(user, taskId, kind);
-    const [edits, lock] = await Promise.all([this.edits(d.batch.id, d.kind), batchLock(this.db, d.batch.id)]);
+    const [edits, lock] = await Promise.all([this.edits(d.batch.id, d.kind), taskLock(this.db, d.task.id)]);
     return {
       batchId: d.batch.id,
       kind: d.kind,
@@ -142,7 +142,7 @@ export class EditingService {
           .where(and(eq(draftEdits.batchId, d.batch.id), eq(draftEdits.kind, d.kind)))
           .for('update');
         // 已交付（或正在交付）的这批文稿不能再改：放在锁住保存记录之后查，和交付时的最后核对不会交错
-        throwIfLocked(await batchLock(tx, d.batch.id));
+        throwIfLocked(await taskLock(tx, d.task.id));
         const current = row!.sections[sectionId];
         const rev = current?.rev ?? 0;
         if (rev !== baseRev) {
@@ -200,7 +200,7 @@ export class EditingService {
   async rewrite(user: SessionUser, taskId: string, kind: string, sectionId: string, body: unknown): Promise<RewriteResult> {
     const d = await this.draft(user, taskId, kind);
     if (!canEditTaskWork(user, d.task)) throw new ForbiddenException('只有负责这个任务的专家可以使用 AI 改写');
-    throwIfLocked(await batchLock(this.db, d.batch.id));
+    throwIfLocked(await taskLock(this.db, d.task.id));
     const parsed = rewriteRequestSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const found = findSection(d.doc, sectionId);

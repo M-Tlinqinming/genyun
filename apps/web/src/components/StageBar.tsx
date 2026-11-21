@@ -11,6 +11,7 @@ export function StageBar({
   label = '进度',
   notes,
   links,
+  lastStrong,
 }: {
   /** 各阶段名，按顺序 */
   stages: readonly string[];
@@ -22,6 +23,8 @@ export function StageBar({
   notes?: Partial<Record<number, string>>;
   /** 做完的段可以点回去：名字变成链接，title 是悬停提示 */
   links?: Partial<Record<number, { to: string; title: string }>>;
+  /** 最后一段的名字用加粗正文色（全部做完时突出最后一段，如已交付页的「交付」） */
+  lastStrong?: boolean;
 }) {
   const compact = stages.length > 3;
   return (
@@ -68,11 +71,12 @@ export function StageBar({
                 {state === 'done' ? <CheckOutlined style={{ fontSize: 12 }} aria-label="已完成" /> : i + 1}
               </span>
               {(() => {
+                const strong = state === 'current' || (lastStrong && i === stages.length - 1);
                 const style = {
                   ...type.body,
                   whiteSpace: 'nowrap' as const,
-                  color: state === 'done' ? gy.secondary : state === 'current' ? gy.text : gy.tertiary,
-                  fontWeight: state === 'current' ? weight.strong : weight.normal,
+                  color: strong ? gy.text : state === 'done' ? gy.secondary : gy.tertiary,
+                  fontWeight: strong ? weight.strong : weight.normal,
                 };
                 return link ? (
                   <Link to={link.to} title={link.title} className="gy-stage-link" style={style}>

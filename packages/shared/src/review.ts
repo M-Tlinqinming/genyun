@@ -18,6 +18,8 @@ export interface DraftCheckView {
   /** 当前稿是什么时候定下的：最后一次保存修订的时间，没改过为生成完成的时间 */
   savedAt: string | null;
   check: DraftCheck | null;
+  /** 当前稿的页数（核对时转 PDF 数出来的）；拿不到为 null */
+  pages?: number | null;
 }
 
 export interface ReviewConclusion {
@@ -38,10 +40,25 @@ export interface ReviewView {
    * 这时原来的审核结论作废，也不能再确认结论，要先按新事实重新生成。没有为 null
    */
   factsChangedAt?: string | null;
-  /** 这批文稿已发布为哪个交付版本（M2 第 15 项）：发布后不能再核对、再确认结论。没发布为 null */
+  /** 任务已交付（没重新打开）时是哪次交付：交付后不能再核对、再确认结论。没交付、已重新打开为 null */
   published?: { version: number; at: string } | null;
   /** 当前账号在这批稿子里最近一次保存（「回来接着做」用）；没保存过为 null */
   lastSave?: LastSave | null;
+  /** 重新打开以后还没写新的审核结论时，上一次的结论（审核结论框预填用）；别的时候为 null */
+  previousNote?: string | null;
+  /** 交付后重新打开、还没再次交付时不为空（15 页 R13、R14） */
+  reopened?: ReopenedView | null;
+}
+
+export interface ReopenedView {
+  /** 重新打开的时间 */
+  at: string;
+  /** 上一次成功交付的时间（灰条里的日期） */
+  deliveredAt: string;
+  /** 上一次交付的那一批里专家亲手改过的节，按交付时的样子 */
+  edits: { kind: DraftKind; sectionId: string; title: string; text: string }[];
+  /** 「这次更新了什么」系统先填好的那句 */
+  suggestedNote: string;
 }
 
 export interface LastSave {

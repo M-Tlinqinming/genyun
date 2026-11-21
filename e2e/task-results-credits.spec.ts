@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 // 编制次数（K14）。文件名排在 task-publish.spec 之后、task-results.spec 之前：
-// 飞宇的合同买了 3 次，专家第一次交付后扣成 2 次。只读，不改演示数据。
+// 飞宇的合同买了 3 次，专家第一次交付后扣成 2 次；task-publish.spec 里重新打开后再次交付不再扣，仍是 2 次。只读，不改演示数据。
 // 锁住到放开的整条链路靠接口单元测试覆盖
 async function login(page: Page, email: string) {
   await page.goto('/login');
@@ -17,10 +17,10 @@ test('首次交付扣了 1 次：管理员收到「还剩 2 次」，运营看�
   await expect(page.getByRole('button', { name: /编制次数还剩 2 次/ })).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // 成果文档照常能下载（没锁住：没有置灰）
+  // 成果文档照常能下载（没锁住：没有置灰）；再次交付过，卡片显示「已更新」
   await page.getByRole('menuitem', { name: '成果文档' }).click();
   const card = page.getByRole('region', { name: /惠阳飞宇电器有限公司 GY-\d{4}-\d{3}/ });
-  await expect(card).toContainText('已交付');
+  await expect(card).toContainText('已更新');
   await expect(card.getByRole('button', { name: /下载整套 Word/ })).toBeEnabled();
   await expect(card.getByRole('button', { name: '下载 惠阳飞宇电器有限公司应急预案.docx' })).toBeEnabled();
 

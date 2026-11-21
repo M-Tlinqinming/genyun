@@ -257,7 +257,7 @@ describe('成果文档', () => {
     }
   });
 
-  it('第二次交付：客户只拿到最新一版并带更新说明，专家、运营按新到旧拿全部；旧版仍能单独下载', async () => {
+  it('第二次交付：客户只拿到最新一版并带更新说明，专家、运营按新到旧拿全部；旧版客户拿不到，专家、运营能拿', async () => {
     const { db } = handle;
     const [v1] = await db.select().from(deliveries).where(eq(deliveries.taskId, taskId));
     const v1Files = await db.select().from(deliveryFiles).where(eq(deliveryFiles.deliveryId, v1!.id));
@@ -311,8 +311,11 @@ describe('成果文档', () => {
         [1, null],
       ]);
     }
-    await feiyu.get(`${base()}/1/bundle`).expect(200);
+    // 客户只看最新（K13）：旧版的压缩包客户拿不到，专家、运营能拿
+    await feiyu.get(`${base()}/1/bundle`).expect(404);
+    await feiyu.get(`${base()}/2/bundle`).expect(200);
     await feiyu.get(`${base()}/3/bundle`).expect(404);
+    for (const email of ['ops@test.cn', 'zhou@test.cn']) await (await as(email)).get(`${base()}/1/bundle`).expect(200);
     const tasksList = (await feiyu.get(`/api/orgs/${orgId}/tasks`).expect(200)).body as { id: string; delivery: { version: number } }[];
     expect(tasksList.find((t) => t.id === taskId)!.delivery.version).toBe(2);
     await db.delete(deliveries).where(eq(deliveries.status, 'publishing'));

@@ -151,8 +151,11 @@ test('看 Word 预览；逐份核对、自动打开下一份；核对后再改�
   await shots(page, 'conclusion-error');
   await noteBox.fill('三份文稿已逐章核对，组织机构、联系人和物资数量与资料一致。');
   await page.getByRole('button', { name: '定稿并交付' }).click();
-  await expect(page).toHaveURL(/view=publish/);
-  await expect(page.getByRole('heading', { name: '审核已通过，等待交付' })).toBeVisible();
+  // 结论记下了，原地弹出交付确认；这里先不交付
+  const confirm = page.getByRole('alertdialog', { name: '确认定稿并交付？' });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: '再看看' }).click();
+  await expect(confirm).toHaveCount(0);
 
   // 交付前再改一份：先确认结论要重写，再保存；这一份要重新核对，审核结论页签收起
   await page.goto(`${base}?view=edit&doc=risk`);

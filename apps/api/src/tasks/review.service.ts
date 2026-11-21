@@ -1,9 +1,15 @@
 // Word 校对与审核结论（M2 第 12 项，14 页 E18-05、E18-06）：负责专家逐份看当前稿的 Word 版式并核对，
 // 三份都核对过才能确认审核结论。核对和结论都记下当时的修订次数（draft_edits.version），之后再保存修订就失效。
 // 校对页看的是当前稿转成的 PDF：没改过的用生成时转好的，改过的按当前修订次数在后台重新转，只留最近一份。
+// 交付后重新打开（15 页 R12）：重新打开之前的核对和审核结论都作废，要重新核对、重新写结论再交付；
+// 重新打开期间还给「上一版您改过的 N 节」和「这次更新了什么」系统先填好的那句。
 import {
+  blocksText,
   checkRequestSchema,
   checkValid,
+  composeUpdateNote,
+  planChanges,
+  stripHeadingNumber,
   DRAFT_KIND_KEYS,
   DRAFT_KINDS,
   reviewRequestSchema,
@@ -11,6 +17,7 @@ import {
   type DraftCheckView,
   type DraftKind,
   type PreviewView,
+  type ReopenedView,
   type ReviewView,
 } from '@genyun/shared';
 import {
@@ -30,7 +37,7 @@ import {
   Put,
   Res,
 } from '@nestjs/common';
-import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull } from 'drizzle-orm';
 import type { Response } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { canEditTaskWork, canViewTaskWork } from '../auth/access.ts';
@@ -38,6 +45,7 @@ import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import {
+  deliveries,
   draftChecks,
   draftEdits,
   draftPreviews,
@@ -52,7 +60,9 @@ import {
 } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { PDF_CONVERTER, type PdfConverter } from '../generation/word/preview-pdf.ts';
-import { batchLock, throwIfLocked } from './delivery-lock.ts';
+import type { DrawingRenderer } from '../generation/drawings/renderer.ts';
+import { taskLock, throwIfLocked } from './delivery-lock.ts';
+import { DRAWING_RENDERER } from './drawings.service.ts';
 import { EditingService } from './editing.service.ts';
 
 const NOT_FOUND = '找不到该任务';
@@ -66,7 +76,7 @@ const CONVERT_STALE_MS = 5 * 60_000;
 
 type Batch = typeof generationBatches.$inferSelect;
 type Ctx = {
-  task: { id: string; orgId: string; assignedExpertId: string | null };
+  task: { id: string; orgId: string; assignedExpertId: string | null; reopenedAt: Date | null };
   batch: Batch;
 };
 
@@ -81,6 +91,7 @@ export class ReviewService {
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
     @Inject(PDF_CONVERTER) private readonly converter: PdfConverter | null,
     @Inject(EditingService) private readonly editing: EditingService,
+    @Inject(DRAWING_RENDERER) private readonly renderer: DrawingRenderer,
   ) {}
 
   async view(user: SessionUser, taskId: string): Promise<ReviewView> {
@@ -103,7 +114,7 @@ export class ReviewService {
         .for('update');
       if ((edits?.version ?? 0) !== parsed.data.version) return false;
       // 已发布（或正在发布）的这批文稿不再核对
-      throwIfLocked(await batchLock(tx, ctx.batch.id));
+      throwIfLocked(await taskLock(tx, ctx.task.id));
       await tx
         .insert(draftChecks)
         .values({
@@ -111,6 +122,8 @@ export class ReviewService {
           kind: k,
           version: parsed.data.version,
           checkedBy: user.id,
+          // 时间用代码给的，和重新打开的时间比先后
+          checkedAt: new Date(),
         })
         .onConflictDoUpdate({
           target: [draftChecks.batchId, draftChecks.kind],
@@ -139,7 +152,7 @@ export class ReviewService {
     const parsed = reviewRequestSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请填写审核结论');
     // 已发布（或正在发布）的这批文稿不再确认结论，重复点击也一样答复
-    throwIfLocked(await batchLock(this.db, ctx.batch.id));
+    throwIfLocked(await taskLock(this.db, ctx.task.id));
     const before = await this.build(user, ctx);
     // 已经有效通过（重复点击、两个窗口都点了）：原样返回，不改审核时间和审核人
     if (reviewValid(before)) return before;
@@ -172,6 +185,7 @@ export class ReviewService {
         note: parsed.data.note,
         versions,
         reviewedBy: user.id,
+        reviewedAt: new Date(),
       })
       .onConflictDoUpdate({
         target: draftReviews.batchId,
@@ -256,7 +270,14 @@ export class ReviewService {
       const word = await this.editing.batchWord(ctx.batch, kind);
       const pdf = await this.converter!(word.data);
       const fileId = await this.store(ctx, `${word.name.replace(/\.docx$/, '')}.pdf`, pdf);
-      await done({ status: 'done', fileId, error: null });
+      // 顺手数页数（已交付页和审核结论页签显示）；数不出来不影响预览
+      let pages: number | null = null;
+      try {
+        pages = await this.renderer.count(pdf, 'application/pdf');
+      } catch (err) {
+        console.error(`当前稿数页数失败（${kind}）：${err instanceof Error ? err.message : String(err)}`);
+      }
+      await done({ status: 'done', fileId, error: null, pages });
     } catch (err) {
       this.logger.warn(`当前稿转 PDF 失败（${kind}）：${err instanceof Error ? err.message : String(err)}`);
       await done({ status: 'failed', error: CONVERT_FAILED }).catch(() => undefined);
@@ -323,9 +344,29 @@ export class ReviewService {
     return row?.version ?? 0;
   }
 
+  /**
+   * 某一份某一版的页数：改过的取这一版转好的 PDF 记下的页数；没改过的（版本 0）取生成时数好的页数。拿不到返回 null
+   */
+  async pagesOf(batchId: string, kind: DraftKind, version: number): Promise<number | null> {
+    if (version === 0) {
+      const [gen] = await this.db
+        .select({ pages: generatedDrafts.pages })
+        .from(generatedDrafts)
+        .where(and(eq(generatedDrafts.batchId, batchId), eq(generatedDrafts.kind, kind)))
+        .limit(1);
+      return gen?.pages ?? null;
+    }
+    const [row] = await this.db
+      .select({ pages: draftPreviews.pages })
+      .from(draftPreviews)
+      .where(and(eq(draftPreviews.batchId, batchId), eq(draftPreviews.kind, kind), eq(draftPreviews.version, version), eq(draftPreviews.status, 'done')))
+      .limit(1);
+    return row?.pages ?? null;
+  }
+
   private async build(user: SessionUser, ctx: Ctx): Promise<ReviewView> {
     const batchId = ctx.batch.id;
-    const [drafts, edits, checks, [review], [changed], lock, [last]] = await Promise.all([
+    const [drafts, edits, checks, [rawReview], [changed], lock, [last]] = await Promise.all([
       this.db
         .select({
           kind: generatedDrafts.kind,
@@ -369,7 +410,7 @@ export class ReviewService {
         .where(and(eq(factSupplements.taskId, ctx.task.id), eq(factSupplements.status, 'adopted'), gt(factSupplements.adoptedAt, ctx.batch.createdAt)))
         .orderBy(desc(factSupplements.adoptedAt))
         .limit(1),
-      batchLock(this.db, batchId),
+      taskLock(this.db, ctx.task.id),
       // 当前账号在这批稿子里最近一次保存（「回来接着做」）
       this.db
         .select({ kind: draftRevisions.kind, sectionId: draftRevisions.sectionId, sectionTitle: draftRevisions.sectionTitle, at: draftRevisions.createdAt })
@@ -378,9 +419,14 @@ export class ReviewService {
         .orderBy(desc(draftRevisions.createdAt))
         .limit(1),
     ]);
-    const docs: DraftCheckView[] = DRAFT_KIND_KEYS.map((kind) => {
+    // 重新打开以后，之前的核对和审核结论都作废（只认重新打开之后做的）
+    const reopenedAt = ctx.task.reopenedAt;
+    const fresh = (at: Date) => !reopenedAt || at > reopenedAt;
+    const review = rawReview && fresh(rawReview.at) ? rawReview : undefined;
+    const pages = await Promise.all(DRAFT_KIND_KEYS.map((kind) => this.pagesOf(batchId, kind, edits.find((x) => x.kind === kind)?.version ?? 0)));
+    const docs: DraftCheckView[] = DRAFT_KIND_KEYS.map((kind, i) => {
       const e = edits.find((x) => x.kind === kind);
-      const c = checks.find((x) => x.kind === kind);
+      const c = checks.find((x) => x.kind === kind && fresh(x.at));
       const version = e?.version ?? 0;
       const savedAt = version > 0 ? e!.updatedAt : (drafts.find((x) => x.kind === kind)?.finishedAt ?? null);
       return {
@@ -388,8 +434,19 @@ export class ReviewService {
         version,
         savedAt: savedAt?.toISOString() ?? null,
         check: c ? { byName: c.byName, at: c.at.toISOString(), version: c.version } : null,
+        pages: pages[i] ?? null,
       };
     });
+    const reopened = await this.reopenedOf(ctx);
+    // 重新打开、还没写新结论：审核结论框预填上一次的结论（这一批作废的那条，没有就取上次交付那一批的）
+    let previousNote: string | null = null;
+    if (reopened && !review) {
+      previousNote = rawReview?.note ?? null;
+      if (previousNote === null && reopened.deliveredBatchId !== batchId) {
+        const [prev] = await this.db.select({ note: draftReviews.note }).from(draftReviews).where(eq(draftReviews.batchId, reopened.deliveredBatchId)).limit(1);
+        previousNote = prev?.note ?? null;
+      }
+    }
     return {
       batchId,
       docs,
@@ -405,6 +462,69 @@ export class ReviewService {
       factsChangedAt: changed?.at?.toISOString() ?? null,
       published: lock?.status === 'done' ? { version: lock.version, at: lock.publishedAt! } : null,
       lastSave: last ? { kind: last.kind, sectionId: last.sectionId, sectionTitle: last.sectionTitle, at: last.at.toISOString() } : null,
+      previousNote,
+      reopened: reopened?.view ?? null,
+    };
+  }
+
+  // 交付后重新打开、还没再次交付（reopened_at 晚于最近一次成功交付）：上一版改过的节和系统先填好的更新说明
+  private async reopenedOf(ctx: Ctx): Promise<{ view: ReopenedView; deliveredBatchId: string } | null> {
+    const reopenedAt = ctx.task.reopenedAt;
+    if (!reopenedAt) return null;
+    const [last] = await this.db
+      .select({ batchId: deliveries.batchId, versions: deliveries.versions, publishedAt: deliveries.publishedAt })
+      .from(deliveries)
+      .where(and(eq(deliveries.taskId, ctx.task.id), eq(deliveries.status, 'done')))
+      .orderBy(desc(deliveries.version))
+      .limit(1);
+    if (!last?.publishedAt || reopenedAt <= last.publishedAt) return null;
+
+    // 上一次交付的那一批里改过的节：draft_revisions.version 和交付记下的 versions[kind] 都是 draft_edits.version 那一套计数，
+    // 取 version 不超过交付时那一版的修订，每份每节留最后一条（就是交付时的样子）
+    const revisions = await this.db
+      .select({
+        kind: draftRevisions.kind,
+        sectionId: draftRevisions.sectionId,
+        title: draftRevisions.sectionTitle,
+        after: draftRevisions.after,
+        version: draftRevisions.version,
+      })
+      .from(draftRevisions)
+      .where(eq(draftRevisions.batchId, last.batchId))
+      .orderBy(asc(draftRevisions.version));
+    const kept = new Map<string, (typeof revisions)[number]>();
+    for (const r of revisions) {
+      if (r.version > (last.versions[r.kind] ?? 0)) continue;
+      const key = `${r.kind}/${r.sectionId}`;
+      // 先删再放：同一份里按每节最后一次改的先后排
+      kept.delete(key);
+      kept.set(key, r);
+    }
+    const edits = DRAFT_KIND_KEYS.flatMap((kind) =>
+      [...kept.values()].filter((r) => r.kind === kind).map((r) => ({ kind, sectionId: r.sectionId, title: r.title, text: blocksText(r.after) })),
+    );
+
+    // 「这次更新了什么」：重新生成过就比两批资料，再加上重新打开以后改过的节标题
+    const changes: string[] = [];
+    if (last.batchId !== ctx.batch.id) {
+      const [prev] = await this.db.select({ input: generationBatches.input }).from(generationBatches).where(eq(generationBatches.id, last.batchId)).limit(1);
+      if (prev) changes.push(...planChanges(prev.input, ctx.batch.input));
+    }
+    const since = await this.db
+      .select({ title: draftRevisions.sectionTitle })
+      .from(draftRevisions)
+      .where(and(eq(draftRevisions.batchId, ctx.batch.id), gt(draftRevisions.createdAt, reopenedAt)))
+      .orderBy(asc(draftRevisions.createdAt));
+    changes.push(...since.map((r) => stripHeadingNumber(r.title)));
+
+    return {
+      deliveredBatchId: last.batchId,
+      view: {
+        at: reopenedAt.toISOString(),
+        deliveredAt: last.publishedAt.toISOString(),
+        edits,
+        suggestedNote: composeUpdateNote(changes),
+      },
     };
   }
 
@@ -420,6 +540,7 @@ export class ReviewService {
         id: tasks.id,
         orgId: tasks.orgId,
         assignedExpertId: tasks.assignedExpertId,
+        reopenedAt: tasks.reopenedAt,
       })
       .from(tasks)
       .where(and(eq(tasks.id, taskId), isNull(tasks.deletedAt)))

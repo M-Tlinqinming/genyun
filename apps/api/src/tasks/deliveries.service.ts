@@ -68,6 +68,16 @@ export class DeliveriesService {
     // 成果先锁住（等次数）时客户不能下载
     await assertDeliveryDownloadable(this.db, user, task);
     const delivery = await this.delivery(task.id, version);
+    // 客户只拿得到最新一版：再次交付以后，旧的那一版不再提供下载（专家、运营照旧）
+    if (customerMembership(user, task.orgId)) {
+      const [latest] = await this.db
+        .select({ version: deliveries.version })
+        .from(deliveries)
+        .where(and(eq(deliveries.taskId, task.id), eq(deliveries.status, 'done')))
+        .orderBy(desc(deliveries.version))
+        .limit(1);
+      if (latest?.version !== delivery.version) throw new NotFoundException('找不到这次交付');
+    }
     const rows = await this.db
       .select({ kind: deliveryFiles.kind, name: files.originalName, storageKey: files.storageKey })
       .from(deliveryFiles)

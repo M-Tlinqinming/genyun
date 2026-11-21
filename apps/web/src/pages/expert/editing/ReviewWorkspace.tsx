@@ -46,7 +46,8 @@ import { ConclusionTab } from './ConclusionTab';
 import { ConflictDialog, copyText, LeaveDialog, RewriteDialog, sectionShort, when } from './EditDialogs';
 import { blocksToDoc, docToBlocks } from './editorDoc';
 import { PreviewPane } from './PreviewPane';
-import { ChapterNav, DocBar, HistoryDrawer, SidePanel } from './ReviewParts';
+import { ChapterNav, DOC_BAR_HEIGHT, DocBar, HistoryDrawer, ReopenedBar, SidePanel } from './ReviewParts';
+import { monthDay } from './DeliverDialogs';
 import { retryStep } from './saveRetry';
 import { currentParagraph, EditorPane, LockedContext, replaceParagraph } from './SectionEditor';
 
@@ -549,7 +550,9 @@ export function ReviewWorkspace({
       title="编制文稿"
       enterpriseName={`${enterpriseName} · ${taskNumber}`}
       stages={EXPERT_STAGES}
-      current={2}
+      // 已交付后只读打开正文：四步都已完成，和已交付页一致
+      current={published ? EXPERT_STAGES.length : 2}
+      stageLastStrong={!!published}
       // 画板：左右两块各宽 280，元素间距 16
       sideWidth={280}
       extra={
@@ -568,7 +571,7 @@ export function ReviewWorkspace({
       {header}
       <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {body}
-        <HistoryDrawer taskId={taskId} open={historyOpen} onClose={() => setHistoryOpen(false)} />
+        <HistoryDrawer taskId={taskId} open={historyOpen} onClose={() => setHistoryOpen(false)} top={r?.reopened ? DOC_BAR_HEIGHT + 40 : undefined} />
       </div>
     </div>
   );
@@ -589,6 +592,8 @@ export function ReviewWorkspace({
       }}
     />
   );
+  // 交付后重新打开期间：文稿进度条下面的灰条
+  const reopenedBar = r?.reopened ? <ReopenedBar deliveredOn={monthDay(r.reopened.deliveredAt)} /> : null;
 
   if (review.isLoading || (!resumed && !review.isError)) return frame(<div style={{ padding: 32 }}><Loading /></div>);
   // 切到还没读过的文稿：页签留着（键盘焦点不丢），下面先显示加载
@@ -612,7 +617,8 @@ export function ReviewWorkspace({
     return frame(
       <>
         {docBar}
-        <ConclusionTab taskId={taskId} review={r} reviewer={me?.name ?? ''} onPublished={() => setParams({ view: 'publish' })} />
+        {reopenedBar}
+        <ConclusionTab taskId={taskId} review={r} reviewer={me?.name ?? ''} onDelivered={() => setParams({ view: 'publish' })} />
       </>,
     );
   }
@@ -648,7 +654,14 @@ export function ReviewWorkspace({
   let reason: ReactNode;
   let canClick = true;
   if (published) {
-    reason = '这批文稿已交付，正文不能再修改。要更正请回到资料核对，重新生成后再交付。';
+    reason = (
+      <>
+        已交付，正文不能再修改。要修改，请回到已交付页点「重新打开」。
+        <button type="button" style={{ ...linkButton, ...text14, marginLeft: 8 }} onClick={() => setParams({ view: 'publish' })}>
+          回到已交付页
+        </button>
+      </>
+    );
     canClick = false;
   } else if (!canCheck) {
     reason = '只有负责这个任务的专家可以修改和核对；可以下载 Word 查看。';
@@ -832,10 +845,17 @@ export function ReviewWorkspace({
   return frame(
     <>
       {docBar}
+      {reopenedBar}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <ChapterNav chapters={chapters} current={chapterId} onSelect={(id) => go({ chapter: id, tab: 'text' })} />
         {middle}
-        <SidePanel items={items} selected={picked} materials={generation.materials} onPick={pick} />
+        <SidePanel
+          items={items}
+          selected={picked}
+          materials={generation.materials}
+          onPick={pick}
+          previous={r.reopened?.edits.filter((x) => x.kind === kind)}
+        />
       </div>
       <div style={{ height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 32px', background: gy.surface, borderTop: `1px solid ${gy.split}` }}>
         <span role={failed ? 'alert' : undefined} style={{ ...text14, flex: 1, minWidth: 0, color: gy.secondary }}>

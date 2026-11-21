@@ -1,19 +1,30 @@
 import { DRAFT_KIND_KEYS, DRAFT_KINDS, pendingCount, REVIEW_NOTE_MAX, reviewValid, type DraftKind, type ReviewView } from '@genyun/shared';
+import { CloseCircleFilled, ExclamationCircleFilled, LoadingOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Input } from 'antd';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useReducedMotion } from 'motion/react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { usePending } from '../../../api/editing';
 import { ApiError } from '../../../api/request';
 import { concludeReview, reviewKey } from '../../../api/review';
 import { gy } from '../../../theme/tokens';
+import { DeliverConfirm } from './DeliverDialogs';
 import { when } from './EditDialogs';
 import { Tag } from './ReviewParts';
+import { useDeliver } from './useDeliver';
 
-// 审核结论页签（E18-06、E18-06b）：三份都核对过以后写结论，点「定稿并交付」去交付页。
-// 结论必填，不预填；以前写过的放回框里，文稿在那之后又改过就提示按改过的内容重写
+// 审核结论页签（E18-06、E18-06b）：三份都核对过以后写结论，点「定稿并交付」先记下结论，再原地弹出交付确认
+// （15 页 R10 首次、R14 重新打开以后再次交付）。结论必填，不预填；以前写过的放回框里，文稿在那之后又改过就提示按改过的内容重写；
+// 重新打开以后放回上一次的结论。交付没成功（R15）、结果没确认、正在交付时，底栏上方各出一条提示条
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const caption: CSSProperties = { fontSize: 12, lineHeight: '20px' };
+// 底栏上方提示条的三种底色：红（R15）、琥珀（结果没确认）、浅蓝（正在交付）
+const NOTICE_TONE: Record<'error' | 'warning' | 'progress', CSSProperties> = {
+  error: { background: gy.errorBg, borderTop: '1px solid #FDA29B' },
+  warning: { background: gy.warningBg, borderTop: `1px solid ${gy.split}` },
+  progress: { background: gy.selected, borderTop: `1px solid ${gy.split}` },
+};
 // 表头上下 10、行上下 14、左右 24：照 E18-06 画板
 const th: CSSProperties = { ...text14, color: gy.secondary, fontWeight: 600, padding: '10px 24px', textAlign: 'left', borderBottom: `1px solid ${gy.split}`, background: gy.canvas };
 const td: CSSProperties = { ...text14, color: gy.text, padding: '14px 24px', textAlign: 'left', borderBottom: `1px solid ${gy.split}`, verticalAlign: 'middle' };
@@ -29,20 +40,35 @@ export function ConclusionTab({
   taskId,
   review,
   reviewer,
-  onPublished,
+  onDelivered,
 }: {
   taskId: string;
   review: ReviewView;
   /** 当前账号的名字（底栏「审核人：…」） */
   reviewer: string;
-  /** 结论记下以后去交付页 */
-  onPublished: () => void;
+  /** 交付成功以后去已交付页 */
+  onDelivered: () => void;
 }) {
   const client = useQueryClient();
   const { message } = App.useApp();
+  const reduce = useReducedMotion();
+  const deliver = useDeliver(taskId);
+  const status = deliver.status;
   const last = review.review;
   const valid = reviewValid(review);
-  const [note, setNote] = useState(last?.note ?? '');
+  const [note, setNote] = useState(last?.note ?? review.previousNote ?? '');
+  // 交付确认弹窗：带着这一次要用的 publishId
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  // 正在交付、结果没确认时，后台交付好了自动去已交付页
+  const waited = useRef(false);
+  useEffect(() => {
+    if (status === 'publishing' || status === 'sending' || status === 'unknown') waited.current = true;
+    else if (status === 'done' && waited.current) {
+      waited.current = false;
+      onDelivered();
+    }
+  }, [status, onDelivered]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const editable = review.editable && !review.published;
@@ -69,7 +95,8 @@ export function ConclusionTab({
       const versions = Object.fromEntries(review.docs.map((d) => [d.kind, d.version])) as Record<DraftKind, number>;
       const view = await concludeReview(taskId, { note: trimmed, versions });
       client.setQueryData(reviewKey(taskId), view);
-      onPublished();
+      // 结论记下了：原地弹交付确认（结果没确认、后台又没收到过的那一次，沿用同一个 publishId）
+      setConfirming(deliver.pendingId ?? crypto.randomUUID());
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         const body = err.body as { view?: ReviewView } | undefined;
@@ -85,16 +112,74 @@ export function ConclusionTab({
     }
   };
 
+  const confirm = async (updateNote?: string) => {
+    if (!confirming) return;
+    setSending(true);
+    const versions = Object.fromEntries(review.docs.map((d) => [d.kind, d.version])) as Record<DraftKind, number>;
+    const outcome = await deliver.deliver({ publishId: confirming, versions, ...(review.reopened ? { updateNote } : {}) });
+    setSending(false);
+    setConfirming(null);
+    void client.invalidateQueries({ queryKey: reviewKey(taskId) });
+    if (outcome === 'done') onDelivered();
+  };
+
+  const who = editable ? reviewer : (last?.byName ?? '—');
+  // 交付没成功、结果没确认、正在交付：底栏上方的提示条，「定稿并交付」禁用
+  const blocked = editable && (status === 'failed' || status === 'unknown' || status === 'publishing' || status === 'sending');
+  // 后台正在交付时文稿锁住（editable 为 false），刷新或换人打开也要看到「正在交付」；
+  // 回复丢了但后台其实已交付时文稿也锁住了，「查询交付结果」仍要留着，查到后去已交付页
+  const inFlight = status === 'publishing' || status === 'sending' || status === 'unknown';
+  const notice: { tone: 'error' | 'warning' | 'progress'; icon: ReactNode; text: string; action?: ReactNode } | null = !editable && !inFlight
+    ? null
+    : status === 'failed'
+      ? {
+          tone: 'error',
+          icon: <CloseCircleFilled aria-hidden style={{ fontSize: 16, color: gy.error }} />,
+          text: '交付没有成功，三份文稿和审核结论都还在。请检查网络后重新交付。',
+          action: (
+            <Button danger onClick={() => setConfirming(crypto.randomUUID())}>
+              重新交付
+            </Button>
+          ),
+        }
+      : status === 'unknown'
+        ? {
+            tone: 'warning',
+            icon: <ExclamationCircleFilled aria-hidden style={{ fontSize: 16, color: gy.warning }} />,
+            text: '还没确认交付成功没有，三份文稿和审核结论都还在。请先查询交付结果。',
+            action: (
+              <Button loading={deliver.querying} onClick={() => void deliver.check()}>
+                查询交付结果
+              </Button>
+            ),
+          }
+        : status === 'publishing' || status === 'sending'
+          ? {
+              tone: 'progress',
+              icon: <LoadingOutlined aria-hidden spin={!reduce} style={{ fontSize: 16, color: gy.primary }} />,
+              text: '正在交付三份 Word，请稍等。',
+            }
+          : null;
+  const reasonText =
+    status === 'failed'
+      ? '请用上方「重新交付」再试一次'
+      : status === 'unknown'
+        ? '请用上方「查询交付结果」确认'
+        : status === 'publishing' || status === 'sending'
+          ? '正在交付'
+          : '点「定稿并交付」后，客户才能下载';
   const reason = error ? (
     <span style={{ ...text14, color: gy.error }}>审核结论还没写 · 写好后再点「定稿并交付」</span>
   ) : (
-    <span style={{ ...text14, color: gy.tertiary }}>审核人：{editable ? reviewer : (last?.byName ?? '—')} · 点「定稿并交付」后，客户才能下载</span>
+    <span style={{ ...text14, color: gy.tertiary }}>
+      审核人：{who} · {editable || inFlight ? reasonText : '点「定稿并交付」后，客户才能下载'}
+    </span>
   );
 
   return (
     <>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: gy.canvas }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '48px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div style={{ maxWidth: 1144, margin: '0 auto', padding: '48px 32px', display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <h2 tabIndex={-1} data-page-title style={{ margin: 0, fontSize: 24, lineHeight: '32px', fontWeight: 600, color: gy.text }}>
               三份都已核对，写下审核结论
@@ -123,6 +208,7 @@ export function ConclusionTab({
                     <tr key={k}>
                       <td style={cell}>
                         {DRAFT_KINDS[k]}
+                        {d?.pages ? ` · ${d.pages} 页` : ''}
                       </td>
                       <td style={{ ...cell, color: gy.secondary }}>{d?.savedAt ? when(d.savedAt) : '—'}</td>
                       <td style={cell}>
@@ -189,16 +275,51 @@ export function ConclusionTab({
           </section>
         </div>
       </div>
+      {notice && (
+        <div
+          role={notice.tone === 'progress' ? 'status' : 'alert'}
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            padding: '10px 32px',
+            minHeight: 53,
+            boxSizing: 'border-box',
+            ...NOTICE_TONE[notice.tone],
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            {notice.icon}
+            <span style={{ ...text14, color: notice.tone === 'error' ? gy.error : gy.text }}>{notice.text}</span>
+          </span>
+          {notice.action}
+        </div>
+      )}
       <div style={{ height: 64, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '0 32px', background: gy.surface, borderTop: `1px solid ${gy.split}` }}>
         <span role={error ? 'alert' : undefined} style={{ flex: 1, minWidth: 0 }}>
           {reason}
         </span>
-        {editable && (
-          <Button type="primary" loading={saving} onClick={() => void submit()}>
-            定稿并交付
-          </Button>
-        )}
+        {editable &&
+          (blocked ? (
+            <Button disabled style={{ background: gy.neutralBg, border: 'none', fontWeight: 600, color: '#A8AEB8' }}>
+              定稿并交付
+            </Button>
+          ) : (
+            <Button type="primary" loading={saving} onClick={() => void submit()}>
+              定稿并交付
+            </Button>
+          ))}
       </div>
+      <DeliverConfirm
+        open={confirming !== null}
+        again={review.reopened ? { deliveredAt: review.reopened.deliveredAt } : null}
+        suggestedNote={review.reopened?.suggestedNote ?? ''}
+        loading={sending}
+        onCancel={() => setConfirming(null)}
+        onOk={(n) => void confirm(n)}
+      />
     </>
   );
 }

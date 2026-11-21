@@ -1,10 +1,11 @@
-// 发布以后（以及正在发布时）这批文稿定下来了：正文不能再改、核对和审核结论不能再动。
-// 要改就走新一轮（事实补件后重新生成，或第 14 项新旧稿对照），新一批草稿再发布是下一个交付版本
+// 交付锁：任务交付以后（以及正在交付时）只读，正文不能改、不能核对、不能写审核结论，资料核对和生成初稿也不能改。
+// 要修改，专家在已交付页点「重新打开」：tasks.reopened_at 晚于最近一次成功交付，任务就又可以改，
+// 改完重新核对、写结论后再次交付，形成新的交付版本。锁按任务算，不按批次算
 import { PUBLISH_STALE_MS } from '@genyun/shared';
 import { ConflictException } from '@nestjs/common';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.ts';
-import { deliveries } from '../db/schema.ts';
+import { deliveries, tasks } from '../db/schema.ts';
 
 export interface BatchLock {
   status: 'publishing' | 'done';
@@ -12,22 +13,36 @@ export interface BatchLock {
   publishedAt: string | null;
 }
 
-export async function batchLock(db: Pick<Database, 'select'>, batchId: string): Promise<BatchLock | null> {
-  const [row] = await db
-    .select({ status: deliveries.status, version: deliveries.version, publishedAt: deliveries.publishedAt, updatedAt: deliveries.updatedAt })
+/**
+ * 任务现在锁没锁：有没过期的「正在交付」是 publishing；最近一次成功交付之后没重新打开过是 done；
+ * 从没交付过，或者交付后已经重新打开，返回 null（可以改）
+ */
+export async function taskLock(db: Pick<Database, 'select'>, taskId: string): Promise<BatchLock | null> {
+  const [publishing] = await db
+    .select({ version: deliveries.version, updatedAt: deliveries.updatedAt })
     .from(deliveries)
-    .where(and(eq(deliveries.batchId, batchId), ne(deliveries.status, 'failed')))
+    .where(and(eq(deliveries.taskId, taskId), eq(deliveries.status, 'publishing')))
     .limit(1);
-  if (!row) return null;
   // 交付中断（服务重启）太久的不算
-  if (row.status === 'publishing' && Date.now() - row.updatedAt.getTime() > PUBLISH_STALE_MS) return null;
-  return { status: row.status as BatchLock['status'], version: row.version, publishedAt: row.publishedAt?.toISOString() ?? null };
+  if (publishing && Date.now() - publishing.updatedAt.getTime() <= PUBLISH_STALE_MS) {
+    return { status: 'publishing', version: publishing.version, publishedAt: null };
+  }
+  const [last] = await db
+    .select({ version: deliveries.version, publishedAt: deliveries.publishedAt })
+    .from(deliveries)
+    .where(and(eq(deliveries.taskId, taskId), eq(deliveries.status, 'done')))
+    .orderBy(desc(deliveries.version))
+    .limit(1);
+  if (!last) return null;
+  const [task] = await db.select({ reopenedAt: tasks.reopenedAt }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (task?.reopenedAt && last.publishedAt && task.reopenedAt > last.publishedAt) return null;
+  return { status: 'done', version: last.version, publishedAt: last.publishedAt?.toISOString() ?? null };
 }
 
+export const DELIVERED_MESSAGE = '这个任务已交付。要修改，请先点「重新打开」';
+
 export function lockedMessage(lock: BatchLock) {
-  return lock.status === 'done'
-    ? '这批文稿已交付，不能再修改。要更正请回到资料核对，重新生成后再交付'
-    : '这批文稿正在交付，请等交付完成';
+  return lock.status === 'done' ? DELIVERED_MESSAGE : '这批文稿正在交付，请等交付完成';
 }
 
 export function throwIfLocked(lock: BatchLock | null) {

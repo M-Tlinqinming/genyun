@@ -13,11 +13,11 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, or, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
-import { canEditOrganizationData, canViewFile, canViewOrganization, enterpriseScope, needsFileEnterprises } from '../auth/access.ts';
+import { canEditOrganizationData, canViewFile, canViewOrganization, customerMembership, enterpriseScope, needsFileEnterprises } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser, Public } from '../auth/session.guard.ts';
 import { assertDeliveryDownloadable } from '../credits/credits.service.ts';
@@ -197,8 +197,29 @@ export class FilesController {
     if (!canViewFile(user, file, { usedInMyAssignedTask: await this.usedInAssignedTask(user, id, file.orgId), linkedEnterpriseIds: linked })) {
       throw new NotFoundException(NOT_FOUND);
     }
+    // 客户只看得到最新一版交付的文件：再次交付以后，旧那一版的三份 Word 一律当作不存在（专家、运营照旧）
+    if (file.kind === 'delivery' && customerMembership(user, file.orgId) && !(await this.inLatestDelivery(id))) {
+      throw new NotFoundException(NOT_FOUND);
+    }
     const { uploadedBy: _, ...rest } = file;
     return rest;
+  }
+
+  private async inLatestDelivery(fileId: string): Promise<boolean> {
+    const [own] = await this.db
+      .select({ taskId: deliveries.taskId, version: deliveries.version })
+      .from(deliveryFiles)
+      .innerJoin(deliveries, eq(deliveries.id, deliveryFiles.deliveryId))
+      .where(and(eq(deliveryFiles.fileId, fileId), eq(deliveries.status, 'done')))
+      .limit(1);
+    if (!own) return false;
+    const [latest] = await this.db
+      .select({ version: deliveries.version })
+      .from(deliveries)
+      .where(and(eq(deliveries.taskId, own.taskId), eq(deliveries.status, 'done')))
+      .orderBy(desc(deliveries.version))
+      .limit(1);
+    return latest?.version === own.version;
   }
 
   private async usedInAssignedTask(user: SessionUser, fileId: string, fileOrgId: string): Promise<boolean> {
