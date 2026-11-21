@@ -116,8 +116,47 @@ test('任务：默认先看待我处理，页签记在地址里；可搜索任�
   await page.getByLabel('按企业筛选').click();
   await page.getByTitle('列表筛选测试有限公司').click();
   await expect(page.locator('[data-testid^="task-GY-"]')).toHaveCount(1);
+  await expect(page).toHaveURL(new RegExp(`enterprise=${task.enterpriseId}`));
   await page.getByTestId(`task-${task.number}`).getByRole('button', { name: /^去上传/ }).click();
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${task.id}/prepare$`));
+
+  // 企业筛选记在地址里：点进任务再返回、刷新都还在
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`enterprise=${task.enterpriseId}`));
+  await expect(page.locator('[data-testid^="task-GY-"]')).toHaveCount(1);
+  await expect(page.getByTestId(`task-${task.number}`)).toBeVisible();
+  await page.reload();
+  await expect(page.locator('[data-testid^="task-GY-"]')).toHaveCount(1);
+  await expect(page.getByTestId(`task-${task.number}`)).toBeVisible();
+  // 地址里的企业看不到（不存在）时当作没选
+  await page.goto(`/customer/tasks?tab=all&enterprise=${crypto.randomUUID()}`);
+  await expect(page.locator('[data-testid^="task-GY-"]').nth(1)).toBeVisible();
+});
+
+test('任务列表整行可点：点企业名称、键盘回车都能进任务；「查看」照旧', async () => {
+  const task = await newTask('整行点击测试有限公司');
+  await page.goto('/customer/tasks?tab=all');
+  await page.getByPlaceholder('搜索企业名称或任务编号').fill(task.number);
+  const row = page.getByTestId(`task-${task.number}`);
+  await row.getByText('整行点击测试有限公司', { exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${task.id}/prepare$`));
+
+  await page.goBack();
+  await page.getByPlaceholder('搜索企业名称或任务编号').fill(task.number);
+  await row.focus();
+  await expect(row).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${task.id}/prepare$`));
+});
+
+test('删除了的任务：说找不到这个任务，回任务列表', async () => {
+  const task = await newTask('删除后打开测试有限公司');
+  expect((await page.request.delete(`/api/tasks/${task.id}`)).ok()).toBe(true);
+  await page.goto(`/customer/tasks/${task.id}`);
+  await expect(page.getByText('找不到这个任务')).toBeVisible();
+  await expect(page.getByText('可能已经删除，或者您没有查看权限。')).toBeVisible();
+  await page.getByRole('link', { name: '返回任务列表' }).click();
+  await expect(page).toHaveURL(/\/customer\/tasks$/);
 });
 
 test('新建任务：从工作台进入新建任务页，在页里选企业', async () => {

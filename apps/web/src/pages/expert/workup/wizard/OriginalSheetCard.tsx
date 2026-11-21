@@ -59,7 +59,7 @@ export function OriginalSheetCard({ taskId, workup, sheets }: { taskId: string; 
         )}
       </div>
       <LockNote />
-      <Drawer title={`图纸与照片 ${pictures.length} 份`} open={drawerOpen} onClose={() => setDrawerOpen(false)} width={420} zIndex={1100}>
+      <Drawer title={`图纸与照片 ${pictures.length} 份`} open={drawerOpen} onClose={() => setDrawerOpen(false)} size={420} zIndex={1100}>
         <ul aria-label="图纸与照片" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {pictures.map((f, i) => (
             <PictureRow key={f.id} file={f} first={i === 0} onView={() => void run(viewFile(f.fileId))} />

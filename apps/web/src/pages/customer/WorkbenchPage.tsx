@@ -3,14 +3,14 @@ import { Button, Result } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useOrgCredits } from '../../api/credits';
-import { useOrgTasks, type TaskSummary } from '../../api/enterprises';
+import { useEnterprises, useOrgTasks, type TaskSummary } from '../../api/enterprises';
 import { ContactLink } from '../../components/ContactLink';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusTag } from '../../components/StatusTag';
 import { Loading, panel } from '../../components/ui';
 import { useWorkspace } from '../../layouts/workspace';
 import { gy, type, weight } from '../../theme/tokens';
-import { byUpdated, ContractNotice, CREATE_BLOCKED, CreateTaskButton, TaskActionButton, taskAction, useContract } from './tasks/shared';
+import { byUpdated, ContractNotice, CREATE_BLOCKED, CreateTaskButton, TaskActionButton, TaskRow, taskAction, useContract } from './tasks/shared';
 
 const MAX_TODO = 5;
 const MAX_CARD = 3;
@@ -24,6 +24,9 @@ export function WorkbenchPage() {
   const tasks = useOrgTasks(orgId);
   const contract = useContract(orgId);
   const credits = useOrgCredits(orgId, isAdmin);
+  // 成员还没分到企业：新建不了任务，空状态改说等管理员分配
+  const enterprises = useEnterprises(orgId);
+  const noEnterprise = !isAdmin && enterprises.data !== undefined && enterprises.data.length === 0;
   const expired = contract.state === 'expired';
   const now = new Date();
 
@@ -62,14 +65,14 @@ export function WorkbenchPage() {
           {lockedForMember.length > 0 && <MemberLockBlock locked={lockedForMember} />}
           {expired && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <Button disabled size="large" style={{ fontSize: 14 }}>
+              <Button disabled>
                 新建任务
               </Button>
               <span style={{ ...type.body, color: gy.secondary }}>{CREATE_BLOCKED}</span>
             </div>
           )}
 
-          {(!expired || todo.length > 0) && <TodoCard todo={todo} now={now} />}
+          {(!expired || todo.length > 0) && <TodoCard todo={todo} now={now} noEnterprise={noEnterprise} />}
 
           {expired ? (
             <ExpiredCards working={working} delivered={delivered.filter((t) => t.view.key === 'delivered')} />
@@ -118,7 +121,7 @@ const row: CSSProperties = { display: 'flex', alignItems: 'center', padding: '14
 const strong14: CSSProperties = { ...type.body, fontWeight: weight.strong, color: gy.text };
 const small: CSSProperties = { ...type.caption, color: gy.tertiary };
 
-function TodoCard({ todo, now }: { todo: TaskSummary[]; now: Date }) {
+function TodoCard({ todo, now, noEnterprise }: { todo: TaskSummary[]; now: Date; noEnterprise: boolean }) {
   return (
     <section aria-label="待我处理" style={panel}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '16px 24px' }}>
@@ -134,10 +137,12 @@ function TodoCard({ todo, now }: { todo: TaskSummary[]; now: Date }) {
         </Link>
       </div>
       {todo.length === 0 ? (
-        <div style={{ ...row, padding: '20px 24px', ...type.body, color: gy.secondary }}>暂时没有需要您处理的事项。有新任务时，点右上角「新建任务」。</div>
+        <div style={{ ...row, padding: '20px 24px', ...type.body, color: gy.secondary }}>
+          {noEnterprise ? '组织管理员给您分配企业后，就能在这里新建任务。' : '暂时没有需要您处理的事项。有新任务时，点右上角「新建任务」。'}
+        </div>
       ) : (
         todo.slice(0, MAX_TODO).map((t) => (
-          <div key={t.id} data-testid={`todo-${t.number}`} style={row}>
+          <TaskRow key={t.id} task={t} testId={`todo-${t.number}`} style={row}>
             <div style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', paddingRight: 16, minWidth: 0 }}>
               <span style={strong14}>{t.enterpriseName}</span>
               <span style={small}>{t.number}</span>
@@ -151,7 +156,7 @@ function TodoCard({ todo, now }: { todo: TaskSummary[]; now: Date }) {
             </div>
             <span style={{ width: 140, flexShrink: 0, ...type.body, color: gy.secondary }}>{formatTaskDayTime(new Date(t.updatedOn), now)}</span>
             <TaskActionButton task={t} place="workbench" />
-          </div>
+          </TaskRow>
         ))
       )}
       {todo.length > MAX_TODO && (
