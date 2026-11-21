@@ -26,9 +26,14 @@ const stepSaved = (page: Page, step: 'production' | 'resources') =>
   page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith(`/workup/steps/${step}`) && r.ok());
 const judged = (page: Page) => page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/workup/production') && r.ok());
 
+// 只在这个选择框自己的弹层里找选项（按 aria-controls 找）：上一个下拉还在收起动画里时，页面上会同时有两份可见的弹层
 async function choose(page: Page, label: string, option: string) {
-  await page.getByLabel(label, { exact: true }).click();
-  await page.locator('.ant-select-dropdown:visible').getByTitle(option, { exact: true }).click();
+  const box = page.getByLabel(label, { exact: true });
+  await box.click();
+  const listId = await box.getAttribute('aria-controls');
+  if (!listId) throw new Error(`${label} 没有 aria-controls`);
+  const dropdown = page.locator('.ant-select-dropdown').filter({ has: page.locator(`[id="${listId}"]`) });
+  await dropdown.getByTitle(option, { exact: true }).click();
 }
 
 test('第 3 步：补设备、判定危化品和特种设备、加返工；第 4 步：耐火等级', async ({ page }) => {
