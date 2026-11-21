@@ -13,6 +13,7 @@ import {
   type IntakeSheetView,
   type IntakeSubmissionSnapshot,
   type IntakeSubmissionView,
+  type IntakeUploadResult,
   type IntakeView,
   type IntakeWarning,
 } from '@genyun/shared';
@@ -238,7 +239,7 @@ export class IntakeService {
     return this.view(user, ctx);
   }
 
-  async upload(user: SessionUser, taskId: string, slot: IntakeFileSlot, file: UploadedFile): Promise<IntakeView> {
+  async upload(user: SessionUser, taskId: string, slot: IntakeFileSlot, file: UploadedFile): Promise<IntakeUploadResult> {
     const ctx = await this.context(user, taskId, true);
     const rule = INTAKE_SLOTS_RULE[slot];
     const name = file.originalname.trim().slice(0, 200) || '未命名文件';
@@ -261,14 +262,28 @@ export class IntakeService {
       }
     }
 
+    // 疏散图、其他图纸与照片可以传多张：同一栏里已有内容完全一样的（没移除的），不再存第二份。
+    // 网络不好时客户以为没传上又传一遍，其实第一次已经收到了。资料表格、总平面布置图本来就是替换，不管。
+    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
+    const dedup = slot === 'evacuation_map' || slot === 'other';
+    if (dedup && (await this.hasSameFile(this.db, taskId, slot, sha256))) {
+      return { ...(await this.get(user, taskId)), duplicate: true };
+    }
+
     const id = randomUUID();
     const storageKey = `${ctx.task.orgId}/${id}`;
     const contentType = FILE_TYPES[type].mime;
     await this.storage.put(storageKey, file.buffer, contentType);
     const now = new Date();
+    let duplicate = false;
     try {
       await this.db.transaction(async (tx) => {
         const intake = await this.lockIntake(tx, taskId);
+        // 同一张图两次几乎同时到：锁住以后再查一次，后到的那份不写
+        if (dedup && (await this.hasSameFile(tx, taskId, slot, sha256))) {
+          duplicate = true;
+          return;
+        }
         await tx.insert(files).values({
           id,
           orgId: ctx.task.orgId,
@@ -276,7 +291,7 @@ export class IntakeService {
           originalName: name,
           contentType,
           sizeBytes: file.size,
-          sha256: createHash('sha256').update(file.buffer).digest('hex'),
+          sha256,
           storageKey,
           uploadedBy: user.id,
         });
@@ -310,7 +325,29 @@ export class IntakeService {
       if (isUniqueViolation(err, 'task_intake_files_one_data_sheet')) throw new ConflictException(CONCURRENT_SHEET_MESSAGE);
       throw err;
     }
+    if (duplicate) {
+      await this.discardStored(storageKey);
+      return { ...(await this.get(user, taskId)), duplicate: true };
+    }
     return this.get(user, taskId);
+  }
+
+  // 这一栏里有没有内容完全一样、还没移除的文件
+  private async hasSameFile(db: Database | Tx, taskId: string, slot: IntakeFileSlot, sha256: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: taskIntakeFiles.fileId })
+      .from(taskIntakeFiles)
+      .innerJoin(files, eq(files.id, taskIntakeFiles.fileId))
+      .where(
+        and(
+          eq(taskIntakeFiles.taskId, taskId),
+          eq(taskIntakeFiles.slot, slot),
+          isNull(taskIntakeFiles.removedAt),
+          eq(files.sha256, sha256),
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
   }
 
   // 读表结果写进 task_intakes；不是模板、像是别家企业的，记下提示、清掉上一份的读表结果（以最后一次为准）

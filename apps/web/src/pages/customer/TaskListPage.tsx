@@ -10,7 +10,7 @@ import { StatusTag } from '../../components/StatusTag';
 import { Loading, panel } from '../../components/ui';
 import { useWorkspace } from '../../layouts/workspace';
 import { gy, type, weight } from '../../theme/tokens';
-import { byUpdated, ContractNotice, CreateTaskButton, TaskActionButton, useContract } from './tasks/shared';
+import { byUpdated, ContractNotice, CreateTaskButton, TaskActionButton, TaskRow, useContract } from './tasks/shared';
 
 type Tab = CustomerTaskTab | 'all';
 const TABS: { key: Tab; label: string }[] = [
@@ -24,12 +24,11 @@ const PAGE = 20;
 
 // C04 任务｜跨企业看所有任务：要自己处理的在前；按企业名、任务编号搜索，按企业筛选；按钮直达要做的那一步
 export function TaskListPage() {
-  const { orgId } = useWorkspace();
+  const { orgId, role } = useWorkspace();
   const tasks = useOrgTasks(orgId);
   const contract = useContract(orgId);
   const [search, setSearch] = useSearchParams();
   const [keyword, setKeyword] = useState('');
-  const [enterprise, setEnterprise] = useState<string>('all');
   const [page, setPage] = useState(1);
   const now = new Date();
 
@@ -39,6 +38,17 @@ export function TaskListPage() {
   const asked = search.get('tab');
   const tab: Tab = isTab(asked) ? asked : counts.todo > 0 ? 'todo' : 'all';
 
+  // 按企业筛选写在网址里（?enterprise=），刷新、点进任务再返回都还在；网址里的企业不在列表里（不存在、看不到）当作没选
+  const enterprises = [...new Map(rows.map((r) => [r.task.enterpriseId, r.task.enterpriseName])).entries()];
+  const askedEnterprise = search.get('enterprise');
+  const enterprise = askedEnterprise && enterprises.some(([id]) => id === askedEnterprise) ? askedEnterprise : 'all';
+  const setParam = (key: 'tab' | 'enterprise', value: string | null) => {
+    const next = new URLSearchParams(search);
+    if (value === null) next.delete(key);
+    else next.set(key, value);
+    setSearch(next, { replace: true });
+  };
+
   const k = keyword.trim().toUpperCase();
   const shown = rows
     .filter((r) => tab === 'all' || r.tab === tab)
@@ -47,14 +57,15 @@ export function TaskListPage() {
     .map((r) => r.task)
     // 「全部」里要处理的排在前面，再按更新时间
     .sort((a, b) => (tab === 'all' ? Number(b.view.needsAction) - Number(a.view.needsAction) : 0) || byUpdated(a, b));
-  const enterprises = [...new Map(rows.map((r) => [r.task.enterpriseId, r.task.enterpriseName])).entries()];
   const pageRows = shown.slice((page - 1) * PAGE, page * PAGE);
 
   return (
     <>
       <PageHeader
         title="任务"
-        description="所有企业的任务都在这里，要您处理的排在前面。"
+        description={
+          role === 'customer_admin' ? '所有企业的任务都在这里，要您处理的排在前面。' : '您负责的企业的任务都在这里，要您处理的排在前面。'
+        }
         extra={<CreateTaskButton canCreate={contract.canCreate} />}
       />
       {contract.state !== null && contract.state !== 'active' && (
@@ -81,7 +92,7 @@ export function TaskListPage() {
                     aria-selected={active}
                     onClick={() => {
                       setPage(1);
-                      setSearch({ tab: t.key }, { replace: true });
+                      setParam('tab', t.key);
                     }}
                     style={{
                       padding: active ? '13px 0 9px' : '13px 0 11px',
@@ -116,7 +127,7 @@ export function TaskListPage() {
                 value={enterprise}
                 onChange={(v) => {
                   setPage(1);
-                  setEnterprise(v);
+                  setParam('enterprise', v === 'all' ? null : v);
                 }}
                 style={{ width: 160 }}
                 options={[{ value: 'all', label: '全部企业' }, ...enterprises.map(([id, name]) => ({ value: id, label: name }))]}
@@ -162,8 +173,9 @@ function TaskLine({ task: t, now, last }: { task: TaskSummary; now: Date; last: 
   // 画板上准备资料的写到几点几分（「今天 09:40」），其余只写日子（「11 月 15 日」）
   const when = t.view.stage === 0 && t.view.needsAction ? formatTaskDayTime(new Date(t.updatedOn), now) : formatTaskDay(new Date(t.updatedOn), now);
   return (
-    <div
-      data-testid={`task-${t.number}`}
+    <TaskRow
+      task={t}
+      testId={`task-${t.number}`}
       style={{ display: 'flex', alignItems: 'center', padding: '14px 24px', ...(last ? {} : { borderBottom: `1px solid ${gy.split}` }) }}
     >
       <div style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', paddingRight: 16, minWidth: 0 }}>
@@ -181,6 +193,6 @@ function TaskLine({ task: t, now, last }: { task: TaskSummary; now: Date; last: 
       </div>
       <span style={{ width: 140, flexShrink: 0, ...type.body, color: gy.secondary }}>{when}</span>
       <TaskActionButton task={t} place="list" />
-    </div>
+    </TaskRow>
   );
 }

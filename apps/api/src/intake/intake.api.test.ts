@@ -27,6 +27,8 @@ import { newMissing, newNormal, notTemplate, oldSample, otherEnterprise, renamed
 
 const PASSWORD = 'correct horse battery staple';
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+// 内容不一样的另一张图（同一栏里内容完全一样的只存一份）
+const PNG2 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 1]);
 const PDF = Buffer.from('%PDF-1.7\n% 图纸\n');
 const DWG = Buffer.from('AC1032\0\0\0\0\0\0');
 const OTHER_NAME = '耕云测试另一家有限公司';
@@ -224,7 +226,7 @@ describe('图纸', () => {
     const v3 = ok(await put(taskId, 'evacuation_map', PNG, '疏散图.png'));
     expect(v3.noEvacuationMap).toBe(false);
     expect(v3.requiredCheck!.missing).toEqual([]);
-    ok(await put(taskId, 'evacuation_map', PNG, '疏散图 2.png'));
+    ok(await put(taskId, 'evacuation_map', PNG2, '疏散图 2.png'));
     const conflict = await agent.put(`/api/tasks/${taskId}/intake/no-evacuation-map`).send({ value: true });
     expect(conflict.status).toBe(409);
     expect(conflict.body.message).toBe(HAS_EVACUATION_MAP_MESSAGE);
@@ -244,6 +246,38 @@ describe('图纸', () => {
     expect(del.status).toBe(400);
     expect(del.body.message).toBe(SHEET_UNDELETABLE_MESSAGE);
     expect((await agent.delete(`/api/tasks/${taskId}/intake/files/${v4.evacuationMaps[0]!.id}`)).status).toBe(404);
+  });
+
+  it('同一栏里同一张图传两次只存一份，第二次标为重复；不同的图、别的栏照常存', async () => {
+    const { taskId } = await newTask('耕云测试重复上传有限公司');
+    const first = ok(await put(taskId, 'evacuation_map', PNG, '疏散图.png'));
+    expect(first.evacuationMaps).toHaveLength(1);
+    expect((first as IntakeView & { duplicate?: boolean }).duplicate).toBeUndefined();
+
+    const again = ok(await put(taskId, 'evacuation_map', PNG, '疏散图（再传一次）.png'));
+    expect((again as IntakeView & { duplicate?: boolean }).duplicate).toBe(true);
+    expect(again.evacuationMaps.map((f) => f.id)).toEqual(first.evacuationMaps.map((f) => f.id));
+    expect(again.evacuationMaps[0]!.originalName).toBe('疏散图.png');
+
+    const other = ok(await put(taskId, 'evacuation_map', PNG2, '疏散图 2.png'));
+    expect((other as IntakeView & { duplicate?: boolean }).duplicate).toBeUndefined();
+    expect(other.evacuationMaps).toHaveLength(2);
+
+    // 同一张图传到「其他图纸与照片」：不是同一栏，照常存
+    const photos = ok(await put(taskId, 'other', PNG, '现场照片.png'));
+    expect((photos as IntakeView & { duplicate?: boolean }).duplicate).toBeUndefined();
+    expect(photos.others).toHaveLength(1);
+    const photosAgain = ok(await put(taskId, 'other', PNG, '现场照片.png'));
+    expect((photosAgain as IntakeView & { duplicate?: boolean }).duplicate).toBe(true);
+    expect(photosAgain.others).toHaveLength(1);
+
+    // 删掉过的不算已有：删了再传同一张，照常存
+    const agent = await as();
+    const removed = (await agent.delete(`/api/tasks/${taskId}/intake/files/${photos.others[0]!.id}`)).body as IntakeView;
+    expect(removed.others).toEqual([]);
+    const back = ok(await put(taskId, 'other', PNG, '现场照片.png'));
+    expect((back as IntakeView & { duplicate?: boolean }).duplicate).toBeUndefined();
+    expect(back.others).toHaveLength(1);
   });
 
   it('没读到表格时图纸照样能传，requiredCheck 仍为空', async () => {

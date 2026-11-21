@@ -160,6 +160,13 @@ test('缺项表：列出回表格改的项和要传的两张图，选填可以�
   await expect(submit()).toBeDisabled();
   await shot('u2');
 
+  // 底栏「填不上？联系客服」和「查看客服二维码」是同一个浮层
+  await page.getByRole('button', { name: '联系客服' }).click();
+  await expect(page.getByRole('img', { name: '耕云客服企业微信二维码' })).toBeVisible();
+  await shot('c1-footer-qr');
+  await page.keyboard.press('Escape');
+  await page.mouse.click(10, 300);
+
   const more = page.getByRole('button', { name: /^查看是哪 \d+ 项$/ });
   if (await more.count()) {
     await more.click();
@@ -167,6 +174,33 @@ test('缺项表：列出回表格改的项和要传的两张图，选填可以�
     await shot('s05-optional');
     await page.getByRole('button', { name: '收起' }).click();
   }
+});
+
+// 「这张图我们没有」「撤销，我要上传」同一时间只出现在一处：缺疏散图时在「在这里直接传」那一行，
+// 说明没有以后在「已传的图纸和照片」里，撤销后回到缺项里
+const noEvacuation = () => page.getByRole('button', { name: '这张图我们没有' });
+const drawingsSummary = () => page.getByRole('group', { name: '图纸与照片', exact: true });
+const uploadedCardHead = () => page.getByRole('heading', { name: '已传的图纸和照片' });
+
+test('一张图都没传：说明没有疏散图后出现「已传的图纸和照片」，里面可撤销，撤销后回到缺项', async () => {
+  const before = Number((await title().textContent())!.match(/还差 (\d+) 项/)![1]);
+  await expect(uploadedCardHead()).toHaveCount(0);
+  await expect(noEvacuation()).toHaveCount(1);
+  await noEvacuation().click();
+  await page.getByRole('dialog', { name: '确认没有紧急疏散示意图？' }).getByRole('button', { name: '确认没有' }).click();
+  await expect(title()).toHaveText(`表格已读取，还差 ${before - 1} 项必填`);
+  await expect(drawingsSummary()).toContainText('已说明没有');
+  await expect(uploadedCardHead()).toBeVisible();
+  await expect(noEvacuation()).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '撤销，我要上传' })).toHaveCount(1);
+  await shot('a1-declared-no-drawings');
+
+  await page.getByRole('button', { name: '撤销，我要上传' }).click();
+  await expect(title()).toHaveText(`表格已读取，还差 ${before} 项必填`);
+  await expect(page.getByRole('heading', { name: '在这里直接传 2 张图' })).toBeVisible();
+  await expect(uploadedCardHead()).toHaveCount(0);
+  await expect(noEvacuation()).toHaveCount(1);
+  await expect(page.getByRole('button', { name: '撤销，我要上传' })).toHaveCount(0);
 });
 
 test('传总平面布置图；疏散图先说明没有、再撤销后上传', async () => {
@@ -183,8 +217,13 @@ test('传总平面布置图；疏散图先说明没有、再撤销后上传', as
   await expect(title()).toHaveText(`表格已读取，还差 ${before - 2} 项必填`);
   await expect(page.getByRole('group', { name: '图纸与照片', exact: true })).toContainText('已说明没有');
 
+  await expect(noEvacuation()).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '撤销，我要上传' })).toHaveCount(1);
   await page.getByRole('button', { name: '撤销，我要上传' }).click();
   await expect(title()).toHaveText(`表格已读取，还差 ${before - 1} 项必填`);
+  await expect(noEvacuation()).toHaveCount(1);
+  await expect(page.getByRole('button', { name: '撤销，我要上传' })).toHaveCount(0);
+  await expect(drawingsSummary()).toContainText('还没传');
   await choose(page.getByRole('heading', { name: '在这里直接传 1 张图' }).locator('xpath=ancestor::section[1]').getByRole('button', { name: UPLOAD }), png('疏散图.png'));
   await expect(page.getByRole('heading', { name: '在这里直接传' })).toHaveCount(0);
   await expect(page.getByRole('group', { name: '紧急疏散示意图' }).last()).toContainText('疏散图.png');
@@ -198,6 +237,11 @@ test('传改好的表：必填齐了，可以提交；删掉疏散图又缺一�
   await choose(page.getByRole('button', { name: '添加' }), [png('车间照片.png'), pdf('营业执照.pdf')]);
   await expect(page.getByRole('group', { name: '图纸与照片', exact: true })).toContainText('已传 2 张');
   await shot('u2b');
+
+  // 同一张照片又传一遍：不多出一份，提示已经传过了
+  await choose(page.getByRole('button', { name: '添加' }), png('车间照片.png'));
+  await expect(page.getByText('这张已经传过了')).toBeVisible();
+  await expect(page.getByRole('group', { name: '图纸与照片', exact: true })).toContainText('已传 2 张');
 
   // 点了先弹确认；「再看看」不提交，留在准备资料页（提交的全过程在 workflow-submit.spec.ts）
   await submit().click();

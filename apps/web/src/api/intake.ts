@@ -1,4 +1,4 @@
-import type { IntakeFileSlot, IntakeView } from '@genyun/shared';
+import type { IntakeFileSlot, IntakeUploadResult, IntakeView } from '@genyun/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, NETWORK_TROUBLE, SERVER_TROUBLE, request } from './request';
 
@@ -56,9 +56,9 @@ export function uploadIntakeFile(
   file: File,
   onProgress: (percent: number) => void,
   onSent: () => void,
-): { done: Promise<IntakeView>; abort: () => void } {
+): { done: Promise<IntakeUploadResult>; abort: () => void } {
   const xhr = new XMLHttpRequest();
-  const done = new Promise<IntakeView>((resolve, reject) => {
+  const done = new Promise<IntakeUploadResult>((resolve, reject) => {
     xhr.open('POST', `/api/tasks/${taskId}/intake/files?slot=${slot}`);
     xhr.withCredentials = true;
     xhr.upload.onprogress = (e) => {
@@ -76,7 +76,7 @@ export function uploadIntakeFile(
         body = null;
       }
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(body as unknown as IntakeView);
+        resolve(body as unknown as IntakeUploadResult);
         return;
       }
       const message =

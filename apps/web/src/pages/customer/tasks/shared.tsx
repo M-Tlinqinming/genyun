@@ -1,7 +1,7 @@
 import { contractState } from '@genyun/shared';
 import { PlusOutlined } from '@ant-design/icons';
 import { App, Button, Tooltip } from 'antd';
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { downloadBundle } from '../../../api/deliveries';
 import { ContactLink } from '../../../components/ContactLink';
@@ -36,6 +36,51 @@ export function taskAction(t: TaskSummary, place: TaskActionPlace): { label: str
   }
 }
 
+/** 点整行去的地方：和行尾按钮一样；任务列表里「下载」那种没有去处的，去成果页 */
+export function taskRowTarget(t: TaskSummary): string {
+  return taskAction(t, 'list').to ?? taskAction(t, 'workbench').to ?? `/customer/documents/${t.id}`;
+}
+
+/**
+ * 可以点的任务行（工作台「待我处理」、任务列表共用）：点整行进任务，Tab 能停到行上、回车进入。
+ * 行尾按钮自己处理点击和回车，不会连带触发整行
+ */
+export function TaskRow({
+  task,
+  style,
+  children,
+  testId,
+}: {
+  task: TaskSummary;
+  style: CSSProperties;
+  children: ReactNode;
+  testId?: string;
+}) {
+  const navigate = useNavigate();
+  const [hover, setHover] = useState(false);
+  const open = () => void navigate(taskRowTarget(task));
+  return (
+    <div
+      data-testid={testId}
+      className="gy-task-row"
+      tabIndex={0}
+      aria-label={`${task.enterpriseName} ${task.number}`}
+      onClick={open}
+      onKeyDown={(e) => {
+        // 只认行本身：行里的按钮自己处理回车
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        open();
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ ...style, cursor: 'pointer', background: hover ? gy.canvas : undefined }}
+    >
+      {children}
+    </div>
+  );
+}
+
 /** 行尾的描边按钮（88×32）：去对应的页面，或者在任务列表里直接下载整套 Word */
 export function TaskActionButton({ task, place, width = 88 }: { task: TaskSummary; place: TaskActionPlace; width?: number | 'auto' }) {
   const navigate = useNavigate();
@@ -58,7 +103,11 @@ export function TaskActionButton({ task, place, width = 88 }: { task: TaskSummar
     <Button
       loading={busy}
       aria-label={`${action.label} ${task.enterpriseName} ${task.number}`}
-      onClick={() => void onClick()}
+      onClick={(e) => {
+        // 放在可以点的整行里：按钮自己处理，不再触发整行
+        e.stopPropagation();
+        void onClick();
+      }}
       style={{ width, flexShrink: 0, borderColor: gy.controlLine, ...(width === 'auto' ? { paddingInline: 15 } : { paddingInline: 0 }) }}
     >
       {action.label}
@@ -92,14 +141,14 @@ export const CREATE_BLOCKED = '续约生效后可创建新任务；已有资料�
 export function CreateTaskButton({
   canCreate,
   enterpriseId,
-  size = 'large',
+  size = 'middle',
   explain = 'tooltip',
 }: {
   /** 能不能新建：年度服务不在有效期内或组织还没开通时为 false，按钮置灰 */
   canCreate: boolean;
   /** 从企业页进来时带上这家企业，新建任务页会预先选好 */
   enterpriseId?: string;
-  /** 按钮大小：页头用 large，企业概览里用 middle */
+  /** 按钮大小：页头和企业概览都是 32 高、14 号字（middle，11 页 C01、C04 画板） */
   size?: 'large' | 'middle';
   /** 不能新建时原因怎么说：inline 写在按钮旁边，tooltip 悬停时显示 */
   explain?: 'inline' | 'tooltip';
@@ -111,7 +160,6 @@ export function CreateTaskButton({
       size={size}
       icon={canCreate ? <PlusOutlined /> : undefined}
       disabled={!canCreate}
-      style={size === 'large' ? { fontSize: 16 } : undefined}
       onClick={() => navigate(enterpriseId ? `/customer/tasks/new?enterpriseId=${enterpriseId}` : '/customer/tasks/new')}
     >
       新建任务

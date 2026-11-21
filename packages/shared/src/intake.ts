@@ -223,6 +223,12 @@ export interface IntakeView {
   expertStarted: boolean;
 }
 
+/** 上传（POST /api/tasks/:taskId/intake/files）的返回：和读当前资料一样，多一个 duplicate */
+export interface IntakeUploadResult extends IntakeView {
+  /** 疏散图、其他图纸与照片这两栏里已经有内容完全一样的文件（按 sha256，移除过的不算），这次没有再存 */
+  duplicate?: boolean;
+}
+
 /** 提交给专家（POST /api/tasks/:taskId/intake/submit）：requestId 每次打开确认弹窗生成一个，失败重试时沿用 */
 export interface IntakeSubmitRequest {
   requestId: string;
