@@ -1,8 +1,9 @@
-// 成果交付（M2 第 15 项，15 页 R03、R04、R04a、R04b）：审核结论有效时，负责专家交付三份当前稿。
+// 定稿并交付（15 页 R10–R15）：审核结论有效时，负责专家交付三份当前稿。
 // 交付时把三份 Word 定稿（文件属性写上「AI 辅助起草、注册安全工程师审核」和审核人）存成文件，形成交付版本
-// （同一任务内部按 1、2、3 编号，界面不显示），任务进入已交付，给客户发一条站内提醒。
+// （同一任务内部按 1、2、3 编号，界面不显示），任务进入已交付，给客户发站内提醒和邮件。
+// 交付以后任务只读；专家点「重新打开」后可以再改，重新核对、写结论后再次交付，形成新的交付版本（客户只看得到最新一版）。
 // 防重复：页面每次交付带一个 publishId；同一个 publishId 重发只返回那一次的结果。结果不确定时页面先按 publishId 查，
-// 查到没收到才重新交付。同一批文稿只能形成一个交付版本（交付时锁住任务检查；交付后重新打开的，同一批可以再次交付），
+// 查到没收到才重新交付。一个任务交付以后、没重新打开之前不能再交付（交付时锁住任务检查），
 // 同一任务同一时间只有一次交付在进行（数据库唯一索引兜底）
 import {
   DRAFT_KIND_KEYS,
@@ -10,6 +11,7 @@ import {
   PUBLISH_STALE_MS,
   publishRequestSchema,
   reviewValid,
+  UPDATE_NOTE_MAX,
   type DeliveryVersion,
   type DraftKind,
   type PublishAttempt,
@@ -33,7 +35,7 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, ne } from 'drizzle-orm';
 import type { Request } from 'express';
 import { createHash, randomUUID } from 'node:crypto';
 import { AuditService, clientIp } from '../audit/audit.ts';
@@ -51,12 +53,14 @@ import {
   files,
   generationBatches,
   memberships,
+  taskReopens,
   tasks,
   users,
 } from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { type AfterCommit, CreditsService } from '../credits/credits.service.ts';
 import { enterpriseCustomerIds, NotificationsService } from '../notifications/notifications.service.ts';
+import { PUBLISHING_MESSAGE, taskLock } from './delivery-lock.ts';
 import { EditingService } from './editing.service.ts';
 import { ReviewService } from './review.service.ts';
 
@@ -65,6 +69,8 @@ const ONLY_EXPERT = '只有负责这个任务的专家可以交付';
 const FAILED = '三份 Word 没能全部存好，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新交付';
 const INTERRUPTED = '交付中断，本次没有形成交付。三份保存稿与审核结论仍有效，可以重新交付';
 const CHANGED_WHILE_PUBLISHING = '交付期间有文稿又保存了修订，本次没有形成交付。请重新核对并确认审核结论后再交付';
+const NOT_DELIVERED = '这个任务还没有交付，不用重新打开';
+const ALREADY_REOPENED = '这个任务已经重新打开了';
 
 const WORD_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
@@ -100,6 +106,8 @@ export class PublishService {
     const parsed = publishRequestSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException('请刷新页面后再交付');
     const { publishId, batchId, versions } = parsed.data;
+    const note = parsed.data.updateNote?.trim() ?? '';
+    if (note.length > UPDATE_NOTE_MAX) throw new BadRequestException(`这次更新了什么最多写 ${UPDATE_NOTE_MAX} 个字`);
 
     // 同一次交付重发（超时、断网后再点）：只返回那一次的结果，不再交付
     const replayed = await this.replay(user, task, publishId);
@@ -111,7 +119,7 @@ export class PublishService {
       throw new ConflictException({ statusCode: 409, message, reason, view: await this.build(user, task) });
     };
     if (review.batchId !== batchId) return refuse('草稿已重新生成，请刷新后按新的一批核对、审核再交付', 'regenerated');
-    if (review.published) return refuse('这批文稿已经交付过了，不用重复交付', 'already_published');
+    if (review.published) return refuse('这个任务已经交付过了，不用重复交付', 'already_published');
     if (!reviewValid(review)) return refuse(blockerOf(review) ?? '审核结论已失效，请重新核对并确认审核结论后再交付', 'review_invalid');
     if (review.docs.some((d) => versions[d.kind] !== d.version)) {
       return refuse('有文稿在你打开交付页后又保存了修订，请重新核对并确认审核结论后再交付', 'stale');
@@ -119,8 +127,8 @@ export class PublishService {
     const [conclusion] = await this.db.select().from(draftReviews).where(eq(draftReviews.batchId, batchId)).limit(1);
     const batch = (await this.db.select().from(generationBatches).where(eq(generationBatches.id, batchId)).limit(1))[0]!;
 
-    // 先记下「正在交付」。同一任务另一次交付由唯一索引拦下；同一批文稿再交付在这里检查：
-    // 锁住任务，同一批已有没失败的交付，而且那之后任务没重新打开过，就拒绝（和原来的唯一索引效果一样）
+    // 先记下「正在交付」。同一任务另一次交付由唯一索引拦下；交付以后再交付在这里检查：
+    // 锁住任务，这个任务最近一条没失败的交付（不论哪一批）正在交付，或者已经交付、那之后没重新打开过，就拒绝
     const version = await this.nextVersion(task.id);
     let row: Delivery;
     try {
@@ -129,7 +137,7 @@ export class PublishService {
         const [prior] = await tx
           .select({ status: deliveries.status, publishedAt: deliveries.publishedAt, createdAt: deliveries.createdAt })
           .from(deliveries)
-          .where(and(eq(deliveries.batchId, batchId), ne(deliveries.status, 'failed')))
+          .where(and(eq(deliveries.taskId, task.id), ne(deliveries.status, 'failed')))
           .orderBy(desc(deliveries.createdAt))
           .limit(1);
         if (prior) {
@@ -148,13 +156,15 @@ export class PublishService {
             reviewedAt: conclusion!.reviewedAt,
             versions: conclusion!.versions,
             publishedBy: user.id,
+            // 「这次更新了什么」只在再次交付时存，空的不存
+            updateNote: version >= 2 && note ? note : null,
           })
           .returning()) as [Delivery];
         return inserted;
       });
     } catch (err) {
       if (err instanceof BatchAlreadyPublished) {
-        return refuse('这批文稿正在交付或已经交付，请刷新查看交付结果', 'publishing');
+        return refuse('这个任务正在交付或已经交付，请刷新查看交付结果', 'publishing');
       }
       // 同一个 publishId 两个请求同时到：后到的按已收到返回
       if (isUniqueViolation(err, 'deliveries_publish_id_unique')) {
@@ -162,7 +172,7 @@ export class PublishService {
         if (replayedLate) return replayedLate;
       }
       if (isUniqueViolation(err, 'deliveries_one_publishing')) {
-        return refuse('这批文稿正在交付或已经交付，请刷新查看交付结果', 'publishing');
+        return refuse('这个任务正在交付或已经交付，请刷新查看交付结果', 'publishing');
       }
       throw err;
     }
@@ -213,6 +223,8 @@ export class PublishService {
     let published = false;
     // 次数相关、事务提交后才做的事（检查提醒、发锁住邮件）
     let after: AfterCommit[] = [];
+    // 成果先锁住（次数不够或任务还在等次数）：不发「已交付 / 已更新」的提醒和邮件
+    let locked = false;
 
     const changed = await this.db.transaction(async (tx) => {
       // 锁住三份的修订记录，和保存修订不交错；交付期间又保存过就不算
@@ -241,7 +253,6 @@ export class PublishService {
         .returning({ id: tasks.id });
       // 首次交付扣 1 次；扣不到时成果先锁住，不发「已交付」，改发锁住铃铛（在 chargeDelivery 里写）。
       // 再次交付不扣；任务还锁着时「已更新」也不发（客户反正下载不了，放开时会收到通知）
-      let locked: boolean;
       if (first.length > 0) {
         const charge = await this.credits.chargeDelivery(tx, task, row);
         after = charge.after;
@@ -250,7 +261,7 @@ export class PublishService {
         const [current] = await tx.select({ chargeStatus: tasks.chargeStatus }).from(tasks).where(eq(tasks.id, task.id));
         locked = current?.chargeStatus === 'awaiting_credits';
       }
-      // 只在站内提醒，不发邮件；不写专家电话。只提醒机构管理员和负责这家企业的成员
+      // 站内提醒组织管理员和负责这家企业的成员；邮件在事务提交后发给提交人和组织管理员。不写专家电话
       if (!locked)
         await this.notifications.notify(
         await enterpriseCustomerIds(tx, task),
@@ -275,8 +286,57 @@ export class PublishService {
       return false;
     });
     if (changed) await fail(CHANGED_WHILE_PUBLISHING);
-    if (published) await this.credits.run(after);
+    if (published) {
+      await this.credits.run(after);
+      if (!locked) await this.credits.sendDeliveredMail(task.id, row.id);
+    }
     return published;
+  }
+
+  /**
+   * 重新打开（15 页 R12）：任务已交付、没重新打开时，负责专家可以重新打开。之后核对和审核结论作废，
+   * 可以改资料、重新生成或直接改正文，改完再次交付。重新打开期间客户仍能下载上一次交付的那一版。不发邮件、不发站内提醒
+   */
+  async reopen(user: SessionUser, taskId: string, ip: string | null = null): Promise<PublishView> {
+    const task = await this.task(user, taskId);
+    if (!canPublishTask(user, task)) throw new ForbiddenException(ONLY_EXPERT);
+    await this.expireStale(task.id);
+    const refuse = (message: string, reason: string) => new ConflictException({ statusCode: 409, message, reason });
+    try {
+      await this.db.transaction(async (tx) => {
+        const [row] = await tx.select({ reopenedAt: tasks.reopenedAt }).from(tasks).where(eq(tasks.id, task.id)).for('update');
+        const [publishing] = await tx
+          .select({ id: deliveries.id })
+          .from(deliveries)
+          .where(and(eq(deliveries.taskId, task.id), eq(deliveries.status, 'publishing')))
+          .limit(1);
+        if (publishing) throw refuse(PUBLISHING_MESSAGE, 'publishing');
+        const [last] = await tx
+          .select({ id: deliveries.id, publishedAt: deliveries.publishedAt })
+          .from(deliveries)
+          .where(and(eq(deliveries.taskId, task.id), eq(deliveries.status, 'done')))
+          .orderBy(desc(deliveries.version))
+          .limit(1);
+        if (!last) throw refuse(NOT_DELIVERED, 'not_delivered');
+        if (row?.reopenedAt && last.publishedAt && row.reopenedAt > last.publishedAt) throw refuse(ALREADY_REOPENED, 'already_reopened');
+        // 时间用代码给的，和交付、核对、审核的时间比先后；只取一次
+        const now = new Date();
+        await tx.insert(taskReopens).values({ taskId: task.id, deliveryId: last.id, reopenedBy: user.id, reopenedAt: now });
+        await tx.update(tasks).set({ reopenedAt: now, updatedAt: now }).where(eq(tasks.id, task.id));
+      });
+    } catch (err) {
+      // 两个窗口同时点：后到的撞上「一次交付只能重新打开一次」
+      if (isUniqueViolation(err, 'task_reopens_delivery_id_unique')) throw refuse(ALREADY_REOPENED, 'already_reopened');
+      throw err;
+    }
+    await this.audit.record({
+      action: 'reopen',
+      actorId: user.id,
+      actorEmail: user.email,
+      ip,
+      target: `${task.number} · 重新打开`,
+    });
+    return this.build(user, task);
   }
 
   private async store(task: Task, by: string, originalName: string, data: Buffer) {
@@ -317,11 +377,18 @@ export class PublishService {
 
   private async build(user: SessionUser, task: Task, publishId?: string): Promise<PublishView> {
     const review = await this.review.view(user, task.id);
+    const [current] = await this.db.select({ reopenedAt: tasks.reopenedAt }).from(tasks).where(eq(tasks.id, task.id)).limit(1);
+    const reopenedAt = current?.reopenedAt ?? null;
+    // 不带 publishId：这批文稿最近一次尝试，只算最近一次重新打开之后的（不然会把上一次成功的交付当成这一次的结果）
     const [attemptRow] = await this.db
       .select({ d: deliveries, byName: users.name })
       .from(deliveries)
       .innerJoin(users, eq(users.id, deliveries.publishedBy))
-      .where(publishId ? and(eq(deliveries.publishId, publishId), eq(deliveries.taskId, task.id)) : eq(deliveries.batchId, review.batchId))
+      .where(
+        publishId
+          ? and(eq(deliveries.publishId, publishId), eq(deliveries.taskId, task.id))
+          : and(eq(deliveries.batchId, review.batchId), reopenedAt ? gt(deliveries.createdAt, reopenedAt) : undefined),
+      )
       .orderBy(desc(deliveries.createdAt))
       .limit(1);
     const done = await this.db
@@ -332,7 +399,7 @@ export class PublishService {
       .orderBy(desc(deliveries.version));
     const doneFiles = done.length
       ? await this.db
-          .select({ deliveryId: deliveryFiles.deliveryId, kind: deliveryFiles.kind, name: files.originalName })
+          .select({ deliveryId: deliveryFiles.deliveryId, kind: deliveryFiles.kind, name: files.originalName, fileId: deliveryFiles.fileId })
           .from(deliveryFiles)
           .innerJoin(files, eq(files.id, deliveryFiles.fileId))
           .where(inArray(deliveryFiles.deliveryId, done.map((x) => x.d.id)))
@@ -346,9 +413,9 @@ export class PublishService {
     const blocker = !editable
       ? ONLY_EXPERT
       : review.published
-        ? '这批文稿已经交付'
+        ? '这个任务已经交付'
         : inFlight
-          ? '这批文稿正在交付'
+          ? '这个任务正在交付'
           : passed
             ? null
             : blockerOf(review);
@@ -382,6 +449,35 @@ export class PublishService {
           files: DRAFT_KIND_KEYS.flatMap((kind) => doneFiles.filter((f) => f.deliveryId === x.d.id && f.kind === kind).map((f) => ({ kind, name: f.name }))),
         }),
       ),
+      delivered: await this.delivered(task.id, doneFiles),
+    };
+  }
+
+  // 已交付页（R11）：只在任务已交付、没重新打开时给最近一次交付；页数取交付时那一版
+  private async delivered(taskId: string, doneFiles: { deliveryId: string; kind: DraftKind; name: string; fileId: string }[]): Promise<PublishView['delivered']> {
+    const lock = await taskLock(this.db, taskId);
+    if (lock?.status !== 'done') return null;
+    const [row] = await this.db
+      .select({ d: deliveries, reviewerName: users.name })
+      .from(deliveries)
+      .innerJoin(users, eq(users.id, deliveries.reviewedBy))
+      .where(and(eq(deliveries.taskId, taskId), eq(deliveries.status, 'done'), eq(deliveries.version, lock.version)))
+      .limit(1);
+    if (!row) return null;
+    const [conclusion] = await this.db.select({ note: draftReviews.note }).from(draftReviews).where(eq(draftReviews.batchId, row.d.batchId)).limit(1);
+    const files = await Promise.all(
+      DRAFT_KIND_KEYS.flatMap((kind) =>
+        doneFiles
+          .filter((f) => f.deliveryId === row.d.id && f.kind === kind)
+          .map(async (f) => ({ kind, name: f.name, fileId: f.fileId, pages: await this.review.pagesOf(row.d.batchId, kind, row.d.versions[kind] ?? 0) })),
+      ),
+    );
+    return {
+      version: row.d.version,
+      at: row.d.publishedAt!.toISOString(),
+      reviewerName: row.reviewerName,
+      note: conclusion?.note ?? '',
+      files,
     };
   }
 
@@ -429,7 +525,12 @@ export class PublishController {
   publish(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown, @Req() req: Request) {
     return this.service.publish(user, id, body, clientIp(req));
   }
+
+  @Post('reopen')
+  reopen(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.service.reopen(user, id, clientIp(req));
+  }
 }
 
-// 同一批文稿已有没失败的交付、之后没重新打开过：按「正在交付或已经交付」拒绝
+// 这个任务已有没失败的交付、之后没重新打开过：按「正在交付或已经交付」拒绝
 class BatchAlreadyPublished extends Error {}

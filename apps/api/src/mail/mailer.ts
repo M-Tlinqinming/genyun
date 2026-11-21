@@ -20,7 +20,10 @@ export type MailKind =
   | 'credits_locked_admin'
   | 'credits_locked_submitter'
   // 续约或加购后成果放开下载
-  | 'delivery_released';
+  | 'delivery_released'
+  // 首次交付；重新打开后再次交付（已更新）
+  | 'delivery_done'
+  | 'delivery_updated';
 
 export interface MailMessage {
   to: string;

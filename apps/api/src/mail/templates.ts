@@ -1,6 +1,6 @@
 import type { MailMessage } from './mailer.ts';
 
-// 系统邮件：邀请、找回密码的验证码、密码已重设的通知，以及成果交付相关的几封（次数用完成果先锁住、续约后放开）。
+// 系统邮件：邀请、找回密码的验证码、密码已重设的通知，以及成果交付相关的五封（首次交付、已更新、次数用完成果先锁住、续约后放开）。
 // 其他业务提醒只做站内，不发邮件。
 // 每封都有纯文本和 HTML 两版：统一的品牌页眉、称呼、正文、有效期说明和落款「耕云 · 0752-5200831」。
 // 主题里不放验证码和链接（主题会出现在服务日志和收件箱列表里）。
@@ -202,7 +202,7 @@ export function passwordResetMail(i: PasswordResetMailInput): MailMessage {
   });
 }
 
-// ---------- 成果交付相关的邮件（15 页邮件画板第 3、4、5 封；第 1、2 封由 K13 加） ----------
+// ---------- 成果交付相关的邮件（15 页邮件画板第 1–5 封） ----------
 
 // 「文档」行写死三份
 export const DELIVERY_DOCS_LINE = '应急预案、风险评估报告、应急资源调查报告，共三份 Word';
@@ -298,6 +298,76 @@ export function deliveryReleasedMail(i: DeliveryReleasedMailInput): MailMessage 
       { button: '登录下载', href: i.link, hint: '登录后直接打开这个任务的成果文档' },
       { note: '邮件里不带附件，文档请登录耕云后下载。对内容有疑问，请联系耕云客服。' },
       { footer: '您收到这封邮件，是因为您提交了这个任务，或者是贵组织的管理员。' },
+    ],
+  });
+}
+
+// 「这次更新」那一行：「11 月 27 日更新：值班电话、通讯联络组组员」（北京时间）
+export function updateNoteLine(at: Date, note: string): string {
+  const t = new Date(at.getTime() + 8 * 3_600_000);
+  return `${t.getUTCMonth() + 1} 月 ${t.getUTCDate()} 日更新：${note}`;
+}
+
+const DELIVERY_FOOTER = '您收到这封邮件，是因为您提交了这个任务，或者是贵组织的管理员。';
+
+export interface DeliveryDoneMailInput extends DeliveryMailTask {
+  to: string;
+  name: string;
+}
+
+// 第 1 封：首次交付，发给提交人和组织管理员（同一个人只发一封）
+export function deliveryDoneMail(i: DeliveryDoneMailInput): MailMessage {
+  return letter({
+    to: i.to,
+    kind: 'delivery_done',
+    subject: `【耕云】${i.enterpriseName}的应急预案已编制完成，请登录下载`,
+    greeting: `${i.name}，您好：`,
+    blocks: [
+      { p: `${i.enterpriseName}的应急预案已经编制完成，并由专家审核交付。三份文档现在可以下载。` },
+      {
+        rows: [
+          { label: '企业', value: i.enterpriseName },
+          { label: '任务', value: `${i.taskName} · ${i.taskNumber}` },
+          { label: '交付时间', value: formatBeijingDate(i.deliveredAt) },
+          { label: '文档', value: DELIVERY_DOCS_LINE },
+        ],
+      },
+      { button: '登录下载', href: i.link, hint: '登录后直接打开这个任务的成果文档' },
+      { note: '邮件里不带附件，文档请登录耕云后下载。对内容有疑问，请联系耕云客服。' },
+      { footer: DELIVERY_FOOTER },
+    ],
+  });
+}
+
+export interface DeliveryUpdatedMailInput extends DeliveryMailTask {
+  to: string;
+  name: string;
+  // 这次再交付的时间
+  updatedAt: Date;
+  // 专家填的「这次更新了什么」；没填为 null，不带那一行
+  updateNote: string | null;
+}
+
+// 第 2 封：重新打开后再次交付（已更新），收件人同第 1 封
+export function deliveryUpdatedMail(i: DeliveryUpdatedMailInput): MailMessage {
+  return letter({
+    to: i.to,
+    kind: 'delivery_updated',
+    subject: `【耕云】${i.enterpriseName}的应急预案已更新，请登录下载`,
+    greeting: `${i.name}，您好：`,
+    blocks: [
+      { p: `${i.enterpriseName}的应急预案已更新，专家已重新审核并交付。请登录下载最新的三份文档，登录后看到的就是更新后的这一版。` },
+      {
+        rows: [
+          { label: '企业', value: i.enterpriseName },
+          { label: '任务', value: `${i.taskName} · ${i.taskNumber}` },
+          { label: '更新时间', value: formatBeijingDate(i.updatedAt) },
+          ...(i.updateNote ? [{ label: '这次更新', value: updateNoteLine(i.updatedAt, i.updateNote) }] : []),
+        ],
+      },
+      { button: '登录下载', href: i.link, hint: '登录后直接打开这个任务的成果文档' },
+      { note: '邮件里不带附件，文档请登录耕云后下载。对内容有疑问，请联系耕云客服。' },
+      { footer: DELIVERY_FOOTER },
     ],
   });
 }

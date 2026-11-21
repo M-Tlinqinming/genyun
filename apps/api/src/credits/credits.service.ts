@@ -49,7 +49,7 @@ import {
   users,
 } from '../db/schema.ts';
 import { appLink, MAILER, type Mailer, type MailMessage } from '../mail/mailer.ts';
-import { creditsLockedAdminMail, creditsLockedSubmitterMail, deliveryReleasedMail } from '../mail/templates.ts';
+import { creditsLockedAdminMail, creditsLockedSubmitterMail, deliveryDoneMail, deliveryReleasedMail, deliveryUpdatedMail } from '../mail/templates.ts';
 import { enterpriseCustomerIds, NotificationsService, orgNoticePrefix } from '../notifications/notifications.service.ts';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -749,6 +749,30 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
     const who = await this.submitter(task);
     if (who && !people.some((p) => p.id === who.id)) people.unshift(who);
     await this.sendAll(people.map((p) => deliveryReleasedMail({ ...task.base, to: p.email, name: p.name, releasedAt })));
+  }
+
+  // 第 1、2 封：这次交付是第 1 次发「已编制完成」，之后发「已更新」。提交人和组织管理员，同一个人只发一封。
+  // 成果锁住时不调这里（那时发第 3、4 封，放开时发第 5 封）；发信失败不影响交付结果
+  async sendDeliveredMail(taskId: string, deliveryId: string): Promise<void> {
+    const task = await this.mailTask(taskId);
+    if (!task) return;
+    const [d] = await this.db
+      .select({ version: deliveries.version, publishedAt: deliveries.publishedAt, updateNote: deliveries.updateNote })
+      .from(deliveries)
+      .where(and(eq(deliveries.id, deliveryId), eq(deliveries.status, 'done')))
+      .limit(1);
+    if (!d) return;
+    const people = await orgAdmins(this.db, task.orgId);
+    const who = await this.submitter(task);
+    if (who && !people.some((p) => p.id === who.id)) people.unshift(who);
+    const at = d.publishedAt ?? new Date();
+    await this.sendAll(
+      people.map((p) =>
+        d.version === 1
+          ? deliveryDoneMail({ ...task.base, to: p.email, name: p.name, deliveredAt: at })
+          : deliveryUpdatedMail({ ...task.base, to: p.email, name: p.name, updatedAt: at, updateNote: d.updateNote }),
+      ),
+    );
   }
 
   private async sendAll(mails: MailMessage[]) {
