@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  countsAsExpertOpenTask,
   expertPickLine,
   operatorTaskCounts,
   operatorTaskGroup,
@@ -8,7 +9,7 @@ import {
   waitingLine,
   type OperatorTaskGroup,
 } from './operator-tasks.ts';
-import { TASK_VIEW_STAGES } from './task-status.ts';
+import { TASK_VIEW_STAGES, taskView, type TaskViewInput } from './task-status.ts';
 
 describe('运营任务分组', () => {
   it('每种 key 归到对应的组', () => {
@@ -128,5 +129,51 @@ describe('分配弹窗里专家的第二行', () => {
   it('不认识的代码跳过', () => {
     expect(expertPickLine(1, ['xx', '27'])).toBe('在办 1 个 · 擅长 医药制造业');
     expect(expertPickLine(1, ['xx'])).toBe('在办 1 个');
+  });
+});
+
+describe('重新打开和专家在办的口径', () => {
+  const now = new Date('2026-11-13T02:00:00Z');
+  const base: TaskViewInput = {
+    flow: 'intake',
+    status: 'submitted',
+    deletedAt: null,
+    tableUploaded: true,
+    missingCount: 0,
+    submittedAt: new Date('2026-11-01T02:00:00Z'),
+    withdrawnBefore: false,
+    assignedExpertId: 'expert-1',
+    snapshotAt: new Date('2026-11-02T02:00:00Z'),
+    workupStepsDone: 5,
+    awaitingCustomerSince: null,
+    awaitingCustomerItems: null,
+    draft: 'ready',
+    lastDelivery: { at: new Date('2026-11-05T02:00:00Z'), kind: 'first' },
+    reopenedAt: null,
+    chargeStatus: 'charged',
+    now,
+    viewer: { side: 'operator' },
+  };
+  const groupOf = (over: Partial<TaskViewInput>) => {
+    const v = taskView({ ...base, ...over })!;
+    return operatorTaskGroup(v.key, v.stage);
+  };
+
+  it('重新打开、晚于最后一次交付的进「专家处理中」；再交付后回到已交付', () => {
+    expect(groupOf({ reopenedAt: new Date('2026-11-10T02:00:00Z') })).toBe('working');
+    expect(groupOf({ reopenedAt: new Date('2026-11-04T02:00:00Z') })).toBe('delivered');
+    expect(
+      groupOf({ reopenedAt: new Date('2026-11-10T02:00:00Z'), lastDelivery: { at: new Date('2026-11-11T02:00:00Z'), kind: 'update' } }),
+    ).toBe('delivered');
+  });
+
+  it('在办：等客户补资料、专家处理中（含重新打开）算；资料准备（客户撤回）、已交付不算', () => {
+    expect(countsAsExpertOpenTask('awaiting')).toBe(true);
+    expect(countsAsExpertOpenTask('working')).toBe(true);
+    expect(countsAsExpertOpenTask(groupOf({ reopenedAt: new Date('2026-11-10T02:00:00Z') }))).toBe(true);
+    expect(countsAsExpertOpenTask('to_assign')).toBe(true);
+    expect(countsAsExpertOpenTask(groupOf({ status: 'preparing', withdrawnBefore: true, snapshotAt: null, draft: 'none', lastDelivery: null }))).toBe(false);
+    expect(countsAsExpertOpenTask('preparing')).toBe(false);
+    expect(countsAsExpertOpenTask(groupOf({}))).toBe(false);
   });
 });

@@ -5,11 +5,11 @@ import { ApiError } from '../../api/request';
 import { useAssignableExperts, useAssignExpert, type AssignableExpert, type OperatorTask } from '../../api/operator';
 import { ExpertAvatar } from '../../components/ExpertAvatar';
 import { requiredAfter } from '../../components/ui';
-import { gy } from '../../theme/tokens';
+import { gy, type, weight } from '../../theme/tokens';
 import { monthDayTime, regionShort } from './taskCenterText';
 
-const body = { fontSize: 14, lineHeight: '22px', color: gy.text } as const;
-const small = { fontSize: 12, lineHeight: '20px', color: gy.secondary } as const;
+const body = { ...type.body, color: gy.text } as const;
+const small = { ...type.caption, color: gy.secondary } as const;
 
 // 悬停看全部行业
 const industriesTip = (e: AssignableExpert) => {
@@ -52,13 +52,16 @@ export function AssignExpertModal({
           onClose();
         },
         onError: (err) => {
-          // 别的运营刚分配或改派过：弹窗里的「现在负责」已经过时，再提交也只会被拒，直接关掉看最新情况
-          if (err instanceof ApiError && err.status === 409) {
+          // 别的运营刚分配或改派过：弹窗里的「现在负责」已经过时，再提交也只会被拒，关掉看最新情况。
+          // 其他被拒（专家刚暂停接单、客户刚撤回、任务已交付、已是负责专家）：照服务端说的写在弹窗里，留着可以改选
+          if (err instanceof ApiError && err.status === 409 && err.body?.code === 'assignment_changed') {
             void message.warning(`已被其他运营处理：${err.message}`);
             onClose();
             return;
           }
           setError(err instanceof ApiError ? err.message : `没有${verb}成功，请稍后重试`);
+          // 专家名单（在办数、暂停接单）可能也变了，重新取一次
+          void experts.refetch();
         },
       },
     );
@@ -76,7 +79,7 @@ export function AssignExpertModal({
       afterClose={afterClose}
       title={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 600, color: gy.text }}>{reassign ? '改派专家' : '分配专家'}</span>
+          <span style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>{reassign ? '改派专家' : '分配专家'}</span>
           <span style={{ ...body, color: gy.secondary, fontWeight: 400 }}>
             {reassign ? '改派后，任务转到新专家的任务中心并通知双方。' : '分配后，任务进入对方的任务中心并通知对方。'}
           </span>

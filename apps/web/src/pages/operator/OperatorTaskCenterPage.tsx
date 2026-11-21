@@ -88,7 +88,15 @@ function Row({ t, onOpen, onAssign }: { t: OperatorTask; onOpen: () => void; onA
     <div
       role="row"
       data-task={t.number}
+      className="gy-task-row"
+      tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(e) => {
+        // 只认行本身：行里的按钮自己处理回车
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        onOpen();
+      }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -313,6 +321,17 @@ export function OperatorTaskCenterPage() {
             {shown.length === 0 ? (
               all.length === 0 ? (
                 <EmptyState>还没有任务</EmptyState>
+              ) : !filtering && !showDelivered ? (
+                // 没筛选、只是都交付了：给「显示已交付」
+                <EmptyState
+                  action={
+                    <button type="button" style={textLink} onClick={() => setShowDelivered(true)}>
+                      显示已交付
+                    </button>
+                  }
+                >
+                  没有在办的任务
+                </EmptyState>
               ) : (
                 <EmptyState
                   action={

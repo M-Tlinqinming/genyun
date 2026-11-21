@@ -1,11 +1,12 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
+import { OperatorTasksController } from './operator-tasks.controller.ts';
 import {
   checklistItems,
   deliveries,
@@ -14,6 +15,7 @@ import {
   generatedDrafts,
   generationBatches,
   memberships,
+  notifications,
   organizations,
   taskIntakes,
   tasks,
@@ -207,7 +209,13 @@ describe('运营任务中心', () => {
     expect(res.status).toBe(201);
     expect(res.body[0]).toMatchObject({ kind: 'note', body: '客户说周五前回电', createdByName: '赵运营' });
     expect(res.body.map((n: { kind: string }) => n.kind)).toContain('reassign');
-    expect((await ops.post(`/api/operator/tasks/${task.fresh}/notes`).send({ body: '  ' })).status).toBe(400);
+    const blank = await ops.post(`/api/operator/tasks/${task.fresh}/notes`).send({ body: '  ' });
+    expect(blank.status).toBe(400);
+    expect(blank.body.message).toBe('请写联系记录');
+    const long = await ops.post(`/api/operator/tasks/${task.fresh}/notes`).send({ body: '记'.repeat(501) });
+    expect(long.status).toBe(400);
+    expect(long.body.message).toBe('联系记录最多 500 字');
+    expect((await ops.post(`/api/operator/tasks/${task.fresh}/notes`).send({ body: '记'.repeat(500) })).status).toBe(201);
     // 只能写备注；改派走分配接口
     expect((await ops.post(`/api/operator/tasks/${task.fresh}/notes`).send({ kind: 'reassign', body: 'x' })).status).toBe(400);
 
@@ -228,7 +236,7 @@ describe('运营任务中心', () => {
       .post(`/api/operator/tasks/${task.fresh}/assign`)
       .send({ expertId: uid['zhou@test.cn'], currentExpertId: null });
     expect(res.status).toBe(409);
-    expect(res.body.message).toBe('这个任务刚被分配给吴工，请看最新情况再决定');
+    expect(res.body).toMatchObject({ message: '这个任务刚被分配给吴工，请看最新情况再决定', code: 'assignment_changed' });
   });
 
   it('分配、改派记进操作日志：谁、从哪个 IP、哪个任务交给了谁；被拒绝的不记', async () => {
@@ -257,11 +265,14 @@ describe('运营任务中心', () => {
     const send = (id: string, body: object) => ops.post(`/api/operator/tasks/${id}/assign`).send(body);
     const pre = await send(task.preparing, { expertId: uid['zhou@test.cn'], currentExpertId: null });
     expect(pre.status).toBe(409);
-    expect(pre.body.message).toBe('客户还没提交资料，提交后才能分配专家');
-    expect((await send(task.closed, { expertId: uid['zhou@test.cn'], currentExpertId: null })).body.message).toBe('任务已结束，不能再分配');
+    expect(pre.body).toMatchObject({ message: '客户还没提交资料，提交后才能分配专家', code: 'not_submitted' });
+    expect((await send(task.closed, { expertId: uid['zhou@test.cn'], currentExpertId: null })).body).toMatchObject({
+      message: '任务已结束，不能再分配',
+      code: 'task_closed',
+    });
     const same = await send(task.busy, { expertId: uid['wu@test.cn'], currentExpertId: uid['wu@test.cn'] });
     expect(same.status).toBe(409);
-    expect(same.body.message).toBe('吴工已经是负责专家');
+    expect(same.body).toMatchObject({ message: '吴工已经是负责专家', code: 'already_assigned' });
     const notExpert = await send(task.busy, { expertId: uid['ops@test.cn'], currentExpertId: uid['wu@test.cn'] });
     expect(notExpert.status).toBe(400);
     expect(notExpert.body.message).toBe('请选择专家');
@@ -317,11 +328,11 @@ describe('暂停接单的专家', () => {
     const send = (expertId: string) => ops.post(`/api/operator/tasks/${task.busy}/assign`).send({ expertId, currentExpertId: uid['wu@test.cn'] });
     const paused = await send(uid['wang@test.cn']!);
     expect(paused.status).toBe(409);
-    expect(paused.body.message).toBe('王工已暂停接单，不能分配');
+    expect(paused.body).toMatchObject({ message: '王工已暂停接单，不能分配', code: 'expert_paused' });
     // 不在名单里的（待审核）直接派也不行
     const pending = await send(uid['li@test.cn']!);
     expect(pending.status).toBe(409);
-    expect(pending.body.message).toBe('这位专家现在不能接任务');
+    expect(pending.body).toMatchObject({ message: '这位专家现在不能接任务', code: 'expert_unavailable' });
     expect((await ops.get(`/api/operator/tasks/${task.busy}`)).body.assignedExpertName).toBe('吴工');
 
     // 内部建的专家资料（审核状态为空）照常能派
@@ -455,5 +466,132 @@ describe('任务中心的状态、抽屉和在办数', () => {
       (e) => e.name === '周工',
     )!.openTasks;
     expect(after).toBe(before);
+  });
+});
+
+describe('专家「在办」只有一个口径', () => {
+  it('分配弹窗和内部账号列表一致：处理中、重新打开待再次交付的算；客户撤回回到资料准备、已交付的不算', async () => {
+    const { db } = handle;
+    const passwordHash = await hashPassword(PASSWORD);
+    const [internal] = await db.select().from(organizations).where(eq(organizations.kind, 'internal'));
+    const [u] = await db.insert(users).values({ email: 'zheng@test.cn', name: '郑工', passwordHash }).returning();
+    await db.insert(memberships).values({ userId: u!.id, orgId: internal!.id, role: 'expert' });
+    const zheng = u!.id;
+    const [org] = await db.select().from(organizations).where(eq(organizations.name, '示例安全咨询机构'));
+    const at = new Date('2026-11-05T06:00:00Z');
+    const add = async (number: string, over: Partial<typeof tasks.$inferInsert>, delivered = false) => {
+      const [ent] = await db.insert(enterprises).values({ orgId: org!.id, name: `示例在办${number}`, createdBy: uid['admin@test.cn']! }).returning();
+      const [t] = await db
+        .insert(tasks)
+        .values({
+          orgId: org!.id,
+          enterpriseId: ent!.id,
+          number,
+          businessType: 'emergency_plan',
+          name: '2026 年应急预案',
+          createdBy: uid['admin@test.cn']!,
+          status: 'submitted',
+          submittedAt: at,
+          assignedExpertId: zheng,
+          assignedAt: at,
+          ...over,
+        })
+        .returning();
+      await db.insert(taskIntakes).values({ taskId: t!.id });
+      if (delivered) {
+        await db.insert(taskWorkups).values({ taskId: t!.id, snapshot: {} as never });
+        const [b] = await db
+          .insert(generationBatches)
+          .values({ taskId: t!.id, workupVersion: 1, snapshotAt: at, input: {} as never, materials: [], createdBy: zheng })
+          .returning();
+        await db.insert(generatedDrafts).values(
+          (['plan', 'risk', 'resource'] as const).map((kind) => ({ batchId: b!.id, kind, status: 'done' as const, finishedAt: at })),
+        );
+        await db.insert(deliveries).values({
+          publishId: randomUUID(),
+          taskId: t!.id,
+          batchId: b!.id,
+          version: 1,
+          status: 'done',
+          reviewedBy: zheng,
+          reviewedAt: at,
+          versions: { plan: 0, risk: 0, resource: 0 },
+          publishedBy: zheng,
+          publishedAt: at,
+        });
+      }
+      return t!.id;
+    };
+    const working = await add('GY-2026-201', {});
+    // 客户撤回：回到资料准备，负责专家还挂着
+    await add('GY-2026-202', { status: 'preparing', submittedAt: null });
+    await add('GY-2026-203', { closedAt: at }, true);
+    // 重新打开、等再次交付：closedAt 不清
+    await add('GY-2026-204', { closedAt: at, reopenedAt: new Date('2026-11-10T02:00:00Z') }, true);
+
+    const ops = await as('ops@test.cn');
+    const groups = ((await ops.get('/api/operator/tasks')).body as TaskRow[])
+      .filter((r) => r.number >= 'GY-2026-201' && r.number <= 'GY-2026-204')
+      .map((r) => [r.number, r.group]);
+    expect(Object.fromEntries(groups)).toEqual({
+      'GY-2026-201': 'working',
+      'GY-2026-202': 'preparing',
+      'GY-2026-203': 'delivered',
+      'GY-2026-204': 'working',
+    });
+    const fromModal = ((await ops.get(`/api/operator/tasks/${working}/experts`)).body as { name: string; openTasks: number }[]).find(
+      (e) => e.name === '郑工',
+    )!.openTasks;
+    const fromAccounts = ((await ops.get('/api/operator/accounts')).body as { accounts: { name: string; openTasks: number }[] }).accounts.find(
+      (a) => a.name === '郑工',
+    )!.openTasks;
+    expect(fromModal).toBe(2);
+    expect(fromAccounts).toBe(2);
+  });
+});
+
+describe('分配和客户撤回撞在一起', () => {
+  it('检查时还是已提交、写入前客户刚撤回：409 说明撤回，没有分配，专家也不收到提醒', async () => {
+    const { db } = handle;
+    const [org] = await db.select().from(organizations).where(eq(organizations.name, '示例安全咨询机构'));
+    const [ent] = await db.insert(enterprises).values({ orgId: org!.id, name: '示例刚撤回', createdBy: uid['admin@test.cn']! }).returning();
+    const [t] = await db
+      .insert(tasks)
+      .values({
+        orgId: org!.id,
+        enterpriseId: ent!.id,
+        number: 'GY-2026-301',
+        businessType: 'emergency_plan',
+        name: '2026 年应急预案',
+        createdBy: uid['admin@test.cn']!,
+        status: 'submitted',
+        submittedAt: new Date('2026-11-09T02:00:00Z'),
+      })
+      .returning();
+    await db.insert(taskIntakes).values({ taskId: t!.id });
+
+    // 运营这边 load() 读到的还是已提交；读完、写入前客户撤回了
+    const controller = app.get(OperatorTasksController) as unknown as { load: (id: string) => Promise<unknown> };
+    const realLoad = controller.load.bind(controller);
+    const spy = vi.spyOn(controller, 'load').mockImplementationOnce(async (id: string) => {
+      const stale = await realLoad(id);
+      await db.update(tasks).set({ status: 'preparing' }).where(eq(tasks.id, id));
+      return stale;
+    });
+    try {
+      const ops = await as('ops@test.cn');
+      const res = await ops.post(`/api/operator/tasks/${t!.id}/assign`).send({ expertId: uid['zhou@test.cn'], currentExpertId: null });
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ code: 'not_submitted', message: '客户刚撤回了资料，重新提交后才能分配专家' });
+    } finally {
+      spy.mockRestore();
+    }
+    const [after] = await db.select({ assignedExpertId: tasks.assignedExpertId }).from(tasks).where(eq(tasks.id, t!.id));
+    expect(after!.assignedExpertId).toBeNull();
+    const sent = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(and(eq(notifications.userId, uid['zhou@test.cn']!), eq(notifications.taskId, t!.id)));
+    expect(sent).toHaveLength(0);
   });
 });

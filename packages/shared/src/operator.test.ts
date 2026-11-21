@@ -37,6 +37,17 @@ describe('续约与次数的每一行', () => {
     }
   });
 
+  it('次数没取到：不标黄、不给调整次数，和整行是否标黄一致', () => {
+    const r = renewalRow(org(), null, TODAY)!;
+    expect(r.credits).toMatchObject({ label: '编制次数', value: '暂时没取到', warn: false, muted: true });
+    expect(r.action.text).toBe('查看');
+    expect(r.flagged).toBe(false);
+    // 快到期时照样因为合同标黄，次数那格仍不标
+    const soon = renewalRow(org({ contractStartsAt: '2025-12-01', contractEndsAt: '2026-11-30' }), null, TODAY)!;
+    expect(soon.flagged).toBe(true);
+    expect(soon.credits.warn).toBe(false);
+  });
+
   it('30 天内到期：合同时间标黄', () => {
     const r = renewalRow(org({ contractStartsAt: '2025-12-01', contractEndsAt: '2026-11-30' }), credits(8, 10), TODAY)!;
     expect(r.contract).toMatchObject({ value: '还有 18 天', warn: true });

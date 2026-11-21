@@ -45,6 +45,15 @@ export function operatorTaskGroup(key: string, stage?: number): OperatorTaskGrou
   return (label && GROUP_OF_STAGE[label]) || 'working';
 }
 
+/**
+ * 专家「在办 N 个」算哪些任务：分给他、没删除，分组不是「已交付」也不是「资料准备」。
+ * 客户撤回、回到资料准备的不算；重新打开、等再次交付的（专家处理中）算。
+ * 分配弹窗和内部账号列表都用这一条
+ */
+export function countsAsExpertOpenTask(group: OperatorTaskGroup): boolean {
+  return group !== 'delivered' && group !== 'preparing';
+}
+
 type When = string | Date | null | undefined;
 const time = (d: When): number | null => (d ? new Date(d).getTime() : null);
 

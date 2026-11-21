@@ -2,7 +2,10 @@ import {
   type OperatorNote,
   REASSIGN_REASONS,
   assignExpertSchema,
+  assignmentBlock,
   assignmentBlockedReason,
+  type AssignmentBlock,
+  countsAsExpertOpenTask,
   type ExpertAvailability,
   type ExpertReviewStatus,
   isExpertPaused,
@@ -125,6 +128,29 @@ export async function withOperatorTaskState<T extends Row>(db: Database, rows: T
   });
 }
 
+/** 每位专家的「在办」任务数（口径见 countsAsExpertOpenTask）。分配弹窗、内部账号列表共用 */
+export async function expertOpenTaskCounts(db: Database, expertIds: readonly string[]): Promise<Map<string, number>> {
+  const open = new Map<string, number>();
+  if (expertIds.length === 0) return open;
+  const rows = await db
+    .select({ id: tasks.id, status: tasks.status, assignedExpertId: tasks.assignedExpertId, closedAt: tasks.closedAt })
+    .from(tasks)
+    .where(and(inArray(tasks.assignedExpertId, [...expertIds]), isNull(tasks.deletedAt)));
+  for (const t of await withOperatorTaskState(db, rows)) {
+    if (!t.assignedExpertId || !countsAsExpertOpenTask(t.group)) continue;
+    open.set(t.assignedExpertId, (open.get(t.assignedExpertId) ?? 0) + 1);
+  }
+  return open;
+}
+
+// 分配被拒：409 带 code，前端按它分「别人刚处理过（关弹窗刷新）」和其他（留着弹窗改选）
+const conflict = (b: AssignmentBlock) => new ConflictException({ statusCode: 409, message: b.message, code: b.code });
+const changedConflict = (name: string | null) =>
+  conflict({
+    code: 'assignment_changed',
+    message: name ? `这个任务刚被分配给${name}，请看最新情况再决定` : '这个任务的负责专家刚有变化，请刷新后再试',
+  });
+
 const regionFull = (t: {
   orgRegion: string | null;
   orgRegionProvince: string | null;
@@ -194,7 +220,7 @@ export class OperatorTasksController {
     };
   }
 
-  // 分配弹窗里的专家：头像、擅长的行业、在办任务数（分给他、还没交付、没删的；重新打开的算在办）。
+  // 分配弹窗里的专家：头像、擅长的行业、在办任务数（口径见 countsAsExpertOpenTask）。
   // 暂停接单的照常列出、标 paused（弹窗里置灰）；待审核、未通过、已下架的不列
   @Get(':id/experts')
   async experts(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
@@ -220,17 +246,8 @@ export class OperatorTasksController {
       // 审核状态不能派的不列；暂停的留着、置灰
       .filter((p) => isOperatorAssignableExpert(p.profile && { ...p.profile, acceptingOrders: true }));
     if (people.length === 0) return [];
-    // 在办按运营那一侧的状态算（不是已交付的）：交付时写的 closedAt 重新打开时不清，不能拿它判断
-    const mine = await this.db
-      .select({ id: tasks.id, status: tasks.status, assignedExpertId: tasks.assignedExpertId, closedAt: tasks.closedAt })
-      .from(tasks)
-      .where(and(inArray(tasks.assignedExpertId, people.map((p) => p.id)), isNull(tasks.deletedAt)));
-    const states = await this.withState(mine);
-    const open = new Map<string, number>();
-    for (const t of states) {
-      if (t.group === 'delivered' || !t.assignedExpertId) continue;
-      open.set(t.assignedExpertId, (open.get(t.assignedExpertId) ?? 0) + 1);
-    }
+    // 在办：口径见 countsAsExpertOpenTask（交付时写的 closedAt 重新打开时不清，不能拿它判断）
+    const open = await expertOpenTaskCounts(this.db, people.map((p) => p.id));
     // 接单中的在前、暂停的在后，各自仍按名字（sort 是稳定排序）
     const ordered = [...people].sort((a, b) => Number(isExpertPaused(a.profile)) - Number(isExpertPaused(b.profile)));
     return ordered.map((p) => ({
@@ -258,9 +275,13 @@ export class OperatorTasksController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '分配信息不完整');
     const { expertId, currentExpertId, note, reason } = parsed.data;
     const task = await this.load(id);
-    const blocked = assignmentBlockedReason(task);
-    if (blocked) throw new ConflictException(blocked);
-    if (expertId === task.assignedExpertId) throw new ConflictException(`${task.assignedExpertName ?? '这位专家'}已经是负责专家`);
+    const blocked = assignmentBlock(task);
+    if (blocked) throw conflict(blocked);
+    // 负责专家已经和运营打开弹窗时看到的不一样：别人刚分配或改派过，先说这个（哪怕选的正好是现在的负责人）
+    if (currentExpertId !== task.assignedExpertId) throw changedConflict(task.assignedExpertName);
+    if (expertId === task.assignedExpertId) {
+      throw conflict({ code: 'already_assigned', message: `${task.assignedExpertName ?? '这位专家'}已经是负责专家` });
+    }
 
     const [target] = await this.db
       .select({ id: users.id, name: users.name, ...availability })
@@ -272,8 +293,8 @@ export class OperatorTasksController {
       .limit(1);
     if (!target) throw new BadRequestException('请选择专家');
     // 暂停接单、审核状态不能派的专家不派
-    const unavailable = assignmentBlockedReason(task, { name: target.name, profile: profileOf(target) });
-    if (unavailable) throw new ConflictException(unavailable);
+    const unavailable = assignmentBlock(task, { name: target.name, profile: profileOf(target) });
+    if (unavailable) throw conflict(unavailable);
 
     const what = `${task.enterpriseName} · ${task.name}`;
     const previous = task.assignedExpertId;
@@ -293,9 +314,10 @@ export class OperatorTasksController {
       if (!active) throw new BadRequestException(`${target.name}已停用或不再是专家，请选择其他专家`);
       // 锁住后再看一次接单状态：弹窗打开后专家刚暂停的，也不派
       const [profile] = await tx.select(availability).from(expertProfiles).where(eq(expertProfiles.userId, expertId));
-      const stillBlocked = assignmentBlockedReason(task, { name: target.name, profile: profile ?? null });
-      if (stillBlocked) throw new ConflictException(stillBlocked);
-      // 只在负责专家仍是运营打开弹窗时看到的那位时才改，别人刚分派过就提示刷新
+      const stillBlocked = assignmentBlock(task, { name: target.name, profile: profile ?? null });
+      if (stillBlocked) throw conflict(stillBlocked);
+      // load() 里检查过的条件（已提交、没结束、没删除）都写进 where，再加上负责专家仍是运营打开弹窗时看到的那位：
+      // 检查之后客户刚撤回、任务刚结束、别人刚分配过，都改不到
       const [row] = await tx
         .update(tasks)
         .set({ assignedExpertId: expertId, assignedAt: new Date(), updatedAt: new Date() })
@@ -303,14 +325,25 @@ export class OperatorTasksController {
           and(
             eq(tasks.id, id),
             isNull(tasks.deletedAt),
+            eq(tasks.status, 'submitted'),
+            isNull(tasks.closedAt),
             currentExpertId === null ? isNull(tasks.assignedExpertId) : eq(tasks.assignedExpertId, currentExpertId),
           ),
         )
         .returning({ id: tasks.id });
       if (!row) {
-        // 分派和客户删除撞在同一瞬间：和找不到任务一样；否则是别人刚分派过，提示刷新
-        const [gone] = await tx.select({ deletedAt: tasks.deletedAt }).from(tasks).where(eq(tasks.id, id));
-        if (!gone || gone.deletedAt) throw new NotFoundException(NOT_FOUND);
+        // 改到 0 行：再查一次，说清是哪一种
+        const [now] = await tx
+          .select({ deletedAt: tasks.deletedAt, status: tasks.status, closedAt: tasks.closedAt })
+          .from(tasks)
+          .where(eq(tasks.id, id));
+        if (!now || now.deletedAt) throw new NotFoundException(NOT_FOUND);
+        if (now.status !== 'submitted') {
+          throw conflict({ code: 'not_submitted', message: '客户刚撤回了资料，重新提交后才能分配专家' });
+        }
+        const closed = assignmentBlock(now);
+        if (closed) throw conflict(closed);
+        // 别人刚分配或改派过
         return false;
       }
       // 运营说明放在正文第一句，铃铛里最多显示 3 行
@@ -352,9 +385,7 @@ export class OperatorTasksController {
     });
     if (!updated) {
       const now = await this.load(id);
-      throw new ConflictException(
-        now.assignedExpertName ? `这个任务刚被分配给${now.assignedExpertName}，请看最新情况再决定` : '这个任务的负责专家刚有变化，请刷新后再试',
-      );
+      throw changedConflict(now.assignedExpertName);
     }
     // 操作日志：对象写任务编号和接手的专家；改派时带上原来的专家
     await this.audit.record({
@@ -394,7 +425,7 @@ export class OperatorTasksController {
   async addNote(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     this.guard(user);
     const parsed = operatorNoteSchema.safeParse(body ?? {});
-    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请写备注内容');
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请写联系记录');
     await this.load(id);
     await this.db.insert(taskOperatorNotes).values({ taskId: id, kind: parsed.data.kind, body: parsed.data.body, createdBy: user.id });
     return this.notes(user, id);

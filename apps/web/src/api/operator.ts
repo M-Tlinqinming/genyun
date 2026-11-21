@@ -360,6 +360,8 @@ export function useAssignExpert(taskId: string) {
       void client.invalidateQueries({ queryKey: operatorTaskKeys.notes(taskId) });
       // 组织详情「企业与任务」里的阶段跟着变
       void client.invalidateQueries({ queryKey: ['operator', 'organizations'] });
+      // 概览统计和侧栏「任务中心」的待分配数字
+      void client.invalidateQueries({ queryKey: ['operator', 'overview'] });
     },
   });
 }

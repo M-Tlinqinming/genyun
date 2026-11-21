@@ -253,7 +253,8 @@ export function renewalRow(
   const elapsed = daysBetween(startsAt, today);
   const remaining = credits?.remaining.total ?? 0;
   const granted = credits?.granted ?? 0;
-  const low = remaining <= CREDITS_LOW_THRESHOLD;
+  // 次数没取到时不算「次数少」：和 orgNeedsAttention 一致，不因为没数据标黄、也不给「调整次数」
+  const low = credits !== null && remaining <= CREDITS_LOW_THRESHOLD;
   const flagged = orgNeedsAttention(org, credits, today);
   return {
     orgId: org.id,
@@ -264,10 +265,13 @@ export function renewalRow(
       warn: c.state === 'expiring',
       percent: total > 0 ? clampPercent((elapsed / total) * 100) : 100,
     }),
-    credits: bar(`编制次数 · 共 ${granted} 次`, `剩 ${remaining} 次`, {
-      warn: low,
-      percent: granted > 0 ? clampPercent(((granted - remaining) / granted) * 100) : remaining > 0 ? 0 : 100,
-    }),
+    credits:
+      credits === null
+        ? bar('编制次数', '暂时没取到', { muted: true })
+        : bar(`编制次数 · 共 ${granted} 次`, `剩 ${remaining} 次`, {
+            warn: low,
+            percent: granted > 0 ? clampPercent(((granted - remaining) / granted) * 100) : remaining > 0 ? 0 : 100,
+          }),
     action: low ? { text: '调整次数', link: `/operator/organizations/${org.id}?adjust=1` } : view,
     flagged,
     rank: flagged ? 0 : 1,

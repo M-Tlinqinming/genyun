@@ -275,3 +275,91 @@ test('关掉弹窗焦点回到按钮；弹窗开着时别的运营已改派：�
   await expect(dialog).toBeHidden();
   await expect(drawer()).toContainText('负责专家 周工');
 });
+
+test('别的原因被拒（如专家刚暂停接单）：弹窗留着、写出服务端的原因，可以改选别人', async () => {
+  await page.goto(`/operator/tasks?task=${hardwareTask}`);
+  await drawer().getByRole('button', { name: '改派专家' }).click();
+  const dialog = page.getByRole('dialog', { name: /^改派专家/ });
+  await settled(dialog);
+  await page.route(`**/api/operator/tasks/${hardwareTask}/assign`, (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({ statusCode: 409, message: '吴工已暂停接单，不能分配', code: 'expert_paused' }),
+    }),
+  );
+  try {
+    await dialog.getByRole('radio', { name: /^吴工 / }).check();
+    await dialog.getByRole('button', { name: '改派给吴工' }).click();
+    await expect(dialog.getByText('吴工已暂停接单，不能分配')).toBeVisible();
+    await expect(page.getByText(/^已被其他运营处理：/)).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    // 选择还在，确认按钮还能再点（或改选别人）
+    await expect(dialog.getByRole('radio', { name: /^吴工 / })).toBeChecked();
+    await expect(dialog.getByRole('button', { name: '改派给吴工' })).toBeEnabled();
+  } finally {
+    await page.unroute(`**/api/operator/tasks/${hardwareTask}/assign`);
+  }
+  await dialog.getByRole('button', { name: /取\s*消/ }).click();
+  await expect(dialog).toBeHidden();
+});
+
+test('抽屉里的客户手机号遮住中间四位，不显示完整号码', async () => {
+  const detail = (await (await page.request.get(`/api/operator/tasks/${hardwareTask}`)).json()) as { contactPhone: string | null };
+  await page.goto(`/operator/tasks?task=${hardwareTask}`);
+  await expect(drawer()).toBeVisible();
+  if (!detail.contactPhone) {
+    await expect(drawer().getByText('这家组织没有登记主联系人手机号')).toBeVisible();
+    return;
+  }
+  const phone = detail.contactPhone;
+  const masked = `${phone.slice(0, 3)} **** ${phone.slice(-4)}`;
+  await expect(drawer()).toContainText(masked);
+  await expect(drawer()).not.toContainText(phone);
+  await expect(drawer().getByRole('button', { name: '复制手机号' })).toBeVisible();
+});
+
+test('打不开的任务（?task= 不存在）也能用右上角关掉抽屉', async () => {
+  await page.goto('/operator/tasks?task=00000000-0000-4000-8000-000000000000');
+  const panel = page.getByRole('dialog', { name: /^任务/ });
+  // 加载中就有关闭按钮
+  await expect(panel.getByRole('button', { name: '关闭' })).toBeVisible();
+  // 接口找不到会先重试几次才报错
+  await expect(panel.getByText('这个任务没有打开')).toBeVisible({ timeout: 15_000 });
+  await panel.getByRole('button', { name: '关闭' }).click();
+  await expect(page.getByText('这个任务没有打开')).toBeHidden();
+  await expect(page).toHaveURL(/\/operator\/tasks$/);
+});
+
+test('键盘：Tab 到任务行，回车或空格打开抽屉', async () => {
+  await page.goto('/operator/tasks');
+  const row = rows().filter({ hasText: HARDWARE }).filter({ hasText: FEIYU_ORG });
+  await row.focus();
+  await expect(row).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(drawer()).toContainText(HARDWARE);
+  await drawer().getByRole('button', { name: '关闭' }).first().click();
+  await expect(drawer()).toBeHidden();
+  await row.focus();
+  await page.keyboard.press(' ');
+  await expect(drawer()).toContainText(HARDWARE);
+  await drawer().getByRole('button', { name: '关闭' }).first().click();
+});
+
+test('没筛选、在办的都没了：写「没有在办的任务」并给「显示已交付」', async () => {
+  // 只给已交付的任务（这批测试的数据里不一定有，就拿一条真任务改成已交付）
+  const all = await apiTasks();
+  const real = all.filter((t) => t.group === 'delivered');
+  const delivered = real.length > 0 ? real : [{ ...all[0]!, group: 'delivered' as const }];
+  await page.route('**/api/operator/tasks', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(delivered) }),
+  );
+  try {
+    await page.goto('/operator/tasks');
+    await expect(page.getByText('没有在办的任务')).toBeVisible();
+    await page.getByRole('button', { name: '显示已交付' }).first().click();
+    await expect(rows()).toHaveCount(delivered.length);
+  } finally {
+    await page.unroute('**/api/operator/tasks');
+  }
+});

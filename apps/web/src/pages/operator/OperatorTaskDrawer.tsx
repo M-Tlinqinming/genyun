@@ -76,12 +76,16 @@ function Progress({ t }: { t: OperatorTaskDetail }) {
   );
 }
 
-// 客户联系人：「吴主任 · 139 **** 0817」+ 复制手机号；没登记手机号的给去组织详情的链接
-function Contact({ t }: { t: OperatorTaskDetail }) {
+// 客户联系人：「吴主任 · 139 **** 0817」+ 复制手机号；没登记手机号的给去组织详情的链接。
+// 「找谁要资料」用带框的一块（下面多一行「客户组织 · 主联系人」），「基本信息」里用不带框的一行，写法相同
+function Contact({ t, inline = false }: { t: OperatorTaskDetail; inline?: boolean }) {
   const { message } = App.useApp();
+  const wrap = inline
+    ? ({ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' } as const)
+    : ({ ...box, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 } as const);
   if (!t.contactPhone) {
     return (
-      <div style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+      <div style={wrap}>
         <span style={{ ...type.body, color: gy.secondary }}>这家组织没有登记主联系人手机号</span>
         <Link to={`/operator/organizations/${t.orgId}`} style={type.body}>
           去组织详情
@@ -90,14 +94,21 @@ function Contact({ t }: { t: OperatorTaskDetail }) {
     );
   }
   const phone = t.contactPhone;
+  const line = (
+    <span style={body}>
+      {t.contactName ?? '主联系人'} · {maskPhone(phone)}
+    </span>
+  );
   return (
-    <div style={{ ...box, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={body}>
-          {t.contactName ?? '主联系人'} · {maskPhone(phone)}
+    <div style={wrap}>
+      {inline ? (
+        line
+      ) : (
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {line}
+          <span style={{ ...type.caption, color: gy.tertiary }}>{t.orgName} · 主联系人</span>
         </span>
-        <span style={{ ...type.caption, color: gy.tertiary }}>{t.orgName} · 主联系人</span>
-      </span>
+      )}
       <button
         type="button"
         style={{ ...linkButton, color: gy.primary, flexShrink: 0 }}
@@ -126,10 +137,7 @@ function BasicInfo({ t }: { t: OperatorTaskDetail }) {
           ? '提交后再分配'
           : '还没分配',
     ],
-    [
-      '客户联系人',
-      t.contactPhone ? `${t.contactName ?? '主联系人'} · ${maskPhone(t.contactPhone)}` : (t.contactName ?? '没有登记'),
-    ],
+    ['客户联系人', <Contact t={t} inline />],
   ];
   return (
     <Block title="基本信息">
@@ -281,8 +289,8 @@ export function OperatorTaskDrawer({
       closable={false}
       styles={{ header: { padding: '24px 24px 20px', borderBottom: `1px solid ${gy.split}` }, body: { padding: 24 }, footer: { padding: '16px 24px', borderTop: `1px solid ${gy.split}` } }}
       title={
-        t ? (
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+          {t ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span style={{ ...type.title, fontWeight: weight.strong, color: gy.text }}>{t.enterpriseName}</span>
@@ -292,15 +300,16 @@ export function OperatorTaskDrawer({
                 {t.number} · {t.orgName} · {t.assignedExpertName ? `负责专家 ${t.assignedExpertName}` : '还没分配专家'}
               </span>
             </div>
-            <button type="button" aria-label="关闭" onClick={onClose} style={{ ...linkButton, color: gy.secondary, fontSize: 20 }}>
-              <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
-                <path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-        ) : (
-          <span style={{ ...type.title, color: gy.text }}>任务</span>
-        )
+          ) : (
+            <span style={{ ...type.title, color: gy.text }}>任务</span>
+          )}
+          {/* 加载中、打不开时也能关 */}
+          <button type="button" aria-label="关闭" onClick={onClose} style={{ ...linkButton, color: gy.secondary, flexShrink: 0 }}>
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+              <path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       }
       footer={t ? <Footer t={t} onAssign={onAssign} onClose={onClose} /> : undefined}
     >
