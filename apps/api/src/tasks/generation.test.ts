@@ -140,7 +140,7 @@ describe('确认采用资料并生成三份草稿', () => {
   it('整理已被别人改过：拒绝，请专家看过最新内容再确认', async () => {
     const { db } = handle;
     const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, feiyuTask));
-    await db.update(taskWorkups).set({ data: await completeFor(db, feiyuTask, row!.snapshot), version: row!.version + 1 }).where(eq(taskWorkups.taskId, feiyuTask));
+    await db.update(taskWorkups).set({ data: await completeFor(db, feiyuTask, row!.snapshot, storage), version: row!.version + 1 }).where(eq(taskWorkups.taskId, feiyuTask));
     const res = await (await as('zhou@test.cn')).post(`/api/tasks/${feiyuTask}/generation`).send({ version: row!.version }).expect(409);
     expect(res.body).toMatchObject({ reason: 'stale', version: row!.version + 1 });
   });

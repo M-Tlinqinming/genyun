@@ -2,6 +2,11 @@
 // 预案编号（第 5 步）取字号前两个汉字的拼音首字母 + 编制年份（拼音在接口里换，见 apps/api plan-code.ts）；
 // 缺项清单抬头的企业简称也用这里的去后缀。
 
+import { BUILTIN_AGENCY_DISTRICTS } from './plan/agencies.ts';
+
+// 知识库内置的区县名（带后缀和不带后缀）：企业名称里的地名不一定在地址里（如「惠阳某某」开在仲恺），也要去掉
+const BUILTIN_PLACES = BUILTIN_AGENCY_DISTRICTS.flatMap((d) => [d.name, d.name.replace(/(高新区|区|县)$/, '')]).filter((p) => p.length >= 2);
+
 // 公司组织形式后缀，长的在前
 const ORG_SUFFIXES = ['股份有限公司', '有限责任公司', '有限公司', '股份公司', '集团公司', '责任公司', '公司', '厂', '店', '经营部', '商行'];
 const PLACE_SUFFIX = /(省|自治区|特别行政区|市|自治州|地区|盟|区|县|旗)$/;
@@ -37,9 +42,9 @@ export function placeNamesOf(address: string | null | undefined): string[] {
   return out;
 }
 
-/** 去掉名称开头的省市区县名（可连着几层，带不带「省、市、区、县」都去）：「惠州市惠阳飞宇电器」→「飞宇电器」 */
+/** 去掉名称开头的省市区县名（地址里的几层 + 知识库内置的区县；可连着几层，带不带「省、市、区、县」都去）：「惠州市惠阳飞宇电器」→「飞宇电器」 */
 export function stripPlaces(name: string, addresses: readonly (string | null | undefined)[]): string {
-  const places = [...new Set(addresses.flatMap(placeNamesOf))].sort((a, b) => b.length - a.length);
+  const places = [...new Set([...addresses.flatMap(placeNamesOf), ...BUILTIN_PLACES])].sort((a, b) => b.length - a.length);
   let n = name.trim();
   for (let changed = true; changed; ) {
     changed = false;

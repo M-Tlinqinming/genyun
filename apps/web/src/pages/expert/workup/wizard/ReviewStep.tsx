@@ -696,7 +696,7 @@ function ReviewPage2({ taskId, workup, frame, onGo }: StepProps) {
     } catch (err) {
       if (err instanceof ApiError && err.body?.reason === 'materials') {
         client.setQueryData(materialsKey(taskId), err.body.materials);
-        message.warning(err.message);
+        message.warning('客户刚更新了资料，请看过后再确认生成');
         return;
       }
       if (err instanceof ApiError && (err.body?.reason === 'stale' || err.body?.reason === 'gaps')) {

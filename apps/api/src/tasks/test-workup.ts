@@ -9,9 +9,14 @@ import {
   type WorkupSnapshot,
   type DeliveryDocument,
 } from '@genyun/shared';
+import { randomUUID } from 'node:crypto';
 import type { Database } from '../db/client.ts';
 import { eq } from 'drizzle-orm';
 import { files, tasks } from '../db/schema.ts';
+import type { FileStorage } from '../files/storage.ts';
+
+// 1×1 浅灰 PNG：给了 storage 时存进去，生成时图纸能真的转出来
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4+/fvfwAJ0wPj0oO0VQAAAABJRU5ErkJggg==', 'base64');
 
 // 测试用的小文档结构：一章两节，第二节有一张表（正文编辑测试用）
 export function testDocument(kind: 'plan' | 'risk' | 'resource'): DeliveryDocument {
@@ -49,14 +54,17 @@ export interface GateDrawings {
   sitePlan: string;
   evacuationPlan: string;
 }
-export async function gateDrawings(db: Database, orgId: string, uploadedBy: string): Promise<GateDrawings> {
-  const mk = async (name: string) =>
-    (
+export async function gateDrawings(db: Database, orgId: string, uploadedBy: string, storage?: FileStorage): Promise<GateDrawings> {
+  const mk = async (name: string) => {
+    const storageKey = storage ? `${orgId}/${randomUUID()}` : `${orgId}/gate-${name}`;
+    if (storage) await storage.put(storageKey, TINY_PNG, 'image/png');
+    return (
       await db
         .insert(files)
-        .values({ orgId, kind: 'customer_material', originalName: name, contentType: 'image/png', sizeBytes: 1, sha256: name, storageKey: `${orgId}/gate-${name}`, uploadedBy })
+        .values({ orgId, kind: 'customer_material', originalName: name, contentType: 'image/png', sizeBytes: 1, sha256: name, storageKey, uploadedBy })
         .returning({ id: files.id })
     )[0]!.id;
+  };
   return { sitePlan: await mk('总平面布置图.png'), evacuationPlan: await mk('紧急疏散示意图.png') };
 }
 
@@ -91,7 +99,7 @@ export function complete(snapshot: WorkupSnapshot, drawings?: GateDrawings): Wor
 }
 
 // complete 加上门槛要的两张图（文件记在任务的组织名下，上传人是建任务的人）
-export async function completeFor(db: Database, taskId: string, snapshot: WorkupSnapshot): Promise<WorkupData> {
+export async function completeFor(db: Database, taskId: string, snapshot: WorkupSnapshot, storage?: FileStorage): Promise<WorkupData> {
   const [task] = await db.select({ orgId: tasks.orgId, createdBy: tasks.createdBy }).from(tasks).where(eq(tasks.id, taskId));
-  return complete(snapshot, await gateDrawings(db, task!.orgId, task!.createdBy));
+  return complete(snapshot, await gateDrawings(db, task!.orgId, task!.createdBy, storage));
 }

@@ -142,7 +142,7 @@ beforeAll(async () => {
   const zhou = await as('zhou@test.cn');
   await zhou.get(`/api/tasks/${taskId}/workup`).expect(200);
   const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
-  await db.update(taskWorkups).set({ data: await completeFor(db, taskId, row!.snapshot), version: row!.version + 1 }).where(eq(taskWorkups.taskId, taskId));
+  await db.update(taskWorkups).set({ data: await completeFor(db, taskId, row!.snapshot, storage), version: row!.version + 1 }).where(eq(taskWorkups.taskId, taskId));
   await zhou.post(`/api/tasks/${taskId}/generation`).send({ version: row!.version + 1 }).expect(201);
   await queue.idle();
   batchId = (await zhou.get(`/api/tasks/${taskId}/drafts/plan/edit`).expect(200)).body.batchId;

@@ -10,6 +10,7 @@ import { StatCells, type StatItem } from '../../components/StatCells';
 import { StatusTag, type StatusTone } from '../../components/StatusTag';
 import { linkButton, Loading } from '../../components/ui';
 import { gy, stage, type, weight } from '../../theme/tokens';
+import { MissingDrawer } from './workup/MissingList';
 
 type Tab = 'mine' | 'all';
 const TABS: Record<Tab, string> = { mine: '我的任务', all: '全部任务' };
@@ -36,6 +37,8 @@ export function TaskCenterPage() {
   const [tab, setTab] = useState<Tab>('mine');
   const [stat, setStat] = useState<ExpertCenterStat | undefined>();
   const [keyword, setKeyword] = useState('');
+  // 等客户补资料的任务：「查看缺项」打开抽屉（S02）
+  const [missing, setMissing] = useState<ExpertCenterRow | null>(null);
 
   const toggle = (acceptingOrders: boolean) =>
     setAccepting.mutate({ acceptingOrders }, { onError: (err) => message.error(err.message) });
@@ -223,7 +226,8 @@ export function TaskCenterPage() {
                       style={{ ...outlined, minWidth: 88 }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        open(r.id);
+                        if (r.view.key === 'awaiting_customer') setMissing(r);
+                        else open(r.id);
                       }}
                     >
                       {r.button}
@@ -235,6 +239,13 @@ export function TaskCenterPage() {
           </div>
         </div>
       )}
+      <MissingDrawer
+        taskId={missing?.id ?? null}
+        enterpriseName={missing?.enterpriseName}
+        onClose={() => setMissing(null)}
+        onOpenTask={() => missing && open(missing.id)}
+        onGoStep={(n) => missing && navigate(`/expert/tasks/${missing.id}?view=workup&step=${n}`)}
+      />
     </>
   );
 }

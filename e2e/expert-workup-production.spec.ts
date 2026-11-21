@@ -3,11 +3,14 @@ import { expect, test, type Page } from '@playwright/test';
 // 资料核对第 3、4 步（13 页 E2-3a、E2-3b、E2-4，K11）。
 // 演示数据：飞宇第 3 步有 8 台设备、5 种物料；压力管道答「拍照给耕云看」，厂房耐火等级留给专家。
 // 本文件排在 expert-workup-contact 之后、expert-workup-scope 之前：判定完 4 项并新增乙炔；适用范围的开关在 expert-workup-scope 确认
+
+// 不给步数：打开第 5 步第 2 页「核对并生成」看还缺什么
+const viewOf = (step?: number) => (step ? `workup&step=${step}` : 'workup&step=5&page=2');
 async function openFeiyu(page: Page, step?: number) {
   const m = page.url().match(/\/expert\/tasks\/[0-9a-f-]+/);
   if (m) {
     // 已在任务里：直接换视图，不再登录
-    await page.goto(`${m[0]}?view=${step ? `workup&step=${step}` : 'workup-old'}`);
+    await page.goto(`${m[0]}?view=${viewOf(step)}`);
     return;
   }
   await page.goto('/login');
@@ -17,7 +20,7 @@ async function openFeiyu(page: Page, step?: number) {
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
   await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+/);
-  await page.goto(`${new URL(page.url()).pathname}?view=${step ? `workup&step=${step}` : 'workup-old'}`);
+  await page.goto(`${new URL(page.url()).pathname}?view=${viewOf(step)}`);
 }
 
 const footer = (page: Page) => page.getByRole('region', { name: '页面操作' });
@@ -40,7 +43,9 @@ test('第 3 步：补设备、判定危化品和特种设备、加返工；第 4
   // 两步十几处改动，每处都等保存回来
   test.setTimeout(90_000);
   await openFeiyu(page);
-  await expect(page.getByText('整理中 · 必需项 11 / 22')).toBeVisible();
+  // 设备、物料的判定不挡生成（门槛只有第 1、2 步必需项和两张图），第 3 步摘要不列「还缺」
+  const summary = page.getByRole('region', { name: '四步摘要' });
+  await expect(summary.locator('[data-step="3"]')).not.toContainText('还缺：');
 
   await openFeiyu(page, 3);
   await expect(page.getByRole('heading', { name: '核对场所、设备与物料' })).toBeVisible();
@@ -109,10 +114,11 @@ test('第 3 步：补设备、判定危化品和特种设备、加返工；第 4
   await choose(page, '1 号生产厂房耐火等级', '二级');
   await j;
 
-  // 都判定完：剩企业事实的技术人员数、适用范围里靠名称推断的 4 个开关（工艺流程图按排版自动画，不用采用）
+  // 都判定完：第 3、4 步不再缺，只剩第 1 步的技术人员数（适用范围的开关在第 5 步确认，不挡生成）
   await openFeiyu(page);
-  await expect(page.getByText('整理中 · 必需项 16 / 21')).toBeVisible();
-  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 5 项：技术人员数 · 适用范围（4 个开关待确认）');
+  await expect(summary.locator('[data-step="3"]')).not.toContainText('还缺：');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^还差 \d+ 项必填资料，暂时不能生成$/);
+  await expect(summary.locator('[data-step="1"]')).toContainText('还缺：技术人员数');
 
   // 退出再进，判断、新加的行和支路都还在
   await openFeiyu(page, 3);
@@ -122,7 +128,7 @@ test('第 3 步：补设备、判定危化品和特种设备、加返工；第 4
   await expect(page.getByText(branch)).toBeVisible();
 });
 
-test('第 4 步：代客户上传疏散图、填外部联系方式和四邻', async ({ page }) => {
+test('第 4 步：代客户上传疏散图和总平面图、填外部联系方式和四邻', async ({ page }) => {
   await openFeiyu(page, 4);
   await expect(page.getByRole('heading', { name: '核对应急资源与图纸' })).toBeVisible();
 
@@ -135,6 +141,13 @@ test('第 4 步：代客户上传疏散图、填外部联系方式和四邻', as
   await (await chooser).setFiles({ name: '车间疏散图.png', mimeType: 'image/png', buffer: png });
   await expect(evac).toContainText('车间疏散图.png');
   await expect(evac).toContainText('您代传');
+
+  // 总平面布置图也没传：同样代传（两张图是生成门槛）
+  const site = page.getByRole('group', { name: '总平面布置图' });
+  const siteChooser = page.waitForEvent('filechooser');
+  await site.getByRole('button', { name: '代客户上传' }).click();
+  await (await siteChooser).setFiles({ name: '厂区总平面图.png', mimeType: 'image/png', buffer: png });
+  await expect(site).toContainText('厂区总平面图.png');
 
   // 外部联系方式：修改 → 填派出所、专职消防队附近没有
   const contacts = page.getByRole('table', { name: '外部应急联系方式' });

@@ -172,10 +172,12 @@ export function scopeGroupsOf(snapshot: WorkupSnapshot, data: ScopeInput & { ris
   };
   // 粉尘专项跟着产尘工序：产尘工序关着就不显示
   const visible = view.switches.filter((s) => s.key !== 'dustSpecialty' || view.scope.dustProcess);
+  // 要确认、专家还没点过的归「要您确认」；点过的（status confirmed）下次进来归「其余已确定」
+  const waiting = (s: ScopeSwitch) => s.needsConfirm && s.status === 'pending';
   return {
-    confirm: visible.filter((s) => !STEP3_SCOPE_KEYS.includes(s.key) && s.needsConfirm),
+    confirm: visible.filter((s) => !STEP3_SCOPE_KEYS.includes(s.key) && waiting(s)),
     step3: visible.filter((s) => STEP3_SCOPE_KEYS.includes(s.key)).map((s) => ({ ...s, step3Pending: pendingOf[s.key]!() })),
-    settled: visible.filter((s) => !STEP3_SCOPE_KEYS.includes(s.key) && !s.needsConfirm),
+    settled: visible.filter((s) => !STEP3_SCOPE_KEYS.includes(s.key) && !waiting(s)),
   };
 }
 

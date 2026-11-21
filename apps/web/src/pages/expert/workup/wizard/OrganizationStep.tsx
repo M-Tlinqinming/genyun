@@ -231,7 +231,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
       </div>
 
       <Card title="应急指挥部" tag={<SourceTag kind="customer" text={customerText} />} gap={16} hint="通常由总经理任总指挥、分管安全的负责人任副总指挥。">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', gap: 12 }}>
             <span style={{ ...headCell, width: 120, flexShrink: 0 }}>应急职务</span>
             <span style={{ ...headCell, flex: 1 }}>姓名</span>
@@ -268,7 +268,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
         }
       >
         {tooFew && (
-          <div ref={groupsRef} role="alert" style={{ padding: '10px 14px', borderRadius: 6, border: '1px solid #F0D9A8', background: '#FFFBF2', ...type.body, color: gy.warning }}>
+          <div ref={groupsRef} role="alert" style={{ padding: '8px 16px', borderRadius: 6, border: `1px solid ${gy.warningBg}`, background: gy.warningBg, ...type.body, color: gy.warning }}>
             现在只有 {step.groups.length} 个小组，至少要设 {MIN_KEEP} 个。请在下面添加小组，补够后才能进入下一步。
           </div>
         )}
@@ -303,7 +303,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
                 key={k}
                 type="button"
                 onClick={() => addGroup(k)}
-                style={{ height: 30, padding: '0 12px', borderRadius: 15, border: '1px dashed #A9B4C6', background: gy.surface, color: gy.primary, cursor: 'pointer', fontFamily: 'inherit', ...type.body }}
+                style={{ height: 30, padding: '0 12px', borderRadius: 15, border: `1px dashed ${gy.controlLine}`, background: gy.surface, color: gy.primary, cursor: 'pointer', fontFamily: 'inherit', ...type.body }}
               >
                 + {PRESET_GROUPS[k]}
               </button>
@@ -357,7 +357,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
         }
       >
         <div role="table" aria-label="编制小组成员" style={{ border: `1px solid ${softLine}`, borderRadius: 6, overflow: 'hidden' }}>
-          <div role="row" style={{ display: 'flex', gap: 12, padding: '10px 14px', background: gy.canvas }}>
+          <div role="row" style={{ display: 'flex', gap: 12, padding: '8px 16px', background: gy.canvas }}>
             <span role="columnheader" style={{ ...headCell, width: 120 }}>
               角色
             </span>
@@ -369,7 +369,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
             </span>
           </div>
           {team.map((r) => (
-            <div role="row" key={r.id} style={{ display: 'flex', gap: 12, padding: '10px 14px', borderTop: `1px solid ${softLine}`, alignItems: 'flex-start' }}>
+            <div role="row" key={r.id} style={{ display: 'flex', gap: 12, padding: '8px 16px', borderTop: `1px solid ${softLine}`, alignItems: 'flex-start' }}>
               <span role="cell" style={{ width: 120, ...type.body, color: gy.secondary }}>
                 {r.role}
               </span>
@@ -391,7 +391,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
               )}
             </div>
           ))}
-          {team.length === 0 && <div style={{ padding: '10px 14px', borderTop: `1px solid ${softLine}`, ...caption }}>填了总指挥和组长后，这里自动列出。</div>}
+          {team.length === 0 && <div style={{ padding: '8px 16px', borderTop: `1px solid ${softLine}`, ...caption }}>填了总指挥和组长后，这里自动列出。</div>}
         </div>
       </Card>
 
@@ -496,11 +496,11 @@ function GroupBox({
       style={{
         display: 'flex',
         flexDirection: 'column',
-        gap: 10,
+        gap: 8,
         padding: expanded ? 16 : '14px 16px',
         borderRadius: 8,
-        border: `1px solid ${warn ? '#F0D9A8' : gy.split}`,
-        background: warn ? '#FFFBF2' : gy.surface,
+        border: `1px solid ${warn ? gy.warningBg : gy.split}`,
+        background: warn ? gy.warningBg : gy.surface,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -514,7 +514,7 @@ function GroupBox({
             {expanded ? <DownOutlined /> : <RightOutlined />}
           </span>
           <span style={{ ...type.body, fontWeight: weight.strong, color: gy.text, whiteSpace: 'nowrap' }}>{title}</span>
-          <span style={{ ...type.caption, color: '#8A93A3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{GROUP_DESCRIPTIONS[group.kind]}</span>
+          <span style={{ ...type.caption, color: gy.tertiary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{GROUP_DESCRIPTIONS[group.kind]}</span>
           <span style={{ flex: 1 }} />
           {expanded ? (
             <span style={{ ...type.caption, color: gy.tertiary, whiteSpace: 'nowrap' }}>{people} 人</span>
@@ -525,14 +525,14 @@ function GroupBox({
         {remove}
       </div>
       {expanded && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingLeft: 22 }}>
-          <div style={{ display: 'flex', gap: 12, paddingRight: 22 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 24 }}>
+          <div style={{ display: 'flex', gap: 12, paddingRight: 24 }}>
             <span style={{ ...headCell, width: 64, flexShrink: 0 }}>职务</span>
             <span style={{ ...headCell, flex: 1 }}>姓名</span>
             <span style={{ ...headCell, flex: 1 }}>公司岗位</span>
             <span style={{ ...headCell, flex: 1.2 }}>手机</span>
           </div>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', paddingRight: 22 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', paddingRight: 24 }}>
             <span style={{ width: 64, flexShrink: 0, ...type.body, color: gy.text, lineHeight: '36px' }}>组长</span>
             {leaderInputs}
           </div>

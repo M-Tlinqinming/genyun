@@ -179,7 +179,7 @@ export function MissingDrawer({
     <Drawer
       open={taskId !== null}
       onClose={onClose}
-      width={520}
+      size={520}
       title={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>

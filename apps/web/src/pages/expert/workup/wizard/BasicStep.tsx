@@ -132,7 +132,11 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
   // 只在进这一步时读一次（之后以页面上的为准；别人改过时外壳会重置这一步）
   const [initial] = useState(() => basicStepView(workup.snapshot, workup.data));
   const [identity, setIdentity] = useState<Identity>(initial.identity);
-  const [basic, setBasic] = useState<BasicStepData>(initial.basic);
+  // 经济性质：客户没选时按公司类型预选（存的时候一起存上）
+  const [basic, setBasic] = useState<BasicStepData>(() => {
+    const preset = initial.basic.economicNature ? undefined : economicNatureOf(initial.basic.companyType);
+    return preset ? { ...initial.basic, economicNature: preset } : initial.basic;
+  });
   const [blank, setBlank] = useState<string[]>(() => (workup.data.blank ?? []).filter((k) => wizardStepOfKey(k) === 'basic'));
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [licenseEditing, setLicenseEditing] = useState(false);
@@ -153,6 +157,12 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
 
   const facts = useMemo(() => workupFacts(workup.snapshot, workup.data, workup.agencyDistricts), [workup]);
   const fact = (key: string) => facts.find((f) => f.key === key);
+  // 成立日期、上级主管单位：只有专家补，存在单项修改里（写进预案「企业概况」）
+  const saveFactMutation = useSaveFact(taskId);
+  const saveExpertFact = (key: string, value: string | null) =>
+    autosave.flush(async () => {
+      await saveFactMutation.mutateAsync({ version: latestVersion(), key, value, source: 'expert' });
+    });
 
   const send = (next: { identity: Identity; basic: BasicStepData; blank: string[] }, stepsDone?: number) => {
     const payload = payloadOf(next.identity, next.basic, errorsOf(next.identity, next.basic), saved.current);
@@ -429,16 +439,18 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
             </button>
           }
         >
-          <div style={{ display: 'flex', gap: 24 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 24px' }}>
             {(
               [
                 ['agency.emergencyBureau', '应急管理'],
                 ['agency.fireDept', '消防救援'],
                 ['agency.streetOffice', '所在街道'],
+                ['agency.park', '园区管理方'],
               ] as const
             ).map(([key, label]) => {
               const f = fact(key);
-              return <InfoItem key={key} label={label} value={f?.value ? String(f.value) : <span style={{ color: gy.tertiary }}>{f?.hint ?? '未匹配到'}</span>} />;
+              const empty = key === 'agency.park' ? (basic.inPark === 'no' ? '不在园区' : '未填') : (f?.hint ?? '未匹配到');
+              return <InfoItem key={key} label={label} value={f?.value ? String(f.value) : <span style={{ color: gy.tertiary }}>{empty}</span>} />;
             })}
           </div>
         </InfoBox>
@@ -537,7 +549,14 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
               <Field label="邮政编码" tag={tag(optionalSrc(basic.postalCode, customerBasic.postalCode))} error={errorOf('postalCode')}>
                 {text('postalCode', basic.postalCode, setB('postalCode'), { maxLength: 6 })}
               </Field>
-              <Field label="经济性质" tag={tag(optionalSrc(basic.economicNature, customerBasic.economicNature))}>
+              <Field
+                label="经济性质"
+                tag={tag(
+                  !customerBasic.economicNature && basic.economicNature && basic.economicNature === economicNatureOf(basic.companyType)
+                    ? 'system'
+                    : optionalSrc(basic.economicNature, customerBasic.economicNature),
+                )}
+              >
                 <Select
                   aria-label="经济性质"
                   allowClear
@@ -569,6 +588,10 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
               <Field label="上年销售额" tag={tag(optionalSrc(basic.lastYearRevenue, customerBasic.lastYearRevenue))}>
                 {text('lastYearRevenue', basic.lastYearRevenue, setB('lastYearRevenue'), { maxLength: 50 })}
               </Field>
+              <FactField label="成立日期" factKey="establishedDate" placeholder="如 2008 年 5 月" facts={facts} save={saveExpertFact} />
+            </Row>
+            <Row>
+              <FactField label="上级主管单位" factKey="superior" placeholder="没有可不填" facts={facts} save={saveExpertFact} />
               <span style={{ flex: 1 }} />
             </Row>
           </div>
@@ -603,6 +626,50 @@ export function BasicStep({ taskId, workup, autosave, customerText, frame, onGo,
   });
 }
 
+// 公司类型 → 经济性质（只在客户没选时预选；其余不预选）
+function economicNatureOf(companyType: string | undefined): BasicStepData['economicNature'] {
+  const t = companyType ?? '';
+  if (/国有|全民/.test(t)) return '全民所有制';
+  if (/集体/.test(t)) return '集体所有制';
+  if (/自然人|私营|个人独资|合伙/.test(t)) return '私有制';
+  return undefined;
+}
+
+// 只有专家补的一项企业事实：离开输入框时保存，清空就删掉
+function FactField({
+  label,
+  factKey,
+  placeholder,
+  facts,
+  save,
+}: {
+  label: string;
+  factKey: string;
+  placeholder: string;
+  facts: ReturnType<typeof workupFacts>;
+  save: (key: string, value: string | null) => Promise<boolean>;
+}) {
+  const stored = facts.find((f) => f.key === factKey)?.value;
+  const initial = stored === undefined ? '' : String(stored);
+  const [value, setValue] = useState(initial);
+  return (
+    <Field label={label} tag={initial ? <SourceTag kind="expert" text="您已填写" /> : null}>
+      <Input
+        aria-label={label}
+        value={value}
+        maxLength={100}
+        placeholder={placeholder}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          const v = value.trim();
+          if (v !== initial) void save(factKey, v || null);
+        }}
+        style={{ height: 36 }}
+      />
+    </Field>
+  );
+}
+
 // 属地部门：系统按地址匹配，专家可以改成当地的实际名称；清空就回到系统匹配的
 function AgencyModal({
   open,
@@ -625,6 +692,7 @@ function AgencyModal({
     ['agency.emergencyBureau', '应急管理'],
     ['agency.fireDept', '消防救援'],
     ['agency.streetOffice', '所在街道'],
+    ['agency.park', '园区管理方'],
   ] as const;
   const valueOf = (key: string) => {
     const f = facts.find((x) => x.key === key);
