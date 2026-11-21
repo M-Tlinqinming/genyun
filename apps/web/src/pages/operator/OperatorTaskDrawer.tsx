@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import {
   useAddOperatorNote,
+  useOperatorMissingList,
   useOperatorNotes,
   useOperatorTask,
   type OperatorTask,
@@ -13,7 +14,7 @@ import { StatusTag } from '../../components/StatusTag';
 import { Notice, linkButton } from '../../components/ui';
 import { gy, type, weight } from '../../theme/tokens';
 import { copyText } from '../expert/editing/EditDialogs';
-import { MissingList } from './MissingList';
+import { OperatorMissingList } from './MissingList';
 import { dayTime, monthDayTime } from './taskCenterText';
 
 const body = { ...type.body, color: gy.text } as const;
@@ -37,13 +38,16 @@ const grayTag = (text: string) => (
   </span>
 );
 
-// 等了多久：警示底，左边「已等 N 天」，右边什么时候开始等
+// 等了多久：警示底，左边「已等 N 天」，右边什么时候开始等（有缺项清单时写哪位专家什么时候列的）
 function WaitBlock({ t }: { t: OperatorTaskDetail }) {
+  const awaiting = t.group === 'awaiting';
+  const listed = useOperatorMissingList(t.id, awaiting).data?.list;
   const since = t.waitingSince;
   if (!since) return null;
-  const right =
-    t.group === 'to_assign'
-      ? `${monthDayTime(t.submittedAt ?? since)} 提交，客户没选专家`
+  const right = !awaiting
+    ? `${monthDayTime(t.submittedAt ?? since)} 提交，客户没选专家`
+    : listed
+      ? `${listed.byName} ${monthDayTime(listed.at)} 列出缺项`
       : `${monthDayTime(t.awaitingCustomerSince ?? since)} 列出缺项`;
   return (
     <div
@@ -327,7 +331,7 @@ export function OperatorTaskDrawer({
           {t.group === 'awaiting' ? (
             <>
               <WaitBlock t={t} />
-              <MissingList count={t.awaitingCustomerItems} />
+              <OperatorMissingList t={t} />
               <Block title="找谁要资料">
                 <Contact t={t} />
                 <span style={{ ...type.body, color: gy.secondary }}>

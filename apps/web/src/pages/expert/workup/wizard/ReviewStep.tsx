@@ -41,8 +41,9 @@ import { ApiError } from '../../../../api/request';
 import { useCopyMissingList, useSaveReviewStep, useSaveRisk, useSaveScope, workupKey, type Workup } from '../../../../api/workup';
 import { SourceTag } from '../../../../components/SourceTag';
 import { linkButton } from '../../../../components/ui';
+import { useMissingCopy } from '../../../../components/useMissingCopy';
 import { gy, source, stage, type, weight } from '../../../../theme/tokens';
-import { MissingDrawer, useMissingCopy } from '../MissingList';
+import { MissingDrawer } from '../MissingList';
 import { Card, caption, clockOf, dayOf, Field, LockNote, MissingTag, Row, SideCard, StepTitle, UseCard } from './parts';
 import type { StepProps } from './types';
 
