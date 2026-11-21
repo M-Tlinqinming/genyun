@@ -28,8 +28,14 @@ async function pickRegion(scope: ReturnType<Page['getByRole']>, label: '省' | '
   const box = scope.getByRole('combobox', { name: label });
   await box.click();
   await box.fill(name);
-  // 上一个下拉收起的动画还没完时页面上会有两个，新开的排在后面
-  await page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${name}"]`).last().click();
+  // 只在这个下拉自己的弹层里点：打开时 combobox 的 aria-controls 指向弹层里的列表。
+  // 省和市都叫「上海市」，按「看得见的弹层里最后一个」去找，上一个弹层还在收起时会点错地方、一直等到超时
+  const listId = await box.getAttribute('aria-controls');
+  expect(listId).toBeTruthy();
+  await page.locator(`.ant-select-dropdown:has([id="${listId}"]) .ant-select-item-option[title="${name}"]`).click();
+  // 选中后弹层收起、框里显示所选的名称，再去选下一级
+  await expect(box).not.toHaveAttribute('aria-expanded', 'true');
+  await expect(box.locator('xpath=ancestor::*[contains(concat(" ", @class, " "), " ant-select ")][1]')).toContainText(name);
 }
 
 test('列表：演示组织为服务中', async () => {
