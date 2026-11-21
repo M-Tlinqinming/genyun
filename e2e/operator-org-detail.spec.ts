@@ -11,6 +11,11 @@ const FIRST = `he-${stamp}@boluo-anlian.cn`;
 const SECOND = `xu-${stamp}@boluo-anlian.cn`;
 const OUTBOX = join('apps', 'api', '.data', 'e2e-mail-outbox');
 
+// 合同有效期按北京时间的今年算，不写死年份：今年 1 月 1 日到明年 12 月 31 日
+const YEAR = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date()).slice(0, 4));
+const STARTS = `${YEAR}-01-01`;
+const ENDS = `${YEAR + 1}-12-31`;
+
 // 发件箱里给这个邮箱的邮件，新的在前
 async function links(email: string): Promise<string[]> {
   const files = (await readdir(OUTBOX)).filter((f) => f.endsWith('.json')).sort().reverse();
@@ -58,8 +63,8 @@ test.beforeAll(async ({ browser }) => {
       purchasedCredits: 20,
       giftCredits: 2,
       giftCampaign: '新客户开通活动',
-      startsAt: '2026-01-01',
-      endsAt: '2027-12-31',
+      startsAt: STARTS,
+      endsAt: ENDS,
       contractFileId: (await file.json()).id,
       paymentReceived: true,
       adminName: '何经理',
@@ -91,7 +96,7 @@ test('从列表点「查看」进入详情：组织资料、成员、企业与�
   await expect(page).toHaveURL(new RegExp(`/operator/organizations/${orgId}$`));
   await expect(page.getByRole('heading', { level: 1, name: ORG })).toBeVisible();
   await expect(page.getByRole('link', { name: '返回客户组织' })).toBeVisible();
-  await expect(page.getByText('服务中 · 广东省惠州市 · 2026.')).toBeVisible();
+  await expect(page.getByText(`服务中 · 广东省惠州市 · ${YEAR}.`)).toBeVisible();
   await expect(page.getByText('0 家企业、0 名成员')).toBeVisible();
 
   await expect(card('组织资料')).toContainText('统一社会信用代码91441322MA5XXXXXX3');
@@ -100,7 +105,7 @@ test('从列表点「查看」进入详情：组织资料、成员、企业与�
   await expect(card('联系人与成员')).toContainText(FIRST);
   await expect(card('联系人与成员')).toContainText('邀请中');
   await expect(card('企业与任务')).toContainText('客户还没有添加企业');
-  await expect(card('年度服务')).toContainText('2026.01.01 – 2027.12.31');
+  await expect(card('年度服务')).toContainText(`${YEAR}.01.01 – ${YEAR + 1}.12.31`);
   await expect(card('年度服务').getByRole('progressbar')).toBeVisible();
   await expect(card('年度服务')).toContainText('到期前 30 天提醒客户管理员');
   await expect(card('年度服务').getByRole('button', { name: '登记续约' })).toBeVisible();
@@ -184,7 +189,7 @@ test('其他页签：开通与邀请里列出每封邀请的状态', async () =>
   await page.getByRole('tab', { name: '年度服务' }).click();
   const contract = card('合同 GY-HT-2026-131');
   await expect(contract).toContainText('生效中');
-  await expect(contract).toContainText('合同有效期2026.01.01 – 2027.12.31');
+  await expect(contract).toContainText(`合同有效期${YEAR}.01.01 – ${YEAR + 1}.12.31`);
   await expect(contract).toContainText('次数合同购买 20 次 · 赠送 2 次');
   // 开通时不再登记服务范围，新合同没有这一行
   await expect(contract).not.toContainText('服务范围');

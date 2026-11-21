@@ -5,6 +5,10 @@ test.describe.configure({ mode: 'serial' });
 
 const pdf = { name: '华东安评-年度服务合同-盖章版.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') };
 const ORG = '华东安评服务有限公司';
+// 开通的合同有效期按北京时间的今年算，不写死年份：今年 1 月 1 日到明年 12 月 31 日
+const YEAR = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date()).slice(0, 4));
+const OPEN_STARTS = `${YEAR}.01.01`;
+const OPEN_ENDS = `${YEAR + 1}.12.31`;
 
 let page: Page;
 
@@ -124,8 +128,8 @@ test('开通：缺合同原件或到账时不能开通，填齐后变为服务�
   await dialog.getByLabel('选择已签合同原件').setInputFiles(pdf);
   await expect(dialog).toContainText(pdf.name);
   await dialog.getByLabel('合同有效期').click();
-  await page.getByPlaceholder('开始日').fill('2026.11.01');
-  await page.getByPlaceholder('到期日').fill('2027.10.31');
+  await page.getByPlaceholder('开始日').fill(OPEN_STARTS);
+  await page.getByPlaceholder('到期日').fill(OPEN_ENDS);
   await page.getByPlaceholder('到期日').press('Enter');
   await expect(dialog).toContainText('还差：合同款已到账');
   await expect(openButton).toBeDisabled();
@@ -138,7 +142,7 @@ test('开通：缺合同原件或到账时不能开通，填齐后变为服务�
   await expect(page.getByText('已开通，邀请已发到 sun@huadong-anping.cn')).toBeVisible();
   await expect(dialog).toBeHidden();
   await expect(row(ORG)).toContainText('服务中');
-  await expect(row(ORG)).toContainText('2026.11.01 – 2027.10.31');
+  await expect(row(ORG)).toContainText(`${OPEN_STARTS} – ${OPEN_ENDS}`);
   // 剩余次数：购买 10 + 赠送 3
   await expect(row(ORG)).toContainText('13 次共 13 次');
   await page.screenshot({ path: 'out/m3-1-I02-after-open.png', fullPage: true });

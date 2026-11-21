@@ -4,10 +4,21 @@ import { expect, request, test, type Page } from '@playwright/test';
 // 文件名排在 operator-organizations.spec 后面，免得多出来的组织弄坏那边的数量断言
 test.describe.configure({ mode: 'serial' });
 
-const ORG = '惠东安和安全咨询有限公司';
+const ORG = 'K16 测试组织';
 const CAMPAIGN = '秋季回馈活动';
 const stamp = Date.now();
-const EMAIL = `chen-${stamp}@huidong-anhe.cn`;
+const EMAIL = `k16-${stamp}@example.com`;
+const PHONE = '139 0000 7781';
+
+// 日期都按北京时间的今年算，不写死年份：合同从今年 1 月 1 日到 12 月 31 日
+const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
+const YEAR = Number(TODAY.slice(0, 4));
+const STARTS = `${YEAR}-01-01`;
+const ENDS = `${YEAR}-12-31`;
+// 续约默认接着现在的合同：明年 1 月 1 日到 12 月 31 日（和 renewalDefaultDates 一样的算法）
+const RENEW_STARTS = `${YEAR + 1}-01-01`;
+const RENEW_ENDS = `${YEAR + 1}-12-31`;
+const dotted = (d: string) => d.replaceAll('-', '.');
 
 let page: Page;
 
@@ -21,7 +32,7 @@ test.beforeAll(async ({ browser }) => {
       region: { province: '广东省', city: '惠州市', district: '惠东县' },
       socialCreditCode: '91441323MA5XXXXXX8',
       contactName: '陈经理',
-      contactPhone: '139 2266 7781',
+      contactPhone: PHONE,
       contactEmail: EMAIL,
       note: '',
     },
@@ -30,15 +41,15 @@ test.beforeAll(async ({ browser }) => {
   const { id } = await org.json();
   const opened = await api.post(`/api/operator/organizations/${id}/open`, {
     data: {
-      contractNumber: 'GY-HT-2026-161',
+      contractNumber: 'GY-HT-K16-001',
       purchasedCredits: 5,
       giftCredits: 2,
       giftCampaign: CAMPAIGN,
-      startsAt: '2026-01-01',
-      endsAt: '2026-12-31',
+      startsAt: STARTS,
+      endsAt: ENDS,
       paymentReceived: true,
       adminName: '陈经理',
-      adminPhone: '139 2266 7781',
+      adminPhone: PHONE,
       adminEmail: EMAIL,
     },
   });
@@ -62,7 +73,7 @@ const option = (title: string) => page.locator(`.ant-select-dropdown:visible .an
 
 test('列表：剩余次数列显示「N 次 / 共 M 次」', async () => {
   await page.getByRole('menuitem', { name: /客户组织/ }).click();
-  await page.getByPlaceholder('组织名称 / 联系人 / 手机号').fill('惠东安和');
+  await page.getByPlaceholder('组织名称 / 联系人 / 手机号').fill('K16 测试');
   const row = page.getByRole('row').filter({ hasText: ORG });
   await expect(row).toContainText('7 次共 7 次');
   await expect(row).toContainText('广东省惠州市');
@@ -71,7 +82,7 @@ test('列表：剩余次数列显示「N 次 / 共 M 次」', async () => {
 });
 
 test('详情：年度服务和编制次数两张卡片', async () => {
-  await expect(card('年度服务')).toContainText('2026.01.01 – 2026.12.31');
+  await expect(card('年度服务')).toContainText(`${dotted(STARTS)} – ${dotted(ENDS)}`);
   await expect(card('编制次数')).toContainText('剩余 7 次');
   await expect(card('编制次数')).toContainText('剩余里：赠送 2 次，购买 5 次 · 共 7 次，已用 0 次');
   await expect(card('编制次数')).toContainText('交付才算 1 次 · 先扣赠送再扣购买');
@@ -89,7 +100,7 @@ test('调整次数：预览、减超时先拦、加赠送成功', async () => {
   // 加购 3 次的预览
   await dialog.getByLabel('加还是减、几次').fill('3');
   await expect(dialog).toContainText('确认后：剩余 7 次 → 10 次（购买 5 次 → 8 次）');
-  await expect(dialog).toContainText('马上生效，加的次数跟合同一起到期（2026.12.31）');
+  await expect(dialog).toContainText(`马上生效，加的次数跟合同一起到期（${dotted(ENDS)}）`);
   await page.screenshot({ path: 'out/k16-adjust-increase.png' });
 
   // 减 10 次超过购买余额：先拦下
@@ -139,27 +150,27 @@ test('次数记录：多了一行赠送，按类型筛选', async () => {
 test('登记续约：默认接着现在的合同，成功后年度服务的到期日变了', async () => {
   await card('年度服务').getByRole('button', { name: '登记续约' }).click();
   const dialog = page.getByRole('dialog', { name: /^登记续约/ });
-  await expect(dialog).toContainText(`${ORG} · 现在的合同到 2026.12.31`);
-  await expect(page.getByPlaceholder('开始日')).toHaveValue('2027.01.01');
-  await expect(page.getByPlaceholder('到期日')).toHaveValue('2027.12.31');
-  await expect(dialog).toContainText('新合同要接着现在的合同，到期日要晚于 2026.12.31。');
+  await expect(dialog).toContainText(`${ORG} · 现在的合同到 ${dotted(ENDS)}`);
+  await expect(page.getByPlaceholder('开始日')).toHaveValue(dotted(RENEW_STARTS));
+  await expect(page.getByPlaceholder('到期日')).toHaveValue(dotted(RENEW_ENDS));
+  await expect(dialog).toContainText(`新合同要接着现在的合同，到期日要晚于 ${dotted(ENDS)}。`);
   const submit = dialog.getByRole('button', { name: '登记续约' });
   await expect(submit).toBeDisabled();
   await expect(dialog).toContainText('还差：合同编号、合同购买次数、合同款已到账');
-  await dialog.getByLabel('合同编号').fill('GY-HT-2027-161');
+  await dialog.getByLabel('合同编号').fill('GY-HT-K16-002');
   await dialog.getByLabel('合同购买次数').fill('20');
   await dialog.getByLabel('合同款已到账').check();
   await page.screenshot({ path: 'out/k16-renewal.png' });
   await submit.click();
   await expect(page.getByText('续约已登记')).toBeVisible();
   await expect(dialog).toBeHidden();
-  await expect(card('年度服务')).toContainText('2026.01.01 – 2027.12.31');
-  await expect(card('操作记录')).toContainText('登记续约，合同到 2027.12.31');
+  await expect(card('年度服务')).toContainText(`${dotted(STARTS)} – ${dotted(RENEW_ENDS)}`);
+  await expect(card('操作记录')).toContainText(`登记续约，合同到 ${dotted(RENEW_ENDS)}`);
 
   await page.getByRole('tab', { name: '年度服务' }).click();
-  await expect(card('合同 GY-HT-2027-161')).toContainText('未开始');
-  await expect(card('合同 GY-HT-2027-161')).toContainText('合同原件没有上传');
-  await expect(card('合同 GY-HT-2026-161')).toContainText('生效中');
+  await expect(card('合同 GY-HT-K16-002')).toContainText('未开始');
+  await expect(card('合同 GY-HT-K16-002')).toContainText('合同原件没有上传');
+  await expect(card('合同 GY-HT-K16-001')).toContainText('生效中');
   await page.screenshot({ path: 'out/k16-detail-service.png', fullPage: true });
 });
 

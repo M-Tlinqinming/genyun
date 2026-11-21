@@ -120,12 +120,16 @@ async function uploadContract(orgId: string, buf = PDF, name = '合同-盖章版
   return (await as('ops@test.cn')).post(`/api/operator/organizations/${orgId}/contract-file`).attach('file', buf, name);
 }
 
+// 开通用的合同有效期按今天算（不写死年份）：上个月起、一年后止
+const OPEN_STARTS = addDays(chinaToday(), -30);
+const OPEN_ENDS = addDays(chinaToday(), 334);
+
 function opening(fileId: string) {
   return {
     contractNumber: 'GY-HT-2026-018',
     purchasedCredits: 0,
-    startsAt: '2026-11-01',
-    endsAt: '2027-10-31',
+    startsAt: OPEN_STARTS,
+    endsAt: OPEN_ENDS,
     contractFileId: fileId,
     paymentReceived: true,
     adminName: '孙经理',
@@ -258,7 +262,7 @@ describe('开通', () => {
     const before = mailer.sent.length;
     const res = await (await as('ops@test.cn')).post(`/api/operator/organizations/${created.id}/open`).send(opening(up.body.id));
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ state: 'active', contractStartsAt: '2026-11-01', contractEndsAt: '2027-10-31' });
+    expect(res.body).toMatchObject({ state: 'active', contractStartsAt: OPEN_STARTS, contractEndsAt: OPEN_ENDS });
     // 测试用的发信记录是真实发出，不提示「未真实发送」
     expect(res.body.invitation).toMatchObject({ mailSent: true, mailSimulated: false, mailInOutbox: false });
 
@@ -438,6 +442,10 @@ describe('登记续约', () => {
     const dup = await ops.post(url).send(renewal({ contractNumber: 'GY-HT-2026-018', contractStartsAt: addDays(end, 1), contractEndsAt: addDays(end, 365) }));
     expect(dup.status).toBe(409);
     expect(dup.body.message).toBe('这个合同编号已经登记过了');
+    // 只差大小写、首尾空格的也算重复
+    const loose = await ops.post(url).send(renewal({ contractNumber: ' gy-ht-2026-018 ', contractStartsAt: addDays(end, 1), contractEndsAt: addDays(end, 365) }));
+    expect(loose.status).toBe(409);
+    expect(loose.body.message).toBe('这个合同编号已经登记过了');
 
     const ok = await ops.post(url).send(renewal({ giftCredits: 2, giftCampaign: '续约赠送', contractStartsAt: addDays(end, 1), contractEndsAt: addDays(end, 365) }));
     expect(ok.status).toBe(200);
@@ -471,6 +479,27 @@ describe('登记续约', () => {
     expect(list.find((r) => r.id === id)!.state).toBe('active');
   });
 
+  it('合同原件：已经挂在一份合同上的不能再给新合同用；存的编号是填的原样', async () => {
+    const today = chinaToday();
+    const created = await register({ ...registration, name: '续约原件' });
+    const ops = await as('ops@test.cn');
+    const first = await uploadContract(created.id);
+    await ops
+      .post(`/api/operator/organizations/${created.id}/open`)
+      .send({ ...opening(first.body.id), startsAt: addDays(today, -300), endsAt: addDays(today, 20), adminEmail: 'renew3@test.cn' })
+      .expect(200);
+    const url = `/api/operator/organizations/${created.id}/renewal`;
+    const dates = { contractStartsAt: addDays(today, 21), contractEndsAt: addDays(today, 385) };
+    const reused = await ops.post(url).send(renewal({ ...dates, contractFileId: first.body.id }));
+    expect(reused.status).toBe(400);
+    expect(reused.body.message).toBe('这份合同原件已经挂在别的合同上了，请上传这份合同自己的原件');
+    const second = await uploadContract(created.id);
+    const ok = await ops.post(url).send(renewal({ ...dates, contractNumber: ' gy-xy-原件-01 ', contractFileId: second.body.id }));
+    expect(ok.status).toBe(200);
+    const contracts = await handle.db.select().from(organizationContracts).where(eq(organizationContracts.orgId, created.id));
+    expect(contracts.find((c) => c.fileId === second.body.id)!.number).toBe('gy-xy-原件-01');
+  });
+
   it('还没开通的不能续约；客户、专家 403', async () => {
     const created = await register({ ...registration, name: '续约没开通' });
     const today = chinaToday();
@@ -497,5 +526,22 @@ describe('赠送活动统计', () => {
     }
     expect((await ops.get('/api/operator/credits/gift-campaigns?year=abc')).status).toBe(400);
     expect((await (await as('a-admin@test.cn')).get('/api/operator/credits/gift-campaigns')).status).toBe(403);
+  });
+
+  it('到期取送出这笔赠送的合同的到期日，不取这个组织后来续的合同', async () => {
+    const today = chinaToday();
+    const created = await register({ ...registration, name: '赠送到期' });
+    const ops = await as('ops@test.cn');
+    await ops
+      .post(`/api/operator/organizations/${created.id}/open`)
+      .send({ ...opening(MISSING), contractFileId: null, startsAt: addDays(today, -300), endsAt: addDays(today, 20), adminEmail: 'giftend@test.cn', giftCredits: 2, giftCampaign: '到期核对活动' })
+      .expect(200);
+    await ops
+      .post(`/api/operator/organizations/${created.id}/renewal`)
+      .send({ contractNumber: 'GY-XY-到期-01', purchasedCredits: 5, paymentReceived: true, contractStartsAt: addDays(today, 21), contractEndsAt: addDays(today, 385) })
+      .expect(200);
+    const res = await ops.get('/api/operator/credits/gift-campaigns').expect(200);
+    const campaign = (res.body.campaigns as { campaign: string; orgs: { orgId: string; endsAt: string; expired: boolean }[] }[]).find((c) => c.campaign === '到期核对活动')!;
+    expect(campaign.orgs.find((o) => o.orgId === created.id)).toMatchObject({ endsAt: addDays(today, 20), expired: false });
   });
 });
