@@ -46,7 +46,7 @@ test('客户在成果文档里看到已交付的成果，下载三份 Word 和�
   const card = page.getByRole('region', { name: /惠阳飞宇电器有限公司 GY-\d{4}-\d{3}/ });
   await expect(card).toBeVisible();
   // 飞宇在 task-publish.spec 里重新打开后再次交付过：卡片显示「已更新」
-  await expect(card).toContainText(/已交付|已更新/);
+  await expect(card).toContainText('已更新');
   await expect(card).not.toContainText(/V\d/);
   for (const name of ['应急预案', '风险评估报告', '应急资源调查报告']) await expect(card.getByText(`惠阳飞宇电器有限公司${name}.docx`)).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/1[3-9]\d{9}/);
