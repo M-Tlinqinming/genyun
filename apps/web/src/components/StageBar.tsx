@@ -1,5 +1,6 @@
 import { CheckOutlined } from '@ant-design/icons';
 import { Fragment } from 'react';
+import { Link } from 'react-router';
 import { gy, type, weight } from '../theme/tokens';
 
 // 向导顶栏中间的阶段条：做完的（浅蓝圆 + 蓝勾、次要色字）、当前的（蓝底白字圆 + 加粗）、
@@ -8,6 +9,8 @@ export function StageBar({
   stages,
   current,
   label = '进度',
+  notes,
+  links,
 }: {
   /** 各阶段名，按顺序 */
   stages: readonly string[];
@@ -15,6 +18,10 @@ export function StageBar({
   current: number;
   /** 读屏用的名字 */
   label?: string;
+  /** 某一段名字后面的灰字，如 { 0: '5 步' } */
+  notes?: Partial<Record<number, string>>;
+  /** 做完的段可以点回去：名字变成链接，title 是悬停提示 */
+  links?: Partial<Record<number, { to: string; title: string }>>;
 }) {
   const compact = stages.length > 3;
   return (
@@ -24,6 +31,8 @@ export function StageBar({
     >
       {stages.map((name, i) => {
         const state = i < current ? 'done' : i === current ? 'current' : 'todo';
+        const link = state === 'done' ? links?.[i] : undefined;
+        const note = notes?.[i];
         return (
           <Fragment key={i}>
             {i > 0 && (
@@ -58,16 +67,22 @@ export function StageBar({
               >
                 {state === 'done' ? <CheckOutlined style={{ fontSize: 12 }} aria-label="已完成" /> : i + 1}
               </span>
-              <span
-                style={{
+              {(() => {
+                const style = {
                   ...type.body,
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'nowrap' as const,
                   color: state === 'done' ? gy.secondary : state === 'current' ? gy.text : gy.tertiary,
                   fontWeight: state === 'current' ? weight.strong : weight.normal,
-                }}
-              >
-                {name}
-              </span>
+                };
+                return link ? (
+                  <Link to={link.to} title={link.title} className="gy-stage-link" style={style}>
+                    {name}
+                  </Link>
+                ) : (
+                  <span style={style}>{name}</span>
+                );
+              })()}
+              {note && <span style={{ ...type.caption, whiteSpace: 'nowrap', color: gy.tertiary }}>{note}</span>}
             </li>
           </Fragment>
         );

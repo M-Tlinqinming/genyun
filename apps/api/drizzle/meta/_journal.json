@@ -204,6 +204,13 @@
       "when": 1795194576235,
       "tag": "0028_org_region_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1795248289078,
+      "tag": "0029_generated_draft_progress",
+      "breakpoints": true
     }
   ]
 }

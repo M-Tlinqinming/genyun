@@ -24,6 +24,7 @@ import {
   type ContactQuestion,
   type ContactTarget,
   type DraftKind,
+  type DraftStepProgress,
   type EditBlock,
   type EnterpriseProfile,
   type ExpertCertificate,
@@ -717,6 +718,14 @@ export const generatedDrafts = pgTable(
     notes: jsonb('notes').$type<SlotNote[]>(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
+    // 生成到哪一步（生成页「正在写……」和失败时中断在哪一步）；重新生成时清空
+    progress: jsonb('progress').$type<DraftStepProgress>(),
+    // 进队列的时间：确认生成、重新生成时写；之前生成的为空，接口用这一批的确认时间顶上
+    queuedAt: timestamp('queued_at', { withTimezone: true }),
+    // 生成出的 PDF 页数；没转 PDF 或数页数出错为空
+    pages: integer('pages'),
+    // 生成出来的稿子里有几处待补充；算出错为空
+    pendingCount: integer('pending_count'),
   },
   (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
 );
