@@ -8,15 +8,20 @@ import { BUILTIN_AGENCY_DISTRICTS } from './plan/agencies.ts';
 const BUILTIN_PLACES = BUILTIN_AGENCY_DISTRICTS.flatMap((d) => [d.name, d.name.replace(/(高新区|区|县)$/, '')]).filter((p) => p.length >= 2);
 
 // 公司组织形式后缀，长的在前
-const ORG_SUFFIXES = ['股份有限公司', '有限责任公司', '有限公司', '股份公司', '集团公司', '责任公司', '公司', '厂', '店', '经营部', '商行'];
+const ORG_SUFFIXES = ['股份有限公司', '有限责任公司', '有限公司', '股份公司', '集团公司', '集团', '责任公司', '公司', '厂', '店', '经营部', '商行'];
 const PLACE_SUFFIX = /(省|自治区|特别行政区|市|自治州|地区|盟|区|县|旗)$/;
 // 地址开头一层行政区：2–7 个汉字，以省、市、区、县这类字结尾；街道、镇、村不算
 const PLACE_LAYER = /^([一-龥]{1,6}?(?:省|自治区|特别行政区|市|自治州|地区|盟|区|县|旗))/;
 
-/** 去掉末尾的组织形式：「示例电子有限公司」→「示例电子」；去完是空的保留原名 */
+/** 去掉末尾的组织形式：「示例电子有限公司」→「示例电子」，「示例集团有限公司」→「示例」；去完是空的保留原名 */
 export function stripOrgSuffix(name: string): string {
-  const n = name.trim();
-  for (const s of ORG_SUFFIXES) if (n.endsWith(s) && n.length > s.length) return n.slice(0, -s.length);
+  let n = name.trim();
+  // 「集团有限公司」这类叠在一起的，一层层去
+  for (let round = 0; round < 3; round++) {
+    const s = ORG_SUFFIXES.find((x) => n.endsWith(x) && n.length > x.length);
+    if (!s) break;
+    n = n.slice(0, -s.length);
+  }
   return n;
 }
 

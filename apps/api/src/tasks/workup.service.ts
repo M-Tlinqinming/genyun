@@ -99,6 +99,7 @@ import {
   enterpriseDocumentVersions,
   enterprises,
   files,
+  generationBatches,
   taskDocuments,
   taskIntakeFiles,
   taskIntakes,
@@ -416,47 +417,51 @@ export class WorkupService {
 
   private async write(taskId: string, row: WorkupRow, data: WorkupData, userId: string) {
     // 复制过缺项清单的：按这次保存后的资料重算，补上的划掉；都补上了自动取消「等客户补资料」
-    const missing = data.missingList ? await this.recomputeMissing(taskId, row.snapshot, data) : null;
-    const next = missing?.data ?? data;
-    const [saved] = await this.db
-      .update(taskWorkups)
-      .set({ data: next, version: row.version + 1, updatedBy: userId, updatedAt: new Date() })
-      .where(and(eq(taskWorkups.taskId, taskId), eq(taskWorkups.version, row.version)))
-      .returning();
-    // 读与写之间别人刚好保存了
-    if (!saved) throw this.stale(row.version + 1);
-    if (missing?.clear) {
-      await this.db.update(tasks).set({ awaitingCustomerSince: null, awaitingCustomerItems: null }).where(eq(tasks.id, taskId));
-    } else if (missing?.remaining !== undefined) {
-      // 还在等客户补：任务上的「缺 N 项」跟着清单里还没补上的项数走
-      await this.db.update(tasks).set({ awaitingCustomerItems: missing.remaining }).where(eq(tasks.id, taskId));
+    // 缺项按资料算（要读文件和知识库，放在事务外）；核对数据和任务上的两列在同一个事务里写
+    let current: { key: string }[] | null = null;
+    if (data.missingList) {
+      const [t] = await this.db.select({ orgId: tasks.orgId }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+      if (t) current = await this.currentGapsOf(taskId, t.orgId, row.snapshot, data);
     }
+    const { saved, cleared } = await this.db.transaction(async (tx) => {
+      let next = data;
+      let cleared = false;
+      let remaining: number | null = null;
+      if (current && data.missingList) {
+        const [t] = await tx
+          .select({ since: tasks.awaitingCustomerSince, items: tasks.awaitingCustomerItems })
+          .from(tasks)
+          .where(eq(tasks.id, taskId))
+          .limit(1);
+        const now = new Date().toISOString();
+        const { list, changed, allFilled } = recomputeMissingList(data.missingList, current, now);
+        const awaiting = Boolean(t?.since);
+        cleared = allFilled && awaiting;
+        if (changed || cleared) {
+          const events = cleared ? withEvent(data.events, { at: now, what: '「等客户补资料」自动取消', extra: '缺项清单里的项都补上了' }) : data.events;
+          next = { ...data, missingList: list, ...(events ? { events } : {}) };
+        }
+        const open = list.items.filter((i) => !i.filledAt).length;
+        if (awaiting && !cleared && open !== t?.items) remaining = open;
+      }
+      const [saved] = await tx
+        .update(taskWorkups)
+        .set({ data: next, version: row.version + 1, updatedBy: userId, updatedAt: new Date() })
+        .where(and(eq(taskWorkups.taskId, taskId), eq(taskWorkups.version, row.version)))
+        .returning();
+      // 读与写之间别人刚好保存了：整个回滚
+      if (!saved) throw this.stale(row.version + 1);
+      const stillAwaiting = and(eq(tasks.id, taskId), isNotNull(tasks.awaitingCustomerSince));
+      if (cleared) {
+        await tx.update(tasks).set({ awaitingCustomerSince: null, awaitingCustomerItems: null }).where(stillAwaiting);
+      } else if (remaining !== null) {
+        // 还在等客户补：任务上的「缺 N 项」跟着清单里还没补上的项数走
+        await tx.update(tasks).set({ awaitingCustomerItems: remaining }).where(stillAwaiting);
+      }
+      return { saved, cleared };
+    });
     const view = await this.view(taskId, saved);
-    return missing?.clear ? { ...view, awaitingCleared: true as const } : view;
-  }
-
-  // 缺项清单按现在的资料重算；还标着「等客户补资料」而清单都补上了：clear = true，并记一条处理记录
-  // 还在等客户补、清单有变化时 remaining = 还没补上的项数（写到任务上）
-  private async recomputeMissing(
-    taskId: string,
-    snapshot: WorkupSnapshot,
-    data: WorkupData,
-  ): Promise<{ data: WorkupData; clear: boolean; remaining?: number }> {
-    const [task] = await this.db
-      .select({ orgId: tasks.orgId, since: tasks.awaitingCustomerSince, items: tasks.awaitingCustomerItems })
-      .from(tasks)
-      .where(eq(tasks.id, taskId))
-      .limit(1);
-    if (!task || !data.missingList) return { data, clear: false };
-    const current = await this.currentGapsOf(taskId, task.orgId, snapshot, data);
-    const now = new Date().toISOString();
-    const { list, changed, allFilled } = recomputeMissingList(data.missingList, current, now);
-    const clear = allFilled && task.since !== null;
-    const open = list.items.filter((i) => !i.filledAt).length;
-    const remaining = !clear && task.since !== null && open !== task.items ? { remaining: open } : {};
-    if (!changed && !clear) return { data, clear: false, ...remaining };
-    const events = clear ? withEvent(data.events, { at: now, what: '「等客户补资料」自动取消', extra: '缺项清单里的项都补上了' }) : data.events;
-    return { data: { ...data, missingList: list, ...(events ? { events } : {}) }, clear, ...remaining };
+    return cleared ? { ...view, awaitingCleared: true as const } : view;
   }
 
   // 现在的缺项（门槛缺的 + 客户未填）：图纸按 drawingCandidates，属地按知识库
@@ -504,6 +509,11 @@ export class WorkupService {
     const parsed = stepsDoneSaveSchema.pick({ version: true }).safeParse(body);
     if (!parsed.success) throw new BadRequestException('内容不正确');
     if (!(await this.isIntake(task.id))) throw new BadRequestException('逐项填写的任务只复制清单文字，不标「等客户补资料」');
+    // 生成过（包括已交付、重新打开的）：只复制文字，不再标「等客户补资料」，免得盖掉核对文稿的状态
+    const [generated] = await this.db.select({ id: generationBatches.id }).from(generationBatches).where(eq(generationBatches.taskId, task.id)).limit(1);
+    if (generated) {
+      throw new ConflictException({ statusCode: 409, message: '已经生成过初稿，缺项清单只复制文字，任务不再标为「等客户补资料」', reason: 'generated' });
+    }
     const row = await this.ensure(task);
     if (parsed.data.version !== row.version) throw this.stale(row.version);
     const items = missingItemsOf(await this.currentGapsOf(task.id, task.orgId, row.snapshot, row.data));
@@ -516,13 +526,16 @@ export class WorkupService {
       byName: user.name,
       what: `复制了缺项清单，共 ${items.length} 项，任务标为等客户补资料`,
     });
-    const [saved] = await this.db
-      .update(taskWorkups)
-      .set({ data: { ...row.data, missingList: list, events }, version: row.version + 1, updatedBy: user.id, updatedAt: at })
-      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
-      .returning();
-    if (!saved) throw this.stale(row.version + 1);
-    await this.db.update(tasks).set({ awaitingCustomerSince: at, awaitingCustomerItems: items.length }).where(eq(tasks.id, task.id));
+    const saved = await this.db.transaction(async (tx) => {
+      const [saved] = await tx
+        .update(taskWorkups)
+        .set({ data: { ...row.data, missingList: list, events }, version: row.version + 1, updatedBy: user.id, updatedAt: at })
+        .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
+        .returning();
+      if (!saved) throw this.stale(row.version + 1);
+      await tx.update(tasks).set({ awaitingCustomerSince: at, awaitingCustomerItems: items.length }).where(eq(tasks.id, task.id));
+      return saved;
+    });
     return this.view(task.id, saved);
   }
 

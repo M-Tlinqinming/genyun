@@ -9,7 +9,7 @@ import type { ScopeKey } from './plan/catalog.ts';
 import { parseTons, productionView, type ProductionWorkup } from './workup-production.ts';
 import { scopeView, type ScopeSwitch, type ScopeWorkup } from './workup-scope.ts';
 import { effectiveSnapshot, organizationStepView, type ExpertCopy } from './workup-steps.ts';
-import type { FactOverride, WorkupData, WorkupSnapshot } from './workup.ts';
+import { workupFacts, type FactOverride, type WorkupData, type WorkupSnapshot } from './workup.ts';
 
 const text = (max: number, label: string) => z.string().trim().max(max, `${label}最多 ${max} 个字`).optional();
 // 金额（万元）：数字，最多两位小数；空着不报错
@@ -192,34 +192,63 @@ export function companyNameInputOf(snapshot: WorkupSnapshot, data: Partial<Exper
 
 const isEmptyLeaf = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 
-function leaves(value: unknown, path: string, out: Map<string, unknown>) {
-  if (Array.isArray(value)) value.forEach((v, i) => leaves(v, `${path}.${i}`, out));
-  else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) leaves(v, path ? `${path}.${k}` : k, out);
-  else out.set(path, value);
+// 带 id 的行（人员、设备、物料等）按 id 对齐，不按下标；id 这类内部字段不比
+const isRows = (v: unknown[]): v is { id: string }[] =>
+  v.length > 0 && v.every((x) => x !== null && typeof x === 'object' && typeof (x as { id?: unknown }).id === 'string');
+
+function leaves(value: unknown, path: string, out: Map<string, unknown>, rows: Set<string>) {
+  if (Array.isArray(value)) {
+    if (isRows(value)) {
+      for (const row of value) {
+        const at = `${path}[${row.id}]`;
+        rows.add(at);
+        leaves(row, at, out, rows);
+      }
+    } else value.forEach((v, i) => leaves(v, `${path}.${i}`, out, rows));
+  } else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) if (k !== 'id') leaves(v, path ? `${path}.${k}` : k, out, rows);
+  } else out.set(path, value);
 }
 
 /**
  * 专家在向导里改动的数量：客户原来有值、现在不一样的算「修改」，客户原来空着、现在有值的算「补充」。
- * 按客户原表（快照）和盖上专家那份以后的资料逐个字段比；客户原表不变
+ * 按客户原表（快照）和盖上专家那份以后的资料逐个字段比；客户原表不变。
+ * 新增一行算补充 1 处（不按行里的字段算），删掉一行算修改 1 处；改了重大危险源结论算修改 1 处；
+ * 专家单项补的事实已经在上面的字段里体现的不重复算
  */
 export function expertEditCounts(snapshot: WorkupSnapshot, data: WorkupData): { modified: number; supplemented: number } {
   const before = new Map<string, unknown>();
   const after = new Map<string, unknown>();
+  const rowsBefore = new Set<string>();
+  const rowsAfter = new Set<string>();
   const eff = effectiveSnapshot(snapshot, data);
-  leaves({ identity: snapshot.identity, profile: snapshot.profile }, '', before);
-  leaves({ identity: eff.identity, profile: eff.profile }, '', after);
+  leaves({ identity: snapshot.identity, profile: snapshot.profile }, '', before, rowsBefore);
+  leaves({ identity: eff.identity, profile: eff.profile }, '', after, rowsAfter);
   let modified = 0;
   let supplemented = 0;
+  const added = [...rowsAfter].filter((r) => !rowsBefore.has(r));
+  const removed = [...rowsBefore].filter((r) => !rowsAfter.has(r));
+  // 只数最外层的新增、删除行（行里还有子行的不重复算）
+  const outermost = (list: string[]) => list.filter((r) => !list.some((o) => o !== r && r.startsWith(`${o}.`)));
+  supplemented += outermost(added).length;
+  modified += outermost(removed).length;
+  const inAdded = (k: string) => added.some((r) => k.startsWith(`${r}.`));
   for (const [k, v] of after) {
+    if (inAdded(k)) continue;
     const old = before.get(k);
     if (isEmptyLeaf(v) || v === old) continue;
     if (isEmptyLeaf(old)) supplemented += 1;
     else modified += 1;
   }
-  // 专家补的事实（成立日期、上级单位等不在客户表格里的）
-  for (const o of Object.values(data.overrides ?? {})) {
+  if (data.review?.majorHazard) modified += 1;
+  // 专家单项补的事实（成立日期、上级单位等不在客户表格里的）；值和上面字段里的一样就不再算
+  const base = new Map(workupFacts(snapshot, { ...data, overrides: {} }).map((f) => [f.key, f.value]));
+  for (const [key, o] of Object.entries(data.overrides ?? {})) {
     if (o.source !== 'expert' || isEmptyLeaf(o.value) || (Array.isArray(o.value) && o.value.length === 0)) continue;
-    supplemented += 1;
+    const was = base.get(key);
+    if (JSON.stringify(was ?? null) === JSON.stringify(o.value)) continue;
+    if (was === undefined || isEmptyLeaf(was) || (Array.isArray(was) && was.length === 0)) supplemented += 1;
+    else modified += 1;
   }
   return { modified, supplemented };
 }

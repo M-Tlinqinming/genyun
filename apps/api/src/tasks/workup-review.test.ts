@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
-import { enterprises, memberships, organizations, taskIntakes, tasks, taskWorkups, users } from '../db/schema.ts';
+import { enterprises, generationBatches, memberships, organizations, taskIntakes, tasks, taskWorkups, users } from '../db/schema.ts';
 import { buildParseResult } from '../intake/profile.ts';
 import { loadWorkbook, readWorkbook } from '../intake/read.ts';
 import { newNormal } from '../intake/test-workbooks.ts';
@@ -200,5 +200,28 @@ describe('缺项清单', () => {
     expect(after.data.events?.at(-1)?.what).toBe('「等客户补资料」自动取消');
     const again = await zhou.put(`/api/tasks/${intakeTask}/workup/steps/done`).send({ version: res.body.version, stepsDone: 1 }).expect(200);
     expect(again.body.awaitingCleared).toBeUndefined();
+  });
+
+  it('生成过以后再复制清单：409，不写清单、不标任务（只复制文字由页面自己做）', async () => {
+    const zhou = await as('zhou@test.cn');
+    const row = await stored(intakeTask);
+    const before = await taskRow(intakeTask);
+    const [me] = await handle.db.select({ id: users.id }).from(users).where(eq(users.email, 'zhou@test.cn'));
+    await handle.db.insert(generationBatches).values({
+      taskId: intakeTask,
+      workupVersion: row.version,
+      snapshotAt: row.snapshotAt,
+      input: {} as never,
+      materials: [],
+      createdBy: me!.id,
+    });
+    const res = await zhou.post(`/api/tasks/${intakeTask}/workup/missing-list`).send({ version: row.version }).expect(409);
+    expect(res.body.message).toContain('已经生成过初稿');
+    const t = await taskRow(intakeTask);
+    expect(t.awaitingCustomerSince).toEqual(before.awaitingCustomerSince);
+    expect(t.awaitingCustomerItems).toEqual(before.awaitingCustomerItems);
+    const after = await stored(intakeTask);
+    expect(after.version).toBe(row.version);
+    expect(after.data.missingList).toEqual(row.data.missingList);
   });
 });

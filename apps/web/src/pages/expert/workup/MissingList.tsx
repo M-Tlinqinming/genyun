@@ -17,11 +17,12 @@ export function useMissingCopy() {
   const [fallback, setFallback] = useState<string | null>(null);
   const area = useRef<HTMLTextAreaElement | null>(null);
 
-  const copy = async (input: Omit<MissingTextInput, 'expertName' | 'at'> & { at?: string }): Promise<boolean> => {
+  // successText：复制成功的提示，不传用默认的「粘贴发给客服」
+  const copy = async (input: Omit<MissingTextInput, 'expertName' | 'at'> & { at?: string }, successText?: string): Promise<boolean> => {
     const text = missingListText({ ...input, at: input.at ?? new Date().toISOString(), expertName: session.data?.name ?? '' });
     try {
       await navigator.clipboard.writeText(text);
-      message.success({ content: `已复制 ${input.items.length} 项缺项，粘贴发给客服就行`, duration: 3 });
+      message.success({ content: successText ?? `已复制 ${input.items.length} 项缺项，粘贴发给客服就行`, duration: 3 });
       return true;
     } catch {
       setFallback(text);

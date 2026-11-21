@@ -292,7 +292,7 @@ function ScopeCard({ workup, onGo, save }: { workup: Workup; onGo: StepProps['on
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 16px', borderRadius: 6, background: gy.canvas }}>
             <span style={{ display: 'flex', gap: 16 }}>
               <span style={{ ...caption, width: 64, flexShrink: 0 }}>已开启 {on.length}</span>
-              <span style={{ ...type.body, color: gy.text }}>{on.map((s) => s.label).join(' · ') || '—'}</span>
+              <span style={{ ...type.body, color: gy.text }}>{on.map((s) => s.label).join('、') || '—'}</span>
             </span>
             <span style={{ display: 'flex', gap: 16 }}>
               <span style={{ ...caption, width: 64, flexShrink: 0 }}>已关闭 {off.length}</span>
@@ -658,8 +658,13 @@ function ReviewPage2({ taskId, workup, frame, onGo }: StepProps) {
   const copyList = async () => {
     const items = missingItemsOf(all);
     const name = companyNameInputOf(w.snapshot, w.data);
-    const ok = await copy({ companyName: name.name, addresses: name.addresses, contact: missingContactOf(w.snapshot, w.data), items });
-    if (!ok || w.flow !== 'intake') return;
+    // 已经生成过：只复制文字，不调接口、不标任务（免得盖掉核对文稿的状态）
+    const generated = Boolean(generation.data?.current);
+    const ok = await copy(
+      { companyName: name.name, addresses: name.addresses, contact: missingContactOf(w.snapshot, w.data), items },
+      generated ? `已复制 ${items.length} 项缺项，粘贴到企业微信发给客户` : undefined,
+    );
+    if (!ok || w.flow !== 'intake' || generated) return;
     try {
       await record.mutateAsync({ version: w.version });
     } catch (err) {
@@ -795,7 +800,9 @@ function ReviewPage2({ taskId, workup, frame, onGo }: StepProps) {
           <span style={{ flex: 1, ...type.body, color: gy.text }}>
             {noEvacuation && gate.gaps.some((g) => g.key === 'drawing:evacuation_plan')
               ? '客户说没有紧急疏散示意图：请您按总平面图画一张疏散示意图，在第 4 步上传后就能生成。其余缺的资料点「复制缺项清单」发给客服。'
-              : '缺的资料要向客户要的，点「复制缺项清单」发给客服；任务同时标为「等客户补资料」。'}
+              : generation.data?.current
+                ? '缺的资料要向客户要的，点「复制缺项清单」发给客户。'
+                : '缺的资料要向客户要的，点「复制缺项清单」发给客服；任务同时标为「等客户补资料」。'}
             <button type="button" style={{ ...linkButton, ...type.body, marginLeft: 8 }} onClick={goNextMissing}>
               下一个缺失项
             </button>
@@ -810,7 +817,9 @@ function ReviewPage2({ taskId, workup, frame, onGo }: StepProps) {
             <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ ...type.body, fontWeight: weight.strong, color: gy.text }}>有 {customerOnly.length} 项客户没填，要不要先补齐？</span>
               <span style={{ ...type.body, color: gy.secondary }}>
-                可以先生成，缺的内容在文稿里标「待补充」；也可以点「复制缺项清单」发给客服，任务会同时标为「等客户补资料」。
+                {generation.data?.current
+                  ? '可以先生成，缺的内容在文稿里标「待补充」；也可以点「复制缺项清单」发给客户。'
+                  : '可以先生成，缺的内容在文稿里标「待补充」；也可以点「复制缺项清单」发给客服，任务会同时标为「等客户补资料」。'}
                 <button type="button" style={{ ...linkButton, ...type.body, marginLeft: 8 }} onClick={goNextMissing}>
                   下一个缺失项
                 </button>

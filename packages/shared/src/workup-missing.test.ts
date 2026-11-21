@@ -7,6 +7,9 @@ describe('企业简称与预案编号的字号', () => {
   it('去括号、去开头地名、去组织形式', () => {
     expect(stripOrgSuffix('示例电子有限公司')).toBe('示例电子');
     expect(stripOrgSuffix('公司')).toBe('公司');
+    expect(stripOrgSuffix('示例集团')).toBe('示例');
+    expect(stripOrgSuffix('示例集团有限公司')).toBe('示例');
+    expect(stripOrgSuffix('示例集团公司')).toBe('示例');
     expect(stripBrackets('飞宇（惠州）电器')).toBe('飞宇电器');
     expect(stripPlaces('惠州市惠阳飞宇电器', ['广东省惠州市惠阳区秋长街道'])).toBe('飞宇电器');
     expect(companyShortName('惠阳飞宇电器有限公司', ['广东省惠州市惠阳区秋长街道'])).toBe('飞宇电器');

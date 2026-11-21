@@ -161,15 +161,21 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
       // 还标着「等客户补资料」：专家决定不等了，一并取消，处理记录里记一条（只加记录，整理的版本号不变）
       const [t] = await tx.select({ since: tasks.awaitingCustomerSince }).from(tasks).where(eq(tasks.id, task.id)).limit(1);
       if (t?.since) {
-        await tx.update(tasks).set({ awaitingCustomerSince: null, awaitingCustomerItems: null }).where(eq(tasks.id, task.id));
         const events = [
           ...(row.data.events ?? []),
           { at: new Date().toISOString(), by: user.id, byName: user.name, what: '确认生成，「等客户补资料」一并取消' },
         ].slice(-200);
-        await tx
+        const written = await tx
           .update(taskWorkups)
           .set({ data: { ...row.data, events } })
-          .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)));
+          .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
+          .returning({ taskId: taskWorkups.taskId });
+        // 这期间整理被改过：记录写不进去，整个确认回滚，不能只清标记不留记录
+        if (written.length === 0) {
+          const [now] = await tx.select({ version: taskWorkups.version }).from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
+          throw new ConflictException({ statusCode: 409, message: '这份整理刚被修改过，已为您显示最新内容，请看过后再确认生成', reason: 'stale', version: now?.version ?? row.version });
+        }
+        await tx.update(tasks).set({ awaitingCustomerSince: null, awaitingCustomerItems: null }).where(eq(tasks.id, task.id));
       }
       return b!;
     });

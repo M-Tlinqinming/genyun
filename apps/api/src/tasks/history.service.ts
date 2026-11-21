@@ -1,7 +1,7 @@
 // 处理记录（14 页 E18-13）：这个任务里谁在什么时候做了什么。不另建表，从现有的表拼出来，新的在前。
 // 每个来源一个小函数；以后资料核对每一步确认、代客户上传、重新打开这些事加在这里。
 // 只记改内容的操作；打开、切页签、看预览不记。核对、审核结论每份只留最后一次，所以只能记最后一次。
-import { DRAFT_KIND_KEYS, DRAFT_KINDS, pendingCount, uploadTargetLabel, type DraftKind, type HistoryEntry } from '@genyun/shared';
+import { DRAFT_KIND_KEYS, DRAFT_KINDS, isAddedRow, pendingCount, uploadTargetLabel, type DraftKind, type HistoryEntry } from '@genyun/shared';
 import { Controller, Get, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe } from '@nestjs/common';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -74,7 +74,7 @@ export class HistoryService {
 
   /**
    * 资料核对：代客户上传、上传专家的图（每次一条）；每一步的保存（每步只留最后一次）；
-   * 复制缺项清单、「等客户补资料」取消、改重大危险源（data.events）；改危险源分值（每行只留最后一次，带理由）
+   * 复制缺项清单、「等客户补资料」取消、改重大危险源（data.events）；新增危险源、改危险源分值（每行只留最后一次，带理由）
    */
   private async workup(taskId: string): Promise<Entry[]> {
     const [row] = await this.db.select({ data: taskWorkups.data }).from(taskWorkups).where(eq(taskWorkups.taskId, taskId)).limit(1);
@@ -88,9 +88,12 @@ export class HistoryService {
       s && STEP_LABELS[k] ? [entry(new Date(s.at), s.byName, `资料核对：保存${STEP_LABELS[k]}`)] : [],
     );
     const events = (data.events ?? []).map((e) => entry(new Date(e.at), e.byName ?? null, e.what, e.extra ?? null));
-    const risks = Object.values(data.risks?.rows ?? {}).flatMap((r) =>
-      r.value.note?.trim() ? [entry(new Date(r.at), r.byName, `改危险源「${r.value.factor}」的分值`, r.value.note.trim())] : [],
-    );
+    // 手动新增的行记「新增危险源」；系统候选里改了分值（写了理由）的记「改危险源…的分值」
+    const risks = Object.entries(data.risks?.rows ?? {}).flatMap(([id, r]) => {
+      const note = r.value.note?.trim() || null;
+      if (isAddedRow(id)) return [entry(new Date(r.at), r.byName, `新增危险源「${r.value.factor}」`, note)];
+      return note ? [entry(new Date(r.at), r.byName, `改危险源「${r.value.factor}」的分值`, note)] : [];
+    });
     return [...uploads, ...steps, ...events, ...risks];
   }
 
