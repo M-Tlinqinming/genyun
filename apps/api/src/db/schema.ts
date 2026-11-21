@@ -800,6 +800,8 @@ export const draftPreviews = pgTable(
     fileId: uuid('file_id').references(() => files.id),
     error: text('error'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    // 转出来的 PDF 有几页（核对时转 PDF 就数一次）；数不出来、以前转的为空
+    pages: integer('pages'),
   },
   (t) => [primaryKey({ columns: [t.batchId, t.kind] })],
 );
@@ -978,6 +980,25 @@ export const deliveryFiles = pgTable(
       .references(() => files.id),
   },
   (t) => [primaryKey({ columns: [t.deliveryId, t.kind] })],
+);
+
+// 交付后重新打开的记录（15 页 R12）：一次交付只能重新打开一次（delivery_id 唯一），两个窗口同时点只有一个成功。
+// 重新打开后任务回到核对定稿，核对和审核结论作废；再次交付后形成新的交付版本
+export const taskReopens = pgTable(
+  'task_reopens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    taskId: uuid('task_id')
+      .notNull()
+      .references(() => tasks.id, { onDelete: 'cascade' }),
+    deliveryId: uuid('delivery_id')
+      .notNull()
+      .unique()
+      .references(() => deliveries.id, { onDelete: 'cascade' }),
+    reopenedBy: uuid('reopened_by').references(() => users.id, { onDelete: 'set null' }),
+    reopenedAt: timestamp('reopened_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('task_reopens_task').on(t.taskId)],
 );
 
 // ---------- 编制次数（11 页 C01·S02、16 页 I02 / I03，DEV-PLAN K14 / K16） ----------
