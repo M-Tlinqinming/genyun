@@ -65,7 +65,9 @@ import {
   Query,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
+import { DeliveredWriteGuard } from './delivered-write.guard.ts';
 import type { Request, Response } from 'express';
 import { MulterError } from 'multer';
 import { receiveOne } from '../files/files.controller.ts';
@@ -808,6 +810,7 @@ export class WorkupService {
 }
 
 @Controller('tasks/:id/workup')
+@UseGuards(DeliveredWriteGuard)
 export class WorkupController {
   constructor(@Inject(WorkupService) private readonly service: WorkupService) {}
 

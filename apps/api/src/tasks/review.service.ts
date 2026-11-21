@@ -345,11 +345,17 @@ export class ReviewService {
   }
 
   /**
-   * 某一份某一版的页数：改过的取这一版转好的 PDF 记下的页数；没改过的（版本 0）取生成时的页数，
-   * 生成时的页数还没接上，先返回 null。拿不到返回 null
+   * 某一份某一版的页数：改过的取这一版转好的 PDF 记下的页数；没改过的（版本 0）取生成时数好的页数。拿不到返回 null
    */
   async pagesOf(batchId: string, kind: DraftKind, version: number): Promise<number | null> {
-    if (version === 0) return null;
+    if (version === 0) {
+      const [gen] = await this.db
+        .select({ pages: generatedDrafts.pages })
+        .from(generatedDrafts)
+        .where(and(eq(generatedDrafts.batchId, batchId), eq(generatedDrafts.kind, kind)))
+        .limit(1);
+      return gen?.pages ?? null;
+    }
     const [row] = await this.db
       .select({ pages: draftPreviews.pages })
       .from(draftPreviews)
