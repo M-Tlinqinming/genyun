@@ -166,6 +166,24 @@ describe('缺项清单', () => {
     await zhou.post(`/api/tasks/${intakeTask}/workup/missing-list`).send({ version: body.version }).expect(409);
   });
 
+  it('补上一部分：任务上的「缺 N 项」跟着变少（3 项补上 1 项 → 2），还标着等客户补资料', async () => {
+    const zhou = await as('zhou@test.cn');
+    const row = await stored(intakeTask);
+    // 清单 3 项：两项现在还缺，一项现在已经不缺了（模拟客户发来后专家补上了 1 项）
+    const [a, b] = row.data.missingList!.items;
+    expect(b).toBeTruthy();
+    const list = { ...row.data.missingList!, items: [a!, b!, { key: 'gone:item', label: '某项', customerLabel: '某项', step: 1 as const, required: false }] };
+    await handle.db.update(taskWorkups).set({ data: { ...row.data, missingList: list } }).where(eq(taskWorkups.taskId, intakeTask));
+    await handle.db.update(tasks).set({ awaitingCustomerItems: 3 }).where(eq(tasks.id, intakeTask));
+    const res = await zhou.put(`/api/tasks/${intakeTask}/workup/steps/done`).send({ version: row.version, stepsDone: 1 }).expect(200);
+    expect(res.body.awaitingCleared).toBeUndefined();
+    const t = await taskRow(intakeTask);
+    expect(t.awaitingCustomerSince).not.toBeNull();
+    expect(t.awaitingCustomerItems).toBe(2);
+    const after = await stored(intakeTask);
+    expect(after.data.missingList!.items.filter((i) => !i.filledAt)).toHaveLength(2);
+  });
+
   it('清单里的都补上了：下一次保存自动取消标记、回 awaitingCleared、记一条处理记录', async () => {
     const zhou = await as('zhou@test.cn');
     const row = await stored(intakeTask);

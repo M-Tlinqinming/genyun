@@ -427,15 +427,23 @@ export class WorkupService {
     if (!saved) throw this.stale(row.version + 1);
     if (missing?.clear) {
       await this.db.update(tasks).set({ awaitingCustomerSince: null, awaitingCustomerItems: null }).where(eq(tasks.id, taskId));
+    } else if (missing?.remaining !== undefined) {
+      // 还在等客户补：任务上的「缺 N 项」跟着清单里还没补上的项数走
+      await this.db.update(tasks).set({ awaitingCustomerItems: missing.remaining }).where(eq(tasks.id, taskId));
     }
     const view = await this.view(taskId, saved);
     return missing?.clear ? { ...view, awaitingCleared: true as const } : view;
   }
 
   // 缺项清单按现在的资料重算；还标着「等客户补资料」而清单都补上了：clear = true，并记一条处理记录
-  private async recomputeMissing(taskId: string, snapshot: WorkupSnapshot, data: WorkupData): Promise<{ data: WorkupData; clear: boolean }> {
+  // 还在等客户补、清单有变化时 remaining = 还没补上的项数（写到任务上）
+  private async recomputeMissing(
+    taskId: string,
+    snapshot: WorkupSnapshot,
+    data: WorkupData,
+  ): Promise<{ data: WorkupData; clear: boolean; remaining?: number }> {
     const [task] = await this.db
-      .select({ orgId: tasks.orgId, since: tasks.awaitingCustomerSince })
+      .select({ orgId: tasks.orgId, since: tasks.awaitingCustomerSince, items: tasks.awaitingCustomerItems })
       .from(tasks)
       .where(eq(tasks.id, taskId))
       .limit(1);
@@ -444,9 +452,11 @@ export class WorkupService {
     const now = new Date().toISOString();
     const { list, changed, allFilled } = recomputeMissingList(data.missingList, current, now);
     const clear = allFilled && task.since !== null;
-    if (!changed && !clear) return { data, clear: false };
+    const open = list.items.filter((i) => !i.filledAt).length;
+    const remaining = !clear && task.since !== null && open !== task.items ? { remaining: open } : {};
+    if (!changed && !clear) return { data, clear: false, ...remaining };
     const events = clear ? withEvent(data.events, { at: now, what: '「等客户补资料」自动取消', extra: '缺项清单里的项都补上了' }) : data.events;
-    return { data: { ...data, missingList: list, ...(events ? { events } : {}) }, clear };
+    return { data: { ...data, missingList: list, ...(events ? { events } : {}) }, clear, ...remaining };
   }
 
   // 现在的缺项（门槛缺的 + 客户未填）：图纸按 drawingCandidates，属地按知识库
