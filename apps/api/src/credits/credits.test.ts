@@ -394,7 +394,12 @@ describe('扣不到：成果先锁住', () => {
       action: '调整次数',
       link: `/operator/organizations/${org.a}?adjust=1`,
     });
-    expect(overview.services.find((s) => s.orgId === org.a)?.credits).toMatchObject({ awaiting: 2 });
+    // 续约与次数：剩 0 次标黄，操作是调整次数
+    expect(overview.renewals.find((r) => r.orgId === org.a)).toMatchObject({
+      flagged: true,
+      credits: { value: '剩 0 次', warn: true },
+      action: { text: '调整次数', link: `/operator/organizations/${org.a}?adjust=1` },
+    });
 
     const mine: OrgCredits = (await (await as('chen@test.cn')).get(`/api/orgs/${org.a}/credits`).expect(200)).body;
     expect(mine.awaitingTasks.map((t) => t.taskId)).toEqual([t2, t3]);

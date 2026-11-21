@@ -3,8 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 // M3 第 1 项：运营登记并开通客户组织（Paper 16 页 I02 客户组织、开通与邀请弹窗）
 test.describe.configure({ mode: 'serial' });
 
-const pdf = { name: '华东安评-年度服务合同-盖章版.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') };
-const ORG = '华东安评服务有限公司';
+const pdf = { name: '示例华东-年度服务合同-盖章版.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') };
+const ORG = '示例华东咨询机构';
 // 开通的合同有效期按北京时间的今年算，不写死年份：今年 1 月 1 日到明年 12 月 31 日
 const YEAR = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date()).slice(0, 4));
 const OPEN_STARTS = `${YEAR}.01.01`;
@@ -80,7 +80,7 @@ test('登记：新组织进入待开通', async () => {
   await dialog.getByLabel('统一社会信用代码').fill('91310112MA1XXXXXX3');
   await dialog.getByLabel('主联系人').fill('孙经理');
   await dialog.getByLabel('手机号').fill('136 2254 1234');
-  await dialog.getByLabel('邮箱').fill('sun@huadong-anping.cn');
+  await dialog.getByLabel('邮箱').fill('sun@example.com');
   await page.screenshot({ path: 'out/m3-1-register.png' });
   await dialog.getByRole('button', { name: '登记' }).click();
   await expect(dialog).toBeHidden();
@@ -107,7 +107,7 @@ test('开通：缺合同原件或到账时不能开通，填齐后变为服务�
   await expect(dialog).toContainText('上海市闵行区 · 91310112MA1XXXXXX3');
   // 首位管理员默认带出主联系人
   await expect(dialog.getByLabel('姓名')).toHaveValue('孙经理');
-  await expect(dialog.getByLabel('邮箱')).toHaveValue('sun@huadong-anping.cn');
+  await expect(dialog.getByLabel('邮箱')).toHaveValue('sun@example.com');
   // 知识库还没有上海的属地机构：提醒但不拦
   await expect(dialog).toContainText('知识库还没有上海市闵行区的属地机构');
 
@@ -139,7 +139,7 @@ test('开通：缺合同原件或到账时不能开通，填齐后变为服务�
   await page.screenshot({ path: 'out/m3-1-open-dialog.png' });
   await openButton.click();
 
-  await expect(page.getByText('已开通，邀请已发到 sun@huadong-anping.cn')).toBeVisible();
+  await expect(page.getByText('已开通，邀请已发到 sun@example.com')).toBeVisible();
   await expect(dialog).toBeHidden();
   await expect(row(ORG)).toContainText('服务中');
   await expect(row(ORG)).toContainText(`${OPEN_STARTS} – ${OPEN_ENDS}`);
@@ -160,9 +160,9 @@ test('模拟发件箱：邀请邮件在这里，能看全文、能复制链接',
   // 侧栏这时出现「模拟发件箱」并高亮，不高亮「运营概览」
   await expect(page.getByRole('menuitem', { name: '模拟发件箱' })).toHaveClass(/ant-menu-item-selected/);
   await expect(page.getByRole('menuitem', { name: '运营概览' })).not.toHaveClass(/ant-menu-item-selected/);
-  const mail = page.getByRole('row').filter({ hasText: 'sun@huadong-anping.cn' }).first();
+  const mail = page.getByRole('row').filter({ hasText: 'sun@example.com' }).first();
   await expect(mail).toContainText('邀请');
-  await expect(mail).toContainText('耕云运营邀请您加入「华东安评服务有限公司」');
+  await expect(mail).toContainText('耕云运营邀请您加入「示例华东咨询机构」');
   await expect(mail.getByText('复制链接')).toBeVisible();
   // 点开看纯文本：称呼、链接、有效期、落款
   await mail.click();

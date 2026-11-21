@@ -248,7 +248,7 @@ export class OperatorFeedbackController {
     const nextCategory = category ?? current.category;
     if (action === 'forward') {
       if (nextCategory !== 'content') throw new BadRequestException('只有「成果内容」类的反馈可以转给专家');
-      if (!current.taskId || !current.taskExpertId) throw new BadRequestException('这条反馈没有关联已分派专家的任务，不能转给专家');
+      if (!current.taskId || !current.taskExpertId) throw new BadRequestException('这条反馈没有关联已分配专家的任务，不能转给专家');
     }
     // 第一次受理（待受理的受理、转给专家、直接回复并关闭）：同时记受理人和受理时间
     const wantAccept = current.status === 'new' && action !== 'save';

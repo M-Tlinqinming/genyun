@@ -35,6 +35,7 @@ import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { auditLogs, memberships, organizationInvitations, organizations, sessions, tasks, users } from '../db/schema.ts';
 import { MAILER, type Mailer } from '../mail/mailer.ts';
+import { expertOpenTaskCounts } from '../tasks/operator-tasks.controller.ts';
 import { createInvitation, EMAIL_HAS_ACCOUNT } from '../orgs/invitations.ts';
 
 const NOT_FOUND = '找不到这个内部账号';
@@ -74,13 +75,10 @@ export class InternalAccountsController {
             .from(auditLogs)
             .where(and(eq(auditLogs.action, 'login_success'), inArray(auditLogs.actorId, ids)))
             .groupBy(auditLogs.actorId),
-          this.db
-            .select({ id: tasks.assignedExpertId, n: count() })
-            .from(tasks)
-            .where(and(inArray(tasks.assignedExpertId, ids), isNull(tasks.closedAt), isNull(tasks.deletedAt)))
-            .groupBy(tasks.assignedExpertId),
+          // 在办：和分配弹窗同一个口径（countsAsExpertOpenTask）
+          expertOpenTaskCounts(this.db, ids),
         ])
-      : [[], []];
+      : [[], new Map<string, number>()];
     const accounts: InternalAccount[] = people
       .filter((p) => isInternalRole(p.role))
       .map((p) => ({
@@ -90,7 +88,7 @@ export class InternalAccountsController {
         role: p.role as InternalRole,
         disabledAt: p.disabledAt?.toISOString() ?? null,
         lastLoginAt: logins.find((l) => l.id === p.id)?.at?.toISOString() ?? null,
-        openTasks: open.find((o) => o.id === p.id)?.n ?? 0,
+        openTasks: open.get(p.id) ?? 0,
         self: p.id === user.id,
       }));
     return { accounts, invitations: await this.pendingInvitations(orgId) };

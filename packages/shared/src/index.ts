@@ -61,3 +61,4 @@ export * from './credits.ts';
 export * from './expert-profile.ts';
 export * from './task-status.ts';
 export * from './expert-center.ts';
+export * from './operator-tasks.ts';

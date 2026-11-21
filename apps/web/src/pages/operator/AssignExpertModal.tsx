@@ -1,16 +1,23 @@
-import { ASSIGNMENT_NOTE_MAX, REASSIGN_REASONS, expertLoadLine, type ReassignReason } from '@genyun/shared';
-import { Alert, App, Button, Input, Modal, Radio, Skeleton } from 'antd';
+import { ASSIGNMENT_NOTE_MAX, INDUSTRY_NAMES, REASSIGN_REASONS, expertPickLine, type ReassignReason } from '@genyun/shared';
+import { Alert, App, Button, Input, Modal, Radio, Skeleton, Tooltip } from 'antd';
 import { useState } from 'react';
 import { ApiError } from '../../api/request';
-import { useAssignableExperts, useAssignExpert, type OperatorTask } from '../../api/operator';
+import { useAssignableExperts, useAssignExpert, type AssignableExpert, type OperatorTask } from '../../api/operator';
+import { ExpertAvatar } from '../../components/ExpertAvatar';
 import { requiredAfter } from '../../components/ui';
-import { gy } from '../../theme/tokens';
-import { submittedLine, taskTitle } from './taskCenterText';
+import { gy, type, weight } from '../../theme/tokens';
+import { monthDayTime, regionShort } from './taskCenterText';
 
-const body = { fontSize: 14, lineHeight: '22px', color: gy.text } as const;
-const small = { fontSize: 12, lineHeight: '20px', color: gy.secondary } as const;
+const body = { ...type.body, color: gy.text } as const;
+const small = { ...type.caption, color: gy.secondary } as const;
 
-// 分配专家（Paper 16 页「I01 运营概览 · 分配专业人员弹窗」）；已有负责专家时就是改派。
+// 悬停看全部行业
+const industriesTip = (e: AssignableExpert) => {
+  const names = e.industries.map((c) => INDUSTRY_NAMES[c]).filter(Boolean);
+  return names.length > 0 ? `擅长 ${names.join('、')}` : undefined;
+};
+
+// 分配专家（Paper 16 页「分配专家弹窗」）；已有负责专家时就是改派（画板没单独画，同一个弹窗）。
 // open 控制显隐：关掉时先播完动画，再由页面卸载，焦点回到打开它的按钮
 export function AssignExpertModal({
   task,
@@ -32,6 +39,7 @@ export function AssignExpertModal({
   const [error, setError] = useState<string | null>(null);
   const reassign = task.assignedExpertId !== null;
   const chosen = experts.data?.find((e) => e.id === expertId);
+  const verb = reassign ? '改派' : '分配';
 
   const submit = () => {
     if (!expertId) return;
@@ -40,21 +48,28 @@ export function AssignExpertModal({
       { expertId, currentExpertId: task.assignedExpertId, note, reason: reassign && reason ? reason : undefined },
       {
         onSuccess: (t) => {
-          void message.success(`已${reassign ? '改派' : '分配'}给${t.assignedExpertName}，已通知对方`);
+          void message.success(`已${verb}给${t.assignedExpertName}，已通知对方`);
           onClose();
         },
         onError: (err) => {
-          // 别的运营刚分派或改派过：弹窗里的「当前负责专家」已经过时，再提交也只会被拒，直接关掉看最新情况
-          if (err instanceof ApiError && err.status === 409) {
+          // 别的运营刚分配或改派过：弹窗里的「现在负责」已经过时，再提交也只会被拒，关掉看最新情况。
+          // 其他被拒（专家刚暂停接单、客户刚撤回、任务已交付、已是负责专家）：照服务端说的写在弹窗里，留着可以改选
+          if (err instanceof ApiError && err.status === 409 && err.body?.code === 'assignment_changed') {
             void message.warning(`已被其他运营处理：${err.message}`);
             onClose();
             return;
           }
-          setError(err instanceof ApiError ? err.message : '没有分配成功，请稍后重试');
+          setError(err instanceof ApiError ? err.message : `没有${verb}成功，请稍后重试`);
+          // 专家名单（在办数、暂停接单）可能也变了，重新取一次
+          void experts.refetch();
         },
       },
     );
   };
+
+  const meta = [task.number, task.orgName, regionShort(task), task.submittedAt ? `${monthDayTime(task.submittedAt)} 提交` : null]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <Modal
@@ -64,9 +79,9 @@ export function AssignExpertModal({
       afterClose={afterClose}
       title={
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500 }}>{reassign ? '改派专家' : '分配专家'}</span>
+          <span style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>{reassign ? '改派专家' : '分配专家'}</span>
           <span style={{ ...body, color: gy.secondary, fontWeight: 400 }}>
-            {reassign ? '改派后，任务转到新专家的任务中心并通知双方。' : '分配后，任务进入专家的任务中心并通知对方。'}
+            {reassign ? '改派后，任务转到新专家的任务中心并通知双方。' : '分配后，任务进入对方的任务中心并通知对方。'}
           </span>
         </div>
       }
@@ -75,7 +90,7 @@ export function AssignExpertModal({
           取消
         </Button>,
         <Button key="ok" type="primary" disabled={!chosen} loading={assign.isPending} onClick={submit}>
-          {chosen ? `${reassign ? '改派' : '分配'}给${chosen.name}` : reassign ? '改派' : '分配'}
+          {chosen ? `${verb}给${chosen.name}` : verb}
         </Button>,
       ]}
     >
@@ -88,11 +103,13 @@ export function AssignExpertModal({
             padding: '12px 16px',
             borderRadius: 6,
             border: `1px solid ${gy.split}`,
-            background: '#FAFAFB',
+            background: gy.subtleBg,
           }}
         >
-          <span style={{ ...body, fontWeight: 500 }}>{taskTitle(task)}</span>
-          <span style={small}>{[task.number, task.orgName, task.orgRegion, submittedLine(task)].filter(Boolean).join(' · ')}</span>
+          <span style={{ ...body, fontWeight: 600 }}>
+            {task.enterpriseName} · {task.name}
+          </span>
+          <span style={small}>{meta}</span>
         </div>
 
         <div role="group" aria-labelledby="assign-expert-label" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -119,17 +136,19 @@ export function AssignExpertModal({
             <Radio.Group
               value={expertId}
               onChange={(e) => setExpertId(e.target.value as string)}
-              style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 272, overflowY: 'auto' }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 284, overflowY: 'auto' }}
             >
               {experts.data.map((e) => {
                 const on = e.id === expertId;
-                // 已暂停接单：画布底、浅描边，文字一律浅灰（16 页弹窗）
-                const paused = e.paused && !e.current;
+                // 现在负责的、已暂停接单的：画布底、浅描边，文字一律第三级色，不能选
+                const off = e.current || e.paused;
+                const line = e.current ? '现在负责' : e.paused ? '已暂停接单，不能分配' : expertPickLine(e.openTasks, e.industries);
+                const tip = off ? undefined : industriesTip(e);
                 return (
                   <Radio
                     key={e.id}
                     value={e.id}
-                    disabled={e.current || paused}
+                    disabled={off}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -137,34 +156,28 @@ export function AssignExpertModal({
                       margin: 0,
                       padding: '12px 16px',
                       borderRadius: 6,
-                      border: `1px solid ${on ? gy.primary : paused ? gy.split : '#D9D9D9'}`,
-                      // 当前负责人整张卡片置灰
-                      background: e.current ? gy.neutralBg : paused ? gy.canvas : on ? '#F7F9FF' : gy.surface,
-                      opacity: e.current ? 0.6 : 1,
+                      border: `1px solid ${on ? gy.primary : off ? gy.split : gy.controlLine}`,
+                      background: on ? gy.selected : off ? gy.canvas : gy.surface,
                     }}
                   >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 4 }}>
-                      <span
-                        aria-hidden
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          flexShrink: 0,
-                          background: paused ? gy.neutralBg : '#F2F4F7',
-                          textAlign: 'center',
-                          ...body,
-                          color: paused ? gy.tertiary : gy.secondary,
-                          lineHeight: '32px',
-                        }}
-                      >
-                        {e.name.slice(0, 1)}
-                      </span>
-                      <span style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={paused ? { ...body, color: gy.tertiary } : body}>{e.name}</span>
-                        <span style={paused ? { ...small, color: gy.tertiary } : small}>
-                          {e.current ? '当前负责专家' : paused ? '已暂停接单，不能分配' : expertLoadLine(e)}
-                        </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 4, minWidth: 0 }}>
+                      <ExpertAvatar avatar={e.avatar} name={e.name} size={32} muted={off} />
+                      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={off ? { ...body, color: gy.tertiary } : body}>{e.name}</span>
+                        <Tooltip title={tip}>
+                          <span
+                            style={{
+                              ...small,
+                              color: off ? gy.tertiary : gy.secondary,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              maxWidth: 400,
+                            }}
+                          >
+                            {line}
+                          </span>
+                        </Tooltip>
                       </span>
                     </span>
                   </Radio>
@@ -199,26 +212,18 @@ export function AssignExpertModal({
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={body}>给专家的说明（选填）</span>
-          <Input.TextArea
+          <Input
             value={note}
             onChange={(e) => setNote(e.target.value)}
             maxLength={ASSIGNMENT_NOTE_MAX}
-            autoSize={{ minRows: 2, maxRows: 4 }}
-            placeholder="如客户的时间要求、需要留意的情况；会随提醒一起发给对方"
+            placeholder="比如：锡山区的属地机构已在知识库里"
           />
         </label>
 
-        <div
-          style={{
-            padding: '8px 12px',
-            borderRadius: 6,
-            ...small,
-            ...(reassign ? { background: gy.warningBg, color: gy.warning } : { background: gy.selected }),
-          }}
-        >
+        <div style={{ padding: '12px 16px', borderRadius: 6, background: gy.neutralBg, ...body, color: gy.secondary }}>
           {reassign
-            ? `改派后，已整理的内容都带给新专家，客户页面直接换成新的负责人（不另外通知客户）；${task.assignedExpertName}不再能打开这个任务。`
-            : '之后可以改派。改派保留已有的整理和处理记录，客户页面直接换成新的负责人。'}
+            ? `改派后，已有的核对记录都带给新专家，客户页面直接换成新的负责人（不另外通知客户）；${task.assignedExpertName}不再能打开这个任务。`
+            : '客户提交时没有选专家，由耕云指定。之后还能改派，已有的核对记录保留。'}
         </div>
 
         {error && <Alert type="warning" showIcon message={error} />}

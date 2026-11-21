@@ -88,7 +88,7 @@ const PAGES: Partial<Record<string, RouteObject[]>> = {
     { path: 'gift-campaigns', element: <GiftCampaignsPage /> },
     { path: ':orgId', element: <OrganizationDetailPage /> },
   ],
-  // 任务中心（列表、分派，?task= 打开某个任务）；任务正文只读查看在 /operator/tasks/<任务>
+  // 任务中心（列表、分配，?task= 打开某个任务）；任务正文只读查看在 /operator/tasks/<任务>
   '/operator/tasks': [
     { index: true, element: <OperatorTaskCenterPage /> },
     { path: ':taskId', element: <OperatorTaskPage /> },
