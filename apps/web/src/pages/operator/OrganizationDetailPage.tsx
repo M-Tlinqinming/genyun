@@ -7,11 +7,9 @@ import {
   formatRegion,
   INVITATION_TTL_DAYS,
   maskPhone,
-  OPERATOR_TASK_STAGES,
   ORG_SERVICE_STATES,
   serviceScopeLabel,
   type AdminInvitationInput,
-  type OperatorTaskStage,
   type OrgServiceState,
 } from '@genyun/shared';
 import { App, Button, Form, Input, Modal, Tabs, Tooltip, Typography } from 'antd';
@@ -29,6 +27,7 @@ import {
 import { ApiError } from '../../api/request';
 import { inlineUrl } from '../../api/workup';
 import { BackLink } from '../../components/BackLink';
+import { StatusTag } from '../../components/StatusTag';
 import { linkButton, Loading, Notice, panel, requiredAfter } from '../../components/ui';
 import { gy, stage, type, weight } from '../../theme/tokens';
 import { AdjustCreditsModal } from './AdjustCreditsModal';
@@ -41,12 +40,6 @@ type Tone = { color: string; bg: string };
 type TabKey = 'overview' | 'people' | 'service' | 'invitations' | 'log';
 
 const STATE_TONE: Record<OrgServiceState, Tone> = { active: stage.done, pending: stage.action, expired: stage.progress };
-const TASK_TONE: Record<OperatorTaskStage, Tone> = {
-  preparing: stage.progress,
-  unassigned: stage.action,
-  drafting: stage.progress,
-  delivered: stage.done,
-};
 
 // 2026-01-01 → 2026.01.01 / 01.01
 const fullDate = (iso: string) => chinaToday(new Date(iso)).replaceAll('-', '.');
@@ -234,10 +227,9 @@ function PeopleCard({ org, limit, onAll }: { org: OperatorOrgDetail; limit?: num
       title="联系人与成员"
       note="成员由客户管理员自行邀请和管理"
       action={
-        onAll &&
-        rows.length > shown.length && (
+        onAll && (
           <button type="button" style={linkButton} onClick={onAll}>
-            全部 {rows.length} 人
+            全部
           </button>
         )
       }
@@ -261,9 +253,8 @@ function EnterprisesCard({ org }: { org: OperatorOrgDetail }) {
   return (
     <ListCard
       title="企业与任务"
-      note="只读 · 处理请进入任务中心"
       action={
-        <Link to="/operator/tasks" style={{ ...body, color: gy.primary }}>
+        <Link to={`/operator/tasks?org=${org.id}`} style={{ ...body, color: gy.primary }}>
           去任务中心
         </Link>
       }
@@ -296,7 +287,7 @@ function EnterprisesCard({ org }: { org: OperatorOrgDetail }) {
               </span>
               <span style={{ width: 110, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
                 {e.task ? (
-                  <Pill tone={TASK_TONE[e.task.stage]}>{OPERATOR_TASK_STAGES[e.task.stage]}</Pill>
+                  <StatusTag tone={e.task.view.tone}>{e.task.view.label}</StatusTag>
                 ) : (
                   <span style={small}>还没有任务</span>
                 )}
@@ -647,7 +638,7 @@ function InvitationCard({
           ['待接受邀请', `${waiting} 个`],
         ]}
       />
-      <div style={{ borderRadius: 6, padding: '8px 12px', background: gy.selected, ...small }}>
+      <div style={{ borderRadius: 6, padding: '8px 12px', background: gy.subtleBg, ...small }}>
         耕云只负责开通组织和邀请首位管理员；之后的成员由客户管理员邀请。
       </div>
       {!admin && (
@@ -877,11 +868,9 @@ export function OrganizationDetailPage() {
         <SideCard
           title="操作记录"
           extra={
-            log.length > 3 && (
-              <button type="button" style={linkButton} onClick={() => setTab('log')}>
-                全部
-              </button>
-            )
+            <button type="button" style={linkButton} onClick={() => setTab('log')}>
+              全部
+            </button>
           }
         >
           <LogList entries={log.slice(0, 3)} />

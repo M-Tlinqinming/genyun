@@ -1,4 +1,4 @@
-// 分派负责专家（Paper 16 页 I04 任务中心「待分派」、分配专家弹窗）。前后端共用。
+// 分配负责专家（Paper 16 页 I04 任务中心、分配专家弹窗）。前后端共用。
 import { z } from 'zod';
 import { isOperatorAssignableExpert, type ExpertAvailability } from './expert-profile.ts';
 
@@ -42,7 +42,7 @@ export const OPERATOR_NOTE_MAX = 500;
 // 运营自己写的记录：内部备注（必须写内容）
 export const operatorNoteSchema = z.object({
   kind: z.literal('note').default('note'),
-  body: z.string().trim().max(OPERATOR_NOTE_MAX, `备注最多 ${OPERATOR_NOTE_MAX} 个字`).min(1, '请写备注内容'),
+  body: z.string().trim().max(OPERATOR_NOTE_MAX, `联系记录最多 ${OPERATOR_NOTE_MAX} 字`).min(1, '请写联系记录'),
 });
 export type OperatorNoteInput = z.input<typeof operatorNoteSchema>;
 export interface OperatorNote {
@@ -61,31 +61,54 @@ export function needsAssignment(t: {
   return t.status === 'submitted' && t.assignedExpertId === null && t.closedAt === null;
 }
 
-// 只有已提交、没结束的任务能分派或改派：资料准备中的还轮不到专家，已交付的不再换人。
+/**
+ * 分配、改派被拒（409）时服务端带的 code，前端按它决定怎么处理：
+ * - assignment_changed：别的运营刚分配或改派过（负责专家和弹窗打开时看到的不一样），关弹窗、刷新
+ * - 其余：直接显示服务端那句话，弹窗留着、可以改选别人
+ */
+export const ASSIGN_CONFLICT_CODES = [
+  'assignment_changed',
+  'task_closed',
+  'not_submitted',
+  'expert_paused',
+  'expert_unavailable',
+  'already_assigned',
+] as const;
+export type AssignConflictCode = (typeof ASSIGN_CONFLICT_CODES)[number];
+
+export interface AssignmentBlock {
+  code: AssignConflictCode;
+  message: string;
+}
+
+// 只有已提交、没结束的任务能分配或改派：资料准备中的还轮不到专家，已交付的不再换人。
 // 传了目标专家时再看他能不能接：暂停接单的、待审核、未通过、已下架的都不派
-export function assignmentBlockedReason(
+export function assignmentBlock(
   t: {
     status: 'preparing' | 'submitted';
     closedAt: string | Date | null;
   },
   expert?: { name: string; profile: ExpertAvailability },
-): string | null {
-  if (t.closedAt) return '任务已结束，不能再分派';
-  if (t.status !== 'submitted') return '客户还没提交资料，提交后才能分派专家';
+): AssignmentBlock | null {
+  if (t.closedAt) return { code: 'task_closed', message: '任务已结束，不能再分配' };
+  if (t.status !== 'submitted') return { code: 'not_submitted', message: '客户还没提交资料，提交后才能分配专家' };
   if (expert && !isOperatorAssignableExpert(expert.profile)) {
-    return isExpertPaused(expert.profile) ? `${expert.name}已暂停接单，不能分配` : '这位专家现在不能接任务';
+    return isExpertPaused(expert.profile)
+      ? { code: 'expert_paused', message: `${expert.name}已暂停接单，不能分配` }
+      : { code: 'expert_unavailable', message: '这位专家现在不能接任务' };
   }
   return null;
+}
+
+/** assignmentBlock 的那句话（列表、抽屉里显示为什么不能分配） */
+export function assignmentBlockedReason(
+  t: { status: 'preparing' | 'submitted'; closedAt: string | Date | null },
+  expert?: { name: string; profile: ExpertAvailability },
+): string | null {
+  return assignmentBlock(t, expert)?.message ?? null;
 }
 
 /** 有资料行、而且关了接单 */
 export function isExpertPaused(profile: ExpertAvailability): boolean {
   return !!profile && !profile.acceptingOrders;
-}
-
-// 弹窗里每位专家下面的一行：「在办 3 个 · 正在处理该客户的另外 3 家企业」
-export function expertLoadLine(e: { openTasks: number; sameOrgEnterprises: number }): string {
-  const parts = [`在办 ${e.openTasks} 个`];
-  if (e.sameOrgEnterprises > 0) parts.push(`正在处理该客户的另外 ${e.sameOrgEnterprises} 家企业`);
-  return parts.join(' · ');
 }

@@ -393,7 +393,12 @@ describe('运营组织详情', () => {
       expect.objectContaining({ email: 'detail@test.cn', role: 'customer_admin', state: 'accepted', invitedByName: '赵运营' }),
     ]);
     expect(res.body.enterprises).toEqual([
-      expect.objectContaining({ name: '详情甲企业', task: expect.objectContaining({ number: 'GY-2026-801', stage: 'unassigned' }) }),
+      expect.objectContaining({ name: '详情甲企业', task: expect.objectContaining({
+          number: 'GY-2026-801',
+          // 和任务中心同一套运营侧状态
+          view: expect.objectContaining({ label: '待分配专家', tone: expect.any(String) }),
+        }),
+      }),
     ]);
     expect(res.body.activatedByName).toBe('赵运营');
   });

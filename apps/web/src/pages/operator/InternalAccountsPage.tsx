@@ -27,7 +27,7 @@ import { linkButton, Loading, Notice, panel, requiredAfter } from '../../compone
 import { gy, stage } from '../../theme/tokens';
 
 // 内部账号与权限（Paper 16 页 I06）：耕云员工（运营管理员、专家）的账号、角色和可见范围。
-// 邀请走邮件；停用后不能登录、已登录的地方退出、不出现在分派名单。不能停用自己
+// 邀请走邮件；停用后不能登录、已登录的地方退出、不出现在分配名单。不能停用自己
 
 type RoleFilter = 'all' | InternalRole;
 type StateFilter = 'all' | 'active' | 'disabled' | 'invited';
@@ -323,7 +323,7 @@ export function InternalAccountsPage() {
     }
     modal.confirm({
       title: `停用 ${a.name} 的账号？`,
-      content: '停用后不能登录，已经登录的地方会立即退出，也不会再被分派任务。以后可以恢复。',
+      content: '停用后不能登录，已经登录的地方会立即退出，也不会再被分配任务。以后可以恢复。',
       okText: '停用',
       okButtonProps: { danger: true },
       cancelText: '取消',

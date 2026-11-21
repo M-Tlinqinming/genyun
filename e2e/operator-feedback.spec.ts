@@ -69,7 +69,7 @@ test('运营概览：「待跟进反馈」统计、「待受理反馈」待办�
   await ops.reload();
   const stats = ops.getByRole('region', { name: '运营统计' });
   await expect(stats).toContainText('待跟进反馈');
-  await expect(stats).toContainText('与编制交付分开处理');
+  await expect(stats).toContainText('不影响已交付的成果');
   const todos = ops.getByRole('region', { name: '今天先处理' });
   await expect(todos).toContainText('待受理反馈');
   await expect(todos).toContainText(`“${TITLE}”`);

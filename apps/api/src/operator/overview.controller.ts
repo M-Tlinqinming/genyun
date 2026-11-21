@@ -4,15 +4,18 @@ import {
   contractState,
   INTERNAL_ROLE_LABELS,
   invitationState,
-  needsAssignment,
   ROLES,
+  activitySentence,
+  activityTaskNumber,
+  renewalRow,
+  sortRenewalRows,
+  type ActorIdentity,
   type AuditAction,
   type OperatorOverview,
-  type OverviewService,
   type OverviewTodo,
 } from '@genyun/shared';
 import { Controller, ForbiddenException, Get, Inject } from '@nestjs/common';
-import { and, desc, eq, gt, gte, inArray, isNull, min, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, min, notInArray, or, sql } from 'drizzle-orm';
 import { canViewOperatorOverview } from '../auth/access.ts';
 import { creditBriefs } from '../credits/credits.service.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
@@ -29,6 +32,7 @@ import {
   tasks,
   users,
 } from '../db/schema.ts';
+import { withOperatorTaskState } from '../tasks/operator-tasks.controller.ts';
 
 // 「最近操作」只放业务动作；登录、退出、改密码在操作日志页里看
 const ACCOUNT_ACTIONS: AuditAction[] = ['login_success', 'login_failure', 'logout', 'password_change', 'password_reset'];
@@ -36,8 +40,8 @@ const DAY_MS = 86_400_000;
 // 邀请过期超过 14 天就不再放进「今天先处理」（还在客户组织详情、内部账号里能看到）
 const EXPIRED_TODO_DAYS = 14;
 
-// 运营概览（Paper 16 页 I01）：四个统计、今天先处理、客户年度服务、最近操作。全部按真实数据算，
-// 复用客户组织（待开通）、邀请、任务中心（待分派）、成果交付、操作日志。
+// 运营概览（Paper 16 页 I01）：四个统计、今天先处理、续约与次数、最近操作。全部按真实数据算，
+// 复用客户组织（待开通）、邀请、任务中心（任务状态和分组）、成果交付、操作日志。
 // 只有运营；客户、专家一律 403。侧栏「客户组织」「任务中心」的角标也用这里的数
 @Controller('operator/overview')
 export class OperatorOverviewController {
@@ -58,27 +62,18 @@ export class OperatorOverviewController {
           activatedAt: organizations.activatedAt,
           contractStartsAt: organizations.contractStartsAt,
           contractEndsAt: organizations.contractEndsAt,
-          registeredByName: sql<string | null>`(select u.name from users u where u.id = "organizations"."registered_by")`,
           // 子查询里写全表名（见 operator-orgs.controller.ts 的说明）
-          enterprises: sql<number>`(select count(*)::int from enterprises e where e.org_id = "organizations"."id")`,
+          registeredByName: sql<string | null>`(select u.name from users u where u.id = "organizations"."registered_by")`,
         })
         .from(organizations)
         .where(eq(organizations.kind, 'customer')),
+      // 在办任务按任务中心的分组算（taskView 运营那一侧），数字和任务中心的统计格对得上
       this.db
-        .select({
-          id: tasks.id,
-          number: tasks.number,
-          status: tasks.status,
-          assignedExpertId: tasks.assignedExpertId,
-          closedAt: tasks.closedAt,
-          submittedAt: tasks.submittedAt,
-          enterpriseName: enterprises.name,
-          orgName: organizations.name,
-        })
+        .select({ id: tasks.id, status: tasks.status, assignedExpertId: tasks.assignedExpertId, closedAt: tasks.closedAt })
         .from(tasks)
-        .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
         .innerJoin(organizations, eq(organizations.id, tasks.orgId))
-        .where(and(eq(organizations.kind, 'customer'), isNull(tasks.closedAt), isNull(tasks.deletedAt))),
+        .where(and(eq(organizations.kind, 'customer'), isNull(tasks.deletedAt)))
+        .then((rows) => withOperatorTaskState(this.db, rows, now)),
       this.db
         .select({
           id: organizationInvitations.id,
@@ -92,6 +87,7 @@ export class OperatorOverviewController {
           expiresAt: organizationInvitations.expiresAt,
           acceptedAt: organizationInvitations.acceptedAt,
           revokedAt: organizationInvitations.revokedAt,
+          invitedBy: organizationInvitations.invitedBy,
         })
         .from(organizationInvitations)
         .innerJoin(organizations, eq(organizations.id, organizationInvitations.orgId))
@@ -100,14 +96,20 @@ export class OperatorOverviewController {
             isNull(organizationInvitations.acceptedAt),
             isNull(organizationInvitations.revokedAt),
             gt(organizationInvitations.expiresAt, new Date(now.getTime() - EXPIRED_TODO_DAYS * DAY_MS)),
-            // 只看耕云运营发出的邀请（开通首位管理员、内部成员）；客户管理员自己邀请的成员由客户跟进
-            inArray(
-              organizationInvitations.invitedBy,
-              this.db
-                .select({ id: memberships.userId })
-                .from(memberships)
-                .innerJoin(organizations, eq(organizations.id, memberships.orgId))
-                .where(and(eq(memberships.role, 'operator'), eq(organizations.kind, 'internal'))),
+            // 耕云运营发出的（开通首位管理员、内部成员）和客户管理员发出的（邀请组织成员）都看
+            or(
+              inArray(
+                organizationInvitations.invitedBy,
+                this.db
+                  .select({ id: memberships.userId })
+                  .from(memberships)
+                  .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+                  .where(and(eq(memberships.role, 'operator'), eq(organizations.kind, 'internal'))),
+              ),
+              inArray(
+                organizationInvitations.invitedBy,
+                this.db.select({ id: memberships.userId }).from(memberships).where(eq(memberships.role, 'customer_admin')),
+              ),
             ),
           ),
         )
@@ -118,7 +120,14 @@ export class OperatorOverviewController {
         .from(deliveries)
         .where(and(eq(deliveries.status, 'done'), gte(deliveries.publishedAt, new Date(`${today.slice(0, 7)}-01T00:00:00+08:00`)))),
       this.db
-        .select({ id: auditLogs.id, at: auditLogs.at, action: auditLogs.action, target: auditLogs.target, actorName: users.name })
+        .select({
+          id: auditLogs.id,
+          at: auditLogs.at,
+          action: auditLogs.action,
+          target: auditLogs.target,
+          actorId: users.id,
+          actorName: users.name,
+        })
         .from(auditLogs)
         .leftJoin(users, eq(users.id, auditLogs.actorId))
         .where(notInArray(auditLogs.action, ACCOUNT_ACTIONS))
@@ -146,9 +155,30 @@ export class OperatorOverviewController {
     const orgs = orgRows.map((o) => {
       const contract = contractState(o, today);
       const state = !o.activatedAt ? 'pending' : contract.state === 'expired' ? 'expired' : 'active';
-      return { ...o, state, daysLeft: contract.daysLeft } as const;
+      return { ...o, state } as const;
     });
-    const unassigned = taskRows.filter(needsAssignment);
+    const openTasks = taskRows.filter((t) => t.group !== 'delivered');
+
+    // 发邀请的人、最近操作的人在哪个组织、什么角色：分出运营发的邀请，和最近操作里的身份
+    const actorIds = [...new Set([...invitations.map((i) => i.invitedBy), ...recent.map((r) => r.actorId)])].filter(
+      (x): x is string => !!x,
+    );
+    const roles = actorIds.length
+      ? await this.db
+          .select({ userId: memberships.userId, role: memberships.role, kind: organizations.kind })
+          .from(memberships)
+          .innerJoin(organizations, eq(organizations.id, memberships.orgId))
+          .where(inArray(memberships.userId, actorIds))
+      : [];
+    const hasInternalRole = (userId: string | null, role: 'operator' | 'expert') =>
+      roles.some((r) => r.userId === userId && r.kind === 'internal' && r.role === role);
+    const identityOf = (userId: string | null): ActorIdentity => {
+      if (!userId) return 'deleted';
+      if (hasInternalRole(userId, 'operator')) return 'operator';
+      if (hasInternalRole(userId, 'expert')) return 'expert';
+      return 'customer';
+    };
+
     // 编制次数：开通了的组织才算
     const credits = await creditBriefs(
       this.db,
@@ -172,13 +202,14 @@ export class OperatorOverviewController {
         id: o.id,
         title: o.name,
         subtitle: o.registeredByName ? `客户组织 · ${o.registeredByName}登记` : '客户组织',
-        note: '核对合同与年度服务后，开通并邀请首位管理员',
+        note: '核对合同后开通，系统自动邀请管理员',
         since: o.createdAt.toISOString(),
         action: '开通与邀请',
         link: `/operator/organizations?open=${o.id}`,
       });
     }
-    // 邀请未接受（只看运营发出的、过期 14 天内的）：同一组织同一邮箱只看最新一封；当天刚发的不算待办（对方可能还没看邮件）
+    // 邀请未接受（运营发出的、客户管理员发出的都看，过期 14 天内）：同一组织同一邮箱只看最新一封；
+    // 当天刚发的不算待办（对方可能还没看邮件）
     const seen = new Set<string>();
     for (const inv of invitations) {
       const key = `${inv.orgId}/${inv.email}`;
@@ -189,27 +220,23 @@ export class OperatorOverviewController {
       if (state === 'valid' && now.getTime() - inv.createdAt.getTime() < DAY_MS) continue;
       const internal = inv.orgKind === 'internal';
       const role = internal && (inv.role === 'expert' || inv.role === 'operator') ? INTERNAL_ROLE_LABELS[inv.role] : ROLES[inv.role].label;
+      const byCustomer = !internal && !hasInternalRole(inv.invitedBy, 'operator');
+      const note = byCustomer
+        ? state === 'expired'
+          ? '由客户管理员发出，已过期，可提醒客户管理员重发'
+          : '由客户管理员发出，可提醒对方或协助重发'
+        : state === 'expired'
+          ? '邀请已过期，请重新发送'
+          : '邀请已发出，对方还没有设置密码加入';
       todos.push({
         kind: 'invitation',
         id: inv.id,
         title: inv.email,
         subtitle: `${internal ? '耕云内部' : inv.orgName} · ${role}`,
-        note: state === 'expired' ? '邀请已过期，请重新发送' : '邀请已发出，对方还没有设置密码加入',
+        note,
         since: inv.createdAt.toISOString(),
         action: internal ? '查看内部账号' : '查看组织',
         link: internal ? '/operator/accounts' : `/operator/organizations/${inv.orgId}`,
-      });
-    }
-    for (const t of unassigned) {
-      todos.push({
-        kind: 'unassigned',
-        id: t.id,
-        title: t.enterpriseName,
-        subtitle: `${t.number} · ${t.orgName}`,
-        note: '资料已提交，还没有负责专家',
-        since: (t.submittedAt ?? now).toISOString(),
-        action: '分派专家',
-        link: `/operator/tasks?task=${t.id}`,
       });
     }
     // 待受理反馈（处理中的不放进今天先处理，在反馈受理页里跟进）
@@ -226,7 +253,7 @@ export class OperatorOverviewController {
         link: `/operator/feedback?id=${f.id}`,
       });
     }
-    // 次数用完（16 页「次数用完」那一行）：有锁住成果的客户组织，每家一条
+    // 次数用完（画板没画，运营要用）：有锁住成果的客户组织，每家一条
     for (const o of orgs) {
       const c = credits.get(o.id);
       if (!c || c.awaiting === 0) continue;
@@ -245,24 +272,34 @@ export class OperatorOverviewController {
     // 等得最久的在前
     todos.sort((a, b) => a.since.localeCompare(b.since));
 
-    // 客户年度服务：服务中的按到期日先后，待开通的排在后面；已到期的不放（在客户组织列表里看）
-    const services: OverviewService[] = orgs
-      .filter((o) => o.state !== 'expired')
-      .sort((a, b) => {
-        if (a.state !== b.state) return a.state === 'active' ? -1 : 1;
-        return (a.contractEndsAt ?? '9999').localeCompare(b.contractEndsAt ?? '9999');
-      })
-      .slice(0, 5)
-      .map((o) => ({
-        orgId: o.id,
-        name: o.name,
-        startsAt: o.contractStartsAt,
-        endsAt: o.contractEndsAt,
-        enterprises: o.enterprises,
-        state: o.state as 'pending' | 'active',
-        daysLeft: o.state === 'active' && o.daysLeft !== null ? Math.round(o.daysLeft) : null,
-        credits: credits.get(o.id) ?? null,
-      }));
+    // 续约与次数：标黄的在前；已到期超过 30 天的不放（在客户组织列表里看）
+    const renewals = sortRenewalRows(
+      orgs.map((o) =>
+        renewalRow(
+          {
+            id: o.id,
+            name: o.name,
+            state: o.state,
+            contractStartsAt: o.contractStartsAt,
+            contractEndsAt: o.contractEndsAt,
+            createdAt: o.createdAt,
+          },
+          credits.get(o.id) ?? null,
+          today,
+        ),
+      ),
+    );
+
+    // 最近操作的一句话：任务类的用企业名（按对象里的任务编号查）
+    const numbers = [...new Set(recent.map((r) => activityTaskNumber(r.action, r.target)))].filter((x): x is string => !!x);
+    const enterpriseRows = numbers.length
+      ? await this.db
+          .select({ number: tasks.number, name: enterprises.name })
+          .from(tasks)
+          .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
+          .where(inArray(tasks.number, numbers))
+      : [];
+    const enterpriseOf = new Map(enterpriseRows.map((t) => [t.number, t.name]));
 
     return {
       orgs: {
@@ -272,10 +309,9 @@ export class OperatorOverviewController {
         expired: orgs.filter((o) => o.state === 'expired').length,
       },
       tasks: {
-        open: taskRows.length,
-        preparing: taskRows.filter((t) => t.status === 'preparing').length,
-        unassigned: unassigned.length,
-        drafting: taskRows.filter((t) => t.status === 'submitted' && t.assignedExpertId).length,
+        open: openTasks.length,
+        toAssign: openTasks.filter((t) => t.group === 'to_assign').length,
+        awaiting: openTasks.filter((t) => t.group === 'awaiting').length,
       },
       deliveries: { thisMonth: delivered.length },
       feedback: {
@@ -283,8 +319,19 @@ export class OperatorOverviewController {
         processing: feedbackRows.filter((f) => f.status === 'processing').length,
       },
       todos,
-      services,
-      recent: recent.map((r) => ({ ...r, at: r.at.toISOString() })),
+      renewals,
+      recent: recent.map((r) => {
+        const number = activityTaskNumber(r.action, r.target);
+        return {
+          id: r.id,
+          at: r.at.toISOString(),
+          action: r.action,
+          target: r.target,
+          actorName: r.actorName,
+          actorIdentity: identityOf(r.actorId),
+          sentence: activitySentence(r.action, r.target, { enterpriseName: number ? enterpriseOf.get(number) : null }),
+        };
+      }),
     };
   }
 }

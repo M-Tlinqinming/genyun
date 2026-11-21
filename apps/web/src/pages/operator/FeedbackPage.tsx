@@ -230,7 +230,7 @@ function Detail({ item: f }: { item: OperatorFeedback }) {
   const forwardHint = !f.taskId
     ? '这条反馈没有关联任务，不能转给专家'
     : !f.taskExpertName
-      ? '关联的任务还没有分派专家'
+      ? '关联的任务还没有分配专家'
       : category !== 'content'
         ? '选「成果内容」后才能转给专家'
         : `站内提醒 ${f.taskExpertName}，由其决定是否另建修订任务`;

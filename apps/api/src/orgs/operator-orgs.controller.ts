@@ -13,7 +13,6 @@ import {
   creditAdjustSchema,
   type CreditAdjustResult,
   invitationState,
-  operatorTaskStage,
   detectFileType,
   fileRejectionReason,
   FILE_TYPES,
@@ -64,6 +63,7 @@ import {
   users,
 } from '../db/schema.ts';
 import { receiveOne } from '../files/files.controller.ts';
+import { withOperatorTaskState } from '../tasks/operator-tasks.controller.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { MAIL_OUTBOX, MAILER, type Mailer } from '../mail/mailer.ts';
 import { createInvitation, EMAIL_HAS_ACCOUNT } from './invitations.ts';
@@ -638,7 +638,7 @@ export class OperatorOrgsController {
     return { members, invitations: invites.map((i) => ({ ...i, state: invitationState(i) })) };
   }
 
-  // 组织详情「企业与任务」（只读）：每家企业最近的一个任务
+  // 组织详情「企业与任务」（只读）：每家企业最近的一个任务，阶段用 taskView 运营那一侧的 label 和 tone
   private async enterpriseTasks(orgId: string) {
     const ents = await this.db
       .select({ id: enterprises.id, name: enterprises.name })
@@ -657,10 +657,14 @@ export class OperatorOrgsController {
       .from(tasks)
       .where(and(eq(tasks.orgId, orgId), isNull(tasks.deletedAt)))
       .orderBy(desc(tasks.createdAt));
-    const latest = new Map<string, { id: string; number: string; stage: ReturnType<typeof operatorTaskStage> }>();
-    for (const t of rows) {
-      if (!latest.has(t.enterpriseId)) latest.set(t.enterpriseId, { id: t.id, number: t.number, stage: operatorTaskStage(t) });
-    }
+    const newest = new Map<string, (typeof rows)[number]>();
+    for (const t of rows) if (!newest.has(t.enterpriseId)) newest.set(t.enterpriseId, t);
+    const latest = new Map(
+      (await withOperatorTaskState(this.db, [...newest.values()])).map((t) => [
+        t.enterpriseId,
+        { id: t.id, number: t.number, view: { key: t.view.key, label: t.view.label, tone: t.view.tone, detail: t.view.detail } },
+      ]),
+    );
     return ents.map((e) => ({ ...e, task: latest.get(e.id) ?? null }));
   }
 

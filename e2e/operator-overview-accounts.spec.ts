@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-// M3 第 8 项：运营概览（Paper 16 页 I01）、内部账号与权限（I06）。
+// 运营概览（Paper 16 页 I01）、内部账号与权限（I06）。
 // 邀请一位新专家 → 接受 → 停用（不能登录）→ 恢复。不动演示数据里的周工、吴工
 test.describe.configure({ mode: 'serial' });
 
@@ -39,17 +39,57 @@ test.afterAll(async () => {
   await page.close();
 });
 
-test('运营概览：四个统计、今天先处理、年度服务、最近操作', async () => {
+type Overview = {
+  orgs: { total: number };
+  tasks: { open: number; toAssign: number; awaiting: number };
+  deliveries: { thisMonth: number };
+  feedback: { new: number; processing: number };
+  todos: { kind: string; title: string; action: string }[];
+  renewals: { name: string; action: { text: string } }[];
+  recent: { sentence: string }[];
+};
+
+test('运营概览：四个统计和接口、任务中心一致；今天先处理、续约与次数、最近操作', async () => {
   await expect(page.getByRole('heading', { name: '运营概览', level: 1 })).toBeVisible();
+  await expect(page.getByRole('button', { name: /刷\s*新/ })).toBeVisible();
+  const d = (await (await page.request.get('/api/operator/overview')).json()) as Overview;
+  // 在办、待分配专家和任务中心的口径一致（别的测试和演示数据会加任务，不写死个数）
+  const tasks = (await (await page.request.get('/api/operator/tasks')).json()) as { group: string }[];
+  expect(d.tasks.open).toBe(tasks.filter((t) => t.group !== 'delivered').length);
+  expect(d.tasks.toAssign).toBe(tasks.filter((t) => t.group === 'to_assign').length);
+  expect(d.tasks.awaiting).toBe(tasks.filter((t) => t.group === 'awaiting').length);
+
   const stats = page.getByRole('region', { name: '运营统计' });
-  for (const label of ['客户组织', '在办任务', '本月交付', '待跟进反馈']) await expect(stats).toContainText(label);
-  await expect(page.getByRole('region', { name: '今天先处理' })).toBeVisible();
-  await expect(page.getByRole('region', { name: '客户年度服务' })).toContainText('服务中');
-  await expect(page.getByRole('region', { name: '最近操作' })).toBeVisible();
+  await expect(stats).toContainText(`客户组织${d.orgs.total}`);
+  await expect(stats).toContainText(`在办任务${d.tasks.open}`);
+  if (d.tasks.toAssign > 0) await expect(stats).toContainText(`待分配专家 ${d.tasks.toAssign}`);
+  await expect(stats).toContainText(`本月交付${d.deliveries.thisMonth}`);
+  await expect(stats).toContainText(`待跟进反馈${d.feedback.new + d.feedback.processing}`);
+  // 侧栏任务中心的角标 = 待分配专家
+  if (d.tasks.toAssign > 0) await expect(page.getByRole('menuitem', { name: /任务中心/ })).toContainText(String(d.tasks.toAssign));
+
+  const todos = page.getByRole('region', { name: '今天先处理' });
+  if (d.todos.length > 0) {
+    await expect(todos).toContainText(`${d.todos.length} 项 · 等待最久的在前`);
+    const first = d.todos[0]!;
+    await expect(todos.getByRole('link', { name: `${first.action}：${first.title}` }).first()).toBeVisible();
+  } else {
+    await expect(todos).toContainText('都处理完了');
+  }
+  // 不再有「待分配专家」这类任务待办：任务在任务中心处理
+  expect(d.todos.every((t) => ['org_pending', 'invitation', 'feedback', 'credits_out'].includes(t.kind))).toBe(true);
+
+  const renewals = page.getByRole('region', { name: '续约与次数' });
+  await expect(renewals).toContainText('30 天内到期或剩 3 次以内标黄，排在前面');
+  const top = d.renewals[0]!;
+  await expect(renewals.getByRole('link', { name: `${top.action.text}：${top.name}` })).toBeVisible();
+  await expect(renewals.getByRole('progressbar').first()).toBeVisible();
+
+  const recent = page.getByRole('region', { name: '最近操作' });
+  if (d.recent.length > 0) await expect(recent).toContainText(d.recent[0]!.sentence);
   // 界面上没有内部编码和英文动作名
   await expect(page.locator('main')).not.toContainText(/login_success|task_assign|account_/);
   expect(await noHorizontalScroll(page)).toBe(true);
-  await page.screenshot({ path: 'out/m3-8-I01-overview.png', fullPage: true });
 });
 
 test('内部账号：列出运营和专家，自己不能停用', async () => {

@@ -105,6 +105,11 @@ body {
 .gy-edit-page .gy-section-editor:focus-visible {
   outline: none !important;
 }
+/* 运营任务中心的表格行可以用 Tab 走到、回车打开抽屉 */
+.gy-task-row:focus-visible {
+  outline: 3px solid var(--gy-focus);
+  outline-offset: -3px;
+}
 /* 换页后把焦点放到标题上（读屏从这里开始读），标题本身不画框 */
 .gy-edit-page [data-page-title]:focus,
 .gy-review-page [data-page-title]:focus,

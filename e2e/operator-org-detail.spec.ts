@@ -5,10 +5,10 @@ import { join } from 'node:path';
 // M3 第 2 项：运营的客户组织详情（Paper 16 页 I03），重发邀请、更换首位管理员后旧链接作废
 test.describe.configure({ mode: 'serial' });
 
-const ORG = '博罗安联安全咨询有限公司';
+const ORG = '示例博罗安全咨询机构';
 const stamp = Date.now();
-const FIRST = `he-${stamp}@boluo-anlian.cn`;
-const SECOND = `xu-${stamp}@boluo-anlian.cn`;
+const FIRST = `he-${stamp}@example.com`;
+const SECOND = `xu-${stamp}@example.com`;
 const OUTBOX = join('apps', 'api', '.data', 'e2e-mail-outbox');
 
 // 合同有效期按北京时间的今年算，不写死年份：今年 1 月 1 日到明年 12 月 31 日
@@ -55,7 +55,7 @@ test.beforeAll(async ({ browser }) => {
   expect(org.ok()).toBe(true);
   orgId = (await org.json()).id;
   const file = await api.post(`/api/operator/organizations/${orgId}/contract-file`, {
-    multipart: { file: { name: '博罗安联合同.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') } },
+    multipart: { file: { name: '示例博罗合同.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') } },
   });
   const opened = await api.post(`/api/operator/organizations/${orgId}/open`, {
     data: {
@@ -91,7 +91,7 @@ const card = (name: string) => page.getByRole('region', { name });
 
 test('从列表点「查看」进入详情：组织资料、成员、企业与任务、年度服务、开通与邀请', async () => {
   await page.getByRole('menuitem', { name: /客户组织/ }).click();
-  await page.getByPlaceholder('组织名称 / 联系人 / 手机号').fill('博罗安联');
+  await page.getByPlaceholder('组织名称 / 联系人 / 手机号').fill('示例博罗');
   await page.getByRole('link', { name: `查看${ORG}` }).click();
   await expect(page).toHaveURL(new RegExp(`/operator/organizations/${orgId}$`));
   await expect(page.getByRole('heading', { level: 1, name: ORG })).toBeVisible();
@@ -113,13 +113,24 @@ test('从列表点「查看」进入详情：组织资料、成员、企业与�
   await expect(card('编制次数')).toContainText('剩余 22 次');
   await expect(card('编制次数')).toContainText('剩余里：赠送 2 次，购买 20 次 · 共 22 次，已用 0 次');
   await expect(card('编制次数').getByRole('button', { name: '调整次数' })).toBeVisible();
-  await expect(card('企业与任务').getByRole('link', { name: '去任务中心' })).toHaveAttribute('href', '/operator/tasks');
+  // 去任务中心：带上这个组织的筛选
+  await expect(card('企业与任务').getByRole('link', { name: '去任务中心' })).toHaveAttribute('href', `/operator/tasks?org=${orgId}`);
+  await expect(card('企业与任务')).not.toContainText('只读');
   const invite = card('开通与邀请');
   await expect(invite).toContainText('首位管理员何经理 · 邀请中');
   await expect(invite).toContainText('待接受邀请1 个');
   await expect(invite).toContainText('耕云只负责开通组织和邀请首位管理员');
   await expect(card('操作记录')).toContainText(`邀请 ${FIRST} 作为首位管理员加入`);
   await page.screenshot({ path: 'out/m3-2-I03-overview.png', fullPage: true });
+});
+
+test('「联系人与成员」「操作记录」右上角的「全部」切到对应页签', async () => {
+  await card('联系人与成员').getByRole('button', { name: '全部' }).click();
+  await expect(page.getByRole('tab', { name: '联系人与成员' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('tab', { name: '概览' }).click();
+  await card('操作记录').getByRole('button', { name: '全部' }).click();
+  await expect(page.getByRole('tab', { name: '操作记录' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('tab', { name: '概览' }).click();
 });
 
 test('重新发送邀请：新邮件发出，旧链接显示已作废', async ({ browser }) => {
@@ -193,7 +204,7 @@ test('其他页签：开通与邀请里列出每封邀请的状态', async () =>
   await expect(contract).toContainText('次数合同购买 20 次 · 赠送 2 次');
   // 开通时不再登记服务范围，新合同没有这一行
   await expect(contract).not.toContainText('服务范围');
-  await expect(contract.getByRole('button', { name: '博罗安联合同.pdf' })).toBeVisible();
+  await expect(contract.getByRole('button', { name: '示例博罗合同.pdf' })).toBeVisible();
   await page.getByRole('tab', { name: '操作记录' }).click();
   await expect(card('操作记录')).toContainText('登记客户组织');
   await expect(card('操作记录')).toContainText('组织开通，合同有效期生效');
