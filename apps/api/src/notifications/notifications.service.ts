@@ -110,21 +110,20 @@ export class NotificationsService {
     const orgIds = user.memberships.filter((m) => m.role === 'customer_admin').map((m) => m.orgId);
     if (orgIds.length === 0) return;
     const orgs = await this.db
-      .select({ id: organizations.id, name: organizations.name, contractStartsAt: organizations.contractStartsAt, contractEndsAt: organizations.contractEndsAt })
+      .select({ id: organizations.id, contractStartsAt: organizations.contractStartsAt, contractEndsAt: organizations.contractEndsAt })
       .from(organizations)
       .where(inArray(organizations.id, orgIds));
     const today = chinaToday();
     for (const o of orgs) {
-      const { state, daysLeft } = contractState(o, today);
+      const { state } = contractState(o, today);
       if (state !== 'expiring' || !o.contractEndsAt) continue;
-      const date = o.contractEndsAt.replaceAll('-', '.');
-      const left = daysLeft === 0 ? '今天到期' : `还有 ${daysLeft} 天`;
+      const [, m, d] = o.contractEndsAt.split('-').map(Number);
       await this.db
         .insert(notifications)
         .values({
           userId: user.id,
           title: '年度服务即将到期',
-          body: `${o.name}的年度服务将于 ${date} 到期（${left}）。到期后不能新建任务，办理中的任务按约定完成，已交付的成果仍可查看和下载。请联系耕云续约。`,
+          body: `年度服务 ${m} 月 ${d} 日到期，到期后不能新建任务。续约请联系耕云。`,
           link: '/customer/organization?tab=service',
           dedupeKey: contractReminderKey(o.id, o.contractEndsAt),
         })
