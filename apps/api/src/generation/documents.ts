@@ -16,16 +16,23 @@ export interface GeneratedDocuments {
   notes: SlotNote[];
 }
 
+// 生成一份时各步开始前报一次；total 和步骤由 defaultRenderer 排好，这里只报 step 和第几个模板
+export type DocumentProgress = (p: { step: 'write'; index: number } | { step: 'risk' | 'content' }) => Promise<void> | void;
+
 // 只生成其中一份（第 10 项后台排队时三份各自生成、失败的单独重试）。AI 只在应急预案里用
 export async function generateDocument(
   kind: DraftKind,
   input: PlanInput,
-  options: { drawings?: PlanDrawings; drafter?: SlotDrafter | null } = {},
+  options: { drawings?: PlanDrawings; drafter?: SlotDrafter | null; onProgress?: DocumentProgress } = {},
 ): Promise<{ document: DeliveryDocument; notes: SlotNote[] }> {
+  const drafter = options.drafter ?? null;
+  const report = options.onProgress;
+  if (kind !== 'plan' || !drafter) await report?.({ step: 'content' });
   if (kind === 'risk') return { document: buildRiskReport(input), notes: [] };
   if (kind === 'resource') return { document: buildResourceReport(input), notes: [] };
-  const { filled, notes: slotNotes } = await draftSlots(input, options.drafter ?? null);
-  const { rewrites, notes: riskNotes } = await draftRisks(input, options.drafter ?? null);
+  const { filled, notes: slotNotes } = await draftSlots(input, drafter, report && ((index) => report({ step: 'write', index })));
+  if (drafter) await report?.({ step: 'risk' });
+  const { rewrites, notes: riskNotes } = await draftRisks(input, drafter);
   return { document: buildPlan(input, options.drawings, filled, rewrites), notes: [...slotNotes, ...riskNotes] };
 }
 
