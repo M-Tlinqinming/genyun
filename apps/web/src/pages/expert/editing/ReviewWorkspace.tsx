@@ -550,6 +550,8 @@ export function ReviewWorkspace({
       enterpriseName={`${enterpriseName} · ${taskNumber}`}
       stages={EXPERT_STAGES}
       current={2}
+      // 画板：左右两块各宽 280，元素间距 16
+      sideWidth={280}
       extra={
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <button type="button" style={{ ...linkButton, ...text14 }} aria-expanded={historyOpen} onClick={() => setHistoryOpen((v) => !v)}>

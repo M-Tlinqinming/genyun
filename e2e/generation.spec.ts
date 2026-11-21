@@ -1,8 +1,8 @@
 import { expect, request, test, type Page } from '@playwright/test';
 import JSZip from 'jszip';
 
-// 确认采用资料并生成三份草稿（14 页 E18-01、E18-02、E18-02b）。
-// 文件名排在 expert-workup.spec 之后：那时飞宇的专业整理必需项已齐（21 / 21）。
+// 核对并生成三份草稿（13 页 E2-5c，14 页 E18-02、E18-02b）。
+// 文件名排在 expert-workup.spec 之后：那时飞宇的必填资料已齐。
 // 测试服务器设了 DRAFT_FAIL_ONCE=risk：风险评估报告第一次生成会失败
 async function openFeiyu(page: Page) {
   await page.goto('/login');
@@ -11,10 +11,7 @@ async function openFeiyu(page: Page) {
   await page.getByRole('button', { name: /登\s*录/ }).click();
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
-  // 默认打开资料核对向导；这几块还在原来的整理页
   await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+/);
-  await page.goto(`${new URL(page.url()).pathname}?view=workup-old`);
-  await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
 }
 
 // 客户在任务里再补传一份文件（模拟专家看确认页时客户刚好上传）
@@ -35,45 +32,29 @@ async function customerUploads(name: string) {
   await api.dispose();
 }
 
-const materials = (page: Page) => page.getByRole('region', { name: '本次采用的资料' });
 const draft = (page: Page, name: string) => page.getByRole('list', { name: '三份草稿' }).getByRole('listitem', { name });
 
 test.setTimeout(600_000);
 
-test('确认采用资料：资料又变了留在本页标出；生成时一份失败，只重试这一份', async ({ page }) => {
+test('核对并生成：客户刚更新了资料先提示；生成时一份失败，只重试这一份', async ({ page }) => {
   await openFeiyu(page);
-  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('资料核对的必需项已齐');
-  await page.getByRole('button', { name: '完成整理，去核对' }).click();
+  // 老网址「确认采用资料」转到第 5 步第 2 页
+  await page.goto(`${new URL(page.url()).pathname}?view=confirm`);
+  await expect(page).toHaveURL(/view=workup&step=5&page=2/);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('核对无误，就可以生成初稿');
+  await expect(page.getByRole('region', { name: '四步摘要' }).getByText('还缺：')).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: '参考' })).toContainText('资料版本');
+  const generate = page.getByRole('button', { name: '确认资料并生成初稿' });
+  await expect(generate).toBeEnabled();
 
-  // E18-01：客户提交的文件与自填的各步；整理开始后补传的台账标出来
-  await expect(page.getByRole('heading', { name: '确认本次编制使用的资料' })).toBeVisible();
-  await expect(page).toHaveURL(/view=confirm/);
-  await expect(page.getByText('整理完成 · 待采用')).toBeVisible();
-  await expect(materials(page).getByRole('listitem', { name: '企业基本信息' })).toContainText('客户自填 · 第 1 步');
-  await expect(materials(page).getByRole('listitem', { name: '企业基本信息' })).toContainText('✓ 与整理时一致');
-  const ledger = materials(page).getByRole('listitem', { name: '应急物资台账.pdf' });
-  await expect(ledger).toContainText('整理开始后客户上传');
-  const outline = page.getByRole('complementary', { name: '将生成的内容' });
-  await expect(outline).toContainText('✓ 必需项 21 / 21 已整理');
-  await expect(outline).toContainText(/危险源\s*\d+ 项/);
-  await expect(outline).toContainText('自动生成 1 张');
-  // 客户图纸：expert-workup-visuals-drawings 里专家选了消防设施布置图第 2、3 页，expert-workup-production 里代客户传了一张疏散图
-  await expect(outline).toContainText('附件 7 放 3 页');
-  await expect(page.getByRole('button', { name: '确认采用并生成三份草稿' })).toBeEnabled();
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: 'test-results/acceptance/m2-10b-confirm.png', fullPage: true });
-
-  // 专家在看这页时客户又补传了一份：确认不生成，留在本页把这一行标出来
+  // 专家在看这页时客户又补传了一份：先不生成，提示看过后再确认
   await customerUploads('应急物资补充清单.pdf');
-  await page.getByRole('button', { name: '确认采用并生成三份草稿' }).click();
-  await expect(page.getByText('客户刚更新了资料')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '确认本次编制使用的资料' })).toBeVisible();
-  const added = materials(page).getByRole('listitem', { name: '应急物资补充清单.pdf' });
-  await expect(added).toContainText('刚有变化');
-  await expect(added).toContainText('整理开始后客户上传');
+  await generate.click();
+  await expect(page.getByText('客户刚更新了资料，请看过后再确认生成')).toBeVisible();
+  await expect(page).toHaveURL(/step=5&page=2/);
 
-  // 看过后再确认：开始生成，三份各自进度
-  await page.getByRole('button', { name: '确认采用并生成三份草稿' }).click();
+  // 再确认：开始生成，三份各自进度
+  await generate.click();
   await expect(page).not.toHaveURL(/view=/);
   await expect(page.getByRole('list', { name: '三份草稿' })).toBeVisible();
 
@@ -117,11 +98,4 @@ test('确认采用资料：资料又变了留在本页标出；生成时一份�
   await page.getByRole('button', { name: '查看资料核对' }).click();
   await expect(page).toHaveURL(/view=workup/);
   await expect(page.getByRole('region', { name: '页面操作' })).toContainText('共 5 步');
-});
-
-test('生成过以后再进确认页：提示确认后会替换上一批', async ({ page }) => {
-  await openFeiyu(page);
-  await page.goto(page.url().replace(/\?.*$/, '') + '?view=confirm');
-  await expect(page.getByRole('heading', { name: '确认本次编制使用的资料' })).toBeVisible();
-  await expect(page.getByRole('complementary', { name: '将生成的内容' })).toContainText('已经生成过一批草稿');
 });

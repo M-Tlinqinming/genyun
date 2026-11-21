@@ -241,8 +241,8 @@ export const tasks = pgTable(
     closedAt: timestamp('closed_at', { withTimezone: true }),
     // 最近一次交付后重新打开的时间（15 页 R12）；再次交付后不清空，比最近交付时间早就说明已经再交付过
     reopenedAt: timestamp('reopened_at', { withTimezone: true }),
-    // 等客户补资料：专家复制缺项清单时写入（13 页 E1、16 页 I04），客服去联系客户；
-    // 专家替客户传了资料后清空。awaiting_customer_items 是清单里列了几项（「缺 3 项」）
+    // 等客户补资料：专家在第 5 步复制缺项清单时写入（只用于资料表格流程），客服去联系客户；
+    // 清单里的项都补上了、或专家确认资料开始生成时清空。awaiting_customer_items 是复制时清单里列了几项
     awaitingCustomerSince: timestamp('awaiting_customer_since', { withTimezone: true }),
     awaitingCustomerItems: integer('awaiting_customer_items'),
     // 扣次状态，见次数台账（credit_entries）；只有首次交付扣 1 次

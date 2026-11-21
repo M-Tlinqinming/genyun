@@ -3,7 +3,7 @@
 // 章用「1.」、节用「1.1」，编号后不空格（按专家稿，Martin 2026-10-31 确认）；再往下（1）企业概况）是加粗段落。
 import { flowOptionsOf, processFlowSvg, quartersSentence, workplacesOf, type DeliveryDocument, type DocumentKind } from '@genyun/shared';
 import { svgToPng } from '../word/png.ts';
-import { MISSING, cnDate, dash, fill, optional, type PlanContext } from '../plan/context.ts';
+import { MISSING, cnDate, dash, fill, optional, surroundingsText, type PlanContext } from '../plan/context.ts';
 import { parseMarkdown, toSections, type Figure } from '../plan/markdown.ts';
 
 export function companyOverview(ctx: PlanContext): string[] {
@@ -56,7 +56,7 @@ export function locationText(ctx: PlanContext): string {
     ? `生产经营地址共 ${ctx.addresses.length} 处：${ctx.addresses.map((a) => a.address).join('；')}`
     : `位于${address}`;
   const quarters = quartersSentence(input.expert.quarters);
-  return `${ctx.company}${where}。${quarters || '公司所在地理位置、周边道路、相邻企业、居民区及其他敏感目标以现场踏勘和属地地图核实结果为准。'}周边环境及重大危险源情况：${fill(input.expert.facts?.surroundings)}`;
+  return `${ctx.company}${where}。${quarters || '公司所在地理位置、周边道路、相邻企业、居民区及其他敏感目标以现场踏勘和属地地图核实结果为准。'}周边环境及重大危险源情况：${surroundingsText(ctx)}`;
 }
 
 export function hazardFactorsTable(ctx: PlanContext, no: string): string[] {

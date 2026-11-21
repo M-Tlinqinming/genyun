@@ -4,7 +4,17 @@
 // 编制任务按企业（这家企业已有应急预案任务就不再建）、合同按组织（已登记过合同就不再登记）、
 // 次数台账按合同 + 类型 + 活动名称、专家资料按专家账号。
 import { createHash, randomUUID } from 'node:crypto';
-import { CREDIT_ENTRY_POOL, type ChecklistItemKey, type ChecklistState, chinaToday, formatTaskNumber } from '@genyun/shared';
+import {
+  CREDIT_ENTRY_POOL,
+  type ChecklistItemKey,
+  type ChecklistState,
+  chinaToday,
+  currentGaps,
+  formatTaskNumber,
+  missingItemsOf,
+  type WorkupData,
+  type WorkupSnapshot,
+} from '@genyun/shared';
 import { feiyuBasicInfo, feiyuChecklist } from '@genyun/shared/fixtures/feiyu';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import { and, asc, eq, sql } from 'drizzle-orm';
@@ -26,6 +36,7 @@ import {
   taskNumberCounters,
   taskSubmissions,
   tasks,
+  taskWorkups,
   users,
 } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
@@ -48,6 +59,9 @@ export const DEMO_OTHER_ENTERPRISE = '示例五金制品有限公司';
 export const DEMO_OVERDUE_ENTERPRISE = '示例塑胶制品有限公司';
 // 新流程演示：客户下载资料模板、填好上传、已提交，分派给周工（专家端的「客户原表」卡片）
 export const DEMO_INTAKE_ENTERPRISE = '示例电子科技有限公司';
+// 资料核对第 5 步演示（K11）：一家已核对完前四步、停在「核对并生成」；一家复制过缺项清单、标着「等客户补资料」（客户没传疏散图）
+export const DEMO_STEP5_ENTERPRISE = '示例包装材料有限公司';
+export const DEMO_AWAITING_ENTERPRISE = '示例家具制造有限公司';
 
 export interface DemoSeedOptions {
   // 只给新建的账号用；已有账号的密码不动
@@ -205,8 +219,33 @@ export async function seedDemo(db: Database, opts: DemoSeedOptions): Promise<Dem
     customerId: customer,
     submittedAt: new Date(now.getTime() - 3_600_000),
   });
+  const zhou = { id: uid[DEMO_EMAILS.expert]!, name: '周工' };
+  const step5EntId = await ensureEnterprise(db, report, { orgId: feiyuOrgId, name: DEMO_STEP5_ENTERPRISE, createdBy: customer });
+  await ensureIntakeTask(db, opts.storage, report, {
+    label: `${DEMO_STEP5_ENTERPRISE}（周工，资料核对到第 5 步）`,
+    orgId: feiyuOrgId,
+    enterpriseId: step5EntId,
+    enterpriseName: DEMO_STEP5_ENTERPRISE,
+    expertId: zhou.id,
+    customerId: customer,
+    submittedAt: new Date(now.getTime() - 2 * 86_400_000),
+    workup: { kind: 'step5', expert: zhou },
+  });
+  const awaitingEntId = await ensureEnterprise(db, report, { orgId: feiyuOrgId, name: DEMO_AWAITING_ENTERPRISE, createdBy: customer });
+  await ensureIntakeTask(db, opts.storage, report, {
+    label: `${DEMO_AWAITING_ENTERPRISE}（周工，等客户补资料）`,
+    orgId: feiyuOrgId,
+    enterpriseId: awaitingEntId,
+    enterpriseName: DEMO_AWAITING_ENTERPRISE,
+    expertId: zhou.id,
+    customerId: customer,
+    submittedAt: new Date(now.getTime() - 4 * 86_400_000),
+    workup: { kind: 'awaiting', expert: zhou, at: new Date(now.getTime() - 2 * 86_400_000) },
+  });
   return report;
 }
+
+type DemoWorkup = { kind: 'step5'; expert: { id: string; name: string } } | { kind: 'awaiting'; expert: { id: string; name: string }; at: Date };
 
 // 新流程（上传资料表格）的已提交任务：资料表格、图纸照片、读表结果、提交记录一起写。
 // 同样按企业判断：这家企业已有应急预案任务就不再建
@@ -214,7 +253,17 @@ async function ensureIntakeTask(
   db: Database,
   storage: FileStorage,
   report: DemoSeedReport,
-  t: { label: string; orgId: string; enterpriseId: string; enterpriseName: string; expertId: string; customerId: string; submittedAt: Date },
+  t: {
+    label: string;
+    orgId: string;
+    enterpriseId: string;
+    enterpriseName: string;
+    expertId: string;
+    customerId: string;
+    submittedAt: Date;
+    // 专家已经开始核对：第 5 步，或复制过缺项清单
+    workup?: DemoWorkup;
+  },
 ) {
   const [found] = await db
     .select({ number: tasks.number })
@@ -232,10 +281,12 @@ async function ensureIntakeTask(
   const uploadedAt = new Date(t.submittedAt.getTime() - 1_800_000);
   const xlsx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const png = demoPicture();
+  // 等客户补资料那家：客户没传紧急疏散示意图
+  const noEvacuation = t.workup?.kind === 'awaiting';
   const uploads = [
-    { slot: 'data_sheet' as const, name: '电子科技-企业资料填报.xlsx', buf: sheetBuf, type: xlsx },
+    { slot: 'data_sheet' as const, name: `${t.enterpriseName.replace(/^示例|有限公司$/g, '')}-企业资料填报.xlsx`, buf: sheetBuf, type: xlsx },
     { slot: 'site_plan' as const, name: '总平面布置图.png', buf: png, type: 'image/png' },
-    { slot: 'evacuation_map' as const, name: '一楼紧急疏散示意图.png', buf: png, type: 'image/png' },
+    ...(noEvacuation ? [] : [{ slot: 'evacuation_map' as const, name: '一楼紧急疏散示意图.png', buf: png, type: 'image/png' }]),
     { slot: 'other' as const, name: '仓库现场照片.png', buf: png, type: 'image/png' },
   ].map((u) => ({ ...u, id: randomUUID() }));
   for (const u of uploads) await storage.put(`${t.orgId}/${u.id}`, u.buf, u.type);
@@ -280,7 +331,7 @@ async function ensureIntakeTask(
       dataSheetFileId: sheetId,
       templateVersion: analysis.parse.templateVersion,
       parseResult: analysis.parse,
-      requiredCheck: composeCheck(analysis.sheet, { sitePlan: true, evacuationPlan: true, noEvacuationMap: false }, uploadedAt),
+      requiredCheck: composeCheck(analysis.sheet, { sitePlan: true, evacuationPlan: !noEvacuation, noEvacuationMap: false }, uploadedAt),
       warnings: analysis.warnings,
       preferredExpertId: t.expertId,
       lastUploadedSide: 'customer',
@@ -301,6 +352,23 @@ async function ensureIntakeTask(
         preferredExpertId: t.expertId,
       },
     });
+    if (t.workup) {
+      const snapshot: WorkupSnapshot = { identity: analysis.parse.identity, profile: analysis.parse.profile };
+      const startedAt = new Date(t.submittedAt.getTime() + 3_600_000);
+      const stamp = { by: t.workup.expert.id, byName: t.workup.expert.name, at: startedAt.toISOString() };
+      const data: WorkupData = { overrides: {}, stepsDone: 4, steps: { basic: stamp, organization: stamp, production: stamp, resources: stamp } };
+      let awaiting: { since: Date; items: number } | null = null;
+      if (t.workup.kind === 'awaiting') {
+        const drawings = [{ key: 'site_plan', contentType: 'image/png' }];
+        const items = missingItemsOf(currentGaps(snapshot, data, [], drawings));
+        const at = t.workup.at.toISOString();
+        data.missingList = { at, by: t.workup.expert.id, byName: t.workup.expert.name, items };
+        data.events = [{ at, by: t.workup.expert.id, byName: t.workup.expert.name, what: `复制了缺项清单，共 ${items.length} 项，任务标为等客户补资料` }];
+        awaiting = { since: t.workup.at, items: items.length };
+      }
+      await tx.insert(taskWorkups).values({ taskId, snapshot, data, snapshotAt: startedAt, updatedBy: t.workup.expert.id, updatedAt: startedAt });
+      if (awaiting) await tx.update(tasks).set({ awaitingCustomerSince: awaiting.since, awaitingCustomerItems: awaiting.items }).where(eq(tasks.id, taskId));
+    }
     return number;
   });
   report.created.push(`任务 ${number} ${t.label}`);

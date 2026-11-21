@@ -62,7 +62,7 @@ export function WizardHeader({
         </div>
       </div>
       {stages && <StageBar stages={stages} current={current} notes={stageNotes} links={stageLinks} />}
-      <div style={{ flex: `0 0 ${sideWidth}px`, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 20 }}>
+      <div style={{ flex: `0 0 ${sideWidth}px`, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: sideWidth < 360 ? 16 : 20 }}>
         {extra}
       </div>
     </header>

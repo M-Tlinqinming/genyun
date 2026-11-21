@@ -114,7 +114,8 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     const districts = await this.knowledge.agencyDistricts();
     // 专家核对向导保存的那份盖在快照上（客户原表不动）
     const snapshot = effectiveSnapshot(row.snapshot, row.data);
-    const { gaps } = workupGaps(snapshot, row.data, districts);
+    // 门槛里的两张图：和第 4 步图纸卡、附图同一份（drawingCandidates）
+    const { gaps } = workupGaps(snapshot, row.data, districts, await this.workup.drawingFiles(task.id, task.orgId, snapshot, row.data));
     if (gaps.length > 0) {
       throw new BadRequestException({ statusCode: 400, message: `还差 ${gaps.length} 项没有整理完，补齐后才能生成`, reason: 'gaps', gaps });
     }
@@ -157,6 +158,25 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
         .returning();
       const queuedAt = new Date();
       await tx.insert(generatedDrafts).values(DRAFT_KIND_KEYS.map((kind) => ({ batchId: b!.id, kind, queuedAt })));
+      // 还标着「等客户补资料」：专家决定不等了，一并取消，处理记录里记一条（只加记录，整理的版本号不变）
+      const [t] = await tx.select({ since: tasks.awaitingCustomerSince }).from(tasks).where(eq(tasks.id, task.id)).limit(1);
+      if (t?.since) {
+        const events = [
+          ...(row.data.events ?? []),
+          { at: new Date().toISOString(), by: user.id, byName: user.name, what: '确认生成，「等客户补资料」一并取消' },
+        ].slice(-200);
+        const written = await tx
+          .update(taskWorkups)
+          .set({ data: { ...row.data, events } })
+          .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
+          .returning({ taskId: taskWorkups.taskId });
+        // 这期间整理被改过：记录写不进去，整个确认回滚，不能只清标记不留记录
+        if (written.length === 0) {
+          const [now] = await tx.select({ version: taskWorkups.version }).from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
+          throw new ConflictException({ statusCode: 409, message: '这份整理刚被修改过，已为您显示最新内容，请看过后再确认生成', reason: 'stale', version: now?.version ?? row.version });
+        }
+        await tx.update(tasks).set({ awaitingCustomerSince: null, awaitingCustomerItems: null }).where(eq(tasks.id, task.id));
+      }
       return b!;
     });
     for (const kind of DRAFT_KIND_KEYS) await this.queue.add({ batchId: batch.id, kind });

@@ -77,6 +77,23 @@ export interface ExpertInput {
   externalContacts?: ExternalContacts;
   /** 专家标了「待补充」的特种设备类别（如「压力容器」） */
   specialPending?: string[];
+  /** 资料核对第 5 步只有专家能定的项；没填的文稿写「（待补充）」或用旧的写法 */
+  review?: PlanReview;
+}
+
+export interface PlanReview {
+  /** 预案编号，如 FY2026 */
+  planCode?: string;
+  /** 应急经费（每年），万元 */
+  emergencyBudget?: string;
+  /** 经费牵头部门 */
+  fundingDepartment?: string;
+  /** 培训演练经费（每年），万元 */
+  trainingBudget?: string;
+  ledgerOwner?: { name: string; position?: string };
+  archiver?: { name: string; position?: string };
+  /** 专家改了系统算的重大危险源结果才有 */
+  majorHazard?: { value: '构成' | '不构成'; reason: string; substances?: { name: string; storage: string }[] };
 }
 
 export interface ExternalContacts {

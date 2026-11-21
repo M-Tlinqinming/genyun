@@ -2,7 +2,7 @@
 // 改动同应急预案：中文全角标点；旧稿里「以企业 E4 模块填报为准」这类内部说法改为「（待补充）」；
 // 成立日期、周边环境取专家补充的事实。第 2 章用 LEC 法、第 3 章用 LSR 法，与专家写的风险评估报告一致。
 import { defaultLsr, LSR_LEVELS, lsrLevel, lsrScore, RISK_LEVELS, riskLevel, riskScore, workplacesOf, type PlanInput } from '@genyun/shared';
-import { MISSING, dash, fill, planContext, siteColumn, type PlanContext } from '../plan/context.ts';
+import { MISSING, dash, fill, planContext, siteColumn, systemMajorHazardOf, type PlanContext } from '../plan/context.ts';
 import { buildReport, companyBasicTable, companyOverview, hazardFactorsTable, locationText } from './common.ts';
 
 function hazardRows(ctx: PlanContext) {
@@ -74,48 +74,38 @@ function factorParagraphs(ctx: PlanContext): string[] {
   });
 }
 
-// GB 18218-2018 表 1 的临界量（t），只收常见、核对过的几种；其余由专家核定
-const CRITICAL_TONS: [names: string[], tons: number][] = [
-  [['乙醇', '酒精'], 500],
-  [['甲醇'], 500],
-  [['汽油'], 200],
-  [['丙酮'], 500],
-  [['甲苯'], 500],
-  [['乙酸乙酯'], 500],
-  [['天然气'], 50],
-  [['液化石油气', '液化气'], 50],
-  [['氢气'], 5],
-  [['乙炔'], 1],
-  [['氧气', '液氧'], 200],
-  [['氨气', '液氨'], 10],
-  [['氯气', '液氯'], 5],
-  [['环氧乙烷'], 10],
-];
-const criticalOf = (name: string) => CRITICAL_TONS.find(([names]) => names.some((n) => name.includes(n)))?.[1];
-
-/** 重大危险源辨识：按最大储存量 q 与临界量 Q 算 ∑q/Q 给结论；临界量或储存量不详的写待补充 */
+/**
+ * 重大危险源辨识：按最大储存量 q 与临界量 Q 算 ∑q/Q（共享包 majorHazardOf，资料核对第 5 步同一份）；
+ * 专家在第 5 步改了结论的：表照系统算的列，表下加「专家核实意见」，选「构成」的再列出专家填的物质和储存量
+ */
 function majorHazard(ctx: PlanContext): string[] {
   const basis = '根据《危险化学品重大危险源辨识》（GB 18218-2018）的规定';
-  const materials = ctx.input.production.materials.filter((m) => ctx.hazardous.includes(m.name));
-  if (!materials.length) return [`${basis}，经辨识，公司生产经营过程中未储存、使用危险化学品，不构成危险化学品重大危险源。`];
-  const rows = materials.map((m) => ({ name: m.name, q: m.maxStorageTons, Q: criticalOf(m.name) }));
-  const ratio = (r: (typeof rows)[number]) => (r.q !== undefined && r.Q !== undefined ? r.q / r.Q : undefined);
-  const known = rows.every((r) => ratio(r) !== undefined);
-  const sum = rows.reduce((s, r) => s + (ratio(r) ?? 0), 0);
-  const sumText = sum < 0.0001 ? sum.toExponential(1) : String(Math.round(sum * 10000) / 10000);
+  const override = ctx.input.expert.review?.majorHazard;
+  const sys = systemMajorHazardOf(ctx);
+  const expert = override
+    ? [
+        `专家核实意见：${override.reason.trim().replace(/[。；，]?$/, '。')}`,
+        ...(override.value === '构成' && override.substances?.length
+          ? [`经专家核实，公司构成危险化学品重大危险源，涉及物质及储存量：${override.substances.map((s) => `${s.name} ${s.storage}`).join('、')}。应按规定开展分级、登记建档，并报${ctx.bureau}备案。`]
+          : override.value === '不构成'
+            ? ['经专家核实，公司不构成危险化学品重大危险源。']
+            : []),
+      ]
+    : [];
+  if (!sys.rows.length) {
+    return override ? [`${basis}，公司生产经营过程中未判定储存、使用危险化学品。`, ...expert] : [`${basis}，经辨识，公司生产经营过程中未储存、使用危险化学品，不构成危险化学品重大危险源。`];
+  }
+  const conclusion = sys.complete
+    ? sys.sum < 1
+      ? `${basis}，经辨识，∑q/Q = ${sys.sumText} < 1，公司的危险化学品使用、暂存场所不构成危险化学品重大危险源。`
+      : `${basis}，经辨识，∑q/Q = ${sys.sumText} ≥ 1，公司构成危险化学品重大危险源，应按规定开展分级、登记建档，并报${ctx.bureau}备案。`
+    : `${basis}，部分物料的临界量或最大储存量不详，辨识结论待核定后填写${MISSING}。`;
   return [
     '**表1.3-2危险化学品重大危险源辨识表**',
     '| 名称 | 最大储存量 q（t） | 临界量 Q（t） | q/Q |',
     '| --- | --- | --- | --- |',
-    ...rows.map((r) => {
-      const v = ratio(r);
-      return `| ${r.name} | ${dash(r.q)} | ${r.Q ?? MISSING} | ${v === undefined ? '/' : Math.round(v * 10000) / 10000} |`;
-    }),
-    known
-      ? sum < 1
-        ? `${basis}，经辨识，∑q/Q = ${sumText} < 1，公司的危险化学品使用、暂存场所不构成危险化学品重大危险源。`
-        : `${basis}，经辨识，∑q/Q = ${sumText} ≥ 1，公司构成危险化学品重大危险源，应按规定开展分级、登记建档，并报${ctx.bureau}备案。`
-      : `${basis}，部分物料的临界量或最大储存量不详，辨识结论待核定后填写${MISSING}。`,
+    ...sys.rows.map((r) => `| ${r.name} | ${dash(r.q)} | ${r.Q ?? MISSING} | ${r.ratio === undefined ? '/' : r.ratio} |`),
+    ...(override ? [conclusion.replace('经辨识，', '按系统计算，'), ...expert] : [conclusion]),
   ];
 }
 

@@ -15,7 +15,7 @@ import { DrawingRenderer } from '../generation/drawings/renderer.ts';
 import { LANDSCAPE, testPdf } from '../generation/drawings/test-pdf.ts';
 import type { PlanDrawings } from '../generation/plan/assemble.ts';
 import type { DraftHandler, DraftJob, DraftQueue } from '../generation/queue.ts';
-import { complete, testDocument } from './test-workup.ts';
+import { completeFor, testDocument } from './test-workup.ts';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -160,7 +160,7 @@ async function confirm(taskId: string): Promise<GenerationProgress> {
   const zhou = await as('zhou@test.cn');
   await zhou.get(`/api/tasks/${taskId}/workup`).expect(200);
   const [row] = await handle.db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
-  await handle.db.update(taskWorkups).set({ data: complete(row!.snapshot), version: row!.version + 1 }).where(eq(taskWorkups.taskId, taskId));
+  await handle.db.update(taskWorkups).set({ data: await completeFor(handle.db, taskId, row!.snapshot, storage), version: row!.version + 1 }).where(eq(taskWorkups.taskId, taskId));
   return (await zhou.post(`/api/tasks/${taskId}/generation`).send({ version: row!.version + 1 }).expect(201)).body.current;
 }
 
@@ -361,10 +361,12 @@ describe('附图只用客户上传的 PDF 和图片，CAD 只给专家看', () =
     await confirm(task.cad);
     const [batch] = await db.select().from(generationBatches).where(eq(generationBatches.taskId, task.cad));
     const refs = batch!.input.drawings ?? [];
-    expect(refs.map((r) => r.fileId)).toEqual([pdf]);
+    // 另两份是门槛要的两张图（测试补齐时记的）；客户传的 PDF 在、dwg 不在
+    expect(refs.map((r) => r.fileId)).toContain(pdf);
+    expect(refs.some((r) => r.fileId === dwg)).toBe(false);
     await queue.drain();
     const plan = received.plan;
-    expect(Object.values(plan ?? {}).flat()).toHaveLength(1);
+    expect(JSON.stringify(plan ?? {})).not.toContain('dwg');
     expect(statuses(await progress(task.cad))).toEqual({ plan: 'done', risk: 'done', resource: 'done' });
 
     await zhou.get(`/api/files/${dwg}/download-url`).expect(200);

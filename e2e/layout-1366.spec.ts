@@ -45,23 +45,26 @@ test('专业整理在 1366 下企业名称和统一社会信用代码完整显�
 
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
   await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+/);
-  // 前面的测试文件可能已经生成过草稿，页面默认看生成进度；切到原来的整理页
-  await page.goto(`${new URL(page.url()).pathname}?view=workup-old`);
-  const name = page.locator('[data-fact="companyName"]').getByTitle('惠阳飞宇电器有限公司');
-  const code = page.locator('[data-fact="socialCreditCode"]').getByTitle('91441300726483224B');
-  await expect(name).toBeVisible();
-  await expect(code).toBeVisible();
+  // 前面的测试文件可能已经生成过草稿，页面默认看生成进度；切到资料核对第 1 步
+  await page.goto(`${new URL(page.url()).pathname}?view=workup&step=1`);
+  await expect(page.getByRole('heading', { name: '核对企业基本信息' })).toBeVisible();
+  const name = page.getByLabel('企业名称', { exact: true });
+  const code = page.getByLabel('统一社会信用代码', { exact: true });
+  await expect(name).toHaveValue('惠阳飞宇电器有限公司');
+  await expect(code).toHaveValue('91441300726483224B');
   await page.screenshot({ path: shot('expert-workup') });
   expect(await notTruncated(name)).toBe(true);
   expect(await notTruncated(code)).toBe(true);
   expect(await noHorizontalScroll(page)).toBe(true);
 
-  // 资料核对第 3、4 步（客户原件已搬到右栏「客户原表」卡）：不出现横向滚动条
+  // 资料核对第 3、4、5 步：不出现横向滚动条
   const path = new URL(page.url()).pathname;
   for (const [q, heading, file] of [
     ['step=3', '核对场所、设备与物料', 'expert-workup-step3'],
     ['step=3&page=2', '核对工艺流程', 'expert-workup-step3-page2'],
     ['step=4', '核对应急资源与图纸', 'expert-workup-step4'],
+    ['step=5', '补上只有您能定的专业项', 'expert-workup-step5'],
+    ['step=5&page=2', /^(还差 \d+ 项必填资料，暂时不能生成|核对无误，就可以生成初稿)$/, 'expert-workup-step5-page2'],
   ] as const) {
     await page.goto(`${path}?view=workup&${q}`);
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();

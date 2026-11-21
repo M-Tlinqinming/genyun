@@ -264,8 +264,8 @@ export function organizationStepSaveError(next: OrganizationStep, before: Organi
   return null;
 }
 
-// 每步谁、什么时候保存的（页头「已自动保存」与操作记录用）
-export type StepStamps = Partial<Record<WizardStep, Stamp>>;
+// 每步谁、什么时候保存的（页头「已自动保存」与操作记录用）；review = 第 5 步第 1 页
+export type StepStamps = Partial<Record<WizardStep | 'review', Stamp>>;
 
 /**
  * 第 3 步显示和保存的内容。专家第一次保存第 3 步以前，老整理页对设备、物料的改动（data.production 的 equipment、materials）

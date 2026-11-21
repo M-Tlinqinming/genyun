@@ -1,9 +1,9 @@
 import { WORKUP_STEPS, workupStepsDone } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button } from 'antd';
-import { useCallback, useRef, useState } from 'react';
+import { App, Button } from 'antd';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { workupKey, type Workup } from '../../../../api/workup';
+import { onAwaitingCleared, workupKey, type Workup } from '../../../../api/workup';
 import { ActionBar } from '../../../../components/ActionBar';
 import { linkButton } from '../../../../components/ui';
 import { WizardLayout } from '../../../../layouts/WizardLayout';
@@ -11,9 +11,10 @@ import { gy, layout, type, weight } from '../../../../theme/tokens';
 import { BasicStep } from './BasicStep';
 import { OrganizationStep } from './OrganizationStep';
 import { clockOf, MAIN_WIDTH, SIDE_WIDTH } from './parts';
-import { PlaceholderStep } from './PlaceholderStep';
 import { ProductionStep } from './ProductionStep';
 import { ResourcesStep } from './ResourcesStep';
+import { ReviewStep } from './ReviewStep';
+import { AwaitingBanner } from '../MissingList';
 import type { StepFrame, StepProps } from './types';
 import { useAutosave } from './useAutosave';
 
@@ -34,7 +35,14 @@ export function WorkupWizard({ taskId, enterpriseName, workup }: { taskId: strin
   const [resetKey, setResetKey] = useState(0);
   const scroller = useRef<HTMLDivElement | null>(null);
   const step = wizardStepOf(params.get('step'), workup);
-  const page = step === 3 && params.get('page') === '2' ? 2 : 1;
+  const page = (step === 3 || step === 5) && params.get('page') === '2' ? 2 : 1;
+  const { message } = App.useApp();
+
+  // 补齐了清单里的项、标记自动取消：提示一下
+  useEffect(
+    () => onAwaitingCleared(() => void message.success({ content: '缺项都补上了，「等客户补资料」已自动取消', duration: 3 })),
+    [message],
+  );
 
   const onStale = useCallback(async () => {
     await client.invalidateQueries({ queryKey: workupKey(taskId) });
@@ -44,8 +52,7 @@ export function WorkupWizard({ taskId, enterpriseName, workup }: { taskId: strin
   const latestVersion = useCallback(() => client.getQueryData<Workup>(workupKey(taskId))?.version ?? workup.version, [client, taskId, workup.version]);
 
   const onGo = (n: number, p?: number) => {
-    if (n > 5) setParams({ view: 'confirm' });
-    else setParams({ view: 'workup', step: String(n), ...(p && p > 1 ? { page: String(p) } : {}) });
+    setParams({ view: 'workup', step: String(n), ...(p && p > 1 ? { page: String(p) } : {}) });
     scroller.current?.scrollTo({ top: 0 });
   };
   const leave = async () => {
@@ -100,6 +107,7 @@ export function WorkupWizard({ taskId, enterpriseName, workup }: { taskId: strin
         }
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {workup.awaiting && <AwaitingBanner since={workup.awaiting.since} />}
           {failed && (
             <div
               role="alert"
@@ -139,5 +147,5 @@ export function WorkupWizard({ taskId, enterpriseName, workup }: { taskId: strin
   // 第 3 步两页共用一份本地状态（翻页不重置），所以 key 不带页码
   if (step === 3) return <ProductionStep key={key} {...props} />;
   if (step === 4) return <ResourcesStep key={key} {...props} />;
-  return <PlaceholderStep key={key} {...props} step={5} />;
+  return <ReviewStep key={key} {...props} />;
 }

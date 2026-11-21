@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// 资料核对向导（13 页 E2）：第 1 步企业基本信息、第 2 步人员与应急组织；第 3、4 步见 expert-workup-production；第 5 步先用原来的整理页。
+// 资料核对向导（13 页 E2）：第 1 步企业基本信息、第 2 步人员与应急组织；第 3、4 步见 expert-workup-production；第 5 步见 expert-workup、expert-workup-risk、expert-workup-scope。
 // 文件名排在 expert-workup-visuals 之后、expert-workup 之前：这里不动必需项（技术人员数留给 expert-workup 补）
 async function openWizard(page: Page, step?: number) {
   await page.goto('/login');
@@ -37,7 +37,7 @@ const memberSaved = (page: Page, name: string, present: boolean) =>
 test('还没生成过草稿时默认打开资料核对，停在第一个没走完的步骤；第 1 步改了自动保存，格式不对的先不存', async ({ page }) => {
   await openWizard(page);
   // expert-workup-production 已经走到第 4 步的「下一步」，默认打开第 5 步
-  await expect(page.getByRole('heading', { name: '核对并生成' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '补上只有您能定的专业项' })).toBeVisible();
   await page.goto(`${new URL(page.url()).pathname}?view=workup&step=1`);
   await expect(page.getByRole('heading', { name: '核对企业基本信息' })).toBeVisible();
   await expect(footer(page)).toContainText(/第 1 步，共 5 步 · 客户已填 \d+ 项，\d+ 项未填；还有 1 项待您补充或留空/);
@@ -229,7 +229,7 @@ test('第 2 步：断网时标红并提示没保存上，重试后补存', async
   await reverting;
 });
 
-test('第 3、4 步是新样式；第 5 步先用原来的整理页，去确认并生成', async ({ page }) => {
+test('第 3、4、5 步一路翻页：第 5 步先补专业项，再核对并生成', async ({ page }) => {
   await openWizard(page, 2);
   await page.getByRole('button', { name: '下一步：生产情况' }).click();
   await expect(page).toHaveURL(/view=workup&step=3/);
@@ -242,20 +242,24 @@ test('第 3、4 步是新样式；第 5 步先用原来的整理页，去确认�
   await expect(page.getByRole('heading', { name: '核对工艺流程' })).toBeVisible();
   await page.getByRole('button', { name: '下一步：应急资源与图纸' }).click();
   await page.getByRole('button', { name: '下一步：核对并生成' }).click();
-  const oldLinks = page.getByRole('navigation', { name: '打开原来的整理页' });
-  await expect(oldLinks.getByRole('link')).toHaveText(['危险源辨识', '适用范围']);
-  await oldLinks.getByRole('link', { name: '适用范围' }).click();
-  await expect(page).toHaveURL(/view=workup-old&module=scope/);
-  await expect(page.getByText('资料核对第 5 步正在换新样式，这里是原来的整理页')).toBeVisible();
-  await page.getByRole('link', { name: '回到资料核对' }).click();
-  await expect(footer(page)).toContainText('第 5 步，共 5 步');
-  await expect(page.getByRole('button', { name: '去确认并生成' })).toBeVisible();
 
-  // 退出再进：接着上次走到的下一步
+  // 第 5 步第 1 页：专业项，预案编号按字号拼音首字母 + 年份预填
+  await expect(page.getByRole('heading', { name: '补上只有您能定的专业项' })).toBeVisible();
+  await expect(footer(page)).toContainText('第 5 步，共 5 步（第 1 页）');
+  await expect(page.getByRole('textbox', { name: '预案编号' })).toHaveValue(/^FY\d{4}$/);
+  await page.getByRole('button', { name: '下一页：核对并生成' }).click();
+  await expect(page).toHaveURL(/step=5&page=2/);
+  await expect(page.getByRole('region', { name: '四步摘要' })).toBeVisible();
+  // 还缺必填资料时底栏写还差几项，齐了写「第 5 步，共 5 步」
+  await expect(footer(page)).toContainText(/第 5 步，共 5 步|还差 \d+ 项必填资料/);
+  await page.getByRole('button', { name: '上一页' }).click();
+  await expect(page.getByRole('heading', { name: '补上只有您能定的专业项' })).toBeVisible();
+
+  // 退出再进：接着上次走到的第 5 步
   await page.getByRole('button', { name: '返回任务中心' }).click();
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
-  await expect(page.getByRole('heading', { name: '核对并生成' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '补上只有您能定的专业项' })).toBeVisible();
 });
 
 test('新流程任务：来源标「客户表格」，右栏有「客户原表」卡片，可下载 Excel、查看图纸与照片；走完第 2 步任务中心显示「资料核对 2 / 5 步」', async ({ page }) => {

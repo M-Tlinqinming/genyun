@@ -17,7 +17,7 @@ import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
 import { attachment } from './deliveries.service.ts';
-import { complete, testDocument } from './test-workup.ts';
+import { completeFor, testDocument } from './test-workup.ts';
 
 // 客户成果文档（M2 第 16 项）：同组织客户能看、下载三份 Word 与整套压缩包（在线阅读已取消）；
 // 别家客户、没负责这项任务的专家一律 404；运营和负责专家按原规则能看；多次交付新的在前
@@ -141,7 +141,7 @@ beforeAll(async () => {
   const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
   await db
     .update(taskWorkups)
-    .set({ data: complete(row!.snapshot), version: row!.version + 1 })
+    .set({ data: await completeFor(db, taskId, row!.snapshot, storage), version: row!.version + 1 })
     .where(eq(taskWorkups.taskId, taskId));
   await zhou.post(`/api/tasks/${taskId}/generation`).send({ version: row!.version + 1 }).expect(201);
   await queue.idle();
