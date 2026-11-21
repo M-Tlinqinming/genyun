@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// 第 13 项：工作台与业务任务列表（11 页 C01、C04；13 页 S01）。登录先看到要处理的任务，点进去直达。
+// 客户工作台与任务列表（11 页 C01、C04；13 页 S01）：三段状态，要处理的在前，按钮直达那一步。
 // 只登录一次、共用同一个页面；企业和任务用接口直接准备
 test.describe.configure({ mode: 'serial' });
 
@@ -64,54 +64,58 @@ test.afterAll(async () => {
   await page.close();
 });
 
-test('工作台：待我处理写清下一步，点按钮直达那一步', async () => {
+test('工作台：待我处理写清下一步，按钮直达那一步', async () => {
   const fresh = await newTask('工作台新任务有限公司');
-  const upload = await newTask('工作台上传路线有限公司', 'upload');
   await page.goto('/customer');
-  await expect(page.getByRole('heading', { name: /(上午|下午|晚上)好，/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '工作台', level: 1 })).toBeVisible();
 
   const todo = page.getByRole('region', { name: '待我处理' });
-  await expect(todo.getByTestId(`todo-${upload.number}`)).toContainText(/补充营业执照 等 \d+ 项/);
-  await expect(todo.getByTestId(`todo-${fresh.number}`)).toContainText('下载资料模板，填好后上传');
+  const row = todo.getByTestId(`todo-${fresh.number}`);
+  await expect(row).toContainText('准备资料');
+  await expect(row).toContainText('下载资料模板，填好后上传');
   await page.screenshot({ path: 'test-results/workbench-c01.png' });
 
-  await todo.getByTestId(`todo-${fresh.number}`).getByRole('button', { name: '开始准备' }).click();
+  await row.getByRole('button', { name: /^去上传/ }).click();
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${fresh.id}/prepare$`));
-  await page.goto('/customer');
-  await todo.getByTestId(`todo-${upload.number}`).getByRole('button', { name: '继续准备' }).click();
-  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${upload.id}/prepare$`));
 });
 
-test('已提交的任务进「正在办理」与「耕云处理中」，不在待我处理里', async () => {
+test('已提交的任务进「正在办理」和「专家编制」，不在待我处理里', async () => {
   const submitted = await submittedTask('工作台已提交有限公司');
   await page.goto('/customer');
-  await expect(page.getByRole('region', { name: '正在办理' })).toContainText('耕云编制中');
+  await expect(page.getByRole('region', { name: '正在办理' }).getByTestId(`card-${submitted.number}`)).toContainText('专家正在编制，不需要您操作');
   await expect(page.getByTestId(`todo-${submitted.number}`)).toHaveCount(0);
 
-  await page.goto('/customer/tasks?tab=gengyun');
-  await page.getByPlaceholder('搜索企业 / 任务编号').fill(submitted.number);
-  const row = page.getByRole('row', { name: new RegExp(submitted.number) });
-  await expect(row).toContainText('耕云编制 · 申请已提交');
-  await row.getByRole('button', { name: /查看进度/ }).click();
-  await expect(page).toHaveURL(/tab=records/);
-  // 新建的任务都走新流程：提交以后看已提交页
+  await page.goto('/customer/tasks?tab=expert');
+  await expect(page.getByRole('tab', { name: /专家编制 \d+/ })).toHaveAttribute('aria-selected', 'true');
+  await page.getByPlaceholder('搜索企业名称或任务编号').fill(submitted.number);
+  const row = page.getByTestId(`task-${submitted.number}`);
+  await expect(row).toContainText('专家编制');
+  await expect(row).toContainText('专家正在编制，交付后邮件通知您');
+  await row.getByRole('button', { name: /^查看/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/customer/tasks/${submitted.id}(\\?|$)`));
   await expect(page.getByText('已提交，编制期间不需要您操作')).toBeVisible();
 });
 
-test('任务：默认先看待我处理，可搜索任务编号、按企业筛选', async () => {
-  const task = await newTask('列表筛选测试有限公司', 'self_fill');
+test('任务：默认先看待我处理，页签记在地址里；可搜索任务编号、按企业筛选', async () => {
+  const task = await newTask('列表筛选测试有限公司');
   await page.goto('/customer/tasks');
   await expect(page.getByRole('tab', { name: /待我处理 \d+/ })).toHaveAttribute('aria-selected', 'true');
-  await page.getByPlaceholder('搜索企业 / 任务编号').fill(task.number);
-  await expect(page.getByRole('row')).toHaveCount(2);
-  await expect(page.getByRole('row', { name: new RegExp(task.number) })).toContainText('补充');
+  await page.getByPlaceholder('搜索企业名称或任务编号').fill(task.number);
+  await expect(page.locator('[data-testid^="task-GY-"]')).toHaveCount(1);
+  await expect(page.getByTestId(`task-${task.number}`)).toContainText('下载资料模板，填好后上传');
   await page.screenshot({ path: 'test-results/workbench-c04.png' });
 
-  await page.getByPlaceholder('搜索企业 / 任务编号').fill('');
+  // 切页签写进 ?tab=，直接打开带 ?tab= 的地址也停在那个页签
+  await page.getByRole('tab', { name: /已交付 \d+/ }).click();
+  await expect(page).toHaveURL(/tab=delivered/);
+  await expect(page.getByTestId(`task-${task.number}`)).toHaveCount(0);
+  await page.goto('/customer/tasks?tab=all');
+  await expect(page.getByRole('tab', { name: /全部 \d+/ })).toHaveAttribute('aria-selected', 'true');
+
   await page.getByLabel('按企业筛选').click();
   await page.getByTitle('列表筛选测试有限公司').click();
-  await expect(page.getByRole('row')).toHaveCount(2);
-  await page.getByRole('row', { name: new RegExp(task.number) }).click();
+  await expect(page.locator('[data-testid^="task-GY-"]')).toHaveCount(1);
+  await page.getByTestId(`task-${task.number}`).getByRole('button', { name: /^去上传/ }).click();
   await expect(page).toHaveURL(new RegExp(`/customer/tasks/${task.id}/prepare$`));
 });
 
@@ -120,6 +124,74 @@ test('新建任务：从工作台进入新建任务页，在页里选企业', as
   await page.getByRole('button', { name: '新建任务' }).click();
   await expect(page).toHaveURL(/\/customer\/tasks\/new$/);
   await expect(page.getByRole('heading', { name: '新建任务' })).toBeVisible();
+});
+
+function fakeCredits(total: number) {
+  return page.route(`**/api/orgs/${orgId}/credits`, (route) =>
+    route.fulfill({
+      json: { remaining: { total, gift: 0, purchase: total }, granted: 20, used: 20 - total, validUntil: chinaDay(100), awaitingTasks: [], entries: [] },
+    }),
+  );
+}
+
+test('组织管理员看编制次数：平时一条，剩 3 次以内提醒续约，用完换成提醒块', async () => {
+  await fakeCredits(12);
+  await page.goto('/customer');
+  const strip = page.getByRole('region', { name: '编制次数' });
+  await expect(strip).toContainText('剩余 12 次');
+  await expect(strip).toContainText('共 20 次，已用 8 次');
+  await expect(strip.getByRole('button', { name: '联系耕云续约' })).toHaveCount(0);
+  await expect(strip.getByRole('link', { name: '查看用量' })).toHaveAttribute('href', '/customer/organization?tab=service');
+  await page.unroute(`**/api/orgs/${orgId}/credits`);
+
+  await fakeCredits(2);
+  await page.goto('/customer');
+  await expect(page.getByRole('region', { name: '编制次数' })).toContainText('用完后还能照常提交');
+  await expect(page.getByRole('region', { name: '编制次数' }).getByRole('button', { name: '联系耕云续约' })).toBeVisible();
+  await page.unroute(`**/api/orgs/${orgId}/credits`);
+
+  await fakeCredits(0);
+  await page.goto('/customer');
+  await expect(page.getByRole('status', { name: '编制次数已经用完' })).toContainText('新任务可以照常新建和提交');
+  await expect(page.getByRole('region', { name: '编制次数' })).toHaveCount(0);
+  await page.unroute(`**/api/orgs/${orgId}/credits`);
+});
+
+test('成员：成果被锁住时提示联系组织管理员，不显示次数', async () => {
+  await page.route('**/api/auth/me', async (route) => {
+    const res = await route.fetch();
+    const me = (await res.json()) as { memberships: { role: string }[] };
+    await route.fulfill({ response: res, json: { ...me, memberships: me.memberships.map((m) => ({ ...m, role: 'customer_member' })) } });
+  });
+  await page.route(`**/api/orgs/${orgId}/tasks`, async (route) => {
+    const res = await route.fetch();
+    const rows = (await res.json()) as object[];
+    const locked = {
+      ...rows[0],
+      id: '00000000-0000-4000-8000-000000000001',
+      number: 'GY-2026-901',
+      status: 'submitted',
+      delivery: { version: 1, publishedAt: new Date().toISOString() },
+      adminNames: '陈经理',
+      view: {
+        key: 'delivered_locked',
+        label: '已编制好 · 暂不能下载',
+        tone: 'progress',
+        nextStep: '成果已编制好，暂时还不能下载',
+        detail: '需要贵组织管理员处理，请联系陈经理',
+        stage: 2,
+        needsAction: false,
+      },
+    };
+    await route.fulfill({ response: res, json: [...rows, locked] });
+  });
+  await page.goto('/customer');
+  const block = page.getByRole('status', { name: '成果暂时还不能下载' });
+  await expect(block).toContainText('有 1 份成果已经编制好');
+  await expect(block).toContainText('请联系陈经理');
+  await expect(page.getByRole('region', { name: '编制次数' })).toHaveCount(0);
+  await page.unroute(`**/api/orgs/${orgId}/tasks`);
+  await page.unroute('**/api/auth/me');
 });
 
 test('年度服务 30 天内到期提醒；到期后不能新建任务，在办任务照常可看', async () => {
@@ -134,7 +206,7 @@ test('年度服务 30 天内到期提醒；到期后不能新建任务，在办�
   await expect(page.getByRole('status', { name: '年度服务提醒' })).toContainText('年度服务已到期');
   await expect(page.getByRole('button', { name: '新建任务' })).toBeDisabled();
   await expect(page.getByText('续约生效后可创建新任务；已有资料与交付记录保留。')).toBeVisible();
-  await expect(page.getByRole('region', { name: '待我处理' })).toContainText('继续准备');
+  await expect(page.getByRole('region', { name: '待我处理' })).toContainText('去上传');
   await page.screenshot({ path: 'test-results/workbench-s01.png' });
   await page.goto('/customer/tasks');
   await expect(page.getByRole('button', { name: '新建任务' })).toBeDisabled();
