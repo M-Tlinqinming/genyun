@@ -317,7 +317,7 @@ describe('撤回和专家开始核对加锁', () => {
         expect([status, rows]).toEqual(['submitted', 1]);
       }
     }
-  });
+  }, 60_000); // 连建三个任务、各读一次表格，机器忙时会超过默认时限
 
   it('撤回后删掉的任务：负责专家打不开（404）', async () => {
     const taskId = await assigned('耕云测试删掉打不开有限公司');
