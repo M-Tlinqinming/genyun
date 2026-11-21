@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   openingGaps,
-  operatorTaskStage,
   orgCreditCell,
   orgNeedsAttention,
   orgOpenSchema,
@@ -142,15 +141,6 @@ describe('组织状态', () => {
   it('服务范围文字', () => {
     expect(serviceScopeLabel('single', null)).toBe('编制 1 家企业');
     expect(serviceScopeLabel('annual', 5)).toBe('年度服务 · 5 家企业');
-  });
-});
-
-describe('运营看到的任务进展', () => {
-  it('资料准备、待分配、耕云编制、已交付', () => {
-    expect(operatorTaskStage({ status: 'preparing', assignedExpertId: null, closedAt: null })).toBe('preparing');
-    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: null, closedAt: null })).toBe('unassigned');
-    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: 'u', closedAt: null })).toBe('drafting');
-    expect(operatorTaskStage({ status: 'submitted', assignedExpertId: 'u', closedAt: '2026-10-01' })).toBe('delivered');
   });
 });
 

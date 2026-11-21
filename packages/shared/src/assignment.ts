@@ -1,4 +1,4 @@
-// 分派负责专家（Paper 16 页 I04 任务中心「待分派」、分配专家弹窗）。前后端共用。
+// 分配负责专家（Paper 16 页 I04 任务中心、分配专家弹窗）。前后端共用。
 import { z } from 'zod';
 import { isOperatorAssignableExpert, type ExpertAvailability } from './expert-profile.ts';
 
@@ -70,8 +70,8 @@ export function assignmentBlockedReason(
   },
   expert?: { name: string; profile: ExpertAvailability },
 ): string | null {
-  if (t.closedAt) return '任务已结束，不能再分派';
-  if (t.status !== 'submitted') return '客户还没提交资料，提交后才能分派专家';
+  if (t.closedAt) return '任务已结束，不能再分配';
+  if (t.status !== 'submitted') return '客户还没提交资料，提交后才能分配专家';
   if (expert && !isOperatorAssignableExpert(expert.profile)) {
     return isExpertPaused(expert.profile) ? `${expert.name}已暂停接单，不能分配` : '这位专家现在不能接任务';
   }
@@ -81,11 +81,4 @@ export function assignmentBlockedReason(
 /** 有资料行、而且关了接单 */
 export function isExpertPaused(profile: ExpertAvailability): boolean {
   return !!profile && !profile.acceptingOrders;
-}
-
-// 弹窗里每位专家下面的一行：「在办 3 个 · 正在处理该客户的另外 3 家企业」
-export function expertLoadLine(e: { openTasks: number; sameOrgEnterprises: number }): string {
-  const parts = [`在办 ${e.openTasks} 个`];
-  if (e.sameOrgEnterprises > 0) parts.push(`正在处理该客户的另外 ${e.sameOrgEnterprises} 家企业`);
-  return parts.join(' · ');
 }
