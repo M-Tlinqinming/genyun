@@ -94,7 +94,8 @@ test('已提交的任务进「正在办理」与「耕云处理中」，不在�
   await expect(row).toContainText('耕云编制 · 申请已提交');
   await row.getByRole('button', { name: /查看进度/ }).click();
   await expect(page).toHaveURL(/tab=records/);
-  await expect(page.getByText('资料已提交', { exact: true })).toBeVisible();
+  // 新建的任务都走新流程：提交以后看已提交页
+  await expect(page.getByText('已提交，编制期间不需要您操作')).toBeVisible();
 });
 
 test('任务：默认先看待我处理，可搜索任务编号、按企业筛选', async () => {

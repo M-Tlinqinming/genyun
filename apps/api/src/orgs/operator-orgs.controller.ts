@@ -145,7 +145,7 @@ export class OperatorOrgsController {
         // 子查询里写全表名：drizzle 在这里不带表名，会和子查询里的同名列混淆
         enterprises: sql<number>`(select count(*)::int from enterprises e where e.org_id = "organizations"."id")`,
         members: sql<number>`(select count(*)::int from memberships m where m.org_id = "organizations"."id")`,
-        openTasks: sql<number>`(select count(*)::int from tasks t where t.org_id = "organizations"."id" and t.closed_at is null)`,
+        openTasks: sql<number>`(select count(*)::int from tasks t where t.org_id = "organizations"."id" and t.closed_at is null and t.deleted_at is null)`,
       })
       .from(organizations)
       .where(eq(organizations.kind, 'customer'))
@@ -639,7 +639,7 @@ export class OperatorOrgsController {
         closedAt: tasks.closedAt,
       })
       .from(tasks)
-      .where(eq(tasks.orgId, orgId))
+      .where(and(eq(tasks.orgId, orgId), isNull(tasks.deletedAt)))
       .orderBy(desc(tasks.createdAt));
     const latest = new Map<string, { id: string; number: string; stage: ReturnType<typeof operatorTaskStage> }>();
     for (const t of rows) {

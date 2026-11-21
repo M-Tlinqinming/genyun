@@ -11,6 +11,8 @@ import {
   type IntakePreviousSheet,
   type IntakeRequiredCheck,
   type IntakeSheetView,
+  type IntakeSubmissionSnapshot,
+  type IntakeSubmissionView,
   type IntakeView,
   type IntakeWarning,
 } from '@genyun/shared';
@@ -21,7 +23,17 @@ import { canEditEnterpriseData, canViewEnterprise } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
-import { enterprises, files, taskIntakeFiles, taskIntakes, taskIntakeSubmissions, tasks } from '../db/schema.ts';
+import {
+  enterprises,
+  files,
+  notifications,
+  taskIntakeFiles,
+  taskIntakes,
+  taskIntakeSubmissions,
+  tasks,
+  taskWorkups,
+  users,
+} from '../db/schema.ts';
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { TasksService } from '../tasks/tasks.service.ts';
 import { analyzeSheet, SheetRejectedError, type SheetAnalysis } from './analyze.ts';
@@ -38,6 +50,14 @@ export const SHEET_UNDELETABLE_MESSAGE = '资料表格不能删除。要换一�
 export const HAS_EVACUATION_MAP_MESSAGE = '已经传了紧急疏散示意图，不用再说明没有。确实没有的，先把传上来的图删掉。';
 export const CONCURRENT_SHEET_MESSAGE = '刚才有人同时传了一份资料表格。请刷新页面看看现在是哪一份，需要的话再传一次。';
 const FILE_NOT_FOUND = '找不到这个文件';
+// 提交、撤回、删除任务（「专家已经开始核对，不能撤回了」是设计稿原话，其余是说明里定的）
+export const NO_SHEET_MESSAGE = '还没读到资料表格，请先上传填好的资料模板';
+export const missingMessage = (n: number) => `还有 ${n} 项必填没填，改好再提交`;
+export const SUBMIT_RETRY_MESSAGE = '这次没有提交成功，请重试';
+export const WITHDRAW_USED_MESSAGE = '这次提交后不能再撤回了，有要改的地方请联系客服';
+export const EXPERT_STARTED_MESSAGE = '专家已经开始核对，不能撤回了';
+export const NOT_WITHDRAWABLE_MESSAGE = '这个任务现在不能撤回';
+export const UNDELETABLE_MESSAGE = '提交给专家后不能删除任务';
 
 export const INTAKE_SLOTS_RULE: Record<IntakeFileSlot, 'intake_sheet' | 'intake_drawing'> = {
   data_sheet: 'intake_sheet',
@@ -53,8 +73,19 @@ export interface UploadedFile {
 }
 
 interface Ctx {
-  task: { id: string; orgId: string; enterpriseId: string; enterpriseName: string; status: string; businessType: string };
+  task: {
+    id: string;
+    orgId: string;
+    enterpriseId: string;
+    enterpriseName: string;
+    status: string;
+    businessType: string;
+    closedAt: Date | null;
+  };
   intake: typeof taskIntakes.$inferSelect;
+  /** 能维护这家企业的资料（组织管理员或负责这家企业的成员），不论任务到了哪一步 */
+  mayEdit: boolean;
+  /** 现在能上传、删除：mayEdit 且任务还在准备资料 */
   canEdit: boolean;
 }
 
@@ -84,18 +115,118 @@ export class IntakeService {
       if (!mayEdit) throw new ForbiddenException(READ_ONLY_MESSAGE);
       if (task.status !== 'preparing') throw new ConflictException(SUBMITTED_MESSAGE);
     }
-    return { task, intake: row.intake, canEdit: mayEdit && task.status === 'preparing' };
+    return { task, intake: row.intake, mayEdit, canEdit: mayEdit && task.status === 'preparing' };
   }
 
   // 写操作在事务里先锁住这一行 task_intakes，再重读任务状态：同一任务的上传、删除、「这张图我们没有」排队执行，
   // 必填检查、noEvacuationMap 都按锁里读到的最新情况重算，后到的请求不会拿旧结果盖掉先到的
-  private async lockIntake(tx: Tx, taskId: string): Promise<typeof taskIntakes.$inferSelect> {
-    const [intake] = await tx.select().from(taskIntakes).where(eq(taskIntakes.taskId, taskId)).for('update');
-    if (!intake) throw new NotFoundException(NOT_FOUND);
-    const [task] = await tx.select({ status: tasks.status, deletedAt: tasks.deletedAt }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
-    if (!task || task.deletedAt) throw new NotFoundException(NOT_FOUND);
-    if (task.status !== 'preparing') throw new ConflictException(SUBMITTED_MESSAGE);
+  // 提交、撤回、删除任务和专家开始核对也拿这把锁（lockTaskRow）
+  private async lockIntake(tx: Tx, taskId: string, notPreparing = SUBMITTED_MESSAGE): Promise<typeof taskIntakes.$inferSelect> {
+    const { intake, task } = await lockTaskRow(tx, taskId);
+    if (task.status !== 'preparing') throw new ConflictException(notPreparing);
     return intake;
+  }
+
+  // ---------- 提交、撤回、删除任务 ----------
+
+  /**
+   * 提交给专家。同一个 requestId 重发、另一次提交先到了，都返回当前资料，不会多记一次。
+   * 能不能提交和准备资料页「提交给专家」变亮是同一个规则（submitBlocker）。不发邮件、不发提醒、不扣次数
+   */
+  async submit(user: SessionUser, taskId: string, requestId: string): Promise<IntakeView> {
+    // 不用 context(…, true)：已经提交了的重发要返回当前资料，不报 409
+    const ctx = await this.context(user, taskId, false);
+    if (!ctx.mayEdit) throw new ForbiddenException(READ_ONLY_MESSAGE);
+    const now = new Date();
+    try {
+      await this.db.transaction(async (tx) => {
+        const { intake, task } = await lockTaskRow(tx, taskId);
+        // 同一次提交重发，或另一次提交先到了
+        const [same] = await tx
+          .select({ id: taskIntakeSubmissions.id })
+          .from(taskIntakeSubmissions)
+          .where(and(eq(taskIntakeSubmissions.taskId, taskId), eq(taskIntakeSubmissions.requestId, requestId)))
+          .limit(1);
+        if (same || (await activeSubmission(tx, taskId))) return;
+        if (task.status !== 'preparing') throw new ConflictException(SUBMITTED_MESSAGE);
+        const current = await tx
+          .select({ fileId: taskIntakeFiles.fileId, slot: taskIntakeFiles.slot, originalName: files.originalName })
+          .from(taskIntakeFiles)
+          .innerJoin(files, eq(files.id, taskIntakeFiles.fileId))
+          .where(and(eq(taskIntakeFiles.taskId, taskId), isNull(taskIntakeFiles.removedAt)))
+          .orderBy(taskIntakeFiles.uploadedAt);
+        const blocked = submitBlocker(intake, current);
+        if (blocked) throw new ConflictException(blocked);
+        const snapshot: IntakeSubmissionSnapshot = {
+          files: current,
+          parse: intake.parseResult,
+          templateVersion: intake.templateVersion,
+          noEvacuationMap: intake.noEvacuationMap,
+          preferredExpertId: intake.preferredExpertId,
+        };
+        await tx.insert(taskIntakeSubmissions).values({ taskId, requestId, submittedBy: user.id, submittedAt: now, snapshot });
+        await tx
+          .update(tasks)
+          .set({ status: 'submitted', submittedAt: now, updatedAt: now })
+          .where(and(eq(tasks.id, taskId), eq(tasks.status, 'preparing')));
+      });
+    } catch (err) {
+      if (
+        !isUniqueViolation(err, 'task_intake_submissions_request_id_unique') &&
+        !isUniqueViolation(err, 'task_intake_submissions_one_active')
+      ) {
+        throw err;
+      }
+      if (!(await activeSubmission(this.db, taskId))) throw new ConflictException(SUBMIT_RETRY_MESSAGE);
+    }
+    return this.get(user, taskId);
+  }
+
+  /**
+   * 撤回提交：专家开始核对之前、一个任务只能一次。任务回到准备资料，文件、读表结果、负责专家都不动。
+   * 和专家开始核对用同一把锁，以先到的为准
+   */
+  async withdraw(user: SessionUser, taskId: string): Promise<IntakeView> {
+    const ctx = await this.context(user, taskId, false);
+    if (!ctx.mayEdit) throw new ForbiddenException(READ_ONLY_MESSAGE);
+    const now = new Date();
+    await this.db.transaction(async (tx) => {
+      const { task } = await lockTaskRow(tx, taskId);
+      const subs = await tx
+        .select({ id: taskIntakeSubmissions.id, withdrawnAt: taskIntakeSubmissions.withdrawnAt })
+        .from(taskIntakeSubmissions)
+        .where(eq(taskIntakeSubmissions.taskId, taskId));
+      const active = subs.find((s) => !s.withdrawnAt);
+      const withdrawn = subs.some((s) => s.withdrawnAt);
+      if (task.status !== 'submitted' || !active) {
+        // 已经撤回了（重复点击、两个人同时点）：返回当前资料
+        if (task.status === 'preparing' && withdrawn && !active) return;
+        throw new ConflictException({ statusCode: 409, message: NOT_WITHDRAWABLE_MESSAGE, code: 'not_withdrawable' });
+      }
+      if (withdrawn) throw new ConflictException({ statusCode: 409, message: WITHDRAW_USED_MESSAGE, code: 'withdraw_used' });
+      const [started] = await tx.select({ taskId: taskWorkups.taskId }).from(taskWorkups).where(eq(taskWorkups.taskId, taskId)).limit(1);
+      if (started || task.closedAt) {
+        throw new ConflictException({ statusCode: 409, message: EXPERT_STARTED_MESSAGE, code: 'expert_started' });
+      }
+      await tx.update(taskIntakeSubmissions).set({ withdrawnAt: now, withdrawnBy: user.id }).where(eq(taskIntakeSubmissions.id, active.id));
+      await tx.update(tasks).set({ status: 'preparing', submittedAt: null, updatedAt: now }).where(eq(tasks.id, taskId));
+    });
+    return this.get(user, taskId);
+  }
+
+  /**
+   * 删除任务：只有新流程、还在准备资料的（包括撤回以后的）。软删除，文件和提交记录都留着。
+   * 软删除不触发外键 cascade，这个任务的站内提醒在同一事务里删掉。不扣次数、不记操作记录、不发邮件
+   */
+  async deleteTask(user: SessionUser, taskId: string): Promise<void> {
+    const ctx = await this.context(user, taskId, false);
+    if (!ctx.mayEdit) throw new ForbiddenException(READ_ONLY_MESSAGE);
+    const now = new Date();
+    await this.db.transaction(async (tx) => {
+      await this.lockIntake(tx, taskId, UNDELETABLE_MESSAGE);
+      await tx.update(tasks).set({ deletedAt: now, deletedBy: user.id, updatedAt: now }).where(eq(tasks.id, taskId));
+      await tx.delete(notifications).where(eq(notifications.taskId, taskId));
+    });
   }
 
   async assertWritable(user: SessionUser, taskId: string): Promise<void> {
@@ -301,6 +432,43 @@ export class IntakeService {
       otherEnterprise: await this.otherEnterprise(user, task, warnings),
       previousSheet: await this.previousSheet(task),
       updatedAt: intake.updatedAt.toISOString(),
+      ...(await this.submissionState(ctx)),
+    };
+  }
+
+  // 已提交页要的：当前有效的提交、撤回过没有、专家开始核对没有、现在能不能撤回
+  private async submissionState(ctx: Ctx): Promise<Pick<IntakeView, 'submission' | 'withdrawnAt' | 'canWithdraw' | 'expertStarted'>> {
+    const taskId = ctx.task.id;
+    const [subs, [workup]] = await Promise.all([
+      this.db
+        .select({
+          submittedAt: taskIntakeSubmissions.submittedAt,
+          withdrawnAt: taskIntakeSubmissions.withdrawnAt,
+          snapshot: taskIntakeSubmissions.snapshot,
+          submittedByName: users.name,
+        })
+        .from(taskIntakeSubmissions)
+        .innerJoin(users, eq(users.id, taskIntakeSubmissions.submittedBy))
+        .where(eq(taskIntakeSubmissions.taskId, taskId)),
+      this.db.select({ taskId: taskWorkups.taskId }).from(taskWorkups).where(eq(taskWorkups.taskId, taskId)).limit(1),
+    ]);
+    const active = subs.find((s) => !s.withdrawnAt);
+    const withdrawnAt = subs.find((s) => s.withdrawnAt)?.withdrawnAt ?? null;
+    const expertStarted = Boolean(workup);
+    const submission: IntakeSubmissionView | null = active
+      ? {
+          submittedAt: active.submittedAt.toISOString(),
+          submittedByName: active.submittedByName,
+          files: active.snapshot.files,
+          noEvacuationMap: active.snapshot.noEvacuationMap,
+        }
+      : null;
+    return {
+      submission,
+      withdrawnAt: withdrawnAt?.toISOString() ?? null,
+      canWithdraw:
+        ctx.mayEdit && ctx.task.status === 'submitted' && !ctx.task.closedAt && submission !== null && !withdrawnAt && !expertStarted,
+      expertStarted,
     };
   }
 
@@ -363,6 +531,42 @@ function sheetView(
     oldTemplate: warnings.some((w) => w.kind === 'old_template'),
     sheets: DATA_SHEETS.map((name) => ({ name, missing: missing.filter((m) => m.sheet === name).length })),
   };
+}
+
+/**
+ * 锁住这个任务的 task_intakes 一行，再读任务。上传、删除文件、提交、撤回、删除任务、专家开始核对都先拿这把锁，
+ * 同一任务的这些事排队执行。不存在、已删除的报 404；状态由调用方判断
+ */
+export async function lockTaskRow(tx: Tx, taskId: string) {
+  const [intake] = await tx.select().from(taskIntakes).where(eq(taskIntakes.taskId, taskId)).for('update');
+  if (!intake) throw new NotFoundException(NOT_FOUND);
+  const [task] = await tx
+    .select({ status: tasks.status, deletedAt: tasks.deletedAt, closedAt: tasks.closedAt })
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1);
+  if (!task || task.deletedAt) throw new NotFoundException(NOT_FOUND);
+  return { intake, task };
+}
+
+async function activeSubmission(db: Database | Tx, taskId: string) {
+  const [row] = await db
+    .select({ id: taskIntakeSubmissions.id })
+    .from(taskIntakeSubmissions)
+    .where(and(eq(taskIntakeSubmissions.taskId, taskId), isNull(taskIntakeSubmissions.withdrawnAt)))
+    .limit(1);
+  return row;
+}
+
+/**
+ * 能不能提交给专家；不能的话给客户看的那句。和准备资料页「提交给专家」变亮是同一个规则：
+ * 资料表格读到了（不是「不像模板」，也不是「像别家企业的」），必填缺项为空（缺的两张图也算在里面）
+ */
+function submitBlocker(intake: typeof taskIntakes.$inferSelect, current: { fileId: string; slot: IntakeFileSlot }[]): string | null {
+  const sheet = current.find((f) => f.slot === 'data_sheet');
+  if (!sheet || intake.dataSheetFileId !== sheet.fileId || !intake.requiredCheck) return NO_SHEET_MESSAGE;
+  const n = intake.requiredCheck.missing.length;
+  return n > 0 ? missingMessage(n) : null;
 }
 
 /** 上传接口用：按位置取大小上限 */

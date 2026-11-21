@@ -3,7 +3,8 @@
 // 只记改内容的操作；打开、切页签、看预览不记。核对、审核结论每份只留最后一次，所以只能记最后一次。
 import { DRAFT_KIND_KEYS, DRAFT_KINDS, pendingCount, type DraftKind, type HistoryEntry } from '@genyun/shared';
 import { Controller, Get, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe } from '@nestjs/common';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { canViewTaskWork } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
@@ -36,7 +37,7 @@ export class HistoryService {
   ) {}
 
   async list(user: SessionUser, taskId: string): Promise<HistoryEntry[]> {
-    const [task] = await this.db.select({ id: tasks.id, assignedExpertId: tasks.assignedExpertId }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    const [task] = await this.db.select({ id: tasks.id, assignedExpertId: tasks.assignedExpertId }).from(tasks).where(and(eq(tasks.id, taskId), isNull(tasks.deletedAt))).limit(1);
     if (!task || !canViewTaskWork(user, task)) throw new NotFoundException('找不到该任务');
     const batches = await this.db
       .select({ id: generationBatches.id, createdAt: generationBatches.createdAt, byName: users.name })
@@ -60,13 +61,19 @@ export class HistoryService {
     return all.map(({ e }) => ({ ...e, at: e.at.toISOString() }));
   }
 
-  /** 客户提交资料：新流程上传 Excel 模板；旧任务按清单提交 */
+  /** 客户提交资料：新流程上传 Excel 模板；旧任务按清单提交。新流程撤回过的另记一条「客户撤回提交」 */
   private async submissions(taskId: string): Promise<Entry[]> {
-    const [intake, old] = await Promise.all([
+    const withdrawer = alias(users, 'withdrawer');
+    const [intake, withdrawn, old] = await Promise.all([
       this.db
         .select({ at: taskIntakeSubmissions.submittedAt, name: users.name })
         .from(taskIntakeSubmissions)
         .innerJoin(users, eq(users.id, taskIntakeSubmissions.submittedBy))
+        .where(eq(taskIntakeSubmissions.taskId, taskId)),
+      this.db
+        .select({ at: taskIntakeSubmissions.withdrawnAt, name: withdrawer.name })
+        .from(taskIntakeSubmissions)
+        .innerJoin(withdrawer, eq(withdrawer.id, taskIntakeSubmissions.withdrawnBy))
         .where(eq(taskIntakeSubmissions.taskId, taskId)),
       this.db
         .select({ at: taskSubmissions.submittedAt, name: users.name })
@@ -76,6 +83,7 @@ export class HistoryService {
     ]);
     return [
       ...intake.map((r) => entry(r.at, null, '客户提交资料', `${r.name}上传 Excel 模板`)),
+      ...withdrawn.flatMap((r) => (r.at ? [entry(r.at, null, '客户撤回提交', `${r.name}撤回了这次提交`)] : [])),
       ...old.map((r) => entry(r.at, null, '客户提交资料', `${r.name}提交`)),
     ];
   }

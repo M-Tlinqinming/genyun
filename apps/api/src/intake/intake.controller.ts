@@ -5,6 +5,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Inject,
   Param,
   ParseUUIDPipe,
@@ -26,6 +27,7 @@ import { TEMPLATE_DOWNLOAD_NAME, TEMPLATE_PATH } from './template.ts';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const noEvacuationSchema = z.object({ value: z.boolean() });
+const submitSchema = z.object({ requestId: z.string().uuid() });
 
 @Controller()
 export class IntakeController {
@@ -91,5 +93,28 @@ export class IntakeController {
     const parsed = noEvacuationSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException('请检查输入');
     return this.intake.setNoEvacuationMap(user, taskId, parsed.data.value);
+  }
+
+  // 提交给专家：requestId 由页面每次打开确认弹窗生成，重发只记一次
+  @Post('tasks/:taskId/intake/submit')
+  @HttpCode(200)
+  submit(@CurrentUser() user: SessionUser, @Param('taskId', ParseUUIDPipe) taskId: string, @Body() body: unknown) {
+    const parsed = submitSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException('请检查输入');
+    return this.intake.submit(user, taskId, parsed.data.requestId);
+  }
+
+  // 撤回提交：专家开始核对之前、只能一次
+  @Post('tasks/:taskId/intake/withdraw')
+  @HttpCode(200)
+  withdraw(@CurrentUser() user: SessionUser, @Param('taskId', ParseUUIDPipe) taskId: string) {
+    return this.intake.withdraw(user, taskId);
+  }
+
+  // 删除任务：只有新流程、还没提交给专家的
+  @Delete('tasks/:taskId')
+  @HttpCode(204)
+  async deleteTask(@CurrentUser() user: SessionUser, @Param('taskId', ParseUUIDPipe) taskId: string) {
+    await this.intake.deleteTask(user, taskId);
   }
 }

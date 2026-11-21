@@ -19,6 +19,7 @@ import { membershipsIn, useSession } from '../../../auth/session';
 import { ActionBar } from '../../../components/ActionBar';
 import { ContactLink } from '../../../components/ContactLink';
 import { CUSTOMER_STAGES, WizardLayout } from '../../../layouts/WizardLayout';
+import { DeleteTaskDialog, SubmitDialog } from '../submitted/dialogs';
 import { gy, type, weight } from '../../../theme/tokens';
 import {
   Card,
@@ -49,7 +50,8 @@ import {
 import { useUploads } from './useUploads';
 
 // 准备资料（12 页 U1–U2e，S02–S05）：下载资料模板，填好整份传上来，再传两张必填图。
-// 系统读表格、列出缺的必填；必填齐了「提交给专家」才能点（提交、删除任务在后续开发里接上）。
+// 系统读表格、列出缺的必填；必填齐了「提交给专家」才能点（确认弹窗 U2c）。还没提交的可以删除任务（S06）。
+// 撤回以后回到这里，顶部一直提示已撤回，直到再次提交（S01 ②）。
 
 const DRAWING_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.dwg,.dxf';
 const ACCEPT: Record<IntakeFileSlot, string> = {
@@ -140,6 +142,7 @@ function PrepareBody({
   const input = useRef<HTMLInputElement>(null);
   const slotRef = useRef<IntakeFileSlot>('data_sheet');
   const [askNoEvacuation, setAskNoEvacuation] = useState(false);
+  const [dialog, setDialog] = useState<'submit' | 'delete' | null>(null);
   const [saving, setSaving] = useState(false);
 
   const canEdit = view.canEdit;
@@ -227,16 +230,15 @@ function PrepareBody({
     <ActionBar
       danger={
         canEdit ? (
-          // 删除任务在后续开发里接上；现在点了不做什么
-          <Button type="link" danger style={{ padding: 0 }} onClick={() => undefined}>
+          <Button type="link" danger style={{ padding: 0 }} onClick={() => setDialog('delete')}>
             删除任务
           </Button>
         ) : undefined
       }
       note={note}
     >
-      {/* 提交给专家在后续开发里接上；必填齐了才可点 */}
-      <Button type="primary" disabled={!complete || !canEdit} onClick={() => undefined}>
+      {/* 必填齐了才可点；能不能提交以接口为准，规则和接口一致 */}
+      <Button type="primary" disabled={!complete || !canEdit} onClick={() => setDialog('submit')}>
         提交给专家
       </Button>
     </ActionBar>
@@ -268,6 +270,11 @@ function PrepareBody({
         </div>
         {!canEdit && (
           <TitledNotice tone="info">您可以查看这里的资料。上传和删除要由组织管理员，或负责这家企业的同事来做。</TitledNotice>
+        )}
+        {view.withdrawnAt && (
+          <TitledNotice tone="warning" title="已撤回，改好后再提交">
+            {stamp(view.withdrawnAt)} 撤回。已经传的表格、图纸和照片都还在。
+          </TitledNotice>
         )}
         <Notices view={view} enterpriseName={enterpriseName} canEdit={canEdit} pick={pick} />
         <UploadsCard entries={uploads.entries} onCancel={uploads.cancel} onRetry={uploads.retry} onDismiss={uploads.dismiss} />
@@ -302,6 +309,20 @@ function PrepareBody({
           提交后专家会看到您说明了没有。编制前还要补上这张图，客服会联系您。车间墙上贴的疏散图拍照也可以。
         </p>
       </Modal>
+      <SubmitDialog
+        open={dialog === 'submit'}
+        taskId={taskId}
+        enterpriseName={enterpriseName}
+        view={view}
+        onClose={() => setDialog(null)}
+      />
+      <DeleteTaskDialog
+        open={dialog === 'delete'}
+        taskId={taskId}
+        enterpriseName={enterpriseName}
+        view={view}
+        onClose={() => setDialog(null)}
+      />
     </WizardLayout>
   );
 }

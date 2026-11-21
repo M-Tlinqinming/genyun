@@ -143,7 +143,7 @@ export class OrgMembersController {
       .orderBy(desc(organizationContracts.createdAt))
       .limit(1);
     // 本服务期内建的任务：办理过几家企业、已交付几个、办理中几个
-    const inPeriod = and(eq(tasks.orgId, orgId), org.contractStartsAt ? gte(tasks.createdAt, new Date(`${org.contractStartsAt}T00:00:00+08:00`)) : undefined);
+    const inPeriod = and(eq(tasks.orgId, orgId), isNull(tasks.deletedAt), org.contractStartsAt ? gte(tasks.createdAt, new Date(`${org.contractStartsAt}T00:00:00+08:00`)) : undefined);
     const [stats] = await this.db.select({ enterprises: countDistinct(tasks.enterpriseId), all: count() }).from(tasks).where(inPeriod);
     const [delivered] = await this.db.select({ n: count() }).from(tasks).where(and(inPeriod, isNotNull(tasks.closedAt)));
 

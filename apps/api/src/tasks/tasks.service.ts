@@ -98,7 +98,7 @@ export class TasksService {
     const scope = enterpriseScope(user, orgId);
     if (Array.isArray(scope) && scope.length === 0) return [];
     const list = await this.selectTasks()
-      .where(and(eq(tasks.orgId, orgId), Array.isArray(scope) ? inArray(tasks.enterpriseId, scope) : undefined))
+      .where(and(eq(tasks.orgId, orgId), isNull(tasks.deletedAt), Array.isArray(scope) ? inArray(tasks.enterpriseId, scope) : undefined))
       .orderBy(desc(tasks.createdAt));
     if (list.length === 0) return [];
     const ids = list.map((t) => t.id);
@@ -135,7 +135,8 @@ export class TasksService {
 
   // 无权访问与不存在返回同样的结果，不暴露别家任务是否存在
   async load(user: SessionUser, id: string) {
-    const [found] = await this.selectTasks().where(eq(tasks.id, id)).limit(1);
+    // 客户删掉的任务谁都打不开
+    const [found] = await this.selectTasks().where(and(eq(tasks.id, id), isNull(tasks.deletedAt))).limit(1);
     if (!found) throw new NotFoundException(NOT_FOUND);
     if (!canViewTask(user, found)) {
       // 原负责专家打开旧链接：说明已改派给谁（他收到过这个任务的改派提醒才说，别人一律「找不到」）

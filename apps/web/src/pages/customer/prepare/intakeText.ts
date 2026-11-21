@@ -106,7 +106,9 @@ export function headline(v: IntakeView): { title: string; subtitle: string } {
 export function footerNote(v: IntakeView): string {
   if (phaseOf(v) === 'read') {
     const n = v.requiredCheck?.missing.length ?? 0;
-    return n === 0 ? '必填已齐，提交后专家开始核对' : `还差 ${n} 项必填，补齐后可以提交`;
+    if (n > 0) return `还差 ${n} 项必填，补齐后可以提交`;
+    // 撤回过一次的，再提交就不能撤回了
+    return v.withdrawnAt ? '这次提交后不能再撤回' : '必填已齐，提交后专家开始核对';
   }
   const d = missingDrawings(v);
   return d === 0 ? '还差资料表格，传齐后可以提交' : `还差资料表格和 ${d} 张必填图，传齐后可以提交`;

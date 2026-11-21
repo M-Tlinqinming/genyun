@@ -28,6 +28,21 @@ export function setNoEvacuationMap(taskId: string, value: boolean) {
   });
 }
 
+/** 提交给专家：requestId 每次打开确认弹窗生成一个，失败重试沿用，重发只记一次 */
+export function submitIntake(taskId: string, requestId: string) {
+  return request<IntakeView>(`/tasks/${taskId}/intake/submit`, { method: 'POST', body: JSON.stringify({ requestId }) });
+}
+
+/** 撤回提交：409 时 body.code 是 withdraw_used（撤回过了）或 expert_started（专家已开始核对） */
+export function withdrawIntake(taskId: string) {
+  return request<IntakeView>(`/tasks/${taskId}/intake/withdraw`, { method: 'POST' });
+}
+
+/** 删除任务：只有还没提交给专家的新流程任务 */
+export function deleteTask(taskId: string) {
+  return request<void>(`/tasks/${taskId}`, { method: 'DELETE' });
+}
+
 /** 上传被取消（点了「取消」），不当作出错 */
 export class UploadAbortedError extends Error {}
 
