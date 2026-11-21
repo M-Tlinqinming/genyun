@@ -1,30 +1,47 @@
 import { SearchOutlined } from '@ant-design/icons';
-import type { DeliveredVersion, TaskDeliveries } from '@genyun/shared';
+import { chinaToday, type DeliveredVersion, type TaskDeliveries } from '@genyun/shared';
 import { App, Button, Input, Result, Select } from 'antd';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { downloadBundle, downloadWord, useOrgDeliveries } from '../../../api/deliveries';
-import { useOrgTasks } from '../../../api/enterprises';
 import { ContactLink } from '../../../components/ContactLink';
+import { FileTypeIcon } from '../../../components/FileTypeIcon';
 import { Loading } from '../../../components/ui';
 import { useWorkspace } from '../../../layouts/workspace';
-import { gy, stage } from '../../../theme/tokens';
-import { card, lockText, stampShort, text14, textLink, textLinkDisabled, WordIcon } from './shared';
+import { gy, stage, type, weight } from '../../../theme/tokens';
+import { card, lockText, stampFull, stampShort, text14, textLink, textLinkDisabled, WORD_TYPE } from './shared';
 
-// C06 成果文档｜已交付成果检索：每个已交付任务一张卡，最新一次交付的三份 Word 放在一起；
-// 客户只看最新一次交付；按企业、任务编号、文档名称搜索
+type Period = 'all' | '30' | '90' | 'year';
+const PERIODS: { value: Period; label: string }[] = [
+  { value: 'all', label: '交付时间：全部' },
+  { value: '30', label: '最近 30 天' },
+  { value: '90', label: '最近 90 天' },
+  { value: 'year', label: '今年' },
+];
+const DAY = 86_400_000;
+
+function inPeriod(publishedAt: string, period: Period, now: Date) {
+  if (period === 'all') return true;
+  if (period === 'year') return chinaToday(new Date(publishedAt)).slice(0, 4) === chinaToday(now).slice(0, 4);
+  return now.getTime() - new Date(publishedAt).getTime() <= Number(period) * DAY;
+}
+
+// C06 成果文档｜每个已交付任务一张卡，最新一次交付的三份 Word 放在一起（客户只看最新一次交付）；
+// 按企业、任务编号、文档名称搜索，按企业、交付时间筛选。正在办理的任务在工作台和任务列表里看
 export function DocumentsPage() {
   const { orgId } = useWorkspace();
   const list = useOrgDeliveries(orgId);
-  const tasks = useOrgTasks(orgId);
   const [keyword, setKeyword] = useState('');
   const [enterprise, setEnterprise] = useState('all');
+  const [period, setPeriod] = useState<Period>('all');
+  const now = new Date();
 
   const all = list.data ?? [];
   const k = keyword.trim().toUpperCase();
   const cards = all
     .filter((t) => enterprise === 'all' || t.enterpriseId === enterprise)
     .flatMap((t) => t.versions.slice(0, 1).map((v) => ({ task: t, version: v })))
+    .filter(({ version }) => inPeriod(version.publishedAt, period, now))
     .filter(
       ({ task, version }) =>
         !k ||
@@ -33,13 +50,12 @@ export function DocumentsPage() {
         version.files.some((f) => f.name.toUpperCase().includes(k)),
     );
   const enterprises = [...new Map(all.map((t) => [t.enterpriseId, t.enterpriseName])).entries()];
-  const inProgress = (tasks.data ?? []).filter((t) => t.closedAt === null).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <h1 style={{ margin: 0, fontSize: 28, lineHeight: '40px', fontWeight: 500, color: gy.text }}>成果文档</h1>
-        <span style={{ ...text14, color: gy.secondary }}>专家审核后交付的成果。三份 Word 始终放在一起，有更新时这里只保留最新的一套。</span>
+        <h1 style={{ margin: 0, ...type.pageTitle, fontWeight: weight.strong, color: gy.text }}>成果文档</h1>
+        <span style={{ ...type.body, color: gy.secondary }}>专家交付的三份 Word 都在这里，同一次交付的放在一起。</span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -49,15 +65,16 @@ export function DocumentsPage() {
           prefix={<SearchOutlined style={{ color: gy.tertiary }} />}
           placeholder="搜索企业 / 任务编号 / 文档名称"
           onChange={(e) => setKeyword(e.target.value)}
-          style={{ flex: 1 }}
+          style={{ width: 280, flexShrink: 0 }}
         />
         <Select
           aria-label="按企业筛选"
           value={enterprise}
           onChange={setEnterprise}
-          style={{ width: 168, flexShrink: 0 }}
+          style={{ width: 160, flexShrink: 0 }}
           options={[{ value: 'all', label: '企业：全部' }, ...enterprises.map(([id, name]) => ({ value: id, label: name }))]}
         />
+        <Select aria-label="按交付时间筛选" value={period} onChange={setPeriod} style={{ width: 160, flexShrink: 0 }} options={PERIODS} />
       </div>
 
       {list.isPending ? (
@@ -72,17 +89,6 @@ export function DocumentsPage() {
         cards.map(({ task, version }) => <DeliveryCard key={task.taskId} task={task} version={version} />)
       )}
 
-      {inProgress > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderRadius: 8, background: gy.selected }}>
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ ...text14, fontWeight: 500, color: gy.text }}>还有 {inProgress} 项任务在办理中</span>
-            <span style={{ ...text14, color: gy.secondary }}>成果经专家审核并交付后才会出现在这里。办理进度请在任务中查看。</span>
-          </div>
-          <Link to="/customer/tasks" style={textLink}>
-            查看任务 →
-          </Link>
-        </div>
-      )}
     </div>
   );
 }
@@ -123,29 +129,32 @@ function DeliveryCard({ task, version }: { task: TaskDeliveries; version: Delive
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '20px 24px', borderBottom: `1px solid ${gy.split}` }}>
         <div style={{ flex: lock ? '3 1 0' : 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>{task.enterpriseName}</span>
+            <span style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>{task.enterpriseName}</span>
             {!lock && (
-              <span style={{ padding: '0 8px', borderRadius: 4, fontSize: 13, lineHeight: '20px', color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
+              <span style={{ padding: '0 8px', borderRadius: 4, ...type.caption, color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
                 {state}
               </span>
             )}
           </div>
-          <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>
-            {`${task.taskName} · ${task.taskNumber} · ${stampShort(version.publishedAt)} `}
-            {lock ? '专家已完成' : `${state === '已更新' ? '更新' : '交付'} · 专家审核通过`}
+          <span style={{ ...type.caption, color: gy.secondary }}>
+            {lock
+              ? `${task.taskNumber} · ${task.taskName} · ${stampFull(version.publishedAt)} 专家已完成`
+              : `${task.taskNumber} · ${task.taskName} · ${stampShort(version.publishedAt)} ${state === '已更新' ? '更新' : '交付'}`}
           </span>
         </div>
         {lock && (
           <>
             <div style={{ width: 180, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-              <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 12, lineHeight: '20px', color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
+              <span style={{ padding: '0 8px', borderRadius: 4, ...type.caption, color: tone.color, background: tone.bg, whiteSpace: 'nowrap' }}>
                 {lock.tag}
               </span>
             </div>
-            <span style={{ ...text14, flex: '2 1 0', minWidth: 0, color: gy.secondary }}>{lock.line}</span>
+            <span style={{ ...type.caption, flex: '2 1 0', minWidth: 0, color: gy.secondary }}>{lock.line}</span>
           </>
         )}
-        <Button onClick={() => navigate(detail)}>查看交付详情</Button>
+        <Button onClick={() => navigate(detail)} style={{ flexShrink: 0, borderColor: gy.border }}>
+          {lock ? '查看' : '查看交付详情'}
+        </Button>
         {lock ? (
           isAdmin && (
             <ContactLink
@@ -158,7 +167,7 @@ function DeliveryCard({ task, version }: { task: TaskDeliveries; version: Delive
             />
           )
         ) : (
-          <Button type="primary" loading={bundling} onClick={() => void bundle()}>
+          <Button type="primary" loading={bundling} onClick={() => void bundle()} style={{ flexShrink: 0 }}>
             下载整套 Word
           </Button>
         )}
@@ -175,7 +184,7 @@ function DeliveryCard({ task, version }: { task: TaskDeliveries; version: Delive
             borderBottom: i < version.files.length - 1 ? `1px solid ${gy.split}` : undefined,
           }}
         >
-          <WordIcon />
+          <FileTypeIcon contentType={WORD_TYPE} />
           <span style={{ ...text14, flex: 1, minWidth: 0, color: gy.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
           <button
             type="button"

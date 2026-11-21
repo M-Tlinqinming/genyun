@@ -144,7 +144,7 @@ test('审核通过后交付；结果不确定时先查询，再点不会出第�
   await note.click();
   // 提醒直接打开成果文档里这项任务的交付详情
   await expect(customer).toHaveURL(new RegExp(`/customer/documents/${taskId}`));
-  await expect(customer.getByText('三份文档已交付', { exact: true })).toBeVisible();
+  await expect(customer.getByRole('region', { name: '交付文件' })).toContainText(/已交付|已更新/);
   await customer.waitForTimeout(300);
   await customer.screenshot({ path: 'test-results/acceptance/m2-15-customer-delivered.png' });
   await ctx.close();

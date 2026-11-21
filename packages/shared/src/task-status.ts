@@ -162,7 +162,7 @@ function customerView(i: TaskViewInput): TaskView {
       key: 'delivered',
       label: '已交付',
       tone: 'done',
-      nextStep: '成果已交付，三份 Word 可以下载',
+      nextStep: i.lastDelivery.kind === 'update' ? '成果已更新，三份 Word 可以下载' : '成果已交付，三份 Word 可以下载',
       detail: i.lastDelivery.kind === 'update' ? '已更新' : '专家已交付',
       stageLabel: '已交付',
       needsAction: false,
@@ -224,6 +224,17 @@ function customerView(i: TaskViewInput): TaskView {
 }
 
 const LEGACY_LINE = '这个任务按原来的方式办理，现在只能查看';
+
+/** 客户任务列表的页签：todo 待我处理、expert 专家编制、delivered 已交付；null = 只在「全部」里出现 */
+export type CustomerTaskTab = 'todo' | 'expert' | 'delivered';
+
+export function customerTaskTab(v: Pick<TaskView, 'needsAction' | 'stage'>): CustomerTaskTab | null {
+  if (v.needsAction) return 'todo';
+  const stage = TASK_VIEW_STAGES.customer[v.stage];
+  if (stage === '专家编制') return 'expert';
+  if (stage === '已交付') return 'delivered';
+  return null;
+}
 
 // 旧流程、还没交付的任务：专家、运营端也只读显示（DEV-PLAN 第七节第 10 条），
 // 标签和分组照常，第二行换成旧流程说明，不进「待我处理」。已交付的照常显示

@@ -14,6 +14,7 @@ import {
   formatAdminNames,
   giftCampaignTotals,
   giftUsage,
+  isCreditContractActive,
   pickAdjustContract,
   pickDeduction,
   contractPoolBalance,
@@ -401,7 +402,37 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
       .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
       .where(and(eq(tasks.orgId, orgId), eq(tasks.chargeStatus, 'awaiting_credits'), isNull(tasks.deletedAt)))
       .orderBy(asc(tasks.createdAt), asc(tasks.number));
-    return { ...creditSummary(ledger.contracts, ledger.entries), awaitingTasks };
+    // 次数记录：只列生效合同上的，和「共」「已用」一个口径；不给原因和操作人
+    const today = chinaToday();
+    const active = ledger.contracts.filter((c) => isCreditContractActive(c, today)).map((c) => c.id);
+    const rows = active.length
+      ? await this.db
+          .select({
+            id: creditEntries.id,
+            type: creditEntries.type,
+            delta: creditEntries.delta,
+            pool: creditEntries.pool,
+            campaign: creditEntries.campaign,
+            taskNumber: tasks.number,
+            enterpriseName: enterprises.name,
+            contractStartsAt: organizationContracts.startsAt,
+            contractEndsAt: organizationContracts.endsAt,
+            createdAt: creditEntries.createdAt,
+          })
+          .from(creditEntries)
+          .innerJoin(organizationContracts, eq(organizationContracts.id, creditEntries.contractId))
+          .leftJoin(tasks, eq(tasks.id, creditEntries.taskId))
+          .leftJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
+          .where(and(eq(creditEntries.orgId, orgId), inArray(creditEntries.contractId, active)))
+          .orderBy(desc(creditEntries.createdAt), desc(creditEntries.id))
+      : [];
+    const entries = rows.map((r) => ({
+      ...r,
+      taskNumber: r.type === 'delivery_deduction' ? r.taskNumber : null,
+      enterpriseName: r.type === 'delivery_deduction' ? r.enterpriseName : null,
+      createdAt: r.createdAt.toISOString(),
+    }));
+    return { ...creditSummary(ledger.contracts, ledger.entries, today), awaitingTasks, entries };
   }
 
   // 运营看一个组织的次数（16 页「编制次数」卡片、「调整次数」「次数记录」）

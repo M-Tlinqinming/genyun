@@ -353,7 +353,10 @@ describe('扣不到：成果先锁住', () => {
     // 成果列表带锁住原因和管理员名字
     const list: TaskDeliveries[] = (await chen.get(`/api/orgs/${org.a}/deliveries`).expect(200)).body;
     expect(list.find((d) => d.taskId === t2)!.lock).toEqual({ reason: 'credits', adminNames: '陈志刚、王经理' });
-    expect(list.find((d) => d.versions.length === 2)!.lock).toBeNull();
+    // 交付过两次的那份（重新打开后再交付）：客户只拿到最新一版，没锁
+    const again = list.find((d) => d.versions[0]!.version === 2)!;
+    expect(again).toMatchObject({ lock: null });
+    expect(again.versions).toHaveLength(1);
     // 成员只拿到管理员名字，不带原因；专家、运营不带锁住信息
     expect((await member.get(`/api/tasks/${t2}/deliveries`).expect(200)).body.lock).toEqual({ adminNames: '陈志刚、王经理' });
     const memberList: TaskDeliveries[] = (await member.get(`/api/orgs/${org.a}/deliveries`).expect(200)).body;
@@ -395,6 +398,24 @@ describe('扣不到：成果先锁住', () => {
 
     const mine: OrgCredits = (await (await as('chen@test.cn')).get(`/api/orgs/${org.a}/credits`).expect(200)).body;
     expect(mine.awaitingTasks.map((t) => t.taskId)).toEqual([t2, t3]);
+    // 次数记录：和运营看到的同一批（都在生效合同上），新的在前；不带原因、操作人、合同编号
+    expect(mine.entries.map((e) => e.id)).toEqual(view.entries.map((e) => e.id));
+    for (const e of mine.entries) {
+      expect(e).not.toHaveProperty('reason');
+      expect(e).not.toHaveProperty('createdByName');
+      expect(e).not.toHaveProperty('contractNumber');
+    }
+    expect(mine.entries.find((e) => e.type === 'delivery_deduction')).toMatchObject({
+      delta: -1,
+      pool: 'gift',
+      taskNumber: deduction.taskNumber,
+      enterpriseName: deduction.enterpriseName,
+      contractEndsAt: '2099-12-31',
+    });
+    expect(mine.entries.find((e) => e.type === 'gift')).toMatchObject({ campaign: '开通赠送', taskNumber: null, enterpriseName: null });
+    // 只有过期合同的组织：次数记录为空
+    const expiredOrg: OrgCredits = (await (await as('b-admin@test.cn')).get(`/api/orgs/${org.b}/credits`).expect(200)).body;
+    expect(expiredOrg).toMatchObject({ validUntil: null, entries: [] });
     await (await as('member@test.cn')).get(`/api/orgs/${org.a}/credits`).expect(403);
     expect([403, 404]).toContain((await (await as('zhou@test.cn')).get(`/api/orgs/${org.a}/credits`)).status);
     await (await as('b-admin@test.cn')).get(`/api/orgs/${org.a}/credits`).expect(404);

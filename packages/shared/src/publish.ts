@@ -111,6 +111,8 @@ export interface DeliveredVersion {
   publishedAt: string;
   /** 三份 Word，按应急预案、风险评估报告、应急资源调查报告排 */
   files: DeliveredFile[];
+  /** 再次交付时专家写的更新说明；首次交付或没写时为 null */
+  updateNote: string | null;
 }
 
 /** 一个任务的成果：已形成的交付版本，新的在前 */

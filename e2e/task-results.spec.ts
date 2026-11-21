@@ -34,9 +34,9 @@ test('客户在成果文档里看到已交付的成果，下载三份 Word 和�
 
   // 工作台「最近交付」写明已交付（不显示 V1、V2），点进去就是交付详情
   const recent = page.getByRole('region', { name: '最近交付' });
-  await expect(recent).toContainText('专家已审核并交付，三份 Word 可直接查看和下载。');
+  await expect(recent).toContainText(/(交付|更新)，三份 Word 可下载/);
   await expect(recent).not.toContainText(/V\d/);
-  await recent.getByRole('button', { name: /查看编制成果/ }).click();
+  await recent.getByRole('button', { name: /^查看成果 惠阳飞宇/ }).first().click();
   await expect(page).toHaveURL(/\/customer\/documents\/[0-9a-f-]{36}$/);
   const taskId = page.url().split('/').pop()!;
 
@@ -71,7 +71,7 @@ test('客户在成果文档里看到已交付的成果，下载三份 Word 和�
   await card.getByRole('button', { name: '查看交付详情' }).click();
   await expect(page).toHaveURL(new RegExp(`/customer/documents/${taskId}$`));
   await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司 · 编制成果' })).toBeVisible();
-  await expect(page.getByText('三份文档已交付', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '交付文件' })).toContainText(/已交付|已更新/);
   await expect(page.locator('main')).not.toContainText(/V\d/);
   await shots(page, 'delivery');
   const bundle = page.waitForEvent('download');
@@ -87,7 +87,7 @@ test('客户在成果文档里看到已交付的成果，下载三份 Word 和�
   );
 
   // 反馈入口：提交给耕云受理（带上这个任务和交付时间），不显示专家电话
-  await page.getByRole('button', { name: '反馈文稿问题' }).click();
+  await page.getByRole('button', { name: '联系客服', exact: true }).click();
   const feedback = page.getByRole('dialog', { name: '反馈文稿问题' });
   await expect(feedback).toContainText('惠阳飞宇电器有限公司 · ');
   await expect(feedback).toContainText(/\d{4}\.\d{2}\.\d{2}.*已交付/);
@@ -101,8 +101,8 @@ test('客户在成果文档里看到已交付的成果，下载三份 Word 和�
 
   // 任务「已交付」写明成果已交付（不显示版本号）
   await page.goto('/customer/tasks?tab=delivered');
-  const row = page.getByRole('row', { name: /惠阳飞宇电器有限公司/ });
-  await expect(row).toContainText('成果已交付，可查看和下载');
+  const row = page.locator('[data-testid^="task-GY-"]').filter({ hasText: '惠阳飞宇电器有限公司' }).first();
+  await expect(row).toContainText(/成果已(交付|更新)，三份 Word 可以下载/);
 
   // 旧地址（在线阅读、旧的填写向导）收藏过的：跳到现在对应的页面，不进登录页
   await page.goto(`/customer/documents/${taskId}/read/plan`);

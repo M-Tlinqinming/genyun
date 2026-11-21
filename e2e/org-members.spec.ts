@@ -123,7 +123,8 @@ test('企业分配、年度服务、组织资料', async () => {
   await page.getByRole('tab', { name: '年度服务' }).click();
   await expect(page.getByRole('region', { name: '年度服务' })).toContainText('服务期');
   await expect(page.getByRole('region', { name: '服务内容' })).toContainText('本年已办理');
-  await expect(page.getByText('到期后会怎样')).toBeVisible();
+  await expect(page.getByRole('region', { name: '编制次数' })).toBeVisible();
+  await expect(page.getByText('到期后会怎样')).toHaveCount(0);
   await page.screenshot({ path: 'out/m3-7-service.png', fullPage: true });
 
   await page.getByRole('tab', { name: '组织资料' }).click();
