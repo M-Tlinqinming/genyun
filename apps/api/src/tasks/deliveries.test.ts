@@ -257,7 +257,7 @@ describe('成果文档', () => {
     }
   });
 
-  it('第二次交付：按 V2、V1 列出，V1 仍能单独下载', async () => {
+  it('第二次交付：客户只拿到最新一版并带更新说明，专家、运营按新到旧拿全部；旧版仍能单独下载', async () => {
     const { db } = handle;
     const [v1] = await db.select().from(deliveries).where(eq(deliveries.taskId, taskId));
     const v1Files = await db.select().from(deliveryFiles).where(eq(deliveryFiles.deliveryId, v1!.id));
@@ -279,6 +279,7 @@ describe('成果文档', () => {
         versions: v1!.versions,
         publishedBy: v1!.publishedBy,
         publishedAt: new Date(v1!.publishedAt!.getTime() + 60_000),
+        updateNote: '按企业新提供的平面图更新了疏散路线。',
       })
       .returning();
     await db.insert(deliveryFiles).values(v1Files.map((f) => ({ deliveryId: v2!.id, kind: f.kind, fileId: f.fileId })));
@@ -297,7 +298,19 @@ describe('成果文档', () => {
 
     const feiyu = await as('feiyu@test.cn');
     const detail: TaskDeliveries = (await feiyu.get(base()).expect(200)).body;
-    expect(detail.versions.map((v) => v.version)).toEqual([2, 1]);
+    expect(detail.versions.map((v) => v.version)).toEqual([2]);
+    expect(detail.versions[0]!.updateNote).toBe('按企业新提供的平面图更新了疏散路线。');
+    const list: TaskDeliveries[] = (await feiyu.get(`/api/orgs/${orgId}/deliveries`).expect(200)).body;
+    expect(list.find((d) => d.taskId === taskId)!.versions.map((v) => v.version)).toEqual([2]);
+    const member: TaskDeliveries = (await (await as('member@test.cn')).get(base()).expect(200)).body;
+    expect(member.versions.map((v) => v.version)).toEqual([2]);
+    for (const email of ['ops@test.cn', 'zhou@test.cn']) {
+      const all: TaskDeliveries = (await (await as(email)).get(base()).expect(200)).body;
+      expect(all.versions.map((v) => [v.version, v.updateNote])).toEqual([
+        [2, '按企业新提供的平面图更新了疏散路线。'],
+        [1, null],
+      ]);
+    }
     await feiyu.get(`${base()}/1/bundle`).expect(200);
     await feiyu.get(`${base()}/3/bundle`).expect(404);
     const tasksList = (await feiyu.get(`/api/orgs/${orgId}/tasks`).expect(200)).body as { id: string; delivery: { version: number } }[];

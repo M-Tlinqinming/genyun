@@ -379,9 +379,55 @@ export interface OperatorOrgCredits extends OrgCreditsBrief {
   giftCampaigns: { campaign: string; total: number }[];
 }
 
-/** 组织管理员看自己组织的次数（K7 工作台用） */
+/** 组织管理员看到的一条次数记录（年度服务页「次数记录」）：只列生效合同上的，不带原因和操作人 */
+export interface CustomerCreditEntry {
+  id: string;
+  type: CreditEntryType;
+  delta: number;
+  pool: CreditPool;
+  campaign: string | null;
+  taskNumber: string | null;
+  enterpriseName: string | null;
+  /** 合同起止，YYYY-MM-DD */
+  contractStartsAt: string;
+  contractEndsAt: string;
+  createdAt: string;
+}
+
+/** 组织管理员看自己组织的次数（工作台、年度服务页） */
 export interface OrgCredits extends CreditSummary {
   awaitingTasks: { taskId: string; taskNumber: string; enterpriseName: string }[];
+  /** 生效合同上的次数记录，新的在前 */
+  entries: CustomerCreditEntry[];
+}
+
+const dotDate = (d: string) => d.replaceAll('-', '.');
+
+/** 次数记录的「说明」一栏（客户看的说法） */
+export function customerCreditEntryText(
+  e: Pick<CustomerCreditEntry, 'type' | 'delta' | 'pool' | 'campaign' | 'taskNumber' | 'enterpriseName' | 'contractStartsAt' | 'contractEndsAt'>,
+): string {
+  if (e.type === 'delivery_deduction') {
+    const head = [e.enterpriseName, e.taskNumber].filter(Boolean).join(' · ');
+    const pool = e.pool === 'gift' ? '赠送' : '购买';
+    return `${head ? `${head} · ` : ''}已交付 · 用的是${pool}的次数`;
+  }
+  if (e.delta < 0) return '耕云调整';
+  switch (e.type) {
+    case 'gift':
+      return `${e.campaign?.trim() || '耕云赠送'} · 跟合同一起到期`;
+    case 'compensation':
+      return '耕云补偿 · 跟合同一起到期';
+    case 'top_up':
+      return '合同外加购 · 跟合同一起到期';
+    case 'contract_purchase':
+      return `年度服务合同 · ${dotDate(e.contractStartsAt)} — ${dotDate(e.contractEndsAt)}`;
+  }
+}
+
+/** 次数一栏：「+ 2」「− 1」（减号是 U+2212） */
+export function formatCreditDelta(delta: number): string {
+  return delta < 0 ? `− ${-delta}` : `+ ${delta}`;
 }
 
 /** 调整次数接口返回 */

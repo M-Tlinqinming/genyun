@@ -21,6 +21,8 @@ export type TaskViewFacts = Omit<TaskViewInput, 'now' | 'viewer'> & {
   assignedAt: Date | null;
   /** 最近更新：任务、资料核对、最新一批生成、改稿、资料上传里最晚的时间 */
   activityAt: Date;
+  /** 客户最近一次动资料：上传、移除资料表格或图纸，撤回提交；都没有为 null */
+  materialChangedAt: Date | null;
 };
 
 const latest = (dates: readonly (Date | null | undefined)[]): Date | null => {
@@ -169,6 +171,10 @@ export async function loadTaskViewInputs(db: Database, taskIds: readonly string[
           ...(batch ? (editsOf.get(batch.id) ?? []) : []).map((e) => e.updatedAt),
           ...(filesOf.get(t.id) ?? []).map((f) => f.uploadedAt),
         ]) ?? t.updatedAt,
+      materialChangedAt: latest([
+        ...(filesOf.get(t.id) ?? []).flatMap((f) => [f.uploadedAt, f.removedAt]),
+        ...subs.map((s) => s.withdrawnAt),
+      ]),
     });
   }
   return result;

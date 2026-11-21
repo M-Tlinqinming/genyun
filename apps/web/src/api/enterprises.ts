@@ -1,4 +1,4 @@
-import type { EnterpriseInput, EnterpriseUpdate, StartMethod, TaskStatus } from '@genyun/shared';
+import type { EnterpriseInput, EnterpriseUpdate, StartMethod, TaskStatus, TaskView } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
 
@@ -33,6 +33,12 @@ export interface TaskSummary {
   activityAt: string;
   /** 最新的交付版本（已发布才有） */
   delivery: { version: number; publishedAt: string } | null;
+  /** 客户端三段状态（标签、下一步、要不要处理） */
+  view: TaskView;
+  /** 「更新」列的时间：交付、提交或最近一次动资料 */
+  updatedOn: string;
+  /** 成果锁住时提示联系的组织管理员名字；没锁为 null */
+  adminNames: string | null;
 }
 
 export const enterpriseKeys = {
