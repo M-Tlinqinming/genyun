@@ -1,5 +1,6 @@
 import { UPLOAD_RULES, fileRejectionReason, type IntakeFileSlot, type IntakeView } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
+import { App } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { UploadAbortedError, intakeKey, uploadIntakeFile } from '../../../api/intake';
 import { ApiError } from '../../../api/request';
@@ -22,6 +23,19 @@ export interface UploadEntry {
 }
 
 export const NETWORK_FAILED = '没传上去，网络可能断了。请再试一次。';
+/** 同一栏里传了内容完全一样的图：服务器没再存，提示 3 秒，不多出一行 */
+export const DUPLICATE_NOTICE = '这张已经传过了';
+export const SERVER_FAILED = '没传上去，耕云服务暂时出了问题，请稍后再试。';
+
+/**
+ * 上传出错时这一行怎么说（S02）：断网、超时说网络；服务器 5xx 说耕云服务的问题（都能重试）；
+ * 4xx 是服务器拒收（压缩包、格式、大小），照旧显示服务器给的原因，只能移除
+ */
+export function uploadFailure(err: unknown): UploadState {
+  if (err instanceof ApiError && err.status >= 400 && err.status < 500) return { kind: 'rejected', message: err.message };
+  if (err instanceof ApiError && err.status >= 500) return { kind: 'failed', message: SERVER_FAILED };
+  return { kind: 'failed', message: NETWORK_FAILED };
+}
 
 const ruleOf = (slot: IntakeFileSlot) => (slot === 'data_sheet' ? 'intake_sheet' : 'intake_drawing');
 
@@ -41,6 +55,7 @@ async function localRejection(slot: IntakeFileSlot, file: File): Promise<string 
 
 export function useUploads(taskId: string) {
   const queryClient = useQueryClient();
+  const { message } = App.useApp();
   const [entries, setEntries] = useState<UploadEntry[]>([]);
   const aborts = useRef(new Map<number, () => void>());
   const nextKey = useRef(1);
@@ -73,21 +88,20 @@ export function useUploads(taskId: string) {
       );
       aborts.current.set(key, abort);
       try {
-        const view = await done;
+        const { duplicate, ...view } = await done;
         queryClient.setQueryData<IntakeView>(intakeKey(taskId), view);
         patch(key, null);
+        if (duplicate) void message.info(DUPLICATE_NOTICE, 3);
       } catch (err) {
         if (err instanceof UploadAbortedError) patch(key, null);
-        else if (err instanceof ApiError && err.status > 0 && err.status < 500)
-          patch(key, { kind: 'rejected', message: err.message });
-        else patch(key, { kind: 'failed', message: NETWORK_FAILED });
+        else patch(key, uploadFailure(err));
       } finally {
         aborts.current.delete(key);
         // 资料表格可能按表格改了企业名称：连任务详情（页头的企业名）一起刷新
         void queryClient.invalidateQueries({ queryKey: slot === 'data_sheet' ? taskKey(taskId) : intakeKey(taskId) });
       }
     },
-    [patch, queryClient, taskId],
+    [patch, queryClient, taskId, message],
   );
 
   const start = useCallback(

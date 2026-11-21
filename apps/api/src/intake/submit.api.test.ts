@@ -25,6 +25,8 @@ import { newMissing, notTemplate, renamed } from './test-workbooks.ts';
 
 const PASSWORD = 'correct horse battery staple';
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+// 撤回后补拍的另一张照片：内容要和「现场.png」不一样，同一栏里一样的只存一份
+const PNG2 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 2]);
 const PDF = Buffer.from('%PDF-1.7\n% 图纸\n');
 
 let handle: DatabaseHandle;
@@ -220,7 +222,7 @@ describe('撤回', () => {
     expect(view(await withdraw(taskId)).withdrawnAt).toBe(v.withdrawnAt);
 
     // 撤回后还能改，再提交
-    await put(taskId, 'other', PNG, '补拍.png');
+    await put(taskId, 'other', PNG2, '补拍.png');
     const again = view(await submit(taskId));
     expect(again.canWithdraw).toBe(false);
     expect(again.withdrawnAt).toBe(v.withdrawnAt);
