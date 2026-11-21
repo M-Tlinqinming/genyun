@@ -492,7 +492,8 @@ describe('年度服务', () => {
     const res = await admin.get('/api/notifications').expect(200);
     const reminders = (res.body.items as { title: string; body: string; link: string }[]).filter((n) => n.title === '年度服务即将到期');
     expect(reminders).toHaveLength(1);
-    expect(reminders[0]!.body).toContain('还有 20 天');
+    const [, m, d] = endsIn(20).split('-').map(Number);
+    expect(reminders[0]!.body).toBe(`年度服务 ${m} 月 ${d} 日到期，到期后不能新建任务。续约请联系耕云。`);
     expect(reminders[0]!.link).toBe('/customer/organization?tab=service');
     const zhang = await as('zhang@test.cn');
     const memberItems = (await zhang.get('/api/notifications').expect(200)).body.items as { title: string }[];

@@ -1,4 +1,4 @@
-// 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05）：已交付的三份 Word 按交付先后列出（客户只看最新一次），
+// 客户成果文档（M2 第 16 项，11 页 C06；15 页 R05）：已交付的三份 Word 按交付先后列出（本组织的客户只拿最新一版），
 // 单份下载（走 /files/:id/download-url）、整套下载（三份打包成一个压缩包）。在线阅读已取消。
 // 谁能看由 access.ts 的 canViewDeliveries / canViewOrganization 决定；别家客户、其他专家一律 404，不暴露任务是否存在
 import { DRAFT_KIND_KEYS, deliveryBundleName, safeFileName, type DeliveredVersion, type TaskDeliveries } from '@genyun/shared';
@@ -146,8 +146,11 @@ export class DeliveriesService {
     }
 
     return list.flatMap((t): TaskDeliveries[] => {
+      // 本组织的客户只拿最新一版；专家、运营照旧拿全部
+      const latestOnly = !!customerMembership(user, t.orgId);
       const versions = done
         .filter((d) => d.taskId === t.id)
+        .slice(0, latestOnly ? 1 : undefined)
         .map(
           (d): DeliveredVersion => ({
             version: d.version,
@@ -157,6 +160,7 @@ export class DeliveriesService {
                 .filter((f) => f.deliveryId === d.id && f.kind === kind)
                 .map((f) => ({ kind, name: f.name, fileId: f.fileId, sizeBytes: f.sizeBytes })),
             ),
+            updateNote: d.updateNote?.trim() || null,
           }),
         );
       if (versions.length === 0 && !keepEmpty) return [];
