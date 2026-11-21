@@ -2,7 +2,7 @@ import type { TaskDeliveries } from '@genyun/shared';
 import type { CSSProperties } from 'react';
 import { gy } from '../../../theme/tokens';
 
-// 成果文档两个页面共用的小件：发布时间写法、Word 图标、文字按钮
+// 成果文档两个页面共用的小件：交付时间写法、文字按钮、锁住时的文字
 
 const fmt = (iso: string, opts: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, ...opts }).formatToParts(new Date(iso));
@@ -21,16 +21,8 @@ export function stampShort(iso: string): string {
   return `${part(p, 'month')}.${part(p, 'day')} ${part(p, 'hour')}:${part(p, 'minute')}`;
 }
 
-// Word 文件图标（设计稿 C06 的 20×20 线框图标）
-export function WordIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden style={{ flexShrink: 0 }}>
-      <path d="M5 2.5h6.5L15.5 6.5V17a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5Z" fill="none" stroke={gy.primary} strokeWidth="1.2" />
-      <path d="M11.5 2.5V6.5H15.5" fill="none" stroke={gy.primary} strokeWidth="1.2" />
-      <path d="M7 10l1 4 1.5-3 1.5 3 1-4" fill="none" stroke={gy.primary} strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+// 交付的三份都是 Word，文件图标按这个类型画
+export const WORD_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 export const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 
@@ -51,7 +43,6 @@ export const card: CSSProperties = {
   border: `1px solid ${gy.split}`,
   borderRadius: 8,
 };
-
 
 // 成果锁住（编制次数用完或年度服务到期，等续约）时的文字。次数、续约这些字只给管理员看
 export type DeliveryLock = NonNullable<TaskDeliveries['lock']>;
