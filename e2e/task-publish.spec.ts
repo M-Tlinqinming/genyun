@@ -72,7 +72,7 @@ test('首次交付：结果不确定时先查询，再点不会出第二次交�
   const conclusion = page.getByRole('textbox', { name: '审核结论' });
   await conclusion.fill('三份文稿已逐章核对，与资料一致。');
   await page.getByRole('button', { name: '定稿并交付' }).click();
-  const confirm = page.getByRole('dialog', { name: '确认定稿并交付？' });
+  const confirm = page.getByRole('alertdialog', { name: '确认定稿并交付？' });
   await expect(confirm).toBeVisible();
   await expect(confirm).toContainText('登录就能下载三份 Word');
   await expect(confirm.getByRole('textbox')).toHaveCount(0);
@@ -87,7 +87,7 @@ test('首次交付：结果不确定时先查询，再点不会出第二次交�
     route.request().method() === 'POST' ? route.abort('internetdisconnected') : route.fallback(),
   );
   await page.getByRole('button', { name: '定稿并交付' }).click();
-  await page.getByRole('dialog', { name: '确认定稿并交付？' }).getByRole('button', { name: '确认交付' }).click();
+  await page.getByRole('alertdialog', { name: '确认定稿并交付？' }).getByRole('button', { name: '确认交付' }).click();
   const unknown = page.getByRole('alert').filter({ hasText: '还没确认交付成功没有' });
   await expect(unknown).toBeVisible();
   await expect(page.getByRole('button', { name: '定稿并交付' })).toBeDisabled();
@@ -106,7 +106,7 @@ test('首次交付：结果不确定时先查询，再点不会出第二次交�
     await route.abort('timedout');
   });
   await page.getByRole('button', { name: '定稿并交付' }).click();
-  await page.getByRole('dialog', { name: '确认定稿并交付？' }).getByRole('button', { name: '确认交付' }).click();
+  await page.getByRole('alertdialog', { name: '确认定稿并交付？' }).getByRole('button', { name: '确认交付' }).click();
   await expect(page.getByRole('alert').filter({ hasText: '还没确认交付成功没有' })).toBeVisible();
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   expect(posted).toBe(1);
@@ -166,7 +166,7 @@ test('首次交付：结果不确定时先查询，再点不会出第二次交�
 
   // 重新打开（R12）
   await page.getByRole('button', { name: '重新打开' }).click();
-  const reopen = page.getByRole('dialog', { name: '重新打开这个任务？' });
+  const reopen = page.getByRole('alertdialog', { name: '重新打开这个任务？' });
   await expect(reopen).toContainText('在您再次交付之前，客户仍能下载现在这一版。');
   await shot(page, 'r12-reopen');
   await reopen.getByRole('button', { name: '重新打开' }).click();
@@ -182,7 +182,7 @@ test('首次交付：结果不确定时先查询，再点不会出第二次交�
   await checkAll(page, base);
   await expect(conclusion).toHaveValue('三份文稿已逐章核对，与资料一致。');
   await page.getByRole('button', { name: '定稿并交付' }).click();
-  const again = page.getByRole('dialog', { name: '确认再次交付？' });
+  const again = page.getByRole('alertdialog', { name: '确认再次交付？' });
   await expect(again).toContainText(/\d{1,2} 月 \d{1,2} 日交付的那一版不再提供下载/);
   await again.getByRole('textbox', { name: /这次更新了什么/ }).fill('值班电话、通讯联络组组员');
   await shot(page, 'r14-again');
