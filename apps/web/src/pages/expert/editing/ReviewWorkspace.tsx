@@ -550,7 +550,9 @@ export function ReviewWorkspace({
       title="编制文稿"
       enterpriseName={`${enterpriseName} · ${taskNumber}`}
       stages={EXPERT_STAGES}
-      current={2}
+      // 已交付后只读打开正文：四步都已完成，和已交付页一致
+      current={published ? EXPERT_STAGES.length : 2}
+      stageLastStrong={!!published}
       extra={
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <button type="button" style={{ ...linkButton, ...text14 }} aria-expanded={historyOpen} onClick={() => setHistoryOpen((v) => !v)}>
