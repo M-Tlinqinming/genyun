@@ -224,11 +224,17 @@ export class OperatorTasksController {
         .where(
           and(
             eq(tasks.id, id),
+            isNull(tasks.deletedAt),
             currentExpertId === null ? isNull(tasks.assignedExpertId) : eq(tasks.assignedExpertId, currentExpertId),
           ),
         )
         .returning({ id: tasks.id });
-      if (!row) return false;
+      if (!row) {
+        // 分派和客户删除撞在同一瞬间：和找不到任务一样；否则是别人刚分派过，提示刷新
+        const [gone] = await tx.select({ deletedAt: tasks.deletedAt }).from(tasks).where(eq(tasks.id, id));
+        if (!gone || gone.deletedAt) throw new NotFoundException(NOT_FOUND);
+        return false;
+      }
       // 运营说明放在正文第一句，铃铛里最多显示 3 行
       await this.notifications.notify(
         [expertId],

@@ -201,7 +201,7 @@ export class IntakeService {
       if (task.status !== 'submitted' || !active) {
         // 已经撤回了（重复点击、两个人同时点）：返回当前资料
         if (task.status === 'preparing' && withdrawn && !active) return;
-        throw new ConflictException(NOT_WITHDRAWABLE_MESSAGE);
+        throw new ConflictException({ statusCode: 409, message: NOT_WITHDRAWABLE_MESSAGE, code: 'not_withdrawable' });
       }
       if (withdrawn) throw new ConflictException({ statusCode: 409, message: WITHDRAW_USED_MESSAGE, code: 'withdraw_used' });
       const [started] = await tx.select({ taskId: taskWorkups.taskId }).from(taskWorkups).where(eq(taskWorkups.taskId, taskId)).limit(1);

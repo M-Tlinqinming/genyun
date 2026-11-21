@@ -254,7 +254,9 @@ describe('撤回', () => {
 
   it('还没提交的不能撤回；运营 403', async () => {
     const { taskId } = await readyTask('耕云测试没提交有限公司');
-    expect((await withdraw(taskId)).status).toBe(409);
+    const early = await withdraw(taskId);
+    expect(early.status).toBe(409);
+    expect(early.body.code).toBe('not_withdrawable');
     view(await submit(taskId));
     const ops = await withdraw(taskId, 'ops@test.cn');
     expect(ops.status).toBe(403);
@@ -358,7 +360,14 @@ describe('删除任务', () => {
     await handle.db.insert(notifications).values({ userId: uid['admin@test.cn']!, taskId, title: '提醒', body: '一条提醒', link: '/' });
 
     const before = await (await as()).get(`/api/orgs/${orgId}/management`);
+    const openTasks = async () =>
+      ((await (await as('ops@test.cn')).get('/api/operator/organizations')).body as { id: string; openTasks: number }[]).find(
+        (o) => o.id === orgId,
+      )!.openTasks;
+    const openBefore = await openTasks();
     expect((await remove(taskId)).status).toBe(204);
+    // 管理端组织列表的在办任务数也减了 1
+    expect(await openTasks()).toBe(openBefore - 1);
     const row = await taskRow(taskId);
     expect(row.deletedAt).not.toBeNull();
     expect(row.deletedBy).toBe(uid['admin@test.cn']);
