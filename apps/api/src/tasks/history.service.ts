@@ -129,7 +129,13 @@ export class HistoryService {
   /** 三份都生成完、某一份生成失败 */
   private async drafts(batches: Batch[]): Promise<Entry[]> {
     const rows = await this.db
-      .select({ batchId: generatedDrafts.batchId, kind: generatedDrafts.kind, status: generatedDrafts.status, finishedAt: generatedDrafts.finishedAt })
+      .select({
+        batchId: generatedDrafts.batchId,
+        kind: generatedDrafts.kind,
+        status: generatedDrafts.status,
+        finishedAt: generatedDrafts.finishedAt,
+        attempts: generatedDrafts.attempts,
+      })
       .from(generatedDrafts)
       .where(inArray(generatedDrafts.batchId, batches.map((b) => b.id)));
     return batches.flatMap((b): Entry[] => {
@@ -138,6 +144,8 @@ export class HistoryService {
       const done = mine.filter((r) => r.status === 'done' && r.finishedAt);
       if (done.length < DRAFT_KIND_KEYS.length) return failed;
       const at = new Date(Math.max(...done.map((r) => r.finishedAt!.getTime())));
+      // 重新生成过的份，用时会把中间没人管的时间也算进去：不写用时
+      if (mine.some((r) => r.attempts > 1)) return [...failed, entry(at, null, '三份初稿生成完成')];
       const minutes = Math.max(1, Math.round((at.getTime() - b.createdAt.getTime()) / 60_000));
       return [...failed, entry(at, null, '三份初稿生成完成', `用时 ${minutes} 分钟`)];
     });

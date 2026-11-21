@@ -41,13 +41,19 @@ export function checkSlot(value: string, candidates: string[]): string | null {
   return rest ? `用了候选以外的内容「${rest}」` : null;
 }
 
-export async function draftSlots(input: PlanInput, drafter: SlotDrafter | null): Promise<{ filled: FilledSlots; notes: SlotNote[] }> {
+// onTemplate：每个模板开始前调一次（没有空位的模板也调），生成页按它报「正在写……」
+export async function draftSlots(
+  input: PlanInput,
+  drafter: SlotDrafter | null,
+  onTemplate?: (index: number) => Promise<void> | void,
+): Promise<{ filled: FilledSlots; notes: SlotNote[] }> {
   const filled: FilledSlots = {};
   const notes: SlotNote[] = [];
   if (!drafter) return { filled, notes };
   const signals = planSignals(input);
   const selection = selectPlans(resolveScope(input));
-  for (const t of [...selection.specialty, ...selection.site]) {
+  for (const [index, t] of [...selection.specialty, ...selection.site].entries()) {
+    await onTemplate?.(index);
     for (const slot of templateSlots(t, signals)) {
       const candidates = slotWhitelist(slot.name, signals);
       let note: string | null;

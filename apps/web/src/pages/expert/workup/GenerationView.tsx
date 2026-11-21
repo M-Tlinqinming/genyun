@@ -1,11 +1,12 @@
 import { LoadingOutlined } from '@ant-design/icons';
-import { draftActive, DRAFT_KINDS, type DraftProgress, type GenerationProgress } from '@genyun/shared';
+import { DRAFT_KINDS, type DraftProgress, type GenerationProgress } from '@genyun/shared';
 import { App, Button } from 'antd';
 import type { CSSProperties } from 'react';
 import { openFile } from '../../../api/documents';
 import { useRetryGeneration } from '../../../api/generation';
 import { ApiError } from '../../../api/request';
 import { linkButton } from '../../../components/ui';
+import { phaseOf } from '../generation/generationText';
 import { gy, stage } from '../../../theme/tokens';
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
@@ -23,12 +24,8 @@ function stamp(iso: string): string {
   return `${p('month')}.${p('day')} ${p('hour')}:${p('minute')}`;
 }
 
-export type GenerationPhase = 'running' | 'failed' | 'done';
-
-export function phaseOf(g: GenerationProgress): GenerationPhase {
-  if (g.drafts.some(draftActive)) return 'running';
-  return g.drafts.some((d) => d.status === 'failed') ? 'failed' : 'done';
-}
+// 搬到生成初稿页的文字里了，这里照旧导出，别处的 import 不用动
+export { phaseOf, type GenerationPhase } from '../generation/generationText';
 
 // I05 · E18-02 正在生成三份草稿 / E18-02b 生成部分失败：三份各自的进度，失败的只重试那一份
 export function GenerationView({

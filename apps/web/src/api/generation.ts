@@ -1,6 +1,7 @@
-import { draftActive, type GenerationMaterials, type GenerationProgress } from '@genyun/shared';
+import { draftActive, type DraftKind, type GenerationMaterials, type GenerationProgress } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { request } from './request';
+import { App } from 'antd';
+import { ApiError, request } from './request';
 
 export const generationKey = (taskId: string) => ['tasks', taskId, 'generation'] as const;
 export const materialsKey = (taskId: string) => ['tasks', taskId, 'generation', 'materials'] as const;
@@ -38,11 +39,24 @@ export function useConfirmGeneration(taskId: string) {
   });
 }
 
-// 只重试失败的份
+/** 这一份已经不是失败的了（别人刚重做过、或已经生成好） */
+export const isDraftNotFailed = (err: unknown) => err instanceof ApiError && err.body?.code === 'draft_not_failed';
+
+// 只重试失败的份；带 kind 只重做这一份。这一份已经不是失败的：提示接口那句话，重取进度
 export function useRetryGeneration(taskId: string) {
   const client = useQueryClient();
+  const { message } = App.useApp();
   return useMutation({
-    mutationFn: () => request<{ current: GenerationProgress }>(`/tasks/${taskId}/generation/retry`, { method: 'POST' }),
+    mutationFn: (kind?: DraftKind) =>
+      request<{ current: GenerationProgress }>(`/tasks/${taskId}/generation/retry`, {
+        method: 'POST',
+        ...(kind ? { body: JSON.stringify({ kind }) } : {}),
+      }),
     onSuccess: (res) => client.setQueryData(generationKey(taskId), res),
+    onError: (err) => {
+      if (!isDraftNotFailed(err)) return;
+      message.info((err as ApiError).message);
+      void client.invalidateQueries({ queryKey: generationKey(taskId) });
+    },
   });
 }
