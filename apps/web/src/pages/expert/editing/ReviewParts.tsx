@@ -1,4 +1,4 @@
-import { CloseOutlined } from '@ant-design/icons';
+import { CloseOutlined, DownOutlined, InfoCircleFilled, UpOutlined } from '@ant-design/icons';
 import {
   checkStale,
   checkValid,
@@ -10,6 +10,7 @@ import {
   type LockedMaterial,
   type PendingChapter,
   type PendingItem,
+  type ReopenedView,
 } from '@genyun/shared';
 import { App } from 'antd';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -209,12 +210,15 @@ export function SidePanel({
   selected,
   materials,
   onPick,
+  previous,
 }: {
   items: PendingItem[];
   /** 刚点过的那一条（序号） */
   selected: number | null;
   materials: LockedMaterial[];
   onPick: (index: number) => void;
+  /** 交付后重新打开期间：上一次交付时专家亲手改过的节（只读对照） */
+  previous?: ReopenedView['edits'];
 }) {
   const { message } = App.useApp();
   const [tab, setTab] = useState<'pending' | 'basis'>('pending');
@@ -235,6 +239,7 @@ export function SidePanel({
       <div role="tabpanel" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {tab === 'pending' ? (
           <>
+            {previous && previous.length > 0 && <PreviousEdits edits={previous} />}
             <div style={{ display: 'flex', alignItems: 'baseline' }}>
               <span style={{ ...text14, fontWeight: 600, color: gy.text }}>待补充 {left} 处</span>
               <span style={{ flex: 1 }} />
@@ -399,5 +404,74 @@ function HistoryBody({ taskId, onClose }: { taskId: string; onClose: () => void 
         ))}
       </div>
     </>
+  );
+}
+
+/** 交付后重新打开期间，文稿进度条下面的灰条（15 页 R13、R14） */
+export function ReopenedBar({ deliveredOn }: { /** 例：11 月 20 日 */ deliveredOn: string }) {
+  return (
+    <div
+      role="note"
+      style={{ height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '0 32px', background: gy.neutralBg, borderBottom: `1px solid ${gy.split}` }}
+    >
+      <InfoCircleFilled aria-hidden style={{ fontSize: 16, color: gy.tertiary }} />
+      <span style={{ ...text14, color: gy.secondary }}>交付后重新打开 · 客户现在仍能下载 {deliveredOn}交付的那一版</span>
+    </div>
+  );
+}
+
+/** 「上一版您改过的 N 节」那一句 */
+export function previousEditsHint(n: number): string {
+  const which = n === 1 ? '这一节' : n === 2 ? '这两节' : `这 ${n} 节`;
+  return `重新生成会换掉${which}，原文留在这里供您对照`;
+}
+
+/** 右栏顶上「上一版您改过的 N 节」（15 页 R13）：每节默认收起，点「看原文」展开；只读 */
+function PreviousEdits({ edits }: { edits: ReopenedView['edits'] }) {
+  const [opened, setOpened] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpened((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  return (
+    <section
+      aria-label="上一版您改过的节"
+      style={{ margin: '-20px -20px 0', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: `1px solid ${gy.split}` }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ ...text14, fontWeight: 600, color: gy.text }}>上一版您改过的 {edits.length} 节</span>
+        <span style={{ ...caption, color: gy.tertiary }}>{previousEditsHint(edits.length)}</span>
+      </div>
+      {edits.map((e) => {
+        const key = `${e.kind}/${e.sectionId}`;
+        const open = opened.has(key);
+        const id = `previous-${e.kind}-${e.sectionId}`;
+        return (
+          <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 12px', border: `1px solid ${gy.split}`, borderRadius: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ ...text14, color: gy.text, minWidth: 0, overflowWrap: 'anywhere' }}>{e.title}</span>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={id}
+                onClick={() => toggle(key)}
+                style={{ ...linkButton, ...caption, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                {open ? '收起' : '看原文'}
+                {open ? <UpOutlined aria-hidden style={{ fontSize: 12 }} /> : <DownOutlined aria-hidden style={{ fontSize: 12 }} />}
+              </button>
+            </div>
+            {open && (
+              <div id={id} style={{ ...caption, color: gy.secondary, background: gy.neutralBg, borderRadius: 4, padding: '8px 10px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                {e.text || '（这一节当时是空的）'}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </section>
   );
 }
