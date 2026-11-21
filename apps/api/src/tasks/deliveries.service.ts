@@ -160,7 +160,7 @@ export class DeliveriesService {
                 .filter((f) => f.deliveryId === d.id && f.kind === kind)
                 .map((f) => ({ kind, name: f.name, fileId: f.fileId, sizeBytes: f.sizeBytes })),
             ),
-            updateNote: d.updateNote ?? null,
+            updateNote: d.updateNote?.trim() || null,
           }),
         );
       if (versions.length === 0 && !keepEmpty) return [];

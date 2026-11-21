@@ -404,7 +404,7 @@ function ServiceTab({ view, orgId }: { view: OrgManagementView; orgId: string })
 function CreditUsage({ credits: c }: { credits: OrgCredits }) {
   const [all, setAll] = useState(false);
   const [y, m, d] = c.validUntil!.split('-').map(Number);
-  const topUp = c.entries.some((e) => e.type === 'top_up');
+  const topUp = c.entries.some((e) => e.type === 'top_up' && e.delta > 0);
   const gift = c.remaining.gift;
   const note = [
     `剩余里：${gift > 0 ? `耕云赠送 ${gift} 次、` : ''}${topUp ? '合同购买和加购' : '合同购买'} ${c.remaining.purchase} 次`,

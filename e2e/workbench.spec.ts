@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { taskView } from '../packages/shared/src/task-status';
 
 // 客户工作台与任务列表（11 页 C01、C04；13 页 S01）：三段状态，要处理的在前，按钮直达那一步。
 // 只登录一次、共用同一个页面；企业和任务用接口直接准备
@@ -166,6 +167,7 @@ test('成员：成果被锁住时提示联系组织管理员，不显示次数',
   await page.route(`**/api/orgs/${orgId}/tasks`, async (route) => {
     const res = await route.fetch();
     const rows = (await res.json()) as object[];
+    const now = new Date();
     const locked = {
       ...rows[0],
       id: '00000000-0000-4000-8000-000000000001',
@@ -173,15 +175,27 @@ test('成员：成果被锁住时提示联系组织管理员，不显示次数',
       status: 'submitted',
       delivery: { version: 1, publishedAt: new Date().toISOString() },
       adminNames: '陈经理',
-      view: {
-        key: 'delivered_locked',
-        label: '已编制好 · 暂不能下载',
-        tone: 'progress',
-        nextStep: '成果已编制好，暂时还不能下载',
-        detail: '需要贵组织管理员处理，请联系陈经理',
-        stage: 2,
-        needsAction: false,
-      },
+      // 和接口一样用 taskView 算：成员看到的「次数用完、成果锁住」
+      view: taskView({
+        flow: 'intake',
+        status: 'submitted',
+        deletedAt: null,
+        tableUploaded: true,
+        missingCount: 0,
+        submittedAt: now,
+        withdrawnBefore: false,
+        assignedExpertId: null,
+        snapshotAt: now,
+        workupStepsDone: 5,
+        awaitingCustomerSince: null,
+        awaitingCustomerItems: null,
+        draft: 'ready',
+        lastDelivery: { at: now, kind: 'first' },
+        reopenedAt: null,
+        chargeStatus: 'awaiting_credits',
+        now,
+        viewer: { side: 'customer', isCustomerAdmin: false, adminName: '陈经理' },
+      }),
     };
     await route.fulfill({ response: res, json: [...rows, locked] });
   });
@@ -189,6 +203,8 @@ test('成员：成果被锁住时提示联系组织管理员，不显示次数',
   const block = page.getByRole('status', { name: '成果暂时还不能下载' });
   await expect(block).toContainText('有 1 份成果已经编制好');
   await expect(block).toContainText('请联系陈经理');
+  // 锁住的成果在工作台上没有任何下载入口
+  await expect(page.getByRole('button', { name: /下载/ })).toHaveCount(0);
   await expect(page.getByRole('region', { name: '编制次数' })).toHaveCount(0);
   await page.unroute(`**/api/orgs/${orgId}/tasks`);
   await page.unroute('**/api/auth/me');

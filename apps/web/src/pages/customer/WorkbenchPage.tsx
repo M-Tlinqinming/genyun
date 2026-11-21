@@ -10,7 +10,7 @@ import { StatusTag } from '../../components/StatusTag';
 import { Loading, panel } from '../../components/ui';
 import { useWorkspace } from '../../layouts/workspace';
 import { gy, type, weight } from '../../theme/tokens';
-import { byUpdated, ContractNotice, CREATE_BLOCKED, CreateTaskButton, TaskActionButton, useContract } from './tasks/shared';
+import { byUpdated, ContractNotice, CREATE_BLOCKED, CreateTaskButton, TaskActionButton, taskAction, useContract } from './tasks/shared';
 
 const MAX_TODO = 5;
 const MAX_CARD = 3;
@@ -192,7 +192,7 @@ function SideCard({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                 <span style={strong14}>{t.enterpriseName}</span>
-                {t.view.key === 'delivered_locked' ? <StatusTag tone="done">已交付</StatusTag> : <StatusTag tone={t.view.tone}>{t.view.label}</StatusTag>}
+                <StatusTag tone={t.view.tone}>{t.view.label}</StatusTag>
               </div>
               <span style={small}>{line(t)}</span>
             </div>
@@ -332,7 +332,7 @@ function ExpiredCards({ working, delivered }: { working: TaskSummary[]; delivere
   const card = (
     label: string,
     rows: TaskSummary[],
-    status: string,
+    status: (t: TaskSummary) => string,
     note: string,
     action: string,
     to: (t: TaskSummary) => string,
@@ -346,7 +346,7 @@ function ExpiredCards({ working, delivered }: { working: TaskSummary[]; delivere
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>{t.enterpriseName}</span>
           <span style={{ ...type.body, color: gy.secondary }}>
-            {t.number} · {status}
+            {t.number} · {status(t)}
           </span>
           <span style={{ ...type.body, color: gy.secondary }}>{note}</span>
         </div>
@@ -366,16 +366,16 @@ function ExpiredCards({ working, delivered }: { working: TaskSummary[]; delivere
       {card(
         '正在办理的任务',
         working,
-        '专家编制中',
+        () => '专家编制中',
         '当前处理安排以该任务的服务约定为准，可查看进度或联系耕云。',
         '查看处理进度',
-        (t) => `/customer/tasks/${t.id}`,
+        (t) => taskAction(t, 'workbench').to ?? `/customer/tasks/${t.id}`,
         '/customer/tasks?tab=expert',
       )}
       {card(
         '已交付的历史成果',
         delivered,
-        '已交付',
+        (t) => ((t.delivery?.version ?? 1) > 1 ? '已更新' : '已交付'),
         '服务到期不影响已交付成果的下载。',
         '查看三份成果',
         (t) => `/customer/documents/${t.id}`,

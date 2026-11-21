@@ -61,7 +61,8 @@ function Delivery({ data, current }: { data: TaskDeliveries; current: DeliveredV
   };
 
   const isAdmin = role === 'customer_admin';
-  const note = current.version > 1 && current.updateNote ? `${monthDay(current.publishedAt)}更新：${current.updateNote}` : null;
+  const updateNote = current.updateNote?.trim();
+  const note = current.version > 1 && updateNote ? `${monthDay(current.publishedAt)}更新：${updateNote}` : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
