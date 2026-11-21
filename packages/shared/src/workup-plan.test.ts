@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { feiyuSnapshot } from './fixtures/feiyu-profile.ts';
 import { feiyuPlanInput } from './fixtures/feiyu-plan.ts';
-import { planInputOf, workupGaps } from './workup-plan.ts';
+import { workupGaps } from './workup-missing.ts';
+import { planInputOf } from './workup-plan.ts';
 import { emptyProductionWorkup } from './workup-production.ts';
 import type { FactOverride, FactValue } from './workup.ts';
 

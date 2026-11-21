@@ -1,6 +1,7 @@
 // 资料核对第 5 步「核对并生成」第 1 页（Paper 13 页 E2-5a）：只有专家能定的专业项。
 // 预案编号、应急经费与两位责任人、重大危险源结论（和系统算的不同时才存）记在任务的 WorkupData.review；
 // 适用范围、危险源辨识沿用 data.scope、data.risks。这一页的项都不挡生成，空着的文稿写「（待补充）」。
+import type { PlanReview } from './plan/input.ts';
 import { z } from 'zod';
 import { peopleOf, type DraftPerson } from './profile/organization-step.ts';
 import { majorHazardOf, type MajorHazardResult } from './plan/major-hazard.ts';
@@ -117,16 +118,6 @@ export function normalizeReview(snapshot: WorkupSnapshot, data: ReviewInput, rev
 }
 
 /** 生成用：预案编号、经费与两位责任人、重大危险源结论（专家改过的） */
-export interface PlanReview {
-  planCode?: string;
-  emergencyBudget?: string;
-  fundingDepartment?: string;
-  trainingBudget?: string;
-  ledgerOwner?: { name: string; position?: string };
-  archiver?: { name: string; position?: string };
-  majorHazard?: MajorHazardOverride;
-}
-
 export function planReviewOf(snapshot: WorkupSnapshot, data: ReviewInput): PlanReview {
   const r = data.review;
   if (!r) return {};

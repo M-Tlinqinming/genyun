@@ -1,5 +1,6 @@
 // 第 10 项「生成三份草稿」的输入：按锁定的快照与专家整理结果拼出 PlanInput。
 // 客户资料取快照；专家改过的事实（data.overrides）盖在上面；设备物料、危险源、适用范围、图件用各模块给生成的转换。
+import { planReviewOf } from './workup-review.ts';
 import { type AgencyDistrict, localAgenciesOf, type LocalAgencies } from './plan/agencies.ts';
 import type { ExpertFacts, PlanInput } from './plan/input.ts';
 import type { Address, BasicInfo, YesNoUnknown } from './profile/basic.ts';
@@ -9,13 +10,13 @@ import type { Organization, Person } from './profile/organization.ts';
 import { compilationTeamOf, type DraftPerson, type OrganizationStep } from './profile/organization-step.ts';
 import { FIRE_RATINGS } from './profile/resources-step.ts';
 import { figuresView, planFiguresOf } from './workup-figures.ts';
-import { planProductionOf, productionView, type ProductionList } from './workup-production.ts';
+import { planProductionOf, productionView } from './workup-production.ts';
 import { planHazardsOf, riskView } from './workup-risk.ts';
 import { planScopeOf, scopeView } from './workup-scope.ts';
 import { answerOf, effectiveSnapshot, organizationStepView, resourcesStepView } from './workup-steps.ts';
 import { emptyResourcesExtra } from './workup-resources.ts';
 import type { ExternalContacts } from './plan/input.ts';
-import { workupFacts, workupProgress, type FactPerson, type FactSection, type FactValue, type WorkupData, type WorkupSnapshot } from './workup.ts';
+import { type FactPerson, type FactValue, type WorkupData, type WorkupSnapshot } from './workup.ts';
 
 const address = (detail: string): Address => ({ province: '', city: '', district: '', detail });
 const text = (v: FactValue | undefined) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
@@ -161,33 +162,6 @@ function factsOf(data: WorkupData, buildings: ReturnType<typeof productionView>[
   };
 }
 
-export interface WorkupGap {
-  key: string;
-  label: string;
-  module: 'facts' | ProductionList | 'scope';
-  section?: FactSection;
-}
-
-// 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关在后。
-// 工艺流程图按当前排版自动画，不用再采用，不算缺项。
-// 专家页底栏、「下一个缺失项」和确认生成的检查共用
-// districts：知识库里的属地应急机构（后台、专家页都传同一份；不传用内置数据）
-export function workupGaps(
-  snapshot: WorkupSnapshot,
-  data: WorkupData,
-  districts?: readonly AgencyDistrict[],
-): { required: number; gaps: WorkupGap[] } {
-  const progress = workupProgress(workupFacts(snapshot, data, districts));
-  const production = productionView(snapshot, data);
-  const scope = scopeView(snapshot, data);
-  const gaps: WorkupGap[] = [
-    ...progress.missing.map((f) => ({ key: f.key, label: f.label, module: 'facts' as const, section: f.section })),
-    ...production.pending.map((p) => ({ key: p.key, label: p.label, module: p.list })),
-    ...scope.pending.map((s) => ({ key: `scope:${s.key}`, label: s.label, module: 'scope' as const })),
-  ];
-  return { required: progress.required + production.required + scope.required, gaps };
-}
-
 const compact =<T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
 // districts：知识库里的属地机构（生成时从数据库取）；不传时用内置数据
@@ -212,6 +186,7 @@ export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn
       pending: data.blank?.length ? [...data.blank] : undefined,
       ...expertResourcesOf(snapshot, data),
       specialPending: production.special.filter((x) => x.later).map((x) => x.label),
+      review: data.review ? planReviewOf(snapshot, data) : undefined,
     },
   };
 }
