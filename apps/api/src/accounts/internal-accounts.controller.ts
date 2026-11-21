@@ -77,7 +77,7 @@ export class InternalAccountsController {
           this.db
             .select({ id: tasks.assignedExpertId, n: count() })
             .from(tasks)
-            .where(and(inArray(tasks.assignedExpertId, ids), isNull(tasks.closedAt)))
+            .where(and(inArray(tasks.assignedExpertId, ids), isNull(tasks.closedAt), isNull(tasks.deletedAt)))
             .groupBy(tasks.assignedExpertId),
         ])
       : [[], []];
@@ -164,7 +164,7 @@ export class InternalAccountsController {
       const [busy] = await tx
         .select({ n: count() })
         .from(tasks)
-        .where(and(eq(tasks.assignedExpertId, id), isNull(tasks.closedAt)));
+        .where(and(eq(tasks.assignedExpertId, id), isNull(tasks.closedAt), isNull(tasks.deletedAt)));
       if ((busy?.n ?? 0) > 0) return { busy: busy!.n };
       const [changed] = await tx
         .update(users)
@@ -233,7 +233,7 @@ export class InternalAccountsController {
       const [open] = await tx
         .select({ n: count() })
         .from(tasks)
-        .where(and(eq(tasks.assignedExpertId, id), isNull(tasks.closedAt)));
+        .where(and(eq(tasks.assignedExpertId, id), isNull(tasks.closedAt), isNull(tasks.deletedAt)));
       if ((open?.n ?? 0) > 0) return { busy: open!.n };
       const [changed] = await tx
         .update(memberships)

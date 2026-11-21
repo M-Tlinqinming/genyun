@@ -30,7 +30,7 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { Request } from 'express';
 import { AuditService, clientIp } from '../audit/audit.ts';
@@ -170,7 +170,7 @@ export class FeedbackController {
       const [task] = await this.db
         .select({ id: tasks.id, orgId: tasks.orgId, enterpriseId: tasks.enterpriseId })
         .from(tasks)
-        .where(eq(tasks.id, input.taskId));
+        .where(and(eq(tasks.id, input.taskId), isNull(tasks.deletedAt)));
       if (!task || task.orgId !== orgId || !canFeedbackOnTask(user, task)) throw new NotFoundException(TASK_NOT_FOUND);
       enterpriseId = task.enterpriseId;
       if (input.deliveryVersion !== undefined) {

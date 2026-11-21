@@ -13,7 +13,7 @@ import {
   Res,
   type PipeTransform,
 } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { Response } from 'express';
 import JSZip from 'jszip';
 import { canViewDeliveries, canViewOrganization, customerMembership, enterpriseScope } from '../auth/access.ts';
@@ -50,7 +50,7 @@ export class DeliveriesService {
     // 成员只列出分配给自己的企业的成果
     const scope = enterpriseScope(user, orgId);
     if (Array.isArray(scope) && scope.length === 0) return [];
-    const list = await this.tasks().where(and(eq(tasks.orgId, orgId), Array.isArray(scope) ? inArray(tasks.enterpriseId, scope) : undefined));
+    const list = await this.tasks().where(and(eq(tasks.orgId, orgId), isNull(tasks.deletedAt), Array.isArray(scope) ? inArray(tasks.enterpriseId, scope) : undefined));
     const built = await this.build(user, list);
     return built.sort((a, b) => b.versions[0]!.publishedAt.localeCompare(a.versions[0]!.publishedAt));
   }
@@ -100,7 +100,7 @@ export class DeliveriesService {
   }
 
   private async task(user: SessionUser, taskId: string): Promise<TaskRow> {
-    const [task] = await this.tasks().where(eq(tasks.id, taskId)).limit(1);
+    const [task] = await this.tasks().where(and(eq(tasks.id, taskId), isNull(tasks.deletedAt))).limit(1);
     if (!task || !canViewDeliveries(user, task)) throw new NotFoundException(NOT_FOUND);
     return task;
   }

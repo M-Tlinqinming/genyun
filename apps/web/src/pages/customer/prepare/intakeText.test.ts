@@ -39,6 +39,10 @@ const empty: IntakeView = {
   otherEnterprise: null,
   previousSheet: null,
   updatedAt: '2026-11-20T02:24:00.000Z',
+  submission: null,
+  withdrawnAt: null,
+  canWithdraw: false,
+  expertStarted: false,
 };
 
 const sheetMissing = (label: string): IntakeMissingItem => ({
@@ -108,6 +112,12 @@ describe('准备资料页：步骤和标题', () => {
     );
     expect(headline(readView([])).subtitle).toBe('表格里的必填都填了，2 张必填图也处理好了。');
     expect(footerNote(readView([]))).toBe('必填已齐，提交后专家开始核对');
+  });
+
+  it('撤回过一次：必填齐了提示再提交后不能撤回，没齐照旧', () => {
+    const withdrawnAt = '2026-11-20T02:52:00.000Z';
+    expect(footerNote({ ...readView([]), withdrawnAt })).toBe('这次提交后不能再撤回');
+    expect(footerNote({ ...empty, withdrawnAt })).toBe('还差资料表格和 2 张必填图，传齐后可以提交');
   });
 
   it('还没读到表格时，底部按图纸算还差几张', () => {

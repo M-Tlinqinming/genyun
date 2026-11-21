@@ -434,7 +434,7 @@ export class EnterpriseProfileController {
     const open = await tx
       .select({ id: tasks.id })
       .from(tasks)
-      .where(and(eq(tasks.enterpriseId, enterpriseId), eq(tasks.status, 'preparing'), isNull(tasks.closedAt)));
+      .where(and(eq(tasks.enterpriseId, enterpriseId), eq(tasks.status, 'preparing'), isNull(tasks.closedAt), isNull(tasks.deletedAt)));
     if (open.length === 0) return;
     const ids = open.map((t) => t.id);
 

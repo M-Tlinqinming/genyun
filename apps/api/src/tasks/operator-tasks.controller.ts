@@ -109,7 +109,7 @@ export class OperatorTasksController {
   @Get()
   async list(@CurrentUser() user: SessionUser) {
     this.guard(user);
-    const rows = await this.select().orderBy(desc(sql`coalesce(${tasks.submittedAt}, ${tasks.createdAt})`));
+    const rows = await this.select().where(isNull(tasks.deletedAt)).orderBy(desc(sql`coalesce(${tasks.submittedAt}, ${tasks.createdAt})`));
     return rows.map(withStage);
   }
 
@@ -147,7 +147,7 @@ export class OperatorTasksController {
     const open = await this.db
       .select({ expertId: tasks.assignedExpertId, orgId: tasks.orgId, enterpriseId: tasks.enterpriseId })
       .from(tasks)
-      .where(and(inArray(tasks.assignedExpertId, people.map((p) => p.id)), isNull(tasks.closedAt)));
+      .where(and(inArray(tasks.assignedExpertId, people.map((p) => p.id)), isNull(tasks.closedAt), isNull(tasks.deletedAt)));
     // 接单中的在前、暂停的在后，各自仍按名字（sort 是稳定排序）
     const ordered = [...people].sort((a, b) => Number(isExpertPaused(a.profile)) - Number(isExpertPaused(b.profile)));
     return ordered.map((p) => {
@@ -224,11 +224,17 @@ export class OperatorTasksController {
         .where(
           and(
             eq(tasks.id, id),
+            isNull(tasks.deletedAt),
             currentExpertId === null ? isNull(tasks.assignedExpertId) : eq(tasks.assignedExpertId, currentExpertId),
           ),
         )
         .returning({ id: tasks.id });
-      if (!row) return false;
+      if (!row) {
+        // 分派和客户删除撞在同一瞬间：和找不到任务一样；否则是别人刚分派过，提示刷新
+        const [gone] = await tx.select({ deletedAt: tasks.deletedAt }).from(tasks).where(eq(tasks.id, id));
+        if (!gone || gone.deletedAt) throw new NotFoundException(NOT_FOUND);
+        return false;
+      }
       // 运营说明放在正文第一句，铃铛里最多显示 3 行
       await this.notifications.notify(
         [expertId],
@@ -325,7 +331,7 @@ export class OperatorTasksController {
   }
 
   private async load(id: string) {
-    const [task] = await this.select().where(and(eq(tasks.id, id), ne(organizations.kind, 'internal')));
+    const [task] = await this.select().where(and(eq(tasks.id, id), ne(organizations.kind, 'internal'), isNull(tasks.deletedAt)));
     if (!task) throw new NotFoundException(NOT_FOUND);
     return withStage(task);
   }
