@@ -47,7 +47,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
     const o = overview.data;
     if (!o) return 0;
     if (path === '/operator/organizations') return o.orgs.pending;
-    if (path === '/operator/tasks') return o.tasks.unassigned;
+    if (path === '/operator/tasks') return o.tasks.toAssign;
     if (path === '/operator/feedback') return o.feedback.new;
     return 0;
   };
