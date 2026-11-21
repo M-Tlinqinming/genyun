@@ -35,6 +35,7 @@ import { ConfirmView } from './workup/ConfirmView';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
 import { PublishView } from './editing/PublishView';
 import { ReviewWorkspace } from './editing/ReviewWorkspace';
+import { GenerationPage } from './generation/GenerationPage';
 import { GenerationView, phaseOf } from './workup/GenerationView';
 import { originalTitle } from './workup/OriginalsPanel';
 import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
@@ -297,6 +298,19 @@ export function ExpertTaskPage() {
   // 核对定稿（E18-03 到 E18-15）：三份草稿都生成完才进得来；旧网址 ?view=review 打开审核结论页签
   if ((requested === 'edit' || requested === 'review') && current && phaseOf(current) === 'done') {
     return <ReviewWorkspace taskId={taskId} enterpriseName={task.data.enterpriseName} taskNumber={task.data.number} generation={current} />;
+  }
+
+  // 生成初稿（E18-02）：网址是 ?view=generation、并且有一批初稿时
+  if (requested === 'generation' && current) {
+    return (
+      <GenerationPage
+        taskId={taskId}
+        enterpriseName={task.data.enterpriseName}
+        taskNumber={task.data.number}
+        generation={current}
+        onStartReview={() => setParams({ view: 'edit' })}
+      />
+    );
   }
 
   if (view === 'wizard') {

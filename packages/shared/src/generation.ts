@@ -23,6 +23,22 @@ export interface LockedMaterial {
 export const generationConfirmSchema = z.object({ version: z.number().int().min(1), materials: z.string().max(200).optional() });
 export type GenerationConfirm = z.infer<typeof generationConfirmSchema>;
 
+// 生成一份时的步骤：write = 写应急预案的一个模板；risk = 写现场处置方案的风险描述；
+// content = 整理另两份（或没配 AI 的应急预案）的内容；layout = 排版成 Word；pdf = 转 PDF
+export const DRAFT_STEPS = ['write', 'risk', 'content', 'layout', 'pdf'] as const;
+export type DraftStep = (typeof DRAFT_STEPS)[number];
+// done = 已经做完几步（也是这一步的序号，从 0 开始）；title = write 时的模板名
+export interface DraftStepProgress {
+  done: number;
+  total: number;
+  step: DraftStep;
+  title?: string;
+}
+
+// 单份重新生成：带 kind 只重做这一份（它得是失败的）；不带就重做最近一批里所有失败的份
+export const generationRetrySchema = z.object({ kind: z.enum(DRAFT_KIND_KEYS as [DraftKind, ...DraftKind[]]).optional() });
+export type GenerationRetry = z.infer<typeof generationRetrySchema>;
+
 export interface DraftProgress {
   kind: DraftKind;
   status: DraftStatus;
@@ -35,6 +51,14 @@ export interface DraftProgress {
   error: string | null;
   startedAt: string | null;
   finishedAt: string | null;
+  // 正在做哪一步；失败时留着（失败行写中断在哪一步），重新生成时清空
+  progress: DraftStepProgress | null;
+  // 进队列的时间；之前生成的没有记，用这一批的确认时间顶上
+  queuedAt: string;
+  // 生成出的 PDF 页数；没转 PDF 或数不出来为 null
+  pages: number | null;
+  // 稿子里有几处待补充；算不出来为 null
+  pendingCount: number | null;
 }
 
 export interface GenerationProgress {
@@ -47,6 +71,8 @@ export interface GenerationProgress {
   /** 三份里专家保存过修订的节数（重新生成前提醒） */
   editedSections: number;
   drafts: DraftProgress[];
+  /** 我这一批有排队中的份时，前面还有几个别的任务在生成或排得更早；没有排队中的份为 null */
+  queueAhead: number | null;
 }
 
 // 还在排队或生成中的份
