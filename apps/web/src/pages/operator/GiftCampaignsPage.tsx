@@ -27,9 +27,9 @@ function UsedBar({ used, granted, strong }: { used: number; granted: number; str
         aria-valuenow={Math.round(ratio * 100)}
         aria-valuemin={0}
         aria-valuemax={100}
-        style={{ height: 4, borderRadius: 2, background: gy.neutralBg }}
+        style={{ height: 6, borderRadius: 3, background: gy.neutralBg }}
       >
-        <div style={{ height: 4, borderRadius: 2, background: gy.primary, width: `${Math.round(ratio * 100)}%` }} />
+        <div style={{ height: 6, borderRadius: 3, background: gy.primary, width: `${Math.round(ratio * 100)}%` }} />
       </div>
     </div>
   );
@@ -78,7 +78,7 @@ function CampaignRows({ campaign, name }: { campaign: GiftCampaignRow; name: str
             onClick={() => setOpen((v) => !v)}
             style={{ border: 'none', background: 'none', padding: 0, cursor: empty ? 'default' : 'pointer', color: gy.secondary, width: 12 }}
           >
-            {open && !empty ? <DownOutlined style={{ fontSize: 10 }} /> : <RightOutlined style={{ fontSize: 10 }} />}
+            {open && !empty ? <DownOutlined style={{ fontSize: 12 }} /> : <RightOutlined style={{ fontSize: 12 }} />}
           </button>
           <span style={{ ...text, color: dim, fontWeight: strong }}>{name}</span>
           <span style={{ ...type.caption, color: gy.secondary, whiteSpace: 'nowrap' }}>{campaign.orgCount} 个客户组织</span>
@@ -125,7 +125,7 @@ export function GiftCampaignsPage() {
   else
     body = (
       <>
-        <div style={{ ...row, borderTop: `1px solid ${gy.split}`, background: '#FAFAFB', minHeight: 44 }}>
+        <div style={{ ...row, borderTop: `1px solid ${gy.split}`, background: gy.canvas, minHeight: 44 }}>
           {['活动 / 客户组织', '登记日期', '送出', '已用', '还没用', '到期'].map((h, i) => (
             <div key={h} style={{ ...cell(i), ...text, color: gy.secondary }}>
               {h}

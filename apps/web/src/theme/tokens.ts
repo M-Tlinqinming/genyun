@@ -29,6 +29,8 @@ export const gy = {
   controlLine: '#D9DCE1',
   // 侧栏、顶栏的分隔线：设计系统已并入 split，保留旧名供现有页面引用
   frameLine: '#E5E7EB',
+  // 弹窗里的信息块、已传文件条等浅灰底（比 canvas 再浅一点，设计稿 #FAFAFB）
+  subtleBg: '#FAFAFB',
 } as const;
 
 // 任务阶段：需要客户/专家处理、进行中、已完成、出错

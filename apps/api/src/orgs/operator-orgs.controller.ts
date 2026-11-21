@@ -332,7 +332,6 @@ export class OperatorOrgsController {
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     const d = parsed.data;
 
-    await this.checkContractFile(id, d.contractFileId);
     await this.rejectExistingAccount(d.adminEmail);
 
     const invitation = await this.db.transaction(async (tx) => {
@@ -343,6 +342,7 @@ export class OperatorOrgsController {
         .where(and(eq(organizations.id, id), isNull(organizations.activatedAt)))
         .returning({ id: organizations.id });
       if (!updated) throw new ConflictException(ALREADY_OPEN);
+      await this.checkContract(tx, id, d);
       await this.insertContract(tx, id, user.id, {
         ...d,
         contractStartsAt: d.startsAt,
@@ -395,7 +395,6 @@ export class OperatorOrgsController {
     const parsed = orgRenewalSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '请检查输入');
     const d = parsed.data;
-    await this.checkContractFile(id, d.contractFileId);
 
     await this.db.transaction(async (tx) => {
       await lockOrg(tx, id);
@@ -414,16 +413,16 @@ export class OperatorOrgsController {
           throw new BadRequestException(`新合同的到期日要晚于现在的合同（${dotted(currentEnd)}）`);
         }
       }
-      const existing = await tx
-        .select({ number: organizationContracts.number, startsAt: organizationContracts.startsAt })
+      const [last] = await tx
+        .select({ startsAt: organizationContracts.startsAt })
         .from(organizationContracts)
         .where(eq(organizationContracts.orgId, id))
-        .orderBy(desc(organizationContracts.startsAt));
-      const lastStart = existing[0]?.startsAt;
-      if (lastStart && d.contractStartsAt < lastStart) {
-        throw new BadRequestException(`新合同的开始日不能早于上一份合同（${dotted(lastStart)}）`);
+        .orderBy(desc(organizationContracts.startsAt))
+        .limit(1);
+      if (last && d.contractStartsAt < last.startsAt) {
+        throw new BadRequestException(`新合同的开始日不能早于上一份合同（${dotted(last.startsAt)}）`);
       }
-      if (existing.some((c) => c.number.trim() === d.contractNumber)) throw new ConflictException('这个合同编号已经登记过了');
+      await this.checkContract(tx, id, d);
 
       await this.insertContract(tx, id, user.id, {
         ...d,
@@ -480,15 +479,32 @@ export class OperatorOrgsController {
     return { summary: (await creditBriefs(this.db, [id])).get(id)!, released };
   }
 
-  // 合同原件选填；填了就要是这个组织上传过的合同原件
-  private async checkContractFile(orgId: string, fileId: string | null) {
-    if (!fileId) return;
-    const [found] = await this.db
+  /**
+   * 开通、续约共用，在写合同的事务里查：
+   * - 合同编号不能和这个组织登记过的重复（去掉首尾空格、不分大小写比；存的还是填的原样）；
+   * - 合同原件选填；填了就要是这个组织上传过、还没挂到别的合同上的合同原件
+   */
+  private async checkContract(tx: Pick<Database, 'select'>, orgId: string, d: { contractNumber: string; contractFileId: string | null }) {
+    const numbers = await tx
+      .select({ number: organizationContracts.number })
+      .from(organizationContracts)
+      .where(eq(organizationContracts.orgId, orgId));
+    const key = (n: string) => n.trim().toUpperCase();
+    if (numbers.some((c) => key(c.number) === key(d.contractNumber))) throw new ConflictException('这个合同编号已经登记过了');
+
+    if (!d.contractFileId) return;
+    const [found] = await tx
       .select({ id: files.id })
       .from(files)
-      .where(and(eq(files.id, fileId), eq(files.orgId, orgId), eq(files.kind, 'contract')))
+      .where(and(eq(files.id, d.contractFileId), eq(files.orgId, orgId), eq(files.kind, 'contract')))
       .limit(1);
     if (!found) throw new BadRequestException('合同原件找不到了，请重新上传');
+    const [used] = await tx
+      .select({ id: organizationContracts.id })
+      .from(organizationContracts)
+      .where(eq(organizationContracts.fileId, d.contractFileId))
+      .limit(1);
+    if (used) throw new BadRequestException('这份合同原件已经挂在别的合同上了，请上传这份合同自己的原件');
   }
 
   // 开通、续约共用：写一份合同和它的购买、赠送次数（16 页「次数记录」的原因；页面会在前面加「原因：」，存的时候不带）

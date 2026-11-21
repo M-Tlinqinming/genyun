@@ -151,7 +151,7 @@ export function OpenOrgModal({ orgId, onClose }: { orgId: string; onClose: () =>
       ) : (
         org && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingTop: 8 }}>
-            <div style={{ background: '#FAFAFB', border: `1px solid ${gy.split}`, borderRadius: 6, padding: '12px 16px' }}>
+            <div style={{ background: gy.subtleBg, border: `1px solid ${gy.split}`, borderRadius: 6, padding: '12px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
                 <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, minWidth: 0 }}>{org.name}</span>
                 <button

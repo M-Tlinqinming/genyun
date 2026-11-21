@@ -177,47 +177,49 @@ export function AdjustCreditsModal({
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 16 }}>
-            <Field label="加还是减、几次" id={`${id}-count`}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Select<1 | -1>
-                  aria-label="加还是减"
-                  value={sign}
-                  onChange={setSign}
-                  style={{ width: 96, flexShrink: 0 }}
-                  options={[
-                    { value: 1, label: '增加' },
-                    { value: -1, label: '减少' },
-                  ]}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 16 }}>
+              <Field label="加还是减、几次" id={`${id}-count`}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Select<1 | -1>
+                    aria-label="加还是减"
+                    value={sign}
+                    onChange={setSign}
+                    style={{ width: 96, flexShrink: 0 }}
+                    options={[
+                      { value: 1, label: '增加' },
+                      { value: -1, label: '减少' },
+                    ]}
+                  />
+                  <InputNumber
+                    id={`${id}-count`}
+                    min={1}
+                    max={1000}
+                    precision={0}
+                    value={count}
+                    onChange={(v) => setCount(v)}
+                    suffix="次"
+                    status={overDecrease ? 'error' : undefined}
+                    style={{ flex: 1 }}
+                  />
+                </div>
+              </Field>
+              <Field label="活动名称（赠送时填）" id={`${id}-campaign`} required={false}>
+                <Input
+                  id={`${id}-campaign`}
+                  value={kind === 'gift' ? campaign : ''}
+                  disabled={kind !== 'gift'}
+                  onChange={(e) => setCampaign(e.target.value)}
+                  maxLength={50}
                 />
-                <InputNumber
-                  id={`${id}-count`}
-                  min={1}
-                  max={1000}
-                  precision={0}
-                  value={count}
-                  onChange={(v) => setCount(v)}
-                  suffix="次"
-                  status={overDecrease ? 'error' : undefined}
-                  style={{ flex: 1 }}
-                />
-              </div>
-            </Field>
-            <Field label="活动名称（赠送时填）" id={`${id}-campaign`} required={false}>
-              <Input
-                id={`${id}-campaign`}
-                value={kind === 'gift' ? campaign : ''}
-                disabled={kind !== 'gift'}
-                onChange={(e) => setCampaign(e.target.value)}
-                maxLength={50}
-              />
-            </Field>
-          </div>
-          {overDecrease && (
-            <div role="alert" style={{ ...type.caption, color: gy.error, marginTop: -12 }}>
-              {left > 0 ? `这份合同的${poolName}次数只剩 ${left} 次，最多减 ${left} 次` : `这份合同的${poolName}次数已经是 0 次，不能再减`}
+              </Field>
             </div>
-          )}
+            {overDecrease && (
+              <div role="alert" style={{ ...type.caption, color: gy.error }}>
+                {left > 0 ? `这份合同的${poolName}次数只剩 ${left} 次，最多减 ${left} 次` : `这份合同的${poolName}次数已经是 0 次，不能再减`}
+              </div>
+            )}
+          </div>
 
           <div>
             <Field label="原因" id={`${id}-reason`}>
