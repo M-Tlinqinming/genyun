@@ -91,7 +91,8 @@ test('客户在成果文档里看到已交付的成果，下载三份 Word 和�
   await page.getByRole('button', { name: '联系客服', exact: true }).click();
   const feedback = page.getByRole('dialog', { name: '反馈文稿问题' });
   await expect(feedback).toContainText('惠阳飞宇电器有限公司 · ');
-  await expect(feedback).toContainText(/\d{4}\.\d{2}\.\d{2}.*已交付/);
+  // 再次交付过：写的是更新时间和「已更新」
+  await expect(feedback).toContainText(/\d{4}\.\d{2}\.\d{2}.*已更新/);
   await expect(feedback).not.toContainText(/1[3-9]\d[ -]?\d{4}[ -]?\d{4}/);
   await feedback.getByLabel('您的意见').fill('应急预案第 3 页值班电话写错了');
   await feedback.getByRole('button', { name: '提交反馈' }).click();
