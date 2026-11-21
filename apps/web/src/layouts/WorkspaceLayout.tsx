@@ -22,7 +22,7 @@ export function WorkspaceLayout({ workspace }: { workspace: Workspace }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [orgId, setOrgId] = useState<string>();
-  // 运营侧栏的角标：客户组织 = 待开通，任务中心 = 待分派，反馈受理 = 待受理（Paper 16 页侧栏）
+  // 运营侧栏的角标：客户组织 = 待开通，任务中心 = 待分配专家，反馈受理 = 待受理（Paper 16 页侧栏）
   const isOperator = workspace === 'operator' && Boolean(session.data && membershipsIn(session.data, 'operator').length > 0);
   const overview = useOperatorOverview(isOperator);
 
