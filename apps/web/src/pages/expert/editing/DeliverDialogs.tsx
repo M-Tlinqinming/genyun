@@ -55,7 +55,7 @@ function ConfirmShell({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <ExclamationCircleFilled aria-hidden style={{ fontSize: 22, color: gy.warning, marginTop: 1, flexShrink: 0 }} />
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap }}>
-            <span style={{ ...type.title, fontWeight: weight.strong, color: gy.text }}>{title}</span>
+            <span style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>{title}</span>
             {children}
           </div>
         </div>
