@@ -1,7 +1,7 @@
 // 应急预案的附件 1–10（GB/T 29639-2020 第 9 章，附件 7–10 为耕云补充）。正文迁自旧仓库 lib/md-generator/preamble.ts，
 // 改动同综合预案：中文全角标点、引用改为本文档的章节号与附件号、写死飞宇的说法按企业资料写。
 // 每个附件一段 Markdown：# 附件名、## 附 N.x、### 附 N.x.x；图用 [[figure:key]] 占位。
-import { RISK_LEVELS, accidentTypeOf, riskLevel, riskScore, workplacesOf, type CustomerDrawingKey, type RiskLevel } from '@genyun/shared';
+import { RISK_LEVELS, accidentTypeOf, hoursSuffix, quartersSentence, riskLevel, riskScore, workplacesOf, type DrawingFileKey, type RiskLevel } from '@genyun/shared';
 import {
   MISSING,
   cnDate,
@@ -104,7 +104,7 @@ function companyProfile(ctx: PlanContext): string {
     `| 职工人数 | 在册 ${fill(b.employeeCount)} 人（技术管理 ${optional(input, 'technicalManagementCount', b.technicalManagementCount)} 人 / 安全管理 ${optional(input, 'safetyManagementCount', b.safetyManagementCount)} 人） |`,
     `| 注册资本 / 资产 | 注册资本 ${dash(b.registeredCapital)}；固定资产 ${dash(b.fixedAssets)}；上年销售额 ${dash(b.lastYearRevenue)} |`,
     '## 公司所在地理位置',
-    `${company}${ctx.addresses.length ? `生产经营地址共 ${ctx.addresses.length} 处：${ctx.addresses.map((a) => a.address).join('；')}` : `位于${fill(input.location.siteAddress.detail || b.registeredAddress?.detail)}`}。${neighbourText}公司东、南、西、北各方位毗邻单位及周边道路、绿地、水体等具体情况以企业现场填报 / 属地地图核实为准，详见附件7 关键图纸。`,
+    `${company}${ctx.addresses.length ? `生产经营地址共 ${ctx.addresses.length} 处：${ctx.addresses.map((a) => a.address).join('；')}` : `位于${fill(input.location.siteAddress.detail || b.registeredAddress?.detail)}`}。${neighbourText}${quartersSentence(input.expert.quarters) || '公司东、南、西、北各方位毗邻单位及周边道路、绿地、水体等具体情况以企业现场填报 / 属地地图核实为准，'}${quartersSentence(input.expert.quarters) ? '' : '详见附件7 关键图纸。'}`,
     '## 产品生产工艺流程图',
     ...(steps.length
       ? ['公司主要产品生产工艺流程如下图所示：', '[[figure:process-flow]]', '**主要产品生产工艺流程图**']
@@ -119,6 +119,8 @@ function companyProfile(ctx: PlanContext): string {
             `| ${fill(e.name)} | ${dash(e.spec)} | ${dash(e.quantity)} | ${dash(e.unit)} | ${dash(e.department)} | ${dash(e.location)} | ${dash(e.condition)} |${site.cell(e.addressId)}`,
         )
       : [`| ${MISSING} |  |  |  |  |  |  |${site.empty}`]),
+    // 专家拿不准、标了「待补充」的特种设备类别
+    ...(input.expert.specialPending?.length ? [`特种设备与储存设施：${input.expert.specialPending.map((c) => `${c}${MISSING}`).join('、')}。`] : []),
     '## 主要原辅材料贮存量',
     '**表1-3 主要原辅材料贮存量表**',
     `| 名称 | CAS号 | 年用量（t） | 日常最大储存量（t） | 储存位置 | 危险化学品 |${site.head}`,
@@ -261,6 +263,12 @@ function suppliesList(ctx: PlanContext): string {
   ].join('\n');
 }
 
+// 医院一栏的电话：第 4 步有医院电话写「120；医院电话 X」，没有照旧
+function hospitalPhone(ctx: PlanContext): string {
+  const h = ctx.input.expert.externalContacts?.hospital;
+  return h?.phone ? `120；医院电话 ${h.phone}${hoursSuffix(h.hours)}` : '120 / 医院急诊';
+}
+
 // ── 附件5 有关应急部门、机构或人员的联系方式 ──
 function contacts(ctx: PlanContext): string {
   const org = ctx.input.organization;
@@ -279,13 +287,15 @@ function contacts(ctx: PlanContext): string {
     for (const m of g.members) add(ctx.groupName(g), '组员', m, g.addressId);
   }
   const a = ctx.input.agencies;
+  const x = ctx.input.expert.externalContacts;
   const external = [
-    `| ${ctx.street} | ${a.streetOffice ? dash(a.streetOffice.phone) : MISSING} | 属地协调 / 周边疏散协助 |`,
+    `| ${ctx.street} | ${a.streetOffice ? `${dash(a.streetOffice.phone)}${a.streetOffice.phone ? hoursSuffix(x?.hours?.streetOffice) : ''}` : MISSING} | 属地协调 / 周边疏散协助 |`,
     ...(ctx.park ? [`| ${ctx.park.manager} | ${ctx.park.dutyPhone ?? MISSING} | 园区联动 / 事故先报园区 |`] : []),
-    `| ${ctx.bureau} | ${a.emergencyBureau?.phone || '12350 / 属地值班电话'} | 事故报告 / 应急资源调度 |`,
-    `| ${a.fireDept?.name || '属地消防救援机构'} | 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}` : ''} | 火灾扑救 / 抢险救援 |`,
-    `| ${ctx.hospital} | 120 / 医院急诊 | 现场急救 / 伤员转运 |`,
-    '| 公安机关 | 110 | 治安维护 / 交通疏导 |',
+    `| ${ctx.bureau} | ${a.emergencyBureau?.phone ? `${a.emergencyBureau.phone}${hoursSuffix(x?.hours?.emergencyBureau)}` : '12350 / 属地值班电话'} | 事故报告 / 应急资源调度 |`,
+    `| ${a.fireDept?.name || '属地消防救援机构'} | 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}${hoursSuffix(x?.hours?.fireDept)}` : ''} | 火灾扑救 / 抢险救援 |`,
+    ...(x?.brigade ? [`| ${x.brigade.name || '专职消防队'} | ${x.brigade.phone ? `${x.brigade.phone}${hoursSuffix(x.brigade.hours)}` : MISSING} | 初期火灾扑救 / 抢险救援 |`] : []),
+    `| ${ctx.hospital} | ${hospitalPhone(ctx)} | 现场急救 / 伤员转运 |`,
+    x?.police ? `| ${x.police.name || '属地派出所'} | ${x.police.phone ? `${x.police.phone}${hoursSuffix(x.police.hours)}` : '110'} | 治安维护 / 交通疏导 |` : '| 公安机关 | 110 | 治安维护 / 交通疏导 |',
     `| ${ctx.company}24小时值班电话 | ${ctx.dutyPhone} | 企业内部报警 / 值班联络 |`,
   ];
   return [
@@ -363,7 +373,7 @@ function formTexts(ctx: PlanContext): string {
 }
 
 // ── 附件7 关键图纸：单独占页（横的用横版页）。前三种客户上传，专家在图件页选页，一种可以有几页（M2 第 10c 项）；
-// 后三张按 Martin 批注由编制单位绘制（周边环境、至医院路线、外部交通），专家上传的入口还没做，现在列为待补充 ──
+// 后三张由编制单位绘制（周边环境、至医院路线、外部交通），专家在资料核对第 4 步上传，没传的列为待补充 ──
 export const DRAWINGS = {
   sitePlan: '总平面布置图',
   evacuation: '应急疏散路线图',
@@ -374,11 +384,14 @@ export const DRAWINGS = {
 } as const;
 export type DrawingKey = keyof typeof DRAWINGS;
 const BY_CUSTOMER: DrawingKey[] = ['sitePlan', 'evacuation', 'fireFacility'];
-// 客户资料清单里的图纸项对应附件 7 的哪种图
-export const DRAWING_OF_ITEM: Record<CustomerDrawingKey, DrawingKey> = {
+// 任务里的图纸（客户的三种、专家的三张）对应附件 7 的哪种图
+export const DRAWING_OF_ITEM: Record<DrawingFileKey, DrawingKey> = {
   site_plan: 'sitePlan',
   evacuation_plan: 'evacuation',
   fire_facility_plan: 'fireFacility',
+  surroundings_map: 'surroundings',
+  hospital_route: 'hospitalRoute',
+  traffic_map: 'traffic',
 };
 
 export const drawingFigureId = (k: DrawingKey, i: number) => `drawing-${k}-${i + 1}`;
@@ -406,6 +419,7 @@ function resourceSurvey(ctx: PlanContext): string {
   const neighbours = input.location.neighbours;
   const comms = ['固定电话', '移动电话', ...(f.hasRadio ? ['对讲机'] : []), ...(f.hasImGroup ? ['企业微信群'] : []), ...(f.hasPaSystem ? ['应急广播'] : [])];
   const a = input.agencies;
+  const x = input.expert.externalContacts;
   const p = input.production;
   const org = input.organization;
   const rescuers = new Set(
@@ -465,9 +479,12 @@ function resourceSurvey(ctx: PlanContext): string {
       ...(f.hasMutualAid && ctx.mutualAidParties && !(neighbours?.answer === 'listed' && neighbours.items.some((n) => ctx.mutualAidParties.includes(n.name)))
         ? [`| 互助协议企业 | ${ctx.mutualAidParties} | 应急通讯录 | 互助协议 / 物资借调 / 人员驰援 |`]
         : []),
-      `| 消防救援队 | ${a.fireDept?.name || '属地消防大队'} | 报警 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}` : ''} | 火灾扑救${chem ? ' / 危化品泄漏' : ''} / 抢险救援 |`,
-      `| 医疗急救机构 | ${ctx.hospital}${hospitalKm ? `（${hospitalKm}）` : ''} | 120 / 医院急诊 | 现场急救 / 伤员转运 / 院内救治 |`,
-      '| 公安治安力量 | 属地派出所 | 110 | 治安维护 / 现场封控 / 交通疏导 |',
+      `| 消防救援队 | ${a.fireDept?.name || '属地消防大队'} | 报警 119${a.fireDept?.phone ? `；值班 ${a.fireDept.phone}${hoursSuffix(x?.hours?.fireDept)}` : ''} | 火灾扑救${chem ? ' / 危化品泄漏' : ''} / 抢险救援 |`,
+      ...(x?.brigade ? [`| 专职消防队 | ${x.brigade.name || '专职消防队'} | ${x.brigade.phone ? `${x.brigade.phone}${hoursSuffix(x.brigade.hours)}` : MISSING} | 初期火灾扑救 / 抢险救援 |`] : []),
+      `| 医疗急救机构 | ${ctx.hospital}${hospitalKm ? `（${hospitalKm}）` : ''} | ${hospitalPhone(ctx)} | 现场急救 / 伤员转运 / 院内救治 |`,
+      x?.police
+        ? `| 公安治安力量 | ${x.police.name || '属地派出所'} | ${x.police.phone ? `${x.police.phone}${hoursSuffix(x.police.hours)}` : '110'} | 治安维护 / 现场封控 / 交通疏导 |`
+        : '| 公安治安力量 | 属地派出所 | 110 | 治安维护 / 现场封控 / 交通疏导 |',
       ...(neighbours?.answer === 'listed'
         ? neighbours.items.map((n) => `| 邻企互助力量 | ${n.name} | ${[n.contact, n.phone].filter(Boolean).join(' ') || '应急通讯录'} | ${f.hasMutualAid ? '互助协议 / ' : ''}物资借调 / 人员驰援 |`)
         : [`| 邻企互助力量 | 周边邻企 | 应急通讯录 | ${f.hasMutualAid ? '互助协议 / ' : ''}物资借调 / 人员驰援 |`]),

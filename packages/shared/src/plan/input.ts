@@ -71,6 +71,21 @@ export interface ExpertInput {
   figures?: PlanFigures;
   /** 专家在资料核对里勾了「先留空」的事实键：这几项文稿写「（待补充）」，不写「—」 */
   pending?: string[];
+  /** 资料核对第 4 步专家填的厂区四邻（东、南、西、北），没填的方向不写 */
+  quarters?: Partial<Record<'east' | 'south' | 'west' | 'north', string>>;
+  /** 资料核对第 4 步的外部应急联系方式补充：派出所、专职消防队、就近医院和各行的值守时间 */
+  externalContacts?: ExternalContacts;
+  /** 专家标了「待补充」的特种设备类别（如「压力容器」） */
+  specialPending?: string[];
+}
+
+export interface ExternalContacts {
+  police?: { name?: string; phone?: string; hours?: string };
+  // 附近没有专职消防队或没填，不写这一行
+  brigade?: { name?: string; phone?: string; hours?: string };
+  hospital?: { name?: string; phone?: string; hours?: string };
+  // 区应急管理局、消防救援大队、街道办事处的值守时间（单位和电话在属地部门里）
+  hours?: Partial<Record<'emergencyBureau' | 'fireDept' | 'streetOffice', string>>;
 }
 
 export interface PlanInput {

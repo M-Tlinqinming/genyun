@@ -1,5 +1,19 @@
 import {
   basicStepWorkupSaveSchema,
+  contactPhoneError,
+  detectFileType,
+  FILE_TYPES,
+  fileIdsOfProductionStep,
+  fileIdsOfResourcesStep,
+  fileRejectionReason,
+  parseUploadTarget,
+  productionStepView,
+  productionStepWorkupSaveSchema,
+  resourcesStepView,
+  resourcesStepWorkupSaveSchema,
+  UPLOAD_RULE_OF_TARGET,
+  withUploadedFile,
+  type ResourcesExtra,
   CUSTOMER_DRAWING_KEYS,
   drawingKeyOf,
   effectiveSnapshot,
@@ -25,12 +39,14 @@ import {
   riskSaveSchema,
   scopeSaveSchema,
   SPECIAL_CATEGORY_KEYS,
-  type CustomerDrawingKey,
+  type DrawingFileKey,
+  EXPERT_DRAWING_KEYS,
   type FactOverride,
   type FiguresWorkup,
   type IntakeFileSlot,
   type WorkupData,
   type WorkupSnapshot,
+  type IntakeCellRef,
 } from '@genyun/shared';
 import {
   BadRequestException,
@@ -44,13 +60,23 @@ import {
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Post,
   Put,
+  Query,
+  Req,
+  Res,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { MulterError } from 'multer';
+import { receiveOne } from '../files/files.controller.ts';
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { isOperator } from '../auth/access.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
 import { DATABASE, type Database } from '../db/client.ts';
+import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
+import type { UploadedFile } from '../intake/intake.service.ts';
+import { createHash, randomUUID } from 'node:crypto';
 import { lockTaskRow } from '../intake/intake.service.ts';
 import { KnowledgeService } from '../knowledge/knowledge.service.ts';
 import {
@@ -82,6 +108,7 @@ function profilePhotos(snapshot: WorkupSnapshot): { fileId: string; itemKey: str
     ...of('buildings', res?.fireAcceptanceFileIds),
   ];
 }
+const WORKUP_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 const STALE = '资料刚被其他人修改过，已为您显示最新内容，请确认后再改';
 const ONLY_EXPERT = '只有负责专家可以修改资料核对';
 
@@ -95,6 +122,19 @@ export interface WorkupIntakeFile {
 }
 
 type WorkupRow = typeof taskWorkups.$inferSelect;
+
+export interface WorkupDrawingFile {
+  fileId: string;
+  key: DrawingFileKey;
+  name: string;
+  contentType: string;
+}
+
+// 资料表格流程上传页的两个图纸上传位
+const INTAKE_DRAWING_SLOTS: Partial<Record<IntakeFileSlot, DrawingFileKey>> = {
+  site_plan: 'site_plan',
+  evacuation_map: 'evacuation_plan',
+};
 
 // 原件对照（右栏）：任务里能看到的客户文件
 export interface WorkupOriginal {
@@ -115,11 +155,20 @@ export const CUSTOMER_WITHDREW_MESSAGE = '客户撤回了这次提交，正在�
 const customerWithdrew = () => new ConflictException({ statusCode: 409, message: CUSTOMER_WITHDREW_MESSAGE, code: 'customer_withdrew' });
 
 // 资料核对：每个任务一份，只有负责专家能改；运营可以看（M3 改派时接手）
+// 属地三家机构的改写存成「名称 · 电话」，电话和外部联系方式走同一个检查
+const AGENCY_PHONE_KEYS = new Set(['agency.emergencyBureau', 'agency.fireDept', 'agency.streetOffice']);
+function agencyPhoneError(key: string, value: unknown): string | null {
+  if (!AGENCY_PHONE_KEYS.has(key) || typeof value !== 'string') return null;
+  const [, ...rest] = value.split(' · ');
+  return contactPhoneError(rest.join(' · ').trim() || undefined);
+}
+
 @Injectable()
 export class WorkupService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
+    @Inject(FILE_STORAGE) private readonly storage: FileStorage,
   ) {}
 
   // 负责专家第一次打开时写快照（snapshot_at 就是「专家开始核对」）；运营等其他人先打开时只在内存里算，不写
@@ -193,6 +242,136 @@ export class WorkupService {
     return this.write(task.id, row, data, user.id);
   }
 
+  // 向导第 3 步「生产与工艺」：整步写进专家那份。第一次保存时，老整理页对设备、物料的改动并进来（productionStepView 已叠好），
+  // 并从老整理层删掉；是否危化品、特种设备判定、耐火等级照旧在老整理层
+  async saveProductionStep(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+    const parsed = productionStepWorkupSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+    const before = productionStepView(row.snapshot, row.data);
+    await this.assertOwnFiles(task.orgId, fileIdsOfProductionStep(save.step), fileIdsOfProductionStep(before));
+
+    const production = row.data.production ? { ...row.data.production, equipment: {}, materials: {} } : undefined;
+    const data: WorkupData = {
+      ...row.data,
+      ...(production ? { production } : {}),
+      profile: { ...row.data.profile, productionStep: { step: save.step } },
+      steps: { ...row.data.steps, production: this.stamp(user) },
+      stepsDone: Math.max(workupStepsDone(row.data), save.stepsDone ?? 0),
+    };
+    return this.write(task.id, row, data, user.id);
+  }
+
+  // 向导第 4 步「物资、设施与图纸」：整步写进专家那份，只有专家填的项（外部联系方式补充、四邻、专家的三张图）整份写进 resourcesExtra
+  async saveResourcesStep(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+    const parsed = resourcesStepWorkupSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+    for (const c of [save.extra.police, save.extra.brigade, save.step.hospital]) {
+      const error = contactPhoneError(c?.phone);
+      if (error) throw new BadRequestException(error);
+    }
+    const before = resourcesStepView(row.snapshot, row.data);
+    const extraFiles = (x: ResourcesExtra | undefined) => EXPERT_DRAWING_KEYS.flatMap((k) => x?.drawings[k] ?? []);
+    await this.assertOwnFiles(
+      task.orgId,
+      [...fileIdsOfResourcesStep(save.step), ...extraFiles(save.extra)],
+      [...fileIdsOfResourcesStep(before), ...extraFiles(row.data.resourcesExtra)],
+    );
+    const data: WorkupData = {
+      ...row.data,
+      profile: { ...row.data.profile, resourcesStep: { step: save.step } },
+      resourcesExtra: save.extra,
+      steps: { ...row.data.steps, resources: this.stamp(user) },
+      stepsDone: Math.max(workupStepsDone(row.data), save.stepsDone ?? 0),
+    };
+    return this.write(task.id, row, data, user.id);
+  }
+
+  // 代客户上传（S03）和专家上传的三张图：文件记在任务所属组织名下、上传人是专家，文件编号写进专家那份；
+  // task_intake_files 不动。replace = 替换掉的那个文件（从同一处去掉）
+  async uploadFile(user: SessionUser, taskId: string, query: { target?: string; version?: string; replace?: string }, file: UploadedFile) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+    const target = parseUploadTarget(query.target);
+    if (!target) throw new BadRequestException('不支持的上传位置');
+    const version = Number(query.version);
+    if (!Number.isInteger(version) || version < 1) throw new BadRequestException('内容不正确');
+    const name = file.originalname.trim().slice(0, 200) || '未命名文件';
+    const reason = fileRejectionReason(UPLOAD_RULE_OF_TARGET[target.kind], name, file.buffer);
+    if (reason) throw new BadRequestException(reason);
+
+    const row = await this.ensure(task);
+    if (version !== row.version) throw this.stale(row.version);
+    const id = randomUUID();
+    const data = withUploadedFile(row.snapshot, row.data, target, id, query.replace);
+    if (!data) throw new BadRequestException('这一行已经不在了，请刷新后再传');
+    data.expertUploads = [
+      ...(row.data.expertUploads ?? []),
+      { fileId: id, target: query.target!, name, ...this.stamp(user) },
+    ].slice(-200);
+
+    const type = detectFileType(file.buffer)!;
+    const storageKey = `${task.orgId}/${id}`;
+    const contentType = FILE_TYPES[type].mime;
+    await this.storage.put(storageKey, file.buffer, contentType);
+    try {
+      await this.db.insert(files).values({
+        id,
+        orgId: task.orgId,
+        kind: 'customer_material',
+        originalName: name,
+        contentType,
+        sizeBytes: file.size,
+        sha256: createHash('sha256').update(file.buffer).digest('hex'),
+        storageKey,
+        uploadedBy: user.id,
+      });
+      return await this.write(task.id, row, data, user.id);
+    } catch (err) {
+      // 版本撞上了或记录没写成：存好的文件没人引用，尽量删掉
+      await this.discardStored(storageKey);
+      throw err;
+    }
+  }
+
+  async assertExpert(user: SessionUser, taskId: string) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+  }
+
+  private stamp(user: SessionUser) {
+    return { by: user.id, byName: user.name, at: new Date().toISOString() };
+  }
+
+  // 步骤里新出现的文件必须是这个组织上传的（原来就在的不再查）
+  private async assertOwnFiles(orgId: string, next: readonly string[], before: readonly string[]) {
+    const added = [...new Set(next.filter((id) => !before.includes(id)))];
+    if (added.length === 0) return;
+    const ours = await this.db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(inArray(files.id, added), eq(files.orgId, orgId)));
+    if (ours.length !== added.length) throw new BadRequestException('有文件不在这个任务里');
+  }
+
+  private async discardStored(key: string): Promise<void> {
+    if (!this.storage.remove) return;
+    try {
+      await this.storage.remove(key);
+    } catch (e) {
+      console.warn(`没删掉没有记录的上传文件 ${key}：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   // 只记走到第几步（第 3–5 步暂用原来的整理页时，向导的「下一步」用它）；只增不减
   async saveStepsDone(user: SessionUser, taskId: string, body: unknown) {
     const task = await this.task(user, taskId);
@@ -225,7 +404,7 @@ export class WorkupService {
 
     const row = await this.ensure(task);
     if (version !== row.version) throw this.stale(row.version);
-    const error = factSaveError(factDefOf(row.snapshot, key, row.data), value);
+    const error = factSaveError(factDefOf(row.snapshot, key, row.data), value) ?? agencyPhoneError(key, value);
     if (error) throw new BadRequestException(error);
     if (fileId && !(await this.originals(task.id, effectiveSnapshot(row.snapshot, row.data))).some((o) => o.fileId === fileId)) {
       throw new BadRequestException('对照的原件不在这个任务里');
@@ -367,7 +546,7 @@ export class WorkupService {
     if (save.process === null) delete figures.process;
     else if (save.process) figures.process = save.process;
     if (save.drawings) {
-      const ours = new Set((await this.drawingCandidates(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data))).map((c) => c.fileId));
+      const ours = new Set((await this.drawingCandidates(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data), row.data)).map((c) => c.fileId));
       if (Object.keys(save.drawings).some((id) => !ours.has(id))) throw new BadRequestException('这份图纸不在这个任务里');
       figures.drawings = { ...figures.drawings, ...save.drawings };
     }
@@ -442,6 +621,8 @@ export class WorkupService {
     const [by] = row.updatedBy
       ? await this.db.select({ name: users.name }).from(users).where(eq(users.id, row.updatedBy)).limit(1)
       : [];
+    const effective = effectiveSnapshot(row.snapshot, row.data);
+    const [task] = await this.db.select({ orgId: tasks.orgId }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
     return {
       version: row.version,
       snapshot: row.snapshot,
@@ -452,10 +633,19 @@ export class WorkupService {
       // 新流程（上传资料表格）还是老流程（逐项填写）
       flow: (await this.isIntake(taskId)) ? ('intake' as const) : ('legacy' as const),
       intakeFiles: await this.intakeFiles(taskId),
-      originals: await this.originals(taskId, effectiveSnapshot(row.snapshot, row.data)),
+      originals: await this.originals(taskId, effective),
+      // 任务里现有的图纸（客户的、代传的、专家的三张），第 4 步图纸卡和客户未填用
+      drawings: task ? await this.drawingFiles(taskId, task.orgId, effective, row.data) : [],
       // 知识库里的属地应急机构：整理页「企业事实」按它显示（与生成时一致）
       agencyDistricts: await this.knowledge.agencyDistricts(),
+      // 新流程：每个字段读自资料表格的哪一格（对照客户原表用）；老流程为空
+      sources: await this.sheetSources(taskId),
     };
+  }
+
+  private async sheetSources(taskId: string): Promise<Record<string, IntakeCellRef>> {
+    const [row] = await this.db.select({ parseResult: taskIntakes.parseResult }).from(taskIntakes).where(eq(taskIntakes.taskId, taskId)).limit(1);
+    return row?.parseResult?.sources ?? {};
   }
 
   private async isIntake(taskId: string) {
@@ -535,17 +725,31 @@ export class WorkupService {
     return [...byFile.values()];
   }
 
-  // 任务里的客户图纸（M2 第 10c 项）：上传已有资料挂在三项图纸上的（资料库的带资料名称），加上企业自填第 4 步上传的。
+  // 任务里的图纸（M2 第 10c 项）：上传已有资料挂在三项图纸上的（资料库的带资料名称），企业自填第 4 步上传的
+  // （专家代传的在专家那份第 4 步里，叠上快照后一起算），资料表格流程上传页传的（总平面图、疏散图两个上传位），
+  // 再加专家在第 4 步上传的三张图（data.resourcesExtra）。
   // 只认本组织的文件（资料里写进别家的文件编号也不认）；是不是 PDF / 图片由 DrawingsService 再筛
-  async drawingCandidates(taskId: string, orgId: string, snapshot: WorkupSnapshot): Promise<{ fileId: string; key: CustomerDrawingKey; name?: string }[]> {
-    const out = new Map<string, { fileId: string; key: CustomerDrawingKey; name?: string }>();
+  async drawingCandidates(
+    taskId: string,
+    orgId: string,
+    snapshot: WorkupSnapshot,
+    data?: Pick<WorkupData, 'resourcesExtra'>,
+  ): Promise<{ fileId: string; key: DrawingFileKey; name?: string }[]> {
+    const out = new Map<string, { fileId: string; key: DrawingFileKey; name?: string }>();
     for (const o of await this.originals(taskId, snapshot)) {
       const key = drawingKeyOf(o.itemKeys);
       if (key && !out.has(o.fileId)) out.set(o.fileId, { fileId: o.fileId, key, name: o.name });
     }
+    for (const f of await this.intakeFiles(taskId)) {
+      const key = INTAKE_DRAWING_SLOTS[f.slot];
+      if (key && !out.has(f.fileId)) out.set(f.fileId, { fileId: f.fileId, key, name: f.name });
+    }
     const step = snapshot.profile.resourcesStep?.step;
     for (const key of CUSTOMER_DRAWING_KEYS) {
       for (const fileId of step?.drawings[key] ?? []) if (!out.has(fileId)) out.set(fileId, { fileId, key });
+    }
+    for (const key of EXPERT_DRAWING_KEYS) {
+      for (const fileId of data?.resourcesExtra?.drawings[key] ?? []) if (!out.has(fileId)) out.set(fileId, { fileId, key });
     }
     if (out.size === 0) return [];
     const ours = await this.db
@@ -553,6 +757,20 @@ export class WorkupService {
       .from(files)
       .where(and(inArray(files.id, [...out.keys()]), eq(files.orgId, orgId)));
     return [...out.values()].filter((c) => ours.some((o) => o.id === c.fileId));
+  }
+
+  // 图纸带上文件名和类型（页面判断能不能预览）
+  private async drawingFiles(taskId: string, orgId: string, snapshot: WorkupSnapshot, data: WorkupData): Promise<WorkupDrawingFile[]> {
+    const candidates = await this.drawingCandidates(taskId, orgId, snapshot, data);
+    if (candidates.length === 0) return [];
+    const rows = await this.db
+      .select({ id: files.id, name: files.originalName, contentType: files.contentType })
+      .from(files)
+      .where(inArray(files.id, candidates.map((c) => c.fileId)));
+    return candidates.flatMap((c) => {
+      const f = rows.find((r) => r.id === c.fileId);
+      return f ? [{ fileId: c.fileId, key: c.key, name: c.name ?? f.name, contentType: f.contentType }] : [];
+    });
   }
 
   // 负责专家、运营可以打开；客户和其他专家看不到（与不存在同样返回）。客户提交以后才开始核对
@@ -626,6 +844,41 @@ export class WorkupController {
   @Put('steps/organization')
   saveOrganizationStep(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
     return this.service.saveOrganizationStep(user, id, body);
+  }
+
+  @Put('steps/production')
+  saveProductionStep(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveProductionStep(user, id, body);
+  }
+
+  @Put('steps/resources')
+  saveResourcesStep(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveResourcesStep(user, id, body);
+  }
+
+  // 代客户上传 / 专家上传的图：一次一个文件，target 决定写到哪里，带 version
+  @Post('files')
+  async upload(
+    @CurrentUser() user: SessionUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: { target?: string; version?: string; replace?: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // 先查权限再收文件
+    await this.service.assertExpert(user, id);
+    let file: Express.Multer.File | undefined;
+    try {
+      file = await receiveOne(req, res, WORKUP_UPLOAD_MAX_BYTES);
+    } catch (err) {
+      if (err instanceof MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        throw new BadRequestException(`文件超过单个文件 ${WORKUP_UPLOAD_MAX_BYTES / 1024 / 1024} MB 限制。请压缩后重新选择`);
+      }
+      if (err instanceof MulterError) throw new BadRequestException('请一次上传一个文件');
+      throw err;
+    }
+    if (!file) throw new BadRequestException('请选择要上传的文件');
+    return this.service.uploadFile(user, id, query, file);
   }
 
   @Put('steps/done')

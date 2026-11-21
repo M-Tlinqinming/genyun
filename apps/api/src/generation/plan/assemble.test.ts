@@ -238,6 +238,30 @@ describe('客户填了相邻单位', () => {
   }, 60_000);
 });
 
+describe('专家在资料核对第 4 步补的外部联系方式和四邻', () => {
+  it('派出所、专职消防队、医院电话和值守时间写进联系方式表；四邻写进地理位置；没填照旧', () => {
+    const expert = {
+      ...feiyuPlanInput.expert,
+      quarters: { east: '空地', north: '和畅五路' },
+      externalContacts: {
+        police: { name: '陈江派出所', phone: '0752-3333333', hours: '8 小时' },
+        brigade: { name: '园区专职消防队', phone: '0752-4444444' },
+        hospital: { phone: '0752-5555555' },
+        hours: {},
+      },
+    };
+    const text = allText(buildPlan({ ...feiyuPlanInput, expert }));
+    expect(text).toContain('公司东临空地，北临和畅五路。');
+    expect(text).not.toContain('具体情况以企业现场填报');
+    expect(text).toMatch(/陈江派出所 0752-3333333（8 小时）/);
+    expect(text).toMatch(/园区专职消防队 0752-4444444 /);
+    expect(text).toContain('120；医院电话 0752-5555555');
+    const plain = allText(buildPlan(feiyuPlanInput));
+    expect(plain).toContain('公安机关 110');
+    expect(plain).not.toContain('专职消防队');
+  }, 60_000);
+});
+
 describe('企业改了小组名', () => {
   it('预置组名换成企业的组名；同类组有多个时不换', () => {
     const org = feiyuPlanInput.organization;
@@ -581,3 +605,12 @@ describe('专家勾了「先留空」的项', () => {
   }, 60_000);
 });
 
+
+describe('特种设备「待补充」', () => {
+  it('文稿里写「压力容器（待补充）」，照常生成', () => {
+    const doc = buildPlan({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, specialPending: ['压力容器', '压力管道'] } });
+    const text = allText(doc);
+    expect(text).toContain('压力容器（待补充）');
+    expect(text).toContain('压力管道（待补充）');
+  }, 60_000);
+});

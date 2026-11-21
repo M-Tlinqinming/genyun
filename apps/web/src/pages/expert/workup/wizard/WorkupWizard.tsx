@@ -12,6 +12,8 @@ import { BasicStep } from './BasicStep';
 import { OrganizationStep } from './OrganizationStep';
 import { clockOf, MAIN_WIDTH, SIDE_WIDTH } from './parts';
 import { PlaceholderStep } from './PlaceholderStep';
+import { ProductionStep } from './ProductionStep';
+import { ResourcesStep } from './ResourcesStep';
 import type { StepFrame, StepProps } from './types';
 import { useAutosave } from './useAutosave';
 
@@ -32,6 +34,7 @@ export function WorkupWizard({ taskId, enterpriseName, workup }: { taskId: strin
   const [resetKey, setResetKey] = useState(0);
   const scroller = useRef<HTMLDivElement | null>(null);
   const step = wizardStepOf(params.get('step'), workup);
+  const page = step === 3 && params.get('page') === '2' ? 2 : 1;
 
   const onStale = useCallback(async () => {
     await client.invalidateQueries({ queryKey: workupKey(taskId) });
@@ -40,9 +43,9 @@ export function WorkupWizard({ taskId, enterpriseName, workup }: { taskId: strin
   const autosave = useAutosave({ onStale });
   const latestVersion = useCallback(() => client.getQueryData<Workup>(workupKey(taskId))?.version ?? workup.version, [client, taskId, workup.version]);
 
-  const onGo = (n: number) => {
+  const onGo = (n: number, p?: number) => {
     if (n > 5) setParams({ view: 'confirm' });
-    else setParams({ view: 'workup', step: String(n) });
+    else setParams({ view: 'workup', step: String(n), ...(p && p > 1 ? { page: String(p) } : {}) });
     scroller.current?.scrollTo({ top: 0 });
   };
   const leave = async () => {
@@ -128,9 +131,13 @@ export function WorkupWizard({ taskId, enterpriseName, workup }: { taskId: strin
     frame,
     onGo,
     latestVersion,
+    page,
   };
   const key = `${step}-${resetKey}`;
   if (step === 1) return <BasicStep key={key} {...props} />;
   if (step === 2) return <OrganizationStep key={key} {...props} />;
-  return <PlaceholderStep key={key} {...props} step={step as 3 | 4 | 5} />;
+  // 第 3 步两页共用一份本地状态（翻页不重置），所以 key 不带页码
+  if (step === 3) return <ProductionStep key={key} {...props} />;
+  if (step === 4) return <ResourcesStep key={key} {...props} />;
+  return <PlaceholderStep key={key} {...props} step={5} />;
 }

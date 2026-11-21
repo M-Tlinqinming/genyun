@@ -2,12 +2,12 @@
 // 给每页缩略图，专家勾选放进附件 7 的页；生成应急预案时按锁定的页取高清图。
 // 每页只转一次（CAD 导出的 PDF 一页可能要半分钟），转好的图存在文件存储里，记在 drawing_pages。
 import {
-  CUSTOMER_DRAWING_KEYS,
+  DRAWING_FILE_KEYS,
   isDrawingContentType,
   MAX_DRAWING_PAGES,
   selectedPages,
   type CustomerDrawing,
-  type CustomerDrawingKey,
+  type DrawingFileKey,
   type PlanDrawingRef,
   type WorkupData,
   type WorkupSnapshot,
@@ -36,7 +36,7 @@ export interface DrawingFile {
   name: string;
   contentType: string;
   storageKey: string;
-  key: CustomerDrawingKey;
+  key: DrawingFileKey;
 }
 
 type PageRow = typeof drawingPages.$inferSelect;
@@ -69,7 +69,7 @@ export class DrawingsService implements OnApplicationShutdown {
   async drawingsOf(taskId: string, orgId: string, snapshot: WorkupSnapshot, data: WorkupData): Promise<CustomerDrawing[]> {
     const selection = data.figures?.drawings;
     const out: CustomerDrawing[] = [];
-    for (const f of await this.files(taskId, orgId, snapshot)) {
+    for (const f of await this.files(taskId, orgId, snapshot, data)) {
       const { pageCount, error } = await this.pageCount(f);
       const selected = pageCount ? selectedPages(selection, f.fileId, pageCount) : [];
       out.push({
@@ -86,9 +86,10 @@ export class DrawingsService implements OnApplicationShutdown {
     return out;
   }
 
-  // 任务里的图纸文件：上传已有资料挂在资料项上的，加上企业自填第 4 步上传的；只认本组织的 PDF 与图片
-  async files(taskId: string, orgId: string, snapshot: WorkupSnapshot): Promise<DrawingFile[]> {
-    const candidates = await this.workup.drawingCandidates(taskId, orgId, snapshot);
+  // 任务里的图纸文件：上传已有资料挂在资料项上的、企业自填第 4 步上传的、资料表格流程上传页传的、专家代传和专家上传的；
+  // 只认本组织的 PDF 与图片
+  async files(taskId: string, orgId: string, snapshot: WorkupSnapshot, data?: Pick<WorkupData, 'resourcesExtra'>): Promise<DrawingFile[]> {
+    const candidates = await this.workup.drawingCandidates(taskId, orgId, snapshot, data);
     const keyOf = new Map(candidates.map((c) => [c.fileId, c.key]));
     const names = new Map(candidates.filter((c) => c.name).map((c) => [c.fileId, c.name!]));
     if (keyOf.size === 0) return [];
@@ -100,7 +101,7 @@ export class DrawingsService implements OnApplicationShutdown {
     return rows
       .filter((r) => isDrawingContentType(r.contentType))
       .map((r) => ({ fileId: r.id, orgId: r.orgId, name: names.get(r.id) ?? r.name, contentType: r.contentType, storageKey: r.storageKey, key: keyOf.get(r.id)! }))
-      .sort((a, b) => CUSTOMER_DRAWING_KEYS.indexOf(a.key) - CUSTOMER_DRAWING_KEYS.indexOf(b.key) || order.indexOf(a.fileId) - order.indexOf(b.fileId));
+      .sort((a, b) => DRAWING_FILE_KEYS.indexOf(a.key) - DRAWING_FILE_KEYS.indexOf(b.key) || order.indexOf(a.fileId) - order.indexOf(b.fileId));
   }
 
   // 缩略图（JPEG）：负责专家和运营能看，图纸必须是这个任务的
@@ -138,7 +139,7 @@ export class DrawingsService implements OnApplicationShutdown {
   private async taskFile(user: SessionUser, taskId: string, fileId: string): Promise<DrawingFile> {
     const task = await this.workup.task(user, taskId);
     const [row] = await this.db.select({ snapshot: taskWorkups.snapshot, data: taskWorkups.data }).from(taskWorkups).where(eq(taskWorkups.taskId, task.id)).limit(1);
-    const file = row && (await this.files(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data))).find((f) => f.fileId === fileId);
+    const file = row && (await this.files(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data), row.data)).find((f) => f.fileId === fileId);
     if (!file) throw new NotFoundException('这份图纸不在这个任务里');
     return file;
   }

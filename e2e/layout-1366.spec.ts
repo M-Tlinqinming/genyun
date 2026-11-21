@@ -56,21 +56,18 @@ test('专业整理在 1366 下企业名称和统一社会信用代码完整显�
   expect(await notTruncated(code)).toBe(true);
   expect(await noHorizontalScroll(page)).toBe(true);
 
-  // 原件对照收窄到 272：只放 2 个页签，其余收进「+N」，「+N」完整可见、能点开
-  const originals = page.getByRole('complementary', { name: '原件对照' });
-  await expect(originals.getByRole('tab')).toHaveCount(2);
-  const more = originals.getByRole('button', { name: /^\+\d+$/ });
-  await expect(more).toBeVisible();
-  const box = (await more.boundingBox())!;
-  const panel = (await originals.boundingBox())!;
-  expect(box.x + box.width).toBeLessThanOrEqual(panel.x + panel.width);
-  expect(await notTruncated(more)).toBe(true);
-  await more.hover();
-  const menu = page.getByRole('menu');
-  await expect(menu).toBeVisible();
-  await menu.getByRole('menuitem').first().click();
-  await expect(originals.getByRole('tab', { selected: true })).toBeVisible();
-  await page.screenshot({ path: shot('expert-workup-originals') });
+  // 资料核对第 3、4 步（客户原件已搬到右栏「客户原表」卡）：不出现横向滚动条
+  const path = new URL(page.url()).pathname;
+  for (const [q, heading, file] of [
+    ['step=3', '核对场所、设备与物料', 'expert-workup-step3'],
+    ['step=3&page=2', '核对工艺流程', 'expert-workup-step3-page2'],
+    ['step=4', '核对应急资源与图纸', 'expert-workup-step4'],
+  ] as const) {
+    await page.goto(`${path}?view=workup&${q}`);
+    await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    expect(await noHorizontalScroll(page)).toBe(true);
+    await page.screenshot({ path: shot(file) });
+  }
 });
 
 test('客户工作台和运营客户组织在 1366 下不出现横向滚动条', async ({ browser }) => {

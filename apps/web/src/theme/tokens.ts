@@ -33,6 +33,14 @@ export const gy = {
   subtleBg: '#FAFAFB',
 } as const;
 
+// 全屏看文件（深色遮罩上的文字、工具按钮），值取自设计稿的预览层
+export const viewer = {
+  mask: 'rgb(24 36 59 / 92%)',
+  text: gy.surface,
+  muted: '#C9D1DD',
+  toolBg: 'rgb(255 255 255 / 16%)',
+} as const;
+
 // 任务阶段：需要客户/专家处理、进行中、已完成、出错
 export const stage = {
   action: { color: gy.warning, bg: gy.warningBg },

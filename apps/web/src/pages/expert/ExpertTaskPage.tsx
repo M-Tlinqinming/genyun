@@ -1,12 +1,7 @@
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import {
   FACT_SECTIONS,
-  figuresView,
-  listCounts,
-  PRODUCTION_LIST_KEYS,
-  PRODUCTION_LISTS,
   workupStepsDone,
-  productionView,
   riskRowValueOf,
   riskView,
   SCOPE_GROUP_KEYS,
@@ -21,7 +16,6 @@ import {
   type FactSection,
   type FactValue,
   type RiskDimension,
-  type ProductionList,
   type RiskRowValue,
   type ScopeGroup,
   type ScopeKey,
@@ -33,18 +27,16 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useGeneration } from '../../api/generation';
 import { ApiError } from '../../api/request';
 import { useTask, useTaskCheck } from '../../api/tasks';
-import { useSaveFact, useSaveFigures, useSaveProduction, useSaveRisk, useSaveScope, useWorkup, workupKey } from '../../api/workup';
+import { useSaveFact, useSaveRisk, useSaveScope, useWorkup, workupKey } from '../../api/workup';
 import { linkButton, Loading } from '../../components/ui';
 import { FadeSwap } from '../../theme/motion';
 import { gy, stage } from '../../theme/tokens';
 import { ConfirmView } from './workup/ConfirmView';
 import { FactsPanel, SourceTag, type Editing } from './workup/FactsPanel';
-import { FiguresPanel, type FiguresSaveInput } from './workup/FiguresPanel';
 import { PublishView } from './editing/PublishView';
 import { ReviewWorkspace } from './editing/ReviewWorkspace';
 import { GenerationView, phaseOf } from './workup/GenerationView';
-import { OriginalsPanel, originalTitle } from './workup/OriginalsPanel';
-import { ProductionPanel, type ProductionSaveInput } from './workup/ProductionPanel';
+import { originalTitle } from './workup/OriginalsPanel';
 import { RiskBasisPanel, RiskPanel } from './workup/RiskPanel';
 import { ScopePanel, ScopePreviewPanel } from './workup/ScopePanel';
 import { WorkupWizard } from './workup/wizard/WorkupWizard';
@@ -54,6 +46,8 @@ const STAGES = ['资料核实', '专业编制', '审核与修订', '成果交付
 // 属地这一节仍在原来的整理页（第 1 步的弹窗只管应急管理、消防、街道 3 项）
 const WIZARD_STEP_OF_SECTION: Partial<Record<FactSection, number>> = { basic: 1, contact: 1, organization: 2, compilation: 2 };
 const WIZARD_AGENCY_KEYS = new Set(['agency.emergencyBureau', 'agency.fireDept', 'agency.streetOffice']);
+// 生产设备与物料、图件、客户原件已搬到资料核对第 3、4 步：待确认的判断按清单去对应那一步
+const WIZARD_STEP_OF_LIST: Record<string, number> = { buildings: 4, fire: 4, supplies: 4, firstAid: 4 };
 
 const text14: CSSProperties = { fontSize: 14, lineHeight: '22px' };
 const text13: CSSProperties = { fontSize: 13, lineHeight: '22px' };
@@ -64,8 +58,8 @@ function clock(iso: string): string {
   );
 }
 
-// I05 处理工作台 · 专业整理（14 页 E18-00A–D、E18-00F）：左栏整理模块、中栏企业事实 / 生产设备与物料 / 危险源辨识 / 适用范围、
-// 右栏原件对照、评价依据或生成结构预览；图件的两张图占中栏和右栏。
+// I05 处理工作台 · 专业整理（14 页 E18-00A–D）：左栏整理模块、中栏企业事实 / 危险源辨识 / 适用范围、
+// 右栏评价依据或生成结构预览（生产设备与物料、图件、客户原件已搬到资料核对第 3、4 步和右栏「客户原表」卡）。
 // 整理完以后同一页切到确认采用资料（E18-01，?view=confirm）和三份草稿的生成进度（E18-02、E18-02b）：
 // 生成过草稿就默认看进度，?view=workup 回到整理
 export function ExpertTaskPage() {
@@ -73,10 +67,8 @@ export function ExpertTaskPage() {
   const task = useTask(taskId);
   const workup = useWorkup(taskId);
   const save = useSaveFact(taskId);
-  const saveProduction = useSaveProduction(taskId);
   const saveRisk = useSaveRisk(taskId);
   const saveScope = useSaveScope(taskId);
-  const saveFigures = useSaveFigures(taskId);
   const check = useTaskCheck(taskId);
   const generation = useGeneration(taskId);
   const [params, setParams] = useSearchParams();
@@ -89,8 +81,8 @@ export function ExpertTaskPage() {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<FactSection>('basic');
-  // 中栏显示哪个模块：企业事实、生产设备与物料的某一类清单、危险源辨识、适用范围或图件
-  const [module, setModule] = useState<'facts' | 'risks' | 'scope' | 'figures' | ProductionList>('facts');
+  // 中栏显示哪个模块：企业事实、危险源辨识或适用范围（生产设备与物料、图件已搬到资料核对第 3、4 步）
+  const [module, setModule] = useState<'facts' | 'risks' | 'scope'>('facts');
   const [riskId, setRiskId] = useState<string | null>(null);
   const [dimension, setDimension] = useState<RiskDimension>('c');
   const [scopeGroup, setScopeGroup] = useState<ScopeGroup | null>(null);
@@ -103,13 +95,9 @@ export function ExpertTaskPage() {
     [workup.data],
   );
   const progress = useMemo(() => workupProgress(facts), [facts]);
-  const production = useMemo(() => (workup.data ? productionView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
-  const counts = useMemo(() => (production ? listCounts(production) : null), [production]);
   const risks = useMemo(() => (workup.data ? riskView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
   const scope = useMemo(() => (workup.data ? scopeView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
-  const figures = useMemo(() => (workup.data ? figuresView(workup.data.snapshot, workup.data.data) : null), [workup.data]);
   const selectedRisk = risks?.rows.find((r) => r.id === riskId) ?? risks?.rows[0];
-  const inProduction = module !== 'facts' && module !== 'risks' && module !== 'scope' && module !== 'figures';
   // 还差的项（底栏与「下一个缺失项」共用，确认生成时后台按同一规则再查一次）
   const { gaps, required } = useMemo(
     () => (workup.data ? workupGaps(workup.data.snapshot, workup.data.data, workup.data.agencyDistricts) : { gaps: [], required: 0 }),
@@ -127,11 +115,11 @@ export function ExpertTaskPage() {
     [check.data],
   );
 
-  // 资料核对第 3–5 步先用原来的整理页：?view=workup-old&module=… 直接打开对应模块
+  // 资料核对第 5 步先用原来的整理页：?view=workup-old&module=… 直接打开对应模块
   const moduleParam = params.get('module');
   useEffect(() => {
     if (!moduleParam) return;
-    if (moduleParam === 'risks' || moduleParam === 'scope' || moduleParam === 'figures' || moduleParam in PRODUCTION_LISTS) {
+    if (moduleParam === 'risks' || moduleParam === 'scope') {
       setModule(moduleParam as typeof module);
     }
   }, [moduleParam]);
@@ -159,7 +147,14 @@ export function ExpertTaskPage() {
 
   // 原来的整理页里先轮流跳这页上的缺项；只剩向导第 1、2 步的缺项时回到向导那一步
   const goToNextMissing = () => {
-    const wizardStepOf = (g: (typeof gaps)[number]) => (WIZARD_AGENCY_KEYS.has(g.key) ? 1 : g.section ? WIZARD_STEP_OF_SECTION[g.section] : undefined);
+    const wizardStepOf = (g: (typeof gaps)[number]) =>
+      WIZARD_AGENCY_KEYS.has(g.key)
+        ? 1
+        : g.module !== 'facts' && g.module !== 'scope'
+          ? (WIZARD_STEP_OF_LIST[g.module] ?? 3)
+          : g.section
+            ? WIZARD_STEP_OF_SECTION[g.section]
+            : undefined;
     const here = gaps.filter((g) => !wizardStepOf(g));
     if (here.length === 0) {
       const step = gaps[0] && wizardStepOf(gaps[0]);
@@ -170,26 +165,10 @@ export function ExpertTaskPage() {
     const next = here[at + 1] ?? here[0]!;
     if (params.get('view') !== 'workup-old') setParams({ view: 'workup-old' });
     setFocusKey(next.key);
-    setModule(next.module);
+    setModule(next.module === 'scope' ? 'scope' : 'facts');
     if (next.section) setActiveSection(next.section);
     if (next.module === 'scope') setScopeGroup(null);
     setTimeout(() => scrollTo(rows.current.get(next.key)), 0);
-  };
-
-  const saveJudgement = async (input: ProductionSaveInput) => {
-    if (!workup.data) return false;
-    try {
-      await saveProduction.mutateAsync({ ...input, version: workup.data.version, fileId: currentFile?.fileId } as Parameters<typeof saveProduction.mutateAsync>[0]);
-      return true;
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        message.warning(err.message);
-        await client.invalidateQueries({ queryKey: workupKey(taskId) });
-        return false;
-      }
-      message.error(err instanceof ApiError ? err.message : '保存失败，请检查网络后重试');
-      return false;
-    }
   };
 
   const saveRiskRow = async (rowId: string, value: RiskRowValue | null) => {
@@ -212,22 +191,6 @@ export function ExpertTaskPage() {
     if (!workup.data) return false;
     try {
       await saveScope.mutateAsync({ key, value, version: workup.data.version });
-      return true;
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        message.warning(err.message);
-        await client.invalidateQueries({ queryKey: workupKey(taskId) });
-        return false;
-      }
-      message.error(err instanceof ApiError ? err.message : '保存失败，请检查网络后重试');
-      return false;
-    }
-  };
-
-  const saveFigureLayout = async (input: FiguresSaveInput) => {
-    if (!workup.data) return false;
-    try {
-      await saveFigures.mutateAsync({ ...input, version: workup.data.version });
       return true;
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -307,7 +270,7 @@ export function ExpertTaskPage() {
   const w = workup.data;
   const current = generation.data?.current ?? null;
   const requested = params.get('view');
-  // workup = 资料核对向导；workup-old = 原来的整理页（向导第 3–5 步还在用）
+  // workup = 资料核对向导；workup-old = 原来的整理页（向导第 5 步还在用）
   const view =
     requested === 'confirm'
       ? requested
@@ -410,13 +373,11 @@ export function ExpertTaskPage() {
   const saved = w.updatedByName ? `已自动保存 ${clock(w.updatedAt)}` : '还没有修改';
   // 适用范围的待确认开关、待采用的图在底栏各合成一条
   const scopeGaps = gaps.filter((g) => g.module === 'scope').length;
-  const figureGaps = gaps.filter((g) => g.module === 'figures').length;
   const missingLabels = [
-    ...gaps.filter((g) => g.module !== 'scope' && g.module !== 'figures').map((g) => g.label),
+    ...gaps.filter((g) => g.module !== 'scope').map((g) => g.label),
     ...(scopeGaps ? [`适用范围（${scopeGaps} 个开关待确认）`] : []),
-    ...(figureGaps ? [`图件（${figureGaps} 张待采用）`] : []),
   ];
-  const busy = save.isPending || saveProduction.isPending || saveRisk.isPending || saveScope.isPending || saveFigures.isPending;
+  const busy = save.isPending || saveRisk.isPending || saveScope.isPending;
 
   return (
     <div className="gy-wide-workbench" style={{ display: 'flex', flexDirection: 'column', gap: 16, margin: '-16px 0 -24px' }}>
@@ -431,7 +392,7 @@ export function ExpertTaskPage() {
           role="note"
           style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px', borderRadius: 8, background: gy.selected, ...text14, color: gy.text }}
         >
-          <span style={{ flex: 1 }}>资料核对第 3–5 步正在换新样式，这里是原来的整理页</span>
+          <span style={{ flex: 1 }}>资料核对第 5 步正在换新样式，这里是原来的整理页</span>
           <Link to={`?view=workup&step=${Math.min(Math.max(workupStepsDone(w.data) + 1, 3), 5)}`} style={{ color: gy.primary }}>
             回到资料核对
           </Link>
@@ -493,34 +454,6 @@ export function ExpertTaskPage() {
                   <span style={{ color: s.missing ? stage.action.color : stage.done.color }}>{s.missing ? `缺 ${s.missing}` : '✓'}</span>
                 </button>
               ))}
-            </div>
-          )}
-          <ModuleButton
-            title="生产设备与物料"
-            sub="8 类清单"
-            active={inProduction}
-            count={production?.pending.length ? `${production.pending.length} 待确认` : '✓'}
-            warn={Boolean(production?.pending.length)}
-            onClick={() => setModule('equipment')}
-          />
-          {inProduction && counts && (
-            <div role="list" aria-label="生产设备与物料清单" style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 12px 4px 24px' }}>
-              {PRODUCTION_LIST_KEYS.map((key) => {
-                const c = counts[key];
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    role="listitem"
-                    aria-current={module === key ? 'true' : undefined}
-                    onClick={() => setModule(key)}
-                    style={{ ...linkButton, display: 'flex', justifyContent: 'space-between', width: '100%', ...text13 }}
-                  >
-                    <span style={{ color: module === key ? gy.primary : gy.text }}>{PRODUCTION_LISTS[key]}</span>
-                    <span style={{ color: c.pending ? stage.action.color : gy.secondary }}>{c.pending ? `${c.pending} 待确认` : c.count || '—'}</span>
-                  </button>
-                );
-              })}
             </div>
           )}
           <ModuleButton
@@ -589,14 +522,6 @@ export function ExpertTaskPage() {
               })}
             </div>
           )}
-          <ModuleButton
-            title="图件"
-            sub="体系图 · 工艺流程图"
-            active={module === 'figures'}
-            count={figures?.pending.length ? `待采用 ${figures.pending.length}` : '✓'}
-            warn={Boolean(figures?.pending.length)}
-            onClick={() => setModule('figures')}
-          />
           <span style={{ flex: 1 }} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 12, borderTop: `1px solid ${gy.split}` }}>
             <span style={{ fontSize: 13, lineHeight: '20px', color: gy.secondary }}>来源图例</span>
@@ -609,20 +534,7 @@ export function ExpertTaskPage() {
           </div>
         </nav>
 
-        {module === 'figures' && figures ? (
-          <FiguresPanel
-            taskId={taskId}
-            view={figures}
-            settings={w.data.figures ?? {}}
-            saving={saveFigures.isPending}
-            onSave={saveFigureLayout}
-            onGoProcess={() => setModule('process')}
-            registerRow={(key, el) => {
-              if (el) rows.current.set(key, el);
-              else rows.current.delete(key);
-            }}
-          />
-        ) : module === 'scope' && scope ? (
+        {module === 'scope' && scope ? (
           <ScopePanel
             view={scope}
             group={scopeGroup}
@@ -645,24 +557,6 @@ export function ExpertTaskPage() {
             onDimension={setDimension}
             saving={saveRisk.isPending}
             onSave={saveRiskRow}
-            registerRow={(key, el) => {
-              if (el) rows.current.set(key, el);
-              else rows.current.delete(key);
-            }}
-          />
-        ) : inProduction ? (
-          <ProductionPanel
-            snapshot={w.snapshot}
-            data={w.data}
-            list={module as ProductionList}
-            focusKey={focusKey}
-            saving={saveProduction.isPending}
-            onSave={saveJudgement}
-            onOpenFile={setFileId}
-            onOpenItem={(itemKey) => {
-              const target = originals.find((o) => o.itemKeys.includes(itemKey));
-              return target ? () => setFileId(target.fileId) : undefined;
-            }}
             registerRow={(key, el) => {
               if (el) rows.current.set(key, el);
               else rows.current.delete(key);
@@ -695,7 +589,7 @@ export function ExpertTaskPage() {
         />
         )}
 
-        {module === 'figures' ? null : module === 'scope' && scope ? (
+        {module === 'scope' && scope ? (
           <ScopePreviewPanel view={scope} onSelect={goToSwitch} />
         ) : module === 'risks' ? (
           <RiskBasisPanel
@@ -706,12 +600,10 @@ export function ExpertTaskPage() {
               if (!selectedRisk) return;
               void saveRiskRow(selectedRisk.id, { ...riskRowValueOf(selectedRisk), [key]: value });
             }}
-            onJump={setModule}
+            onJump={(list) => setParams({ view: 'workup', step: String(WIZARD_STEP_OF_LIST[list] ?? 3) })}
             originals={originals}
           />
-        ) : (
-          <OriginalsPanel originals={originals} selectedId={currentFile?.fileId ?? null} onSelect={setFileId} />
-        )}
+        ) : null}
       </div>
 
       <section

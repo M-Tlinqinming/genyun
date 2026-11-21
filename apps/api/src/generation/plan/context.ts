@@ -233,7 +233,8 @@ export function planContext(input: PlanInput): PlanContext {
     // 正文里的报警电话一律 119；大队值班电话只进联系方式表
     firePhone: '119',
     fireDutyPhone: agencies.fireDept?.phone,
-    hospital: input.expert.facts?.hospital?.name || '属地医疗急救机构',
+    // 第 4 步的就近医院（专家改了用专家的）→ 原来的专家事实 → 属地医疗急救机构
+    hospital: input.expert.externalContacts?.hospital?.name || input.expert.facts?.hospital?.name || '属地医疗急救机构',
     commander: org.commander,
     commanderName: org.commander ? fill(org.commander.name) : MISSING,
     dutyPhone: fill(org.dutyPhone),

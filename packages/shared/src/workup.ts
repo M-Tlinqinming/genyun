@@ -17,6 +17,8 @@ import { effectiveSnapshot, organizationOfSnapshot, type StepStamps } from './wo
 import type { RiskWorkup } from './workup-risk.ts';
 import type { FiguresWorkup } from './workup-figures.ts';
 import type { ScopeWorkup } from './workup-scope.ts';
+import type { ResourcesExtra } from './workup-resources.ts';
+import type { ExpertUpload } from './workup-uploads.ts';
 
 // 快照：企业身份四项（企业档案的列）+ 企业自填资料
 export interface WorkupSnapshot {
@@ -109,6 +111,10 @@ export interface WorkupData {
   blank?: string[];
   // 每一步最后是谁、什么时候保存的
   steps?: StepStamps;
+  // 第 4 步里只有专家填的项（外部联系方式的派出所、专职消防队、值守时间，四邻，专家的三张图），第 4 步保存时整份写入
+  resourcesExtra?: ResourcesExtra;
+  // 专家代客户上传、上传专家的图，每次一条（最多留 200 条）
+  expertUploads?: ExpertUpload[];
 }
 
 export type { Stamp };
