@@ -1,73 +1,74 @@
-import { contractState, taskTodo, type TaskTodo } from '@genyun/shared';
+import { contractState } from '@genyun/shared';
 import { PlusOutlined } from '@ant-design/icons';
-import { Button, Tooltip } from 'antd';
-import type { CSSProperties } from 'react';
+import { App, Button, Tooltip } from 'antd';
+import { useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router';
+import { downloadBundle } from '../../../api/deliveries';
+import { ContactLink } from '../../../components/ContactLink';
+import { NoticeBar } from '../../../components/NoticeBar';
 import type { TaskSummary } from '../../../api/enterprises';
 import { useOrganization } from '../../../api/tasks';
 import { gy, type } from '../../../theme/tokens';
 
-export interface TaskRow extends TaskSummary {
-  todo: TaskTodo;
+// 每种状态的按钮：文字和去处（任务列表、工作台各一套说法）。
+// 已交付在任务列表里直接下载整套 Word，在工作台里去成果页
+export type TaskActionPlace = 'list' | 'workbench';
+
+export function taskAction(t: TaskSummary, place: TaskActionPlace): { label: string; to: string | null } {
+  const prepare = `/customer/tasks/${t.id}/prepare`;
+  const result = `/customer/documents/${t.id}`;
+  switch (t.view.key) {
+    case 'preparing_no_table':
+      return { label: '去上传', to: prepare };
+    case 'preparing_missing':
+      return { label: '去补齐', to: prepare };
+    case 'preparing_ready':
+      return { label: '去提交', to: prepare };
+    case 'expert_working':
+      return { label: place === 'list' ? '查看' : '查看进度', to: `/customer/tasks/${t.id}` };
+    case 'delivered':
+      return place === 'list' && t.delivery ? { label: '下载', to: null } : { label: '查看成果', to: result };
+    case 'delivered_locked':
+      return { label: '查看', to: result };
+    default:
+      // 老流程的任务：没提交的回任务页，提交过的看记录（和原来一样）
+      return { label: '查看', to: t.view.stage === 0 ? `/customer/tasks/${t.id}` : `/customer/tasks/${t.id}?tab=records` };
+  }
 }
 
-// 待我处理在前，同一栏里最近有动静的在前
-export function taskRows(tasks: TaskSummary[] | undefined): TaskRow[] {
-  const order = { mine: 0, gengyun: 1, delivered: 2 };
-  return (tasks ?? [])
-    .map((t) => ({ ...t, todo: withDelivery(taskTodo(t), t) }))
-    .sort((a, b) => order[a.todo.bucket] - order[b.todo.bucket] || b.activityAt.localeCompare(a.activityAt));
-}
-
-// 已交付的写明交付过（客户只看最新一次交付，不写版本号）
-function withDelivery(todo: TaskTodo, t: TaskSummary): TaskTodo {
-  return todo.bucket === 'delivered' && t.delivery ? { ...todo, next: t.delivery.version > 1 ? '成果已更新，可查看和下载' : '成果已交付，可查看和下载' } : todo;
-}
-
-// 点进去直达要做的那一步：已交付看成果；已提交看处理记录；其余进任务页
-export function taskHref(t: TaskRow): string {
-  const base = `/customer/tasks/${t.id}`;
-  if (t.todo.bucket === 'delivered') return `/customer/documents/${t.id}`;
-  if (t.todo.bucket !== 'mine') return `${base}?tab=records`;
-  return base;
-}
-
-// 今天 09:40 / 昨天 16:40 / 10.26（北京时间）
-export function whenText(iso: string, now: Date = new Date()): string {
-  const fmt = (d: Date, opts: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, ...opts }).format(d);
-  const day = (d: Date) => fmt(d, { year: 'numeric', month: '2-digit', day: '2-digit' });
-  const d = new Date(iso);
-  const time = fmt(d, { hour: '2-digit', minute: '2-digit' });
-  if (day(d) === day(now)) return `今天 ${time}`;
-  if (day(d) === day(new Date(now.getTime() - 86_400_000))) return `昨天 ${time}`;
-  return fmt(d, { month: '2-digit', day: '2-digit' }).replace('/', '.');
-}
-
-// 四个阶段的小进度条：已过的蓝色，当前一段待客户处理为橙色、耕云处理为蓝色，其余灰色
-export function StageBar({ todo }: { todo: TaskTodo }) {
+/** 行尾的描边按钮（88×32）：去对应的页面，或者在任务列表里直接下载整套 Word */
+export function TaskActionButton({ task, place, width = 88 }: { task: TaskSummary; place: TaskActionPlace; width?: number | 'auto' }) {
+  const navigate = useNavigate();
+  const { message } = App.useApp();
+  const [busy, setBusy] = useState(false);
+  const action = taskAction(task, place);
+  const onClick = async () => {
+    if (action.to) return navigate(action.to);
+    if (!task.delivery) return;
+    setBusy(true);
+    try {
+      await downloadBundle(task.id, task.delivery.version, task.enterpriseName, task.delivery.publishedAt);
+    } catch (err) {
+      message.error(`整套 Word 没能下载：${err instanceof Error ? err.message : '请稍后重试'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <span aria-hidden style={{ display: 'flex', gap: 4 }}>
-      {[0, 1, 2, 3].map((i) => (
-        <span
-          key={i}
-          style={{
-            width: 47,
-            height: 4,
-            borderRadius: 2,
-            background:
-              i < todo.stage || (i === todo.stage && todo.bucket === 'delivered')
-                ? gy.primary
-                : i === todo.stage
-                  ? todo.bucket === 'mine'
-                    ? gy.warning
-                    : gy.primary
-                  : gy.split,
-          }}
-        />
-      ))}
-    </span>
+    <Button
+      loading={busy}
+      aria-label={`${action.label} ${task.enterpriseName} ${task.number}`}
+      onClick={() => void onClick()}
+      style={{ width, flexShrink: 0, borderColor: gy.controlLine, ...(width === 'auto' ? { paddingInline: 15 } : { paddingInline: 0 }) }}
+    >
+      {action.label}
+    </Button>
   );
+}
+
+/** 「更新」列新的在前 */
+export function byUpdated(a: TaskSummary, b: TaskSummary) {
+  return b.updatedOn.localeCompare(a.updatedOn);
 }
 
 // 年度服务（合同有效期）：到期前 30 天提醒，过期后不能新建任务
@@ -142,3 +143,44 @@ export const link: CSSProperties = {
   lineHeight: '22px',
   color: gy.primary,
 };
+
+// 年度服务提醒（快到期、未开始、未开通、已到期）：一行提示条，右边一个联系耕云的文字链接。
+// 已到期在工作台另有两行的提醒块，任务列表用这里的一行
+export function ContractNotice({
+  state,
+  daysLeft,
+  endsAt,
+}: {
+  state: ReturnType<typeof useContract>['state'];
+  daysLeft: number | null;
+  endsAt: string | null;
+}) {
+  if (state === null || state === 'active') return null;
+  const text =
+    state === 'expiring'
+      ? `${daysLeft === 0 ? '年度服务今天到期' : `年度服务将于 ${endsAt} 到期，还有 ${daysLeft} 天`}。到期后不能创建新的编制任务；在办任务和已交付成果不受影响。`
+      : state === 'expired'
+        ? '年度服务已到期。新任务暂不可创建。在办任务按服务约定处理，历史成果仍可下载。'
+        : state === 'upcoming'
+          ? '年度服务尚未开始。服务开始后即可创建编制任务。'
+          : '年度服务尚未开通。耕云登记合同后即可创建编制任务。';
+  return (
+    <NoticeBar
+      tone="warning"
+      label="年度服务提醒"
+      action={
+        <ContactLink
+          title="联系耕云续约"
+          hint="续约或开通年度服务，请直接联系耕云。"
+          trigger={(open) => (
+            <Button type="link" onClick={open} style={{ padding: 0, height: 'auto' }}>
+              {state === 'upcoming' ? '联系耕云' : state === 'none' ? '联系耕云开通' : '联系耕云续约'}
+            </Button>
+          )}
+        />
+      }
+    >
+      {text}
+    </NoticeBar>
+  );
+}

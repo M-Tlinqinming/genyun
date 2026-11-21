@@ -14,6 +14,7 @@ import {
   reviewOf,
   statusNotAllowedReason,
   supplementProgress,
+  taskView,
 } from '@genyun/shared';
 import {
   BadRequestException,
@@ -25,12 +26,14 @@ import {
 } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { canEditEnterpriseData, canViewEnterprise, canViewOrganization, canViewTask, enterpriseScope, isExpert } from '../auth/access.ts';
+import { canEditEnterpriseData, canViewEnterprise, canViewOrganization, canViewTask, enterpriseScope, isCustomerAdminOf, isExpert } from '../auth/access.ts';
+import { orgAdminNames } from '../credits/credits.service.ts';
 import { assertFilesUsable } from '../files/file-links.ts';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { DATABASE, type Database } from '../db/client.ts';
 import { isUniqueViolation } from '../db/errors.ts';
 import { REASSIGNED_TITLE } from '../notifications/notifications.service.ts';
+import { loadTaskViewInputs } from './task-view-input.ts';
 import {
   checklistItemFiles,
   checklistItems,
@@ -113,8 +116,17 @@ export class TasksService {
       .from(deliveries)
       .where(and(inArray(deliveries.taskId, ids), eq(deliveries.status, 'done')))
       .orderBy(desc(deliveries.version));
+    // 客户端三段状态（11 页 C01 / C04）：按看的人是不是组织管理员算；管理员名字只查一次
+    const facts = await loadTaskViewInputs(this.db, ids);
+    const now = new Date();
+    const anyLocked = [...facts.values()].some((f) => f.chargeStatus === 'awaiting_credits');
+    const viewer = { side: 'customer' as const, isCustomerAdmin: isCustomerAdminOf(user, orgId), adminName: anyLocked ? await orgAdminNames(this.db, orgId) : undefined };
 
     return list.map((t) => {
+      const f = facts.get(t.id)!;
+      const view = taskView({ ...f, now, viewer })!;
+      // 「更新」列：已交付看最近一次交付，专家编制看提交时间，准备资料看最近一次动资料，都没有用创建时间
+      const updatedOn = f.lastDelivery?.at ?? (t.status === 'submitted' ? f.submittedAt : f.materialChangedAt) ?? t.createdAt;
       const mine = rows.filter((r) => r.taskId === t.id);
       const items: ChecklistState = {};
       for (const r of mine) {
@@ -129,6 +141,9 @@ export class TasksService {
         remaining: progress.total - progress.done,
         delivery: latestDelivery(delivered.filter((d) => d.taskId === t.id)),
         activityAt: new Date(Math.max(...times.map((d) => d.getTime()))),
+        view,
+        updatedOn: updatedOn.toISOString(),
+        adminNames: view.key === 'delivered_locked' ? (viewer.adminName ?? null) : null,
       };
     });
   }

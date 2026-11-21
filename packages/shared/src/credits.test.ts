@@ -4,6 +4,8 @@ import {
   creditBalance,
   creditLockReason,
   creditSummary,
+  customerCreditEntryText,
+  formatCreditDelta,
   formatAdminNames,
   giftCampaignTotals,
   giftUsage,
@@ -246,5 +248,32 @@ describe('赠送用掉多少', () => {
 
   it('购买池的行不算', () => {
     expect(giftUsage([g('a', 'contract_purchase', 10, null, 'purchase'), g('a', 'top_up', 2, null, 'purchase')])).toEqual([]);
+  });
+});
+
+describe('客户看的次数记录说明', () => {
+  const base = { delta: 1, pool: 'purchase' as const, campaign: null, taskNumber: null, enterpriseName: null, contractStartsAt: '2026-01-01', contractEndsAt: '2026-12-31' };
+  it('交付成果写企业、编号和扣的哪一池', () => {
+    expect(customerCreditEntryText({ ...base, type: 'delivery_deduction', delta: -1, pool: 'gift', enterpriseName: '飞宇', taskNumber: 'GY-2026-001' })).toBe(
+      '飞宇 · GY-2026-001 · 已交付 · 用的是赠送的次数',
+    );
+    expect(customerCreditEntryText({ ...base, type: 'delivery_deduction', delta: -1, enterpriseName: '飞宇', taskNumber: 'GY-2026-001' })).toBe(
+      '飞宇 · GY-2026-001 · 已交付 · 用的是购买的次数',
+    );
+  });
+  it('赠送、补偿、加购、合同购买', () => {
+    expect(customerCreditEntryText({ ...base, type: 'gift', pool: 'gift', campaign: '开业活动' })).toBe('开业活动 · 跟合同一起到期');
+    expect(customerCreditEntryText({ ...base, type: 'gift', pool: 'gift' })).toBe('耕云赠送 · 跟合同一起到期');
+    expect(customerCreditEntryText({ ...base, type: 'compensation', pool: 'gift' })).toBe('耕云补偿 · 跟合同一起到期');
+    expect(customerCreditEntryText({ ...base, type: 'top_up' })).toBe('合同外加购 · 跟合同一起到期');
+    expect(customerCreditEntryText({ ...base, type: 'contract_purchase', delta: 20 })).toBe('年度服务合同 · 2026.01.01 — 2026.12.31');
+  });
+  it('运营调减写耕云调整', () => {
+    expect(customerCreditEntryText({ ...base, type: 'top_up', delta: -2 })).toBe('耕云调整');
+    expect(customerCreditEntryText({ ...base, type: 'gift', pool: 'gift', delta: -1, campaign: '开业活动' })).toBe('耕云调整');
+  });
+  it('次数一栏的正负号', () => {
+    expect(formatCreditDelta(2)).toBe('+ 2');
+    expect(formatCreditDelta(-1)).toBe('− 1');
   });
 });
