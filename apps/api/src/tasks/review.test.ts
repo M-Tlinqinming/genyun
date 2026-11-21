@@ -24,6 +24,7 @@ import {
 } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
+import { DrawingRenderer } from '../generation/drawings/renderer.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
 import { EditingService } from './editing.service.ts';
@@ -160,6 +161,7 @@ beforeAll(async () => {
     storage,
     queue,
     renderer,
+    drawingRenderer: pagesRenderer,
     drafter: null,
     pdf: converter,
   });
@@ -462,6 +464,16 @@ describe('接着上次的地方、待补充、处理记录', () => {
   });
 });
 
+// 数当前稿 PDF 的页数（K13：已交付页、审核结论页签显示）：不起真的渲染进程，给定页数或模拟出错
+class FakePages extends DrawingRenderer {
+  pages: number | 'throw' = 5;
+  override async count(): Promise<number> {
+    if (this.pages === 'throw') throw new Error('模拟数页数出错');
+    return this.pages;
+  }
+}
+const pagesRenderer = new FakePages();
+
 describe('当前稿 PDF', () => {
   async function waitFor(agent: request.Agent, kind: string, status: string) {
     let body: { status: string; version: number; error: string | null } = {
@@ -490,6 +502,11 @@ describe('当前稿 PDF', () => {
     const count = converted.length;
     await waitFor(zhou, 'resource', 'ready');
     expect(converted.length).toBe(count);
+    // 转好以后记下页数，审核结论页签按当前修订次数取
+    const [preview] = await handle.db.select().from(draftPreviews).where(and(eq(draftPreviews.batchId, batchId), eq(draftPreviews.kind, 'resource')));
+    expect(preview!.pages).toBe(5);
+    const view: ReviewView = (await zhou.get(`/api/tasks/${taskId}/draft-review`).expect(200)).body;
+    expect(view.docs.find((d) => d.kind === 'resource')!.pages).toBe(5);
 
     await saveSection(zhou, 'resource', '资源调查改过的措辞。');
     failNext = true;
@@ -500,9 +517,14 @@ describe('当前稿 PDF', () => {
     // 转好之前不给旧稿
     await zhou.get(url('resource', '/preview/file')).expect(404);
 
+    // 数页数出错：页数为空，预览照常
+    pagesRenderer.pages = 'throw';
     await zhou.post(url('resource', '/preview/retry')).expect(201);
     expect((await waitFor(zhou, 'resource', 'ready')).version).toBe(2);
     expect(converted.length).toBe(count + 1);
+    pagesRenderer.pages = 5;
+    const [noPages] = await handle.db.select().from(draftPreviews).where(and(eq(draftPreviews.batchId, batchId), eq(draftPreviews.kind, 'resource')));
+    expect(noPages!.pages).toBeNull();
 
     // 运营能看，别家看不到
     const ops = await as('ops@test.cn');

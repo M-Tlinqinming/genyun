@@ -28,8 +28,6 @@ import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
 import { MemoryMailer } from '../mail/mailer.ts';
-import { PublishService } from '../tasks/publish.service.ts';
-import type { ReviewService } from '../tasks/review.service.ts';
 import { complete, testDocument } from '../tasks/test-workup.ts';
 import { CreditsService } from './credits.service.ts';
 import { grantCredits } from './test-credits.ts';
@@ -228,22 +226,16 @@ describe('首次交付扣次数', () => {
   });
 
   it('重新打开后再交付不扣', async () => {
-    await handle.db.update(tasks).set({ reopenedAt: new Date() }).where(eq(tasks.id, t1));
-    // 同一批文稿再次交付：审核页的「已交付」判断先拦在前面，这里绕开（写法同 publish.test）
-    const review = (app.get(PublishService) as unknown as { review: ReviewService }).review;
-    const real = review.view.bind(review);
-    const spy = vi.spyOn(review, 'view').mockImplementation(async (...args) => ({ ...(await real(...args)), published: null }));
-    try {
-      const zhou = await as('zhou@test.cn');
-      const batchId: string = (await zhou.get(`/api/tasks/${t1}/drafts/plan/edit`).expect(200)).body.batchId;
-      const res = await zhou
-        .post(`/api/tasks/${t1}/publication`)
-        .send({ publishId: randomUUID(), batchId, versions: { plan: 0, risk: 0, resource: 0 } })
-        .expect(201);
-      expect(res.body.attempt).toMatchObject({ status: 'done', version: 2 });
-    } finally {
-      spy.mockRestore();
-    }
+    // 重新打开（K13）：核对和审核结论作废，重新核对、写结论以后同一批再次交付
+    const zhou = await as('zhou@test.cn');
+    await zhou.post(`/api/tasks/${t1}/reopen`).send({}).expect(201);
+    expect(await deductions(t1)).toHaveLength(1);
+    const batchId: string = (await zhou.get(`/api/tasks/${t1}/drafts/plan/edit`).expect(200)).body.batchId;
+    const versions = { plan: 0, risk: 0, resource: 0 };
+    for (const kind of ['plan', 'risk', 'resource']) await zhou.put(`/api/tasks/${t1}/drafts/${kind}/check`).send({ version: 0 }).expect(200);
+    await zhou.post(`/api/tasks/${t1}/draft-review`).send({ note: '三份已重新核对。', versions }).expect(201);
+    const res = await zhou.post(`/api/tasks/${t1}/publication`).send({ publishId: randomUUID(), batchId, versions }).expect(201);
+    expect(res.body.attempt).toMatchObject({ status: 'done', version: 2 });
     expect(await deductions(t1)).toHaveLength(1);
     expect((await bells('chen@test.cn')).map((b) => b.title)).toContain(`${ent1}的成果已更新`);
   });
