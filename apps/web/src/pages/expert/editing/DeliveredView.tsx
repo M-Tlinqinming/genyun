@@ -110,7 +110,7 @@ export function DeliveredView({
       />
       <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', display: 'flex' }}>
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', display: 'flex', justifyContent: 'center', padding: '32px 32px 48px' }}>
-          <main style={{ width: 1080, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div style={{ width: 1080, maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 24 }}>
             <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -194,7 +194,7 @@ export function DeliveredView({
                 </div>
               ))}
             </section>
-          </main>
+          </div>
         </div>
         <HistoryDrawer taskId={taskId} open={historyOpen} onClose={() => setHistoryOpen(false)} top={0} />
       </div>

@@ -114,7 +114,7 @@ test('首次交付：结果不确定时先查询，再点不会出第二次交�
 
   // 已交付页（R11）
   await expect(page.getByRole('heading', { name: '已交付给客户', level: 1 })).toBeVisible();
-  await expect(page.locator('main')).not.toContainText(/V\d/);
+  await expect(page.locator('body')).not.toContainText(/V\d/);
   const files = page.getByRole('region', { name: '交付的文稿' });
   for (const name of ['应急预案', '风险评估报告', '应急资源调查报告']) await expect(files).toContainText(`惠阳飞宇电器有限公司${name}.docx`);
   await expect(page.getByRole('region', { name: '交付信息' })).toContainText('三份文稿已逐章核对，与资料一致。');
