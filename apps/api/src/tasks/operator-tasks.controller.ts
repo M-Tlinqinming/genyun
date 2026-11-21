@@ -7,9 +7,15 @@ import {
   type ExpertReviewStatus,
   isExpertPaused,
   isOperatorAssignableExpert,
+  formatRegion,
   needsAssignment,
   operatorNoteSchema,
-  operatorTaskStage,
+  operatorTaskGroup,
+  regionPartsOf,
+  sortOperatorTasks,
+  taskView,
+  type OperatorTaskGroup,
+  type TaskViewTone,
 } from '@genyun/shared';
 import {
   BadRequestException,
@@ -25,7 +31,7 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { Request } from 'express';
 import { AuditService, clientIp } from '../audit/audit.ts';
@@ -39,11 +45,11 @@ import {
   memberships,
   organizations,
   taskOperatorNotes,
-  taskWorkups,
   tasks,
   users,
 } from '../db/schema.ts';
 import { NotificationsService, REASSIGNED_TITLE } from '../notifications/notifications.service.ts';
+import { loadTaskViewInputs, type TaskViewFacts } from './task-view-input.ts';
 
 const NOT_FOUND = '找不到该任务';
 
@@ -57,6 +63,9 @@ const columns = {
   orgId: tasks.orgId,
   orgName: organizations.name,
   orgRegion: organizations.region,
+  orgRegionProvince: organizations.regionProvince,
+  orgRegionCity: organizations.regionCity,
+  orgRegionDistrict: organizations.regionDistrict,
   enterpriseId: tasks.enterpriseId,
   enterpriseName: enterprises.name,
   status: tasks.status,
@@ -68,13 +77,50 @@ const columns = {
   assignedAt: tasks.assignedAt,
 };
 
-type Row = { status: 'preparing' | 'submitted'; assignedExpertId: string | null; closedAt: Date | null };
-const withStage = <T extends Row>(t: T) => ({
-  ...t,
-  stage: operatorTaskStage(t),
-  needsAssignment: needsAssignment(t),
-  assignBlockedReason: assignmentBlockedReason(t),
-});
+type Row = { id: string; status: 'preparing' | 'submitted'; assignedExpertId: string | null; closedAt: Date | null };
+
+/** 运营那一侧的状态（taskView），加上分组、排序用的几个时间和能不能改派 */
+export interface OperatorTaskState {
+  view: { key: string; label: string; tone: TaskViewTone; detail: string | null };
+  group: OperatorTaskGroup;
+  /** 待分配 = 提交时间，等客户补资料 = 列出缺项的时间，其余为空 */
+  waitingSince: Date | null;
+  activityAt: Date;
+  /** 已交付的取最近一次交付时间 */
+  deliveredAt: Date | null;
+  /** 已分配、没交付、服务端也允许改派（和 assign 用同一个 assignmentBlockedReason） */
+  canReassign: boolean;
+  needsAssignment: boolean;
+  assignBlockedReason: string | null;
+}
+
+/** 按 taskView（运营那一侧）算每个任务的状态；taskView 返回 null 的（已删除）不返回 */
+export function operatorTaskState(t: Row, f: TaskViewFacts, now: Date): OperatorTaskState | null {
+  const v = taskView({ ...f, now, viewer: { side: 'operator' } });
+  if (!v) return null;
+  const group = operatorTaskGroup(v.key, v.stage);
+  const blocked = assignmentBlockedReason(t);
+  return {
+    view: { key: v.key, label: v.label, tone: v.tone, detail: v.detail },
+    group,
+    waitingSince: group === 'to_assign' ? f.submittedAt : group === 'awaiting' ? f.awaitingCustomerSince : null,
+    activityAt: f.activityAt,
+    deliveredAt: group === 'delivered' ? (f.lastDelivery?.at ?? null) : null,
+    canReassign: !!t.assignedExpertId && group !== 'delivered' && !blocked,
+    needsAssignment: needsAssignment(t),
+    assignBlockedReason: blocked,
+  };
+}
+
+const regionFull = (t: {
+  orgRegion: string | null;
+  orgRegionProvince: string | null;
+  orgRegionCity: string | null;
+  orgRegionDistrict: string | null;
+}) => {
+  const parts = regionPartsOf({ regionProvince: t.orgRegionProvince, regionCity: t.orgRegionCity, regionDistrict: t.orgRegionDistrict });
+  return parts ? formatRegion(parts, 'full') : t.orgRegion;
+};
 
 function selectTasks(db: Database) {
   return db
@@ -95,7 +141,7 @@ function profileOf(r: { reviewStatus: ExpertReviewStatus | null; acceptingOrders
   return r.acceptingOrders === null ? null : { reviewStatus: r.reviewStatus, acceptingOrders: r.acceptingOrders };
 }
 
-// 运营任务中心（Paper 16 页 I04「待分派」「全部任务」、分配专家弹窗）。
+// 运营任务中心（Paper 16 页 I04 任务中心、I04b 抽屉、分配专家弹窗）。
 // 只有运营能看和分派；客户、专家一律 403
 @Controller('operator/tasks')
 export class OperatorTasksController {
@@ -105,34 +151,51 @@ export class OperatorTasksController {
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
-  // 全部任务，新提交的在前；待分派由前端按 needsAssignment 筛出来（数量少，不分页）
+  // 全部任务（包括已交付），按运营任务中心的默认顺序：要运营动手的两组在前、等得最久的在前（数量少，不分页，前端再筛）
   @Get()
   async list(@CurrentUser() user: SessionUser) {
     this.guard(user);
-    const rows = await this.select().where(isNull(tasks.deletedAt)).orderBy(desc(sql`coalesce(${tasks.submittedAt}, ${tasks.createdAt})`));
-    return rows.map(withStage);
+    const rows = await this.select().where(and(ne(organizations.kind, 'internal'), isNull(tasks.deletedAt)));
+    return sortOperatorTasks(await this.withState(rows));
   }
 
+  // 抽屉：在列表那一行的基础上加地区全称、组织主联系人（完整手机号，页面上遮住中间四位）、缺项、有没有正文可看
   @Get(':id')
   async get(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     this.guard(user);
     const task = await this.load(id);
-    // 专业整理随任务带给新专家（运营只看有没有开始，不看内容）
-    const [workup] = await this.db
-      .select({ updatedAt: taskWorkups.updatedAt })
-      .from(taskWorkups)
-      .where(eq(taskWorkups.taskId, id));
-    return { ...task, workupStartedAt: workup?.updatedAt ?? null };
+    const [org] = await this.db
+      .select({ contactName: organizations.contactName, contactPhone: organizations.contactPhone })
+      .from(organizations)
+      .where(eq(organizations.id, task.orgId));
+    const facts = (await loadTaskViewInputs(this.db, [id])).get(id);
+    return {
+      ...task,
+      region: regionFull(task),
+      contactName: org?.contactName ?? null,
+      contactPhone: org?.contactPhone ?? null,
+      awaitingCustomerSince: facts?.awaitingCustomerSince ?? null,
+      awaitingCustomerItems: facts?.awaitingCustomerItems ?? null,
+      // 运营查看正文页（/operator/tasks/<id>）打得开的条件：三份初稿生成完，或者已经交付过
+      hasDraft: !!facts && (facts.draft === 'ready' || !!facts.lastDelivery),
+    };
   }
 
-  // 分配弹窗里的专家：在办任务数，以及正在处理这家客户的其他几家企业（同一客户交给同一人更顺）。
+  // 分配弹窗里的专家：头像、擅长的行业、在办任务数（分给他、还没交付、没删的；重新打开的算在办）。
   // 暂停接单的照常列出、标 paused（弹窗里置灰）；待审核、未通过、已下架的不列
   @Get(':id/experts')
   async experts(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
     this.guard(user);
     const task = await this.load(id);
     const rows = await this.db
-      .selectDistinct({ id: users.id, name: users.name, email: users.email, ...availability })
+      .selectDistinct({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatar: expertProfiles.avatar,
+        industries: expertProfiles.industries,
+        ...availability,
+      })
       .from(users)
       .innerJoin(memberships, eq(memberships.userId, users.id))
       .innerJoin(organizations, eq(organizations.id, memberships.orgId))
@@ -144,30 +207,32 @@ export class OperatorTasksController {
       // 审核状态不能派的不列；暂停的留着、置灰
       .filter((p) => isOperatorAssignableExpert(p.profile && { ...p.profile, acceptingOrders: true }));
     if (people.length === 0) return [];
-    const open = await this.db
-      .select({ expertId: tasks.assignedExpertId, orgId: tasks.orgId, enterpriseId: tasks.enterpriseId })
+    // 在办按运营那一侧的状态算（不是已交付的）：交付时写的 closedAt 重新打开时不清，不能拿它判断
+    const mine = await this.db
+      .select({ id: tasks.id, status: tasks.status, assignedExpertId: tasks.assignedExpertId, closedAt: tasks.closedAt })
       .from(tasks)
-      .where(and(inArray(tasks.assignedExpertId, people.map((p) => p.id)), isNull(tasks.closedAt), isNull(tasks.deletedAt)));
+      .where(and(inArray(tasks.assignedExpertId, people.map((p) => p.id)), isNull(tasks.deletedAt)));
+    const states = await this.withState(mine);
+    const open = new Map<string, number>();
+    for (const t of states) {
+      if (t.group === 'delivered' || !t.assignedExpertId) continue;
+      open.set(t.assignedExpertId, (open.get(t.assignedExpertId) ?? 0) + 1);
+    }
     // 接单中的在前、暂停的在后，各自仍按名字（sort 是稳定排序）
     const ordered = [...people].sort((a, b) => Number(isExpertPaused(a.profile)) - Number(isExpertPaused(b.profile)));
-    return ordered.map((p) => {
-      const mine = open.filter((t) => t.expertId === p.id);
-      const sameOrg = new Set(
-        mine.filter((t) => t.orgId === task.orgId && t.enterpriseId !== task.enterpriseId).map((t) => t.enterpriseId),
-      );
-      return {
-        id: p.id,
-        name: p.name,
-        email: p.email,
-        openTasks: mine.length,
-        sameOrgEnterprises: sameOrg.size,
-        current: p.id === task.assignedExpertId,
-        paused: isExpertPaused(p.profile),
-      };
-    });
+    return ordered.map((p) => ({
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      avatar: p.avatar ?? null,
+      industries: p.industries ?? [],
+      openTasks: open.get(p.id) ?? 0,
+      current: p.id === task.assignedExpertId,
+      paused: isExpertPaused(p.profile),
+    }));
   }
 
-  // 分派或改派。专业整理挂在任务上，改派后自动归新专家；原专家从此打不开这个任务（404）
+  // 分配或改派。资料核对记录挂在任务上，改派后自动归新专家；原专家从此打不开这个任务（404）
   @Post(':id/assign')
   async assign(
     @CurrentUser() user: SessionUser,
@@ -177,7 +242,7 @@ export class OperatorTasksController {
   ) {
     this.guard(user);
     const parsed = assignExpertSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '分派信息不完整');
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '分配信息不完整');
     const { expertId, currentExpertId, note, reason } = parsed.data;
     const task = await this.load(id);
     const blocked = assignmentBlockedReason(task);
@@ -275,7 +340,7 @@ export class OperatorTasksController {
     if (!updated) {
       const now = await this.load(id);
       throw new ConflictException(
-        now.assignedExpertName ? `这个任务刚被分派给${now.assignedExpertName}，请看最新情况再决定` : '这个任务的负责专家刚有变化，请刷新后再试',
+        now.assignedExpertName ? `这个任务刚被分配给${now.assignedExpertName}，请看最新情况再决定` : '这个任务的负责专家刚有变化，请刷新后再试',
       );
     }
     // 操作日志：对象写任务编号和接手的专家；改派时带上原来的专家
@@ -288,7 +353,7 @@ export class OperatorTasksController {
         ? `${task.number} · ${task.assignedExpertName ?? '原专家'} → ${target.name}`
         : `${task.number} · ${target.name}`,
     });
-    return withStage(await this.load(id));
+    return this.load(id);
   }
 
   // 运营在任务上的记录：内部备注、改派（以前的提醒专家记录照常显示），新的在前
@@ -323,16 +388,30 @@ export class OperatorTasksController {
   }
 
   private guard(user: SessionUser) {
-    if (!canAssignTasks(user)) throw new ForbiddenException('只有耕云运营可以分派任务');
+    if (!canAssignTasks(user)) throw new ForbiddenException('只有耕云运营可以分配任务');
   }
 
   private select() {
     return selectTasks(this.db);
   }
 
+  private async withState<T extends Row>(rows: T[]): Promise<(T & OperatorTaskState)[]> {
+    const facts = await loadTaskViewInputs(
+      this.db,
+      rows.map((r) => r.id),
+    );
+    const now = new Date();
+    return rows.flatMap((r) => {
+      const f = facts.get(r.id);
+      const state = f && operatorTaskState(r, f, now);
+      return state ? [{ ...r, ...state }] : [];
+    });
+  }
+
   private async load(id: string) {
     const [task] = await this.select().where(and(eq(tasks.id, id), ne(organizations.kind, 'internal'), isNull(tasks.deletedAt)));
-    if (!task) throw new NotFoundException(NOT_FOUND);
-    return withStage(task);
+    const [withState] = task ? await this.withState([task]) : [];
+    if (!withState) throw new NotFoundException(NOT_FOUND);
+    return withState;
   }
 }
