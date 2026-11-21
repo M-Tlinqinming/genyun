@@ -74,6 +74,10 @@ export const organizations = pgTable('organizations', {
   contractEndsAt: date('contract_ends_at', { mode: 'string' }),
   // 以下为运营登记的客户组织资料（M3）；内部组织和 M3 之前建的演示组织为空
   region: text('region'),
+  // 所在地区按省、市、区县三级登记（K16）；region 照旧存全称给还在读文字的地方用。区县可以为空，老数据三列都空
+  regionProvince: text('region_province'),
+  regionCity: text('region_city'),
+  regionDistrict: text('region_district'),
   socialCreditCode: text('social_credit_code'),
   contactName: text('contact_name'),
   contactPhone: text('contact_phone'),

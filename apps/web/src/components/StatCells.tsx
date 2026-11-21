@@ -14,6 +14,8 @@ export type StatItem = {
   note?: ReactNode;
   /** 小圆点颜色，与阶段标签同一套 */
   tone: StatusTone;
+  /** 数字也用小圆点的颜色（如客户组织「快到期或快用完」有数时） */
+  emphasis?: boolean;
 };
 
 // 统计格：一排等宽、间距 16。受控：点一格选中（蓝框浅蓝底）当筛选用，再点一次取消
@@ -54,7 +56,7 @@ function StatCell({ item, selected, onClick }: { item: StatItem; selected: boole
         <span style={{ width: 6, height: 6, borderRadius: 3, flexShrink: 0, background: stage[item.tone].color }} />
         <span style={{ ...type.body, color: gy.secondary }}>{item.label}</span>
       </span>
-      <span className="gy-tabular" style={{ ...type.pageTitle, fontWeight: weight.strong, color: gy.text }}>
+      <span className="gy-tabular" style={{ ...type.pageTitle, fontWeight: weight.strong, color: item.emphasis ? stage[item.tone].color : gy.text }}>
         {item.value}
       </span>
       {item.note && (

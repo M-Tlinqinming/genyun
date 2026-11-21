@@ -48,6 +48,7 @@ export * from './editing.ts';
 export * from './review.ts';
 export * from './pending.ts';
 export * from './supplement.ts';
+export * from './region.ts';
 export * from './organization.ts';
 export * from './invitation.ts';
 export * from './audit.ts';

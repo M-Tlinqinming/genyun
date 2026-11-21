@@ -13,10 +13,14 @@ import {
   creditSummary,
   formatAdminNames,
   giftCampaignTotals,
-  isCreditContractActive,
+  giftUsage,
+  pickAdjustContract,
   pickDeduction,
   contractPoolBalance,
   type CreditAdjust,
+  type GiftCampaignOrgRow,
+  type GiftCampaignRow,
+  type GiftCampaignStats,
   type CreditContract,
   type CreditEntryType,
   type CreditLedgerRow,
@@ -172,7 +176,7 @@ export async function creditBriefs(db: Pick<Database, 'select'>, orgIds: string[
   return out;
 }
 
-async function lockOrg(tx: Pick<Database, 'select'>, orgId: string) {
+export async function lockOrg(tx: Pick<Database, 'select'>, orgId: string) {
   await tx.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, orgId)).for('update');
 }
 
@@ -359,10 +363,7 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
     const result = await this.db.transaction(async (tx) => {
       await lockOrg(tx, orgId);
       const ledger = await loadLedger(tx, orgId);
-      const today = chinaToday();
-      const active = ledger.contracts.filter((c) => isCreditContractActive(c, today)).sort((a, b) => b.endsAt.localeCompare(a.endsAt));
-      const upcoming = ledger.contracts.filter((c) => c.startsAt > today).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-      const target = active[0] ?? upcoming[0];
+      const target = pickAdjustContract(ledger.contracts);
       if (!target) throw new ConflictException('这个组织没有有效合同，请先登记续约');
       const pool: CreditPool = CREDIT_ENTRY_POOL[input.type];
       if (input.delta < 0) {
@@ -403,9 +404,47 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
     return { ...creditSummary(ledger.contracts, ledger.entries), awaitingTasks };
   }
 
-  // 运营看一个组织的次数（16 页「次数记录」）
+  // 运营看一个组织的次数（16 页「编制次数」卡片、「调整次数」「次数记录」）
   async operatorView(orgId: string): Promise<OperatorOrgCredits> {
     const brief = (await creditBriefs(this.db, [orgId])).get(orgId)!;
+    const ledger = await loadLedger(this.db, orgId);
+    // 调整次数会记在哪份合同上，和 adjust 挑的一样
+    const target = pickAdjustContract(ledger.contracts);
+    const today = chinaToday();
+    const adjustTarget = target
+      ? {
+          contractNumber: target.number,
+          startsAt: target.startsAt,
+          endsAt: target.endsAt,
+          upcoming: target.startsAt > today,
+          balance: {
+            gift: contractPoolBalance(ledger.entries, target.id, 'gift'),
+            purchase: contractPoolBalance(ledger.entries, target.id, 'purchase'),
+          },
+        }
+      : null;
+    // 等次数的成果：按任务生成先后；交付日期取第一次交付，没有就用任务生成日期
+    const waiting = await this.db
+      .select({ taskId: tasks.id, taskNumber: tasks.number, enterpriseName: enterprises.name, createdAt: tasks.createdAt })
+      .from(tasks)
+      .innerJoin(enterprises, eq(enterprises.id, tasks.enterpriseId))
+      .where(and(eq(tasks.orgId, orgId), eq(tasks.chargeStatus, 'awaiting_credits'), isNull(tasks.deletedAt)))
+      .orderBy(asc(tasks.createdAt), asc(tasks.number));
+    const firstDone = waiting.length
+      ? await this.db
+          .select({ taskId: deliveries.taskId, version: deliveries.version, at: deliveries.publishedAt })
+          .from(deliveries)
+          .where(and(inArray(deliveries.taskId, waiting.map((w) => w.taskId)), eq(deliveries.status, 'done')))
+          .orderBy(asc(deliveries.version))
+      : [];
+    const deliveredAt = new Map<string, Date>();
+    for (const d of firstDone) if (d.at && !deliveredAt.has(d.taskId)) deliveredAt.set(d.taskId, d.at);
+    const awaitingTasks = waiting.map((w) => ({
+      taskId: w.taskId,
+      taskNumber: w.taskNumber,
+      enterpriseName: w.enterpriseName,
+      deliveredOn: chinaToday(deliveredAt.get(w.taskId) ?? w.createdAt),
+    }));
     const rows = await this.db
       .select({
         id: creditEntries.id,
@@ -417,6 +456,8 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
         taskNumber: tasks.number,
         enterpriseName: enterprises.name,
         contractNumber: organizationContracts.number,
+        contractStartsAt: organizationContracts.startsAt,
+        contractEndsAt: organizationContracts.endsAt,
         createdByName: users.name,
         createdAt: creditEntries.createdAt,
       })
@@ -431,6 +472,8 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
     for (const r of rows) typeCounts[r.type] += 1;
     return {
       ...brief,
+      awaitingTasks,
+      adjustTarget,
       entries: rows.map((r) => ({
         ...r,
         typeLabel: CREDIT_ENTRY_TYPE_LABELS[r.type],
@@ -440,6 +483,99 @@ export class CreditsService implements OnModuleInit, OnModuleDestroy {
       })),
       typeCounts,
       giftCampaigns: giftCampaignTotals(rows),
+    };
+  }
+
+  /**
+   * 赠送活动统计（16 页「赠送活动统计」）：只算「耕云赠送」（补偿不算），按活动名称分组，按登记年份（北京时间）筛。
+   * 每一笔送出、用掉多少由 giftUsage 按合同算（先送先用，减赠送冲掉的算没送出）
+   */
+  async giftCampaignStats(year?: number): Promise<GiftCampaignStats> {
+    const rows = await this.db
+      .select({
+        id: creditEntries.id,
+        orgId: creditEntries.orgId,
+        orgName: organizations.name,
+        contractId: creditEntries.contractId,
+        contractEndsAt: organizationContracts.endsAt,
+        type: creditEntries.type,
+        pool: creditEntries.pool,
+        delta: creditEntries.delta,
+        campaign: creditEntries.campaign,
+        createdAt: creditEntries.createdAt,
+        createdByName: users.name,
+      })
+      .from(creditEntries)
+      .innerJoin(organizations, eq(organizations.id, creditEntries.orgId))
+      .innerJoin(organizationContracts, eq(organizationContracts.id, creditEntries.contractId))
+      .leftJoin(users, eq(users.id, creditEntries.createdBy))
+      .where(eq(creditEntries.pool, 'gift'));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const today = chinaToday();
+    const thisYear = Number(today.slice(0, 4));
+    const lots = giftUsage(rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })))
+      .filter((l) => l.type === 'gift' && l.granted > 0)
+      .map((l) => {
+        const r = byId.get(l.id)!;
+        const on = chinaToday(r.createdAt);
+        return { ...l, row: r, on, year: Number(on.slice(0, 4)) };
+      });
+    const years = [...new Set([thisYear, ...lots.map((l) => l.year)])].sort((a, b) => b - a);
+    const y = year ?? thisYear;
+    const picked = lots.filter((l) => l.year === y);
+
+    const group = (campaign: string | null, list: typeof picked): GiftCampaignRow => {
+      const orgs = new Map<string, GiftCampaignOrgRow>();
+      for (const l of [...list].sort((a, b) => a.row.createdAt.getTime() - b.row.createdAt.getTime())) {
+        const o = orgs.get(l.row.orgId) ?? {
+          orgId: l.row.orgId,
+          orgName: l.row.orgName,
+          lastGiftedOn: l.on,
+          lastGiftedByName: l.row.createdByName,
+          granted: 0,
+          used: 0,
+          unused: 0,
+          endsAt: l.row.contractEndsAt,
+          expired: false,
+        };
+        o.granted += l.granted;
+        o.used += l.used;
+        o.unused += l.unused;
+        o.lastGiftedOn = l.on;
+        o.lastGiftedByName = l.row.createdByName;
+        if (l.row.contractEndsAt > o.endsAt) o.endsAt = l.row.contractEndsAt;
+        o.expired = o.endsAt < today;
+        orgs.set(l.row.orgId, o);
+      }
+      const list2 = [...orgs.values()].sort((a, b) => b.lastGiftedOn.localeCompare(a.lastGiftedOn) || a.orgName.localeCompare(b.orgName));
+      return {
+        campaign,
+        orgCount: list2.length,
+        lastGiftedOn: list2.reduce<string | null>((m, o) => (m === null || o.lastGiftedOn > m ? o.lastGiftedOn : m), null),
+        granted: list2.reduce((n, o) => n + o.granted, 0),
+        used: list2.reduce((n, o) => n + o.used, 0),
+        unused: list2.reduce((n, o) => n + o.unused, 0),
+        orgs: list2,
+      };
+    };
+    const names = new Map<string, typeof picked>();
+    const unnamedLots: typeof picked = [];
+    for (const l of picked) {
+      const name = l.campaign?.trim();
+      if (!name) unnamedLots.push(l);
+      else names.set(name, [...(names.get(name) ?? []), l]);
+    }
+    const campaigns = [...names.entries()]
+      .map(([name, list]) => group(name, list))
+      .sort((a, b) => (b.lastGiftedOn ?? '').localeCompare(a.lastGiftedOn ?? '') || (a.campaign ?? '').localeCompare(b.campaign ?? ''));
+    return {
+      year: y,
+      years,
+      granted: picked.reduce((n, l) => n + l.granted, 0),
+      orgCount: new Set(picked.map((l) => l.row.orgId)).size,
+      used: picked.reduce((n, l) => n + l.used, 0),
+      campaigns,
+      unnamed: group(null, unnamedLots),
     };
   }
 

@@ -373,6 +373,11 @@ describe('扣不到：成果先锁住', () => {
     expect(deduction).toMatchObject({ typeLabel: '交付成果', delta: -1, pool: 'gift', contractNumber: 'GY-A-1', createdByName: '周工' });
     expect(deduction.taskNumber).toMatch(/^GY-2026-/);
     expect(view.entries[0]!.type).toBe('top_up');
+    // 等次数的成果按任务生成先后；调整次数记在生效的合同上
+    expect(view.awaitingTasks.map((t) => t.taskId)).toEqual([t2, t3]);
+    expect(view.awaitingTasks[0]).toMatchObject({ enterpriseName: expect.any(String), deliveredOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(view.adjustTarget).toMatchObject({ contractNumber: 'GY-A-1', endsAt: '2099-12-31', upcoming: false, balance: { gift: 0, purchase: 0 } });
+    expect(deduction).toMatchObject({ contractEndsAt: '2099-12-31' });
 
     const list = (await ops.get('/api/operator/organizations').expect(200)).body as { id: string; credits: unknown }[];
     expect(list.find((o) => o.id === org.a)!.credits).toMatchObject({ awaiting: 2, remaining: { total: 0 } });
@@ -384,7 +389,7 @@ describe('扣不到：成果先锁住', () => {
       subtitle: '客户组织 · 剩余 0 次',
       note: '有 2 份成果已编制好，等次数到账后放开；客户加购或续约后在这里登记',
       action: '调整次数',
-      link: `/operator/organizations/${org.a}`,
+      link: `/operator/organizations/${org.a}?adjust=1`,
     });
     expect(overview.services.find((s) => s.orgId === org.a)?.credits).toMatchObject({ awaiting: 2 });
 

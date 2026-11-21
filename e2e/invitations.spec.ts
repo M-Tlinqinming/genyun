@@ -8,6 +8,11 @@ const EMAIL = `li-${Date.now()}@dongjiang-anping.cn`;
 // 模拟发信把邮件写进后端的发件箱目录（后端在 apps/api 下运行）
 const OUTBOX = join('apps', 'api', '.data', 'e2e-mail-outbox');
 
+// 合同有效期按北京时间的今年算，不写死年份：今年 1 月 1 日到明年 12 月 31 日
+const YEAR = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date()).slice(0, 4));
+const STARTS = `${YEAR}-01-01`;
+const ENDS = `${YEAR + 1}-12-31`;
+
 async function inviteLink(email: string): Promise<string> {
   const files = (await readdir(OUTBOX)).filter((f) => f.endsWith('.json')).sort().reverse();
   for (const f of files) {
@@ -26,7 +31,7 @@ test.beforeAll(async () => {
   const org = await api.post('/api/operator/organizations', {
     data: {
       name: ORG,
-      region: '广东省惠州市',
+      region: { province: '广东省', city: '惠州市', district: '惠城区' },
       socialCreditCode: '91441300MA5XXXXXX7',
       contactName: '李经理',
       contactPhone: '137 2254 8890',
@@ -43,10 +48,9 @@ test.beforeAll(async () => {
   const opened = await api.post(`/api/operator/organizations/${id}/open`, {
     data: {
       contractNumber: 'GY-HT-2026-118',
-      scopeKind: 'annual',
-      scopeEnterprises: 3,
-      startsAt: '2026-01-01',
-      endsAt: '2027-12-31',
+      purchasedCredits: 10,
+      startsAt: STARTS,
+      endsAt: ENDS,
       contractFileId: (await file.json()).id,
       paymentReceived: true,
       adminName: '李经理',

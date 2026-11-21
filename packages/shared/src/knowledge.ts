@@ -121,6 +121,25 @@ export function regionHasLocalAgencies(region: string | null | undefined, region
   );
 }
 
+const districtStem = (s: string) => s.trim().replace(/(区|县|市|旗)$/, '');
+
+// 按省、市、区县三级判断（K16 开通弹窗；有三级地区时用它，没有时退回 regionHasLocalAgencies）：
+// 省、市去掉后缀后相等；区县为空时只比省市，不为空时要和知识库区县的名称或别的叫法（去掉末尾区 / 县 / 市 / 旗）相等；
+// 并且至少有一条没停用的机构
+export function regionHasDistrictAgencies(
+  parts: { province: string; city: string; district: string | null },
+  regions: readonly KnowledgeRegion[],
+): boolean {
+  const district = parts.district ? districtStem(parts.district) : null;
+  return regions.some(
+    (r) =>
+      stem(r.province) === stem(parts.province) &&
+      stem(r.city) === stem(parts.city) &&
+      (district === null || [r.name, ...r.aliases].some((n) => districtStem(n) === district)) &&
+      r.agencies.some((a) => !a.disabled),
+  );
+}
+
 // 知识库里的区县和机构 → 生成文档用的属地机构表（plan/agencies.ts 的 localAgenciesOf 用）。
 // 停用的机构不用；同一区县有几个应急管理局 / 消防大队时用排在最前的一个；没有区县时返回 null（调用方改用内置数据）
 export function agencyDistrictsOf(regions: readonly KnowledgeRegion[]): AgencyDistrict[] | null {
