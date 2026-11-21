@@ -1,47 +1,51 @@
-import { ArrowRightOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { customerTaskTab, formatTaskDay, formatTaskDayTime, type OrgCredits } from '@genyun/shared';
 import { Button, Result } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { useOrgTasks } from '../../api/enterprises';
-import { useSession } from '../../auth/session';
+import { useOrgCredits } from '../../api/credits';
+import { useOrgTasks, type TaskSummary } from '../../api/enterprises';
 import { ContactLink } from '../../components/ContactLink';
-import { Loading, Notice, panel } from '../../components/ui';
 import { PageHeader } from '../../components/PageHeader';
+import { StatusTag } from '../../components/StatusTag';
+import { Loading, panel } from '../../components/ui';
 import { useWorkspace } from '../../layouts/workspace';
-import { gy } from '../../theme/tokens';
-import { CreateTaskButton, taskHref, taskRows, useContract, whenText, type TaskRow } from './tasks/shared';
+import { gy, type, weight } from '../../theme/tokens';
+import { byUpdated, ContractNotice, CREATE_BLOCKED, CreateTaskButton, TaskActionButton, useContract } from './tasks/shared';
 
 const MAX_TODO = 5;
+const MAX_CARD = 3;
 
-// C01 工作台｜待我处理优先：登录后先看到要处理的任务，点按钮直达那一步；再看正在办理与最近交付。
-// 年度服务到期前 30 天提醒，过期后不能新建任务（13 页 S01）
+// C01 工作台｜先看要自己处理的（准备资料、被锁住的成果），再看正在办理和最近交付。
+// 组织管理员看得到编制次数（剩 3 次以内、用完了各有提示）；普通成员只在成果被锁住时提示找管理员。
+// 年度服务已到期时换成 S01 的样子：不能新建任务，在办任务和历史成果各一张卡片
 export function WorkbenchPage() {
-  const { orgId } = useWorkspace();
-  const session = useSession();
+  const { orgId, role } = useWorkspace();
+  const isAdmin = role === 'customer_admin';
   const tasks = useOrgTasks(orgId);
   const contract = useContract(orgId);
-  const navigate = useNavigate();
-
+  const credits = useOrgCredits(orgId, isAdmin);
+  const expired = contract.state === 'expired';
   const now = new Date();
-  const rows = taskRows(tasks.data);
-  const mine = rows.filter((t) => t.todo.bucket === 'mine');
-  const working = rows.find((t) => t.todo.bucket === 'gengyun');
-  const workingCount = rows.filter((t) => t.todo.bucket === 'gengyun').length;
-  // 最近交付：发布时间最晚的那项
-  const delivered = rows
-    .filter((t) => t.todo.bucket === 'delivered')
-    .sort((a, b) => (b.delivery?.publishedAt ?? '').localeCompare(a.delivery?.publishedAt ?? ''))[0];
+
+  const list = tasks.data ?? [];
+  const todo = list.filter((t) => t.view.needsAction).sort(byUpdated);
+  const working = list.filter((t) => customerTaskTab(t.view) === 'expert').sort(byUpdated);
+  // 最近交付：管理员被锁住的在「待我处理」里，成员被锁住的也放这里
+  const delivered = list
+    .filter((t) => customerTaskTab(t.view) === 'delivered')
+    .sort((a, b) => (b.delivery?.publishedAt ?? b.updatedOn).localeCompare(a.delivery?.publishedAt ?? a.updatedOn));
+  const lockedForMember = isAdmin ? [] : list.filter((t) => t.view.key === 'delivered_locked');
+  // 有生效合同才显示次数；到期时没有生效合同
+  const c = isAdmin && !expired && credits.data?.validUntil ? credits.data : null;
+  const exhausted = c !== null && c.remaining.total <= 0;
 
   return (
     <>
       <PageHeader
-        eyebrow={`客户工作台 · ${new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric' }).format(now)}`}
-        title={`${greeting(now)}，${session.data?.name ?? ''}`}
-        description="先处理需要您回应的事项，再查看正在办理的任务。"
-        extra={<CreateTaskButton canCreate={contract.canCreate} explain="inline" />}
+        title="工作台"
+        description="先把没交齐的资料交上，再看正在办理的任务。"
+        extra={expired ? undefined : <CreateTaskButton canCreate={contract.canCreate} explain="inline" />}
       />
-
-      <ContractNotice state={contract.state} daysLeft={contract.daysLeft} endsAt={contract.endsAt} />
 
       {tasks.isPending ? (
         <Loading rows={6} />
@@ -49,209 +53,334 @@ export function WorkbenchPage() {
         <Result status="error" title="任务加载失败" subTitle={tasks.error.message} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <section aria-label="待我处理" style={panel}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '28px 28px 24px' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10, fontSize: 20, lineHeight: '28px', fontWeight: 500, color: gy.text }}>
-                  待我处理
-                  {mine.length > 0 && <span style={badge}>{mine.length}</span>}
-                </h2>
-                <span style={{ fontSize: 14, color: gy.secondary }}>确认企业事实、补充资料，让任务继续推进。</span>
-              </div>
-              <Link to="/customer/tasks" style={{ color: gy.text }}>
-                查看任务 <ArrowRightOutlined />
-              </Link>
+          {expired ? (
+            <ExpiredNotice />
+          ) : (
+            contract.state !== null && contract.state !== 'active' && <ContractNotice state={contract.state} daysLeft={contract.daysLeft} endsAt={contract.endsAt} />
+          )}
+          {exhausted && <ExhaustedBlock awaiting={c.awaitingTasks.length} />}
+          {lockedForMember.length > 0 && <MemberLockBlock locked={lockedForMember} />}
+          {expired && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <Button disabled size="large" style={{ fontSize: 14 }}>
+                新建任务
+              </Button>
+              <span style={{ ...type.body, color: gy.secondary }}>{CREATE_BLOCKED}</span>
             </div>
-            {mine.length === 0 ? (
-              <div style={{ padding: '24px 28px 28px', borderTop: `1px solid ${gy.split}`, fontSize: 14, color: gy.secondary }}>
-                暂时没有需要您处理的事项。有新任务时，点右上角「新建任务」。
-              </div>
-            ) : (
-              mine.slice(0, MAX_TODO).map((t, i) => <TodoRow key={t.id} task={t} primary={i === 0} now={now} />)
-            )}
-            {mine.length > MAX_TODO && (
-              <div style={{ padding: '16px 28px', borderTop: `1px solid ${gy.split}`, fontSize: 14, color: gy.secondary }}>
-                还有 {mine.length - MAX_TODO} 项待处理，<Link to="/customer/tasks">在任务里查看全部</Link>
-              </div>
-            )}
-          </section>
+          )}
 
-          <div style={{ display: 'flex', gap: 24 }}>
-            <SummaryCard
-              label="正在办理"
-              aside={workingCount > 0 ? `${workingCount} 项` : undefined}
-              task={working}
-              tag={<><ClockCircleOutlined /> 耕云编制中</>}
-              text={(t) => (t.remaining > 0 ? `当前由耕云整理资料；还有 ${t.remaining} 项可稍后补，审核前补齐更好。` : '当前由耕云整理资料并生成初稿，暂无需要您处理的事项。')}
-              action="查看处理进度"
-              empty="提交生成申请后，耕云处理中的任务会显示在这里。"
-              onOpen={(t) => navigate(taskHref(t))}
-            />
-            <SummaryCard
-              label="最近交付"
-              task={delivered}
-              tag={<><CheckCircleOutlined /> 已交付</>}
-              text={(t) => `专家已审核并交付${t.delivery && t.delivery.version > 1 ? '（已更新）' : ''}，三份 Word 可直接查看和下载。`}
-              action="查看编制成果"
-              empty="专家审核交付后，成果会显示在这里。"
-              onOpen={(t) => navigate(taskHref(t))}
-            />
-          </div>
+          {(!expired || todo.length > 0) && <TodoCard todo={todo} now={now} />}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 14, color: gy.secondary }}>
-            {contract.state && (
-              <span style={{ padding: '1px 8px', borderRadius: 4, background: gy.neutralBg, color: gy.text, fontSize: 13 }}>
-                {SERVICE_TAG[contract.state]}
-              </span>
-            )}
-            <span style={{ flex: 1 }}>
-              {contract.endsAt ? `年度服务至 ${contract.endsAt}。` : ''}服务信息与续约可联系耕云。
-            </span>
-            <span>仅展示您有权访问的企业与任务</span>
-          </div>
+          {expired ? (
+            <ExpiredCards working={working} delivered={delivered.filter((t) => t.view.key === 'delivered')} />
+          ) : (
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              <SideCard
+                label="正在办理"
+                aside={<span style={{ ...type.caption, color: gy.tertiary }}>{working.length} 项</span>}
+                rows={working}
+                empty="现在没有正在办理的任务"
+                more={{ to: '/customer/tasks?tab=expert', text: '查看全部' }}
+                line={(t) => `${t.number} · ${t.view.key === 'expert_working' ? '专家正在编制，不需要您操作' : t.view.nextStep}`}
+              />
+              <SideCard
+                label="最近交付"
+                aside={
+                  <Link to="/customer/documents" style={{ ...type.body, color: gy.primary }}>
+                    全部成果文档
+                  </Link>
+                }
+                rows={delivered}
+                empty="还没有交付的成果"
+                line={(t) =>
+                  t.view.key === 'delivered_locked'
+                    ? `${t.number} · ${t.view.label}`
+                    : `${t.number} · ${formatTaskDay(new Date(t.delivery?.publishedAt ?? t.updatedOn), now)}${(t.delivery?.version ?? 1) > 1 ? '更新' : '交付'}，三份 Word 可下载`
+                }
+              />
+            </div>
+          )}
+
+          {c && !exhausted && <CreditStrip credits={c} />}
         </div>
       )}
     </>
   );
 }
 
-const SERVICE_TAG = {
-  none: '年度服务未开通',
-  upcoming: '年度服务未开始',
-  active: '年度服务有效',
-  expiring: '年度服务即将到期',
-  expired: '年度服务已到期',
-} as const;
-
-function greeting(now: Date): string {
-  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hour12: false }).format(now));
-  return hour < 12 ? '上午好' : hour < 18 ? '下午好' : '晚上好';
+// 「有效期至 2026 年 12 月 31 日」
+export function validUntilText(day: string) {
+  const [y, m, d] = day.split('-').map(Number);
+  return `有效期至 ${y} 年 ${m} 月 ${d} 日`;
 }
 
-// 年度服务提醒：30 天内到期提醒续约；已到期或未开通时不能新建任务，在办任务与历史成果不受影响
-export function ContractNotice({
-  state,
-  daysLeft,
-  endsAt,
-}: {
-  state: ReturnType<typeof useContract>['state'];
-  daysLeft: number | null;
-  endsAt: string | null;
-}) {
-  if (state === null || state === 'active') return null;
-  const notice =
-    state === 'expiring'
-      ? {
-          title: daysLeft === 0 ? '年度服务今天到期' : `年度服务将于 ${endsAt} 到期，还有 ${daysLeft} 天`,
-          text: '到期后不能创建新的编制任务；在办任务和已交付成果不受影响。',
-        }
-      : state === 'expired'
-        ? { title: '年度服务已到期', text: '新任务暂不可创建。在办任务按服务约定处理，历史成果仍可查看和下载。' }
-        : state === 'upcoming'
-          ? { title: '年度服务尚未开始', text: '服务开始后即可创建编制任务。' }
-          : { title: '年度服务尚未开通', text: '耕云登记合同后即可创建编制任务。' };
-  return (
-    <div style={{ marginBottom: 24 }}>
-      <Notice
-        tone="warning"
-        label="年度服务提醒"
-        title={notice.title}
-        text={notice.text}
-        action={
-          <ContactLink
-            title="联系耕云续约"
-            hint="续约或开通年度服务，请直接联系耕云。"
-            trigger={(open) => (
-              <Button type="primary" onClick={open}>
-                {state === 'upcoming' ? '联系耕云' : state === 'none' ? '联系耕云开通' : '联系耕云续约'}
-              </Button>
-            )}
-          />
-        }
-      />
-    </div>
-  );
-}
+const row: CSSProperties = { display: 'flex', alignItems: 'center', padding: '14px 24px', borderTop: `1px solid ${gy.split}` };
+const strong14: CSSProperties = { ...type.body, fontWeight: weight.strong, color: gy.text };
+const small: CSSProperties = { ...type.caption, color: gy.tertiary };
 
-function TodoRow({ task: t, primary, now }: { task: TaskRow; primary: boolean; now: Date }) {
-  const navigate = useNavigate();
+function TodoCard({ todo, now }: { todo: TaskSummary[]; now: Date }) {
   return (
-    <div
-      data-testid={`todo-${t.number}`}
-      style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '24px 28px', borderTop: `1px solid ${gy.split}` }}
-    >
-      <div style={{ width: 266, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={{ fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>{t.enterpriseName}</span>
-        <span style={{ fontSize: 13, color: gy.secondary }}>
-          {t.name} · {t.number}
-        </span>
+    <section aria-label="待我处理" style={panel}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '16px 24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>
+            待我处理
+            {todo.length > 0 && <span style={{ ...type.body, fontWeight: weight.strong, color: gy.warning }}>{todo.length}</span>}
+          </h2>
+          <span style={{ ...type.body, color: gy.secondary }}>资料交齐并提交后，就不用您再操作了。</span>
+        </div>
+        <Link to="/customer/tasks?tab=todo" style={{ ...type.body, color: gy.primary }}>
+          查看全部任务
+        </Link>
       </div>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={{ fontSize: 14, lineHeight: '22px', fontWeight: 500, color: gy.text }}>{t.todo.next}</span>
-        <span style={{ fontSize: 13, color: gy.secondary }}>{t.todo.stageText} · 资料已保存，可随时继续</span>
-      </div>
-      <span style={{ width: 96, flexShrink: 0, fontSize: 13, color: gy.secondary }}>{whenText(t.activityAt, now)}</span>
-      <Button type={primary ? 'primary' : 'default'} style={{ width: 114, flexShrink: 0 }} onClick={() => navigate(taskHref(t))}>
-        {t.todo.action}
-      </Button>
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  aside,
-  task,
-  tag,
-  text,
-  action,
-  empty,
-  onOpen,
-}: {
-  label: string;
-  aside?: string;
-  task: TaskRow | undefined;
-  tag: ReactNode;
-  text: (t: TaskRow) => string;
-  action: string;
-  empty: string;
-  onOpen: (t: TaskRow) => void;
-}) {
-  return (
-    <section aria-label={label} style={{ ...panel, flex: 1, minWidth: 0, padding: 28, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0, fontSize: 16, lineHeight: '24px', fontWeight: 500, color: gy.text }}>{label}</h2>
-        {aside && <span style={{ ...badge, borderRadius: 4, padding: '0 8px', background: gy.neutralBg, color: gy.text }}>{aside}</span>}
-      </div>
-      {task ? (
-        <>
-          <span style={{ alignSelf: 'flex-start', padding: '0 8px', borderRadius: 4, fontSize: 12, lineHeight: '22px', background: gy.neutralBg, color: gy.text }}>
-            {tag}
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <span style={{ fontSize: 18, lineHeight: '26px', fontWeight: 500, color: gy.text }}>{task.enterpriseName}</span>
-            <span style={{ fontSize: 14, color: gy.secondary }}>
-              {task.name} · {task.number}
-            </span>
-          </div>
-          <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>{text(task)}</span>
-          <Button style={{ alignSelf: 'flex-start' }} onClick={() => onOpen(task)}>
-            {action} <ArrowRightOutlined />
-          </Button>
-        </>
+      {todo.length === 0 ? (
+        <div style={{ ...row, padding: '20px 24px', ...type.body, color: gy.secondary }}>暂时没有需要您处理的事项。有新任务时，点右上角「新建任务」。</div>
       ) : (
-        <span style={{ fontSize: 14, lineHeight: '22px', color: gy.secondary }}>{empty}</span>
+        todo.slice(0, MAX_TODO).map((t) => (
+          <div key={t.id} data-testid={`todo-${t.number}`} style={row}>
+            <div style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', paddingRight: 16, minWidth: 0 }}>
+              <span style={strong14}>{t.enterpriseName}</span>
+              <span style={small}>{t.number}</span>
+            </div>
+            <div style={{ width: 200, flexShrink: 0, display: 'flex' }}>
+              <StatusTag tone={t.view.tone}>{t.view.label}</StatusTag>
+            </div>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', paddingRight: 16 }}>
+              <span style={{ ...type.body, color: gy.text }}>{t.view.nextStep}</span>
+              {t.view.detail && <span style={small}>{t.view.detail}</span>}
+            </div>
+            <span style={{ width: 140, flexShrink: 0, ...type.body, color: gy.secondary }}>{formatTaskDayTime(new Date(t.updatedOn), now)}</span>
+            <TaskActionButton task={t} place="workbench" />
+          </div>
+        ))
+      )}
+      {todo.length > MAX_TODO && (
+        <div style={{ ...row, ...type.body, color: gy.secondary }}>
+          还有 {todo.length - MAX_TODO} 项待处理，<Link to="/customer/tasks?tab=todo">在任务里查看全部</Link>
+        </div>
       )}
     </section>
   );
 }
 
-const badge: CSSProperties = {
-  padding: '0 6px',
-  borderRadius: 10,
-  fontSize: 12,
-  lineHeight: '20px',
-  fontWeight: 400,
-  color: gy.primary,
-  background: gy.selected,
-};
+function SideCard({
+  label,
+  aside,
+  rows,
+  empty,
+  more,
+  line,
+}: {
+  label: string;
+  aside: ReactNode;
+  rows: TaskSummary[];
+  empty: string;
+  more?: { to: string; text: string };
+  line: (t: TaskSummary) => ReactNode;
+}) {
+  return (
+    <section aria-label={label} style={{ ...panel, flex: '1 1 0', minWidth: 0, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+        <h2 style={{ margin: 0, ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>{label}</h2>
+        {aside}
+      </div>
+      {rows.length === 0 ? (
+        <span style={{ ...type.body, color: gy.secondary }}>{empty}</span>
+      ) : (
+        rows.slice(0, MAX_CARD).map((t) => (
+          <div key={t.id} data-testid={`card-${t.number}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={strong14}>{t.enterpriseName}</span>
+                {t.view.key === 'delivered_locked' ? <StatusTag tone="done">已交付</StatusTag> : <StatusTag tone={t.view.tone}>{t.view.label}</StatusTag>}
+              </div>
+              <span style={small}>{line(t)}</span>
+            </div>
+            <TaskActionButton task={t} place="workbench" width="auto" />
+          </div>
+        ))
+      )}
+      {more && rows.length > MAX_CARD && (
+        <Link to={more.to} style={{ ...type.body, color: gy.primary, alignSelf: 'flex-start' }}>
+          {more.text}
+        </Link>
+      )}
+    </section>
+  );
+}
+
+const renewButton = (primary: boolean) => (
+  <ContactLink
+    title="联系耕云续约"
+    hint="续约或开通年度服务，请直接联系耕云。"
+    trigger={(open) => (
+      <Button type={primary ? 'primary' : 'default'} onClick={open} style={{ flexShrink: 0, ...(primary ? {} : { borderColor: gy.border }) }}>
+        联系耕云续约
+      </Button>
+    )}
+  />
+);
+
+// 编制次数（剩 1 次以上）：底部一条；剩 1–3 次换琥珀色描边，加「联系耕云续约」
+function CreditStrip({ credits: c }: { credits: OrgCredits }) {
+  const low = c.remaining.total <= 3;
+  return (
+    <section
+      aria-label="编制次数"
+      style={{ ...panel, display: 'flex', alignItems: 'center', gap: 16, padding: '16px 24px', ...(low ? { borderColor: gy.warning } : {}) }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexShrink: 0 }}>
+        <span style={{ ...type.body, color: gy.secondary }}>编制次数</span>
+        <span style={{ ...type.title, fontWeight: weight.strong, color: low ? gy.warning : gy.text }}>剩余 {c.remaining.total} 次</span>
+      </div>
+      <span aria-hidden style={{ width: 1, height: 20, flexShrink: 0, background: gy.split }} />
+      <span style={{ flex: '1 1 0', minWidth: 0, ...type.body, color: low ? gy.secondary : gy.tertiary }}>
+        共 {c.granted} 次，已用 {c.used} 次 · {low ? '用完后还能照常提交，新成果要等续约才能下载' : '专家交付成果才算 1 次，之后重新打开再交付不再算'} ·{' '}
+        {validUntilText(c.validUntil!)}
+      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+        <Link to="/customer/organization?tab=service" style={{ ...type.body, color: gy.primary }}>
+          查看用量
+        </Link>
+        {low && renewButton(false)}
+      </div>
+    </section>
+  );
+}
+
+// 琥珀色提醒块（次数用完 / 成员的成果被锁住）
+function WarnBlock({ label, title, body, actions }: { label: string; title: string; body: string; actions: ReactNode }) {
+  return (
+    <section
+      role="status"
+      aria-label={label}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 24,
+        padding: '20px 24px',
+        borderRadius: 8,
+        border: `1px solid ${gy.warning}`,
+        background: gy.warningBg,
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+        <span style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.warning }}>{title}</span>
+        <span style={{ ...type.body, color: gy.text }}>{body}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>{actions}</div>
+    </section>
+  );
+}
+
+function ExhaustedBlock({ awaiting }: { awaiting: number }) {
+  return (
+    <WarnBlock
+      label="编制次数已经用完"
+      title={awaiting > 0 ? `编制次数已经用完 · 有 ${awaiting} 份成果等续约后下载` : '编制次数已经用完'}
+      body="新任务可以照常新建和提交，专家照常编制。新编制好的成果先锁住，续约后自动放开，每份算 1 次。"
+      actions={
+        <>
+          {awaiting > 0 && (
+            <Link to="/customer/documents" style={{ ...type.body, color: gy.primary }}>
+              查看被锁住的成果
+            </Link>
+          )}
+          {renewButton(true)}
+        </>
+      }
+    />
+  );
+}
+
+function MemberLockBlock({ locked }: { locked: TaskSummary[] }) {
+  const one = locked.length === 1;
+  return (
+    <WarnBlock
+      label="成果暂时还不能下载"
+      title={`有 ${locked.length} 份成果已经编制好 · 暂时还不能下载`}
+      body={`需要贵组织管理员处理后才能下载。请联系${locked[0]!.adminNames ?? '组织管理员'}，处理好后会自动放开，不用重新提交资料。`}
+      actions={
+        <Link to={one ? `/customer/documents/${locked[0]!.id}` : '/customer/documents'} style={{ ...type.body, color: gy.primary }}>
+          {one ? '查看这份成果' : '查看这些成果'}
+        </Link>
+      }
+    />
+  );
+}
+
+// S01：年度服务已到期
+function ExpiredNotice() {
+  return (
+    <section
+      role="status"
+      aria-label="年度服务提醒"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '12px 16px 12px 24px', borderRadius: 8, background: gy.warningBg }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <span style={strong14}>年度服务已到期</span>
+        <span style={{ ...type.body, color: gy.secondary }}>新任务暂不可创建。在办任务按服务约定处理，历史成果仍可下载。</span>
+      </div>
+      {renewButton(true)}
+    </section>
+  );
+}
+
+function ExpiredCards({ working, delivered }: { working: TaskSummary[]; delivered: TaskSummary[] }) {
+  const navigate = useNavigate();
+  const card = (
+    label: string,
+    rows: TaskSummary[],
+    status: string,
+    note: string,
+    action: string,
+    to: (t: TaskSummary) => string,
+    more: string,
+  ) => {
+    const t = rows[0];
+    if (!t) return null;
+    return (
+      <section aria-label={label} style={{ ...panel, width: 544, flexShrink: 0, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <h2 style={{ margin: 0, ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>{label}</h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text }}>{t.enterpriseName}</span>
+          <span style={{ ...type.body, color: gy.secondary }}>
+            {t.number} · {status}
+          </span>
+          <span style={{ ...type.body, color: gy.secondary }}>{note}</span>
+        </div>
+        <Button style={{ alignSelf: 'flex-start', borderColor: gy.border }} onClick={() => navigate(to(t))}>
+          {action}
+        </Button>
+        {rows.length > 1 && (
+          <Link to={more} style={{ ...type.body, color: gy.primary, alignSelf: 'flex-start' }}>
+            还有 {rows.length - 1} 个，查看全部
+          </Link>
+        )}
+      </section>
+    );
+  };
+  return (
+    <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      {card(
+        '正在办理的任务',
+        working,
+        '专家编制中',
+        '当前处理安排以该任务的服务约定为准，可查看进度或联系耕云。',
+        '查看处理进度',
+        (t) => `/customer/tasks/${t.id}`,
+        '/customer/tasks?tab=expert',
+      )}
+      {card(
+        '已交付的历史成果',
+        delivered,
+        '已交付',
+        '服务到期不影响已交付成果的下载。',
+        '查看三份成果',
+        (t) => `/customer/documents/${t.id}`,
+        '/customer/documents',
+      )}
+    </div>
+  );
+}
