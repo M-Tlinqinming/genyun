@@ -448,7 +448,7 @@ describe('重新打开和再次交付', () => {
     const [cur] = await handle.db.select().from(tasks).where(eq(tasks.id, taskId));
     const [ent2] = await handle.db
       .insert(enterprises)
-      .values({ orgId: cur!.orgId, name: '飞宇二厂', socialCreditCode: '91441300726483225B', legalRepresentative: '李文聪', registeredAddress: '惠州市', profile: feiyuProfile, createdBy: uid('feiyu@test.cn') })
+      .values({ orgId: cur!.orgId, name: '飞宇二厂', socialCreditCode: '91441300MA5TEST02X', legalRepresentative: '李文聪', registeredAddress: '惠州市', profile: feiyuProfile, createdBy: uid('feiyu@test.cn') })
       .returning();
     const [fresh] = await handle.db
       .insert(tasks)
