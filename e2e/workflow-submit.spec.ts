@@ -13,6 +13,7 @@ const SAMPLE_DIR = join(API_DIR, '.data', 'e2e-submit-samples');
 const FIRST = '耕云测试提交撤回有限公司';
 const CLASH = '耕云测试撞上核对有限公司';
 const GONE = '耕云测试删除任务有限公司';
+const LATE = '耕云测试专家晚到有限公司';
 
 /** 用 tsx 现做两份填齐的资料表格（企业名称和任务一致），写到 apps/api/.data 下（已忽略，不入库） */
 function makeSheets(): Record<string, string> {
@@ -23,11 +24,11 @@ function makeSheets(): Record<string, string> {
     `import { writeFile } from 'node:fs/promises';
 import * as S from '../../src/intake/test-workbooks.ts';
 const dir = ${JSON.stringify(SAMPLE_DIR)};
-for (const name of ${JSON.stringify([FIRST, CLASH])}) await writeFile(dir + '/' + name + '.xlsx', await S.renamed(name));
+for (const name of ${JSON.stringify([FIRST, CLASH, LATE])}) await writeFile(dir + '/' + name + '.xlsx', await S.renamed(name));
 `,
   );
   execSync(`npx tsx "${script}"`, { cwd: API_DIR, stdio: 'inherit' });
-  return { [FIRST]: join(SAMPLE_DIR, `${FIRST}.xlsx`), [CLASH]: join(SAMPLE_DIR, `${CLASH}.xlsx`) };
+  return Object.fromEntries([FIRST, CLASH, LATE].map((name) => [name, join(SAMPLE_DIR, `${name}.xlsx`)]));
 }
 
 const PNG = Buffer.from(
@@ -63,8 +64,8 @@ async function fill(taskId: string, enterprise: string) {
   await put('other', '现场照片.png', 'image/png', PNG);
 }
 
-/** 运营把任务分给吴工，吴工打开资料核对（专家开始核对） */
-async function expertStarts(taskId: string) {
+/** 运营把任务分给吴工 */
+async function assignWu(taskId: string) {
   const ops = await request.newContext({ baseURL: test.info().project.use.baseURL });
   await login(ops, 'ops@demo.genyun.net.cn');
   const experts = (await (await ops.get(`/api/operator/tasks/${taskId}/experts`)).json()) as { id: string; name: string }[];
@@ -73,6 +74,11 @@ async function expertStarts(taskId: string) {
   });
   expect(assigned.status(), await assigned.text()).toBe(201);
   await ops.dispose();
+}
+
+/** 运营把任务分给吴工，吴工打开资料核对（专家开始核对） */
+async function expertStarts(taskId: string) {
+  await assignWu(taskId);
   const expert = await request.newContext({ baseURL: test.info().project.use.baseURL });
   await login(expert, 'expert2@demo.genyun.net.cn');
   const opened = await expert.get(`/api/tasks/${taskId}/workup`);
@@ -84,7 +90,12 @@ async function shot(name: string) {
   const dir = process.env.SUBMIT_SHOTS;
   if (!dir) return;
   await page.waitForTimeout(400); // 等弹窗动画走完
-  await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true });
+  // 准备资料页的页头、底栏是固定的，整页截图会叠在中间：先把窗口拉到整页高再截（同 intake.spec）
+  const size = page.viewportSize()!;
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.setViewportSize({ width: size.width, height: Math.max(size.height, height) });
+  await page.screenshot({ path: join(dir, `${name}.png`) });
+  await page.setViewportSize(size);
 }
 
 const submitButton = () => page.getByRole('button', { name: '提交给专家' });
@@ -94,6 +105,7 @@ const materials = () => page.getByRole('region', { name: '本次提交的资料'
 const progress = () => page.getByRole('region', { name: '进度' });
 
 test.beforeAll(async ({ browser }) => {
+  test.setTimeout(90_000); // 现做表格要起 tsx，冷启动慢
   sheets = makeSheets();
   page = await browser.newPage();
   await page.goto('/login');
@@ -159,7 +171,7 @@ test('提交、撤回一次、再提交，专家开始核对后看到「专家�
   await expect(notice).toContainText(/今天 \d\d:\d\d 撤回。已经传的表格、图纸和照片都还在。/);
   await expect(page.getByText('这次提交后不能再撤回')).toBeVisible();
   await expect(page.getByRole('button', { name: '删除任务' })).toBeVisible();
-  await expect(page.getByText('一楼疏散图.png')).toBeVisible();
+  await expect(page.getByRole('group', { name: '紧急疏散示意图' }).getByText('一楼疏散图.png')).toBeVisible();
   await shot('s01-after');
 
   // 再提交：提示换成撤回过的那句；已提交页没有「撤回修改」
@@ -224,4 +236,26 @@ test('删除任务：回工作台，提示「任务已删除」，任务列表�
   await page.getByPlaceholder('搜索企业 / 任务编号').fill(task.number);
   await expect(page.getByRole('row', { name: new RegExp(task.number) })).toHaveCount(0);
   expect((await page.request.get(`/api/tasks/${task.id}`)).status()).toBe(404);
+});
+
+test('专家打开时客户刚撤回：资料核对页说明客户在改资料，可以回任务中心', async ({ browser }) => {
+  const task = await newTask(LATE);
+  await fill(task.id, LATE);
+  expect((await page.request.post(`/api/tasks/${task.id}/intake/submit`, { data: { requestId: crypto.randomUUID() } })).ok()).toBe(true);
+  await assignWu(task.id);
+  expect((await page.request.post(`/api/tasks/${task.id}/intake/withdraw`)).ok()).toBe(true);
+
+  const context = await browser.newContext();
+  const expert = await context.newPage();
+  await expert.goto('/login');
+  await expert.getByPlaceholder('请输入邮箱').fill('expert2@demo.genyun.net.cn');
+  await expert.getByPlaceholder('请输入密码').fill('e2e-password');
+  await expert.getByRole('button', { name: /登\s*录/ }).click();
+  await expect(expert).toHaveURL(/\/expert$/);
+  await expert.goto(`/expert/tasks/${task.id}`);
+  await expect(expert.getByText('客户撤回了这次提交，正在改资料。重新提交后会回到您的列表。')).toBeVisible();
+  await expect(expert.getByRole('button', { name: /返回任务中心/ }).or(expert.getByRole('link', { name: /返回任务中心/ }))).toBeVisible();
+  const dir = process.env.SUBMIT_SHOTS;
+  if (dir) await expert.screenshot({ path: join(dir, 'expert-customer-withdrew.png'), fullPage: true });
+  await context.close();
 });
