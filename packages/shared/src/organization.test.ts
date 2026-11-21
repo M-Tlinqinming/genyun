@@ -23,22 +23,22 @@ const complete = {
   paymentReceived: true as const,
   adminName: '孙经理',
   adminPhone: '136 2254 1234',
-  adminEmail: 'Sun@Huadong-Anping.cn',
+  adminEmail: 'Sun@Example.com',
 };
 
 const reg = {
-  name: ' 华东安评 ',
+  name: ' 示例共享机构 ',
   region: { province: '上海市', city: '上海市', district: '闵行区' },
   socialCreditCode: '91310112ma1xxxxxx3',
   contactName: '孙经理',
   contactPhone: '136 2254 1234',
-  contactEmail: 'Sun@Huadong-Anping.CN',
+  contactEmail: 'Sun@Example.COM',
 };
 
 describe('登记客户组织', () => {
   it('名称、地区、统一社会信用代码、主联系人、手机号、邮箱都必填；备注空着存为空', () => {
     const r = orgRegisterSchema.parse({ ...reg, note: '' });
-    expect(r).toMatchObject({ name: '华东安评', note: null });
+    expect(r).toMatchObject({ name: '示例共享机构', note: null });
     for (const field of ['name', 'region', 'socialCreditCode', 'contactName', 'contactPhone', 'contactEmail'] as const) {
       expect(orgRegisterSchema.safeParse({ ...reg, [field]: '' }).success, field).toBe(false);
     }
@@ -51,7 +51,7 @@ describe('登记客户组织', () => {
   it('信用代码转大写并校验 18 位，邮箱转小写', () => {
     const r = orgRegisterSchema.parse(reg);
     expect(r.socialCreditCode).toBe('91310112MA1XXXXXX3');
-    expect(r.contactEmail).toBe('sun@huadong-anping.cn');
+    expect(r.contactEmail).toBe('sun@example.com');
     expect(orgRegisterSchema.safeParse({ ...reg, socialCreditCode: '123' }).success).toBe(false);
   });
 
@@ -109,7 +109,7 @@ describe('开通前检查', () => {
 describe('开通请求校验', () => {
   it('邮箱转小写；合同原件可以不传；赠送默认 0', () => {
     const r = orgOpenSchema.parse({ ...complete, contractFileId: undefined });
-    expect(r.adminEmail).toBe('sun@huadong-anping.cn');
+    expect(r.adminEmail).toBe('sun@example.com');
     expect(r.contractFileId).toBeNull();
     expect(r.giftCredits).toBe(0);
   });

@@ -3,8 +3,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 // M3 第 2 项：首位管理员从邀请邮件进入（Paper 10 页 A02 接受邀请，含过期、已使用、找不到）
-const ORG = '东江安评技术服务有限公司';
-const EMAIL = `li-${Date.now()}@dongjiang-anping.cn`;
+const ORG = '示例东江咨询机构';
+const EMAIL = `li-${Date.now()}@example.com`;
 // 模拟发信把邮件写进后端的发件箱目录（后端在 apps/api 下运行）
 const OUTBOX = join('apps', 'api', '.data', 'e2e-mail-outbox');
 
@@ -42,7 +42,7 @@ test.beforeAll(async () => {
   expect(org.ok()).toBe(true);
   const { id } = await org.json();
   const file = await api.post(`/api/operator/organizations/${id}/contract-file`, {
-    multipart: { file: { name: '东江安评合同.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') } },
+    multipart: { file: { name: '示例东江合同.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\n% 合同\n') } },
   });
   expect(file.ok()).toBe(true);
   const opened = await api.post(`/api/operator/organizations/${id}/open`, {
