@@ -233,8 +233,8 @@ test('删除任务：回工作台，提示「任务已删除」，任务列表�
   await expect(page.getByTestId(`todo-${task.number}`)).toHaveCount(0);
 
   await page.goto('/customer/tasks?tab=all');
-  await page.getByPlaceholder('搜索企业 / 任务编号').fill(task.number);
-  await expect(page.getByRole('row', { name: new RegExp(task.number) })).toHaveCount(0);
+  await page.getByPlaceholder('搜索企业名称或任务编号').fill(task.number);
+  await expect(page.getByTestId(`task-${task.number}`)).toHaveCount(0);
   expect((await page.request.get(`/api/tasks/${task.id}`)).status()).toBe(404);
 });
 

@@ -342,7 +342,7 @@ describe('第 3 步旧层并进新块', () => {
     const res = await zhou.put(`/api/tasks/${taskId}/workup/steps/production`).send({ version: body.version, step: before }).expect(200);
     const saved = res.body.data as WorkupData;
     expect(saved.production?.materials).toEqual({});
-    const mats = saved.profile.productionStep!.step.materials;
+    const mats = saved.profile!.productionStep!.step.materials;
     expect(mats.filter((m) => m.name === '稀释剂')).toHaveLength(1);
     expect(mats.filter((m) => m.name === '水性油漆')).toHaveLength(1);
     expect(mats.find((m) => m.id === firstId)?.name).toBe('水性油漆');

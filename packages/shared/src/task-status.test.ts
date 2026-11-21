@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TASK_VIEW_STAGES, formatTaskDay, formatTaskDayTime, isReopenedPending, taskView, type TaskViewInput } from './task-status.ts';
+import { TASK_VIEW_STAGES, customerTaskTab, formatTaskDay, formatTaskDayTime, isReopenedPending, taskView, type TaskViewInput } from './task-status.ts';
 
 // 北京时间 2026-11-13 10:00
 const now = new Date('2026-11-13T02:00:00Z');
@@ -89,7 +89,9 @@ describe('客户端', () => {
     expect(taskView(input(delivered))!).toMatchObject({ key: 'delivered', label: '已交付', tone: 'done', nextStep: '成果已交付，三份 Word 可以下载', detail: '专家已交付', stage: 2, needsAction: false, readOnly: true });
   });
   it('再次交付后显示已更新', () => {
-    expect(taskView(input({ ...delivered, lastDelivery: { at: at('2026-11-13T01:00:00Z'), kind: 'update' } }))!.detail).toBe('已更新');
+    const v = taskView(input({ ...delivered, lastDelivery: { at: at('2026-11-13T01:00:00Z'), kind: 'update' } }))!;
+    expect(v.detail).toBe('已更新');
+    expect(v.nextStep).toBe('成果已更新，三份 Word 可以下载');
   });
   it('重新打开期间客户仍看到已交付', () => {
     expect(taskView(input({ ...delivered, reopenedAt: at('2026-11-12T00:00:00Z') }))!.key).toBe('delivered');
@@ -116,6 +118,25 @@ describe('客户端', () => {
     expect(p).toMatchObject({ key: 'legacy_readonly', label: '准备资料', readOnly: true, needsAction: false, detail: '有要改的地方，请联系耕云客服' });
     const s = taskView(input({ ...submitted, flow: 'legacy' }))!;
     expect(s).toMatchObject({ key: 'legacy_readonly', label: '专家编制', stage: 1, readOnly: true });
+  });
+});
+
+describe('客户任务列表页签', () => {
+  const tab = (over: Partial<TaskViewInput>) => customerTaskTab(taskView(input(over))!);
+  it('要处理的进待我处理', () => {
+    expect(tab({})).toBe('todo');
+    expect(tab({ tableUploaded: true, missingCount: 3 })).toBe('todo');
+    expect(tab({ tableUploaded: true })).toBe('todo');
+    expect(tab({ ...delivered, chargeStatus: 'awaiting_credits' })).toBe('todo');
+  });
+  it('专家编制、已交付各进各的', () => {
+    expect(tab(submitted)).toBe('expert');
+    expect(tab(delivered)).toBe('delivered');
+    expect(tab({ ...delivered, chargeStatus: 'awaiting_credits', viewer: member })).toBe('delivered');
+    expect(tab({ ...submitted, flow: 'legacy' })).toBe('expert');
+  });
+  it('旧流程没提交的只在全部里', () => {
+    expect(tab({ flow: 'legacy' })).toBeNull();
   });
 });
 
