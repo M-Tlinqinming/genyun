@@ -155,6 +155,14 @@ export const CUSTOMER_WITHDREW_MESSAGE = '客户撤回了这次提交，正在�
 const customerWithdrew = () => new ConflictException({ statusCode: 409, message: CUSTOMER_WITHDREW_MESSAGE, code: 'customer_withdrew' });
 
 // 资料核对：每个任务一份，只有负责专家能改；运营可以看（M3 改派时接手）
+// 属地三家机构的改写存成「名称 · 电话」，电话和外部联系方式走同一个检查
+const AGENCY_PHONE_KEYS = new Set(['agency.emergencyBureau', 'agency.fireDept', 'agency.streetOffice']);
+function agencyPhoneError(key: string, value: unknown): string | null {
+  if (!AGENCY_PHONE_KEYS.has(key) || typeof value !== 'string') return null;
+  const [, ...rest] = value.split(' · ');
+  return contactPhoneError(rest.join(' · ').trim() || undefined);
+}
+
 @Injectable()
 export class WorkupService {
   constructor(
@@ -267,7 +275,7 @@ export class WorkupService {
     const save = parsed.data;
     const row = await this.ensure(task);
     if (save.version !== row.version) throw this.stale(row.version);
-    for (const c of [save.extra.police, save.extra.brigade]) {
+    for (const c of [save.extra.police, save.extra.brigade, save.step.hospital]) {
       const error = contactPhoneError(c?.phone);
       if (error) throw new BadRequestException(error);
     }
@@ -396,7 +404,7 @@ export class WorkupService {
 
     const row = await this.ensure(task);
     if (version !== row.version) throw this.stale(row.version);
-    const error = factSaveError(factDefOf(row.snapshot, key, row.data), value);
+    const error = factSaveError(factDefOf(row.snapshot, key, row.data), value) ?? agencyPhoneError(key, value);
     if (error) throw new BadRequestException(error);
     if (fileId && !(await this.originals(task.id, effectiveSnapshot(row.snapshot, row.data))).some((o) => o.fileId === fileId)) {
       throw new BadRequestException('对照的原件不在这个任务里');
@@ -538,7 +546,7 @@ export class WorkupService {
     if (save.process === null) delete figures.process;
     else if (save.process) figures.process = save.process;
     if (save.drawings) {
-      const ours = new Set((await this.drawingCandidates(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data))).map((c) => c.fileId));
+      const ours = new Set((await this.drawingCandidates(task.id, task.orgId, effectiveSnapshot(row.snapshot, row.data), row.data)).map((c) => c.fileId));
       if (Object.keys(save.drawings).some((id) => !ours.has(id))) throw new BadRequestException('这份图纸不在这个任务里');
       figures.drawings = { ...figures.drawings, ...save.drawings };
     }
