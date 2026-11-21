@@ -296,13 +296,13 @@ export interface ActivityContext {
 
 /** 任务类操作日志的对象以「{任务编号} · 」开头，取出编号（接口按它查企业名） */
 export function activityTaskNumber(action: AuditAction, target: string | null): string | null {
-  if (!target || (action !== 'task_assign' && action !== 'task_reassign' && action !== 'publish')) return null;
+  if (!target || (action !== 'task_assign' && action !== 'task_reassign' && action !== 'publish' && action !== 'reopen')) return null;
   return /^(\S+) · /.exec(target)?.[1] ?? null;
 }
 
 /**
  * 常见的几种写成一句话（画板「示例模具已分配给周工」）。对象是各接口写操作日志时拼的那个字符串：
- * 分配「编号 · 专家」、改派「编号 · 原专家 → 新专家」、交付「编号 · 第 N 次交付」、
+ * 分配「编号 · 专家」、改派「编号 · 原专家 → 新专家」、交付「编号 · 第 N 次交付」、重新打开「编号 · 重新打开」、
  * 开通「组织 · 合同 编号」、续约「组织 · 合同 编号，到 YYYY.MM.DD」、调整次数「组织 · 类型 +N 次」、
  * 邀请组织成员「姓名（邮箱）· 角色[ · 重新发送]」。拼不出来的照旧「{标签}：{对象}」
  */
@@ -324,6 +324,8 @@ export function activitySentence(action: AuditAction, target: string | null, ctx
       if (!task || !v) return fallback;
       return Number(v[1]) > 1 ? `${who(task[1]!)}的成果已更新` : `${who(task[1]!)}的成果已交付`;
     }
+    case 'reopen':
+      return task ? `${who(task[1]!)}的任务已重新打开` : fallback;
     case 'org_open': {
       const o = /^(.+) · 合同 .+$/.exec(target);
       return o ? `${o[1]}已开通` : fallback;
