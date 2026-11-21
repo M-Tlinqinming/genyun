@@ -1,4 +1,4 @@
-import { CheckOutlined, DownloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { INTAKE_TEMPLATE_VERSION, type IntakeFileSlot, type IntakeFileView, type IntakeView } from '@genyun/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Modal, Result, Spin } from 'antd';
@@ -17,7 +17,6 @@ import { ApiError } from '../../../api/request';
 import { useTask } from '../../../api/tasks';
 import { membershipsIn, useSession } from '../../../auth/session';
 import { ActionBar } from '../../../components/ActionBar';
-import { ContactLink } from '../../../components/ContactLink';
 import { CUSTOMER_STAGES, WizardLayout } from '../../../layouts/WizardLayout';
 import { DeleteTaskDialog, SubmitDialog } from '../submitted/dialogs';
 import { gy, type, weight } from '../../../theme/tokens';
@@ -200,6 +199,8 @@ function PrepareBody({
 
   const hasDrawings = Boolean(view.sitePlan) || view.evacuationMaps.length > 0 || view.others.length > 0;
   const anything = Boolean(view.dataSheet) || hasDrawings || view.noEvacuationMap;
+  // 读到表格以后，说明了没有的疏散图不在缺项里，撤销只能放在「已传的图纸和照片」里：这时一张图没传也要显示这张卡片
+  const showDrawings = hasDrawings || (read && view.noEvacuationMap);
   const headerExtra = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
       {anything && (
@@ -218,9 +219,7 @@ function PrepareBody({
       {read && !complete && (
         <>
           {' · 填不上？'}
-          <ContactLink title="耕云客服" hint="填不上的项，客服可以帮您一起看。">
-            联系客服
-          </ContactLink>
+          <QrLink placement="topLeft">联系客服</QrLink>
         </>
       )}
     </>
@@ -280,7 +279,7 @@ function PrepareBody({
         <UploadsCard entries={uploads.entries} onCancel={uploads.cancel} onRetry={uploads.retry} onDismiss={uploads.dismiss} />
         {read ? (
           <ReadLayout view={view} canEdit={canEdit} pick={pick} onAskNoEvacuation={() => setAskNoEvacuation(true)}>
-            {hasDrawings && <DrawingsCard {...drawingProps} />}
+            {showDrawings && <DrawingsCard {...drawingProps} undoNoEvacuationHere />}
           </ReadLayout>
         ) : (
           <>
@@ -289,7 +288,7 @@ function PrepareBody({
               <CardHead title="把这几样传上来" desc="传一样勾一样，必填的都勾上就能提交。" />
               <ChecklistRows {...drawingProps} />
             </Card>
-            {hasDrawings && <DrawingsCard {...drawingProps} />}
+            {showDrawings && <DrawingsCard {...drawingProps} undoNoEvacuationHere={false} />}
             <HelpBar action={<QrLink />}>不知道怎么填？加耕云客服的企业微信，客服会一项项带您填。</HelpBar>
           </>
         )}
@@ -344,6 +343,7 @@ function Notices({
     return (
       <TitledNotice
         tone="error"
+        paddingLeft={16}
         title="这不是耕云的资料模板，没有读取"
         action={<LinkButton href={INTAKE_TEMPLATE_URL}>重新下载模板</LinkButton>}
       >
@@ -365,7 +365,7 @@ function Notices({
       action = <LinkButton href={`/customer/enterprises/${other.enterpriseId}`}>去看{otherShort}的企业概览</LinkButton>;
     }
     return (
-      <TitledNotice tone="error" title={`这张表像是「${otherName}」的，没有读取`} action={action}>
+      <TitledNotice tone="error" paddingLeft={16} title={`这张表像是「${otherName}」的，没有读取`} action={action}>
         表格里填的企业名称是「{otherName}」，和您名下另一家企业同名；这个任务是给「{enterpriseName}」编制的。传错了，换成
         {shortName(enterpriseName)}的表重新上传；这张表确实是{otherShort}的，请到它的任务里上传。
       </TitledNotice>
@@ -379,13 +379,9 @@ function Notices({
       {renamed && (
         <TitledNotice
           tone="info"
-          action={
-            canEdit ? (
-              <span style={{ ...type.body, color: gy.secondary, display: 'flex', alignItems: 'center' }}>
-                传错了表？<LinkButton onClick={() => pick('data_sheet')}>重新上传</LinkButton>
-              </span>
-            ) : undefined
-          }
+          paddingLeft={16}
+          icon={<InfoCircleOutlined style={{ fontSize: 16, color: gy.primary, flexShrink: 0 }} />}
+          action={canEdit ? <LinkButton onClick={() => pick('data_sheet')}>传错了表？重新上传</LinkButton> : undefined}
         >
           表格里的企业名称是「{renamed.newName}」，已按表格改好企业名称（原来填的是「{renamed.previousName}」）。
         </TitledNotice>
@@ -470,6 +466,7 @@ function ChecklistRows({
   return (
     <>
       <ItemRow
+        align="center"
         label="填好的资料表格"
         tag="必填 · 表格"
         title="填好的资料表格"
@@ -479,6 +476,7 @@ function ChecklistRows({
         actions={canEdit ? <UploadButton onClick={() => pick('data_sheet')}>{sheet ? '重新上传' : '上传'}</UploadButton> : null}
       />
       <ItemRow
+        align="center"
         label="总平面布置图"
         tag="必填 · 图纸"
         title="总平面布置图"
@@ -490,6 +488,7 @@ function ChecklistRows({
         }
       />
       <ItemRow
+        align="center"
         label="紧急疏散示意图"
         tag="必填 · 图纸"
         title="紧急疏散示意图"
@@ -512,6 +511,7 @@ function ChecklistRows({
         }
       />
       <ItemRow
+        align="center"
         label="其他图纸与照片"
         tag="选填 · 图纸与照片"
         title="其他图纸与照片"
@@ -587,6 +587,7 @@ function ReadLayout({
                         key={m.field}
                         label={m.label}
                         tag="图纸"
+                        actionsWidth="auto"
                         title={m.label}
                         desc={evacuation ? EVACUATION_DESC : SITE_PLAN_DESC}
                         actions={

@@ -76,7 +76,11 @@ export function CardHead({
   );
 }
 
-/** 一行：左边分类（140），中间名称和说明，右边状态（72）和操作（220）；状态、操作可以不要 */
+/**
+ * 一行：左边分类（140），中间名称和说明，右边状态（72）和操作；状态、操作可以不要。
+ * U1 上传清单：垂直居中，操作栏固定 220，几行的按钮对齐。
+ * U2 缺项：顶部对齐（默认），操作栏按内容宽，说明那栏占剩下的宽度。
+ */
 export function ItemRow({
   tag,
   title,
@@ -85,6 +89,8 @@ export function ItemRow({
   status,
   actions,
   label,
+  align = 'top',
+  actionsWidth = 220,
 }: {
   tag: ReactNode;
   title: ReactNode;
@@ -93,6 +99,8 @@ export function ItemRow({
   status?: ReactNode;
   actions?: ReactNode;
   label?: string;
+  align?: 'top' | 'center';
+  actionsWidth?: number | 'auto';
 }) {
   return (
     <div
@@ -100,7 +108,7 @@ export function ItemRow({
       aria-label={label}
       style={{
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: align === 'center' ? 'center' : 'flex-start',
         gap: 16,
         padding: '14px 24px',
         borderTop: `1px solid ${gy.split}`,
@@ -116,7 +124,7 @@ export function ItemRow({
         <div style={{ width: 72, flexShrink: 0, textAlign: 'right', ...type.body, color: gy.tertiary }}>{status}</div>
       )}
       {actions !== undefined && (
-        <div style={{ width: 220, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
+        <div style={{ width: actionsWidth, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
           {actions}
         </div>
       )}
@@ -130,25 +138,40 @@ const NOTICE = {
   info: { bg: gy.selected, title: gy.text },
 } as const;
 
-/** 带一行粗标题的提示条（12 页 U1c、U1d、U2d、U2e）：浅底、无边框，右边一个文字链接 */
+/**
+ * 带一行粗标题的提示条（12 页 U1c、U1d、U2d、U2e）：浅底、无边框，右边一个文字链接。
+ * 左内边距各按各的画板：U1c、U1d、U2d 是 16，U2e 是 24。U2d 前面有 (i) 图标。
+ */
 export function TitledNotice({
   tone,
   title,
   children,
   action,
+  paddingLeft = 24,
+  icon,
 }: {
   tone: keyof typeof NOTICE;
   title?: ReactNode;
   children: ReactNode;
   action?: ReactNode;
+  paddingLeft?: 16 | 24;
+  icon?: ReactNode;
 }) {
   const t = NOTICE[tone];
   return (
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       data-tone={tone}
-      style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px 12px 24px', borderRadius: 8, background: t.bg }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: icon ? 8 : 16,
+        padding: `12px 16px 12px ${paddingLeft}px`,
+        borderRadius: 8,
+        background: t.bg,
+      }}
     >
+      {icon}
       <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         {title && <div style={{ ...type.body, fontWeight: weight.strong, color: t.title }}>{title}</div>}
         <div style={{ ...type.body, color: title ? gy.secondary : gy.text }}>{children}</div>
@@ -191,8 +214,14 @@ export function UploadButton({ onClick, children = '上传', primary = false }: 
   );
 }
 
-/** 「查看客服二维码」：在链接下方弹出小浮层（12 页 S05） */
-export function QrLink({ children = '查看客服二维码' }: { children?: ReactNode }) {
+/** 「查看客服二维码」：在链接下方弹出小浮层（12 页 S05）；底栏「联系客服」也用它，从上方弹出 */
+export function QrLink({
+  children = '查看客服二维码',
+  placement = 'bottomRight',
+}: {
+  children?: ReactNode;
+  placement?: 'bottomRight' | 'topLeft';
+}) {
   const content = (
     <div style={{ display: 'flex', gap: 16, width: 328, padding: 4 }}>
       <img src={wechatQr} alt="耕云客服企业微信二维码" width={112} height={112} style={{ borderRadius: 6, flexShrink: 0 }} />
@@ -203,7 +232,7 @@ export function QrLink({ children = '查看客服二维码' }: { children?: Reac
     </div>
   );
   return (
-    <Popover content={content} trigger="click" placement="bottomRight" arrow={false}>
+    <Popover content={content} trigger="click" placement={placement} arrow={false}>
       <Button type="link" style={link}>
         {children}
       </Button>
@@ -527,22 +556,27 @@ function FileLine({ file, actions }: { file: IntakeFileView; actions: ReactNode 
   );
 }
 
+/**
+ * 两张必传的图，「上传」「这张图我们没有」「撤销，我要上传」整页只放一处：
+ * 还没传的在上面那一行（把这几样传上来 / 在这里直接传），这里只写「还没传」；
+ * 读到表格以后说明了没有的疏散图已不在缺项里，撤销放在这里（undoNoEvacuationHere），没读到表格时上面那一行已经有撤销
+ */
 export function DrawingsCard({
   view,
   canEdit,
   pick,
   onView,
   onRemove,
-  onAskNoEvacuation,
   onUndoNoEvacuation,
+  undoNoEvacuationHere,
 }: {
   view: IntakeView;
   canEdit: boolean;
   pick: (slot: 'site_plan' | 'evacuation_map' | 'other') => void;
   onView: (file: IntakeFileView) => void;
   onRemove: (file: IntakeFileView) => void;
-  onAskNoEvacuation: () => void;
   onUndoNoEvacuation: () => void;
+  undoNoEvacuationHere: boolean;
 }) {
   const plan = view.sitePlan;
   const notYet = <span style={{ ...type.body, color: gy.tertiary }}>还没传</span>;
@@ -569,10 +603,7 @@ export function DrawingsCard({
             </div>
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ flex: '1 1 0' }}>{notYet}</span>
-            {canEdit && <LinkButton onClick={() => pick('site_plan')}>上传</LinkButton>}
-          </div>
+          notYet
         )}
       </DrawingSection>
       <DrawingSection label="紧急疏散示意图">
@@ -603,18 +634,10 @@ export function DrawingsCard({
                   已说明没有
                 </span>
               </span>
-              {canEdit && <LinkButton onClick={onUndoNoEvacuation}>撤销，我要上传</LinkButton>}
+              {canEdit && undoNoEvacuationHere && <LinkButton onClick={onUndoNoEvacuation}>撤销，我要上传</LinkButton>}
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ flex: '1 1 0' }}>{notYet}</span>
-              {canEdit && (
-                <>
-                  <LinkButton onClick={onAskNoEvacuation}>这张图我们没有</LinkButton>
-                  <LinkButton onClick={() => pick('evacuation_map')}>上传</LinkButton>
-                </>
-              )}
-            </div>
+            notYet
           ))}
       </DrawingSection>
       <DrawingSection label="其他图纸与照片 · 选填" sub={view.others.length > 0 ? `已传 ${view.others.length} 张` : undefined}>
