@@ -1,7 +1,7 @@
 import { expect, request, test, type Browser, type Page } from '@playwright/test';
 
-// 专家任务中心（13 页任务中心、已暂停接单）。演示数据：飞宇任务（旧流程）分派给周工（expert@），
-// 五金的任务已提交、待运营分派。分派、改派后的越权见 operator-task-center.spec
+// 专家任务中心（13 页任务中心、已暂停接单）。演示数据：飞宇任务（旧流程）分配给周工（expert@），
+// 五金的任务已提交、待运营分配。分配、改派后的越权见 operator-task-center.spec
 const ZHOU = 'expert@demo.genyun.net.cn';
 const OPS = 'ops@demo.genyun.net.cn';
 const FEIYU = '惠阳飞宇电器有限公司';
@@ -104,10 +104,10 @@ test.describe('暂停接单', () => {
     const ops = await opsPage(browser);
     try {
       await ops.p.goto(`/operator/tasks?task=${hardware}`);
-      const panel = ops.p.getByRole('region', { name: '任务详情' });
-      await panel.getByRole('button', { name: '分配专家' }).click();
-      const dialog = ops.p.getByRole('dialog', { name: /分配专家/ });
-      const zhou = dialog.getByRole('radio', { name: /周工/ });
+      const drawer = ops.p.getByRole('dialog').filter({ has: ops.p.getByRole('region', { name: '联系记录' }) });
+      await drawer.getByRole('button', { name: '分配专家' }).click();
+      const dialog = ops.p.getByRole('dialog', { name: /^分配专家/ });
+      const zhou = dialog.getByRole('radio', { name: /^周工/ });
       await expect(zhou).toBeDisabled();
       await expect(dialog.getByText('已暂停接单，不能分配')).toBeVisible();
       await expect(dialog.getByRole('radio', { name: /吴工/ })).toBeEnabled();

@@ -9,7 +9,7 @@ import { Button, Input, Select } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import { useSearchParams } from 'react-router';
-import { useOperatorTasks, type OperatorTask } from '../../api/operator';
+import { useOperatorOrgs, useOperatorTasks, type OperatorTask } from '../../api/operator';
 import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../components/PageHeader';
 import { StatCells } from '../../components/StatCells';
@@ -131,7 +131,9 @@ export function OperatorTaskCenterPage() {
   const [params, setParams] = useSearchParams();
   const [cell, setCell] = useState<Cell | undefined>();
   const [keyword, setKeyword] = useState('');
-  const [org, setOrg] = useState<string>(() => params.get('org') ?? 'all');
+  const [linkedOrg] = useState(() => params.get('org'));
+  const [org, setOrg] = useState<string>(linkedOrg ?? 'all');
+  const orgs = useOperatorOrgs();
   const [expert, setExpert] = useState<string>('all');
   const [showDelivered, setShowDelivered] = useState(false);
   // 弹窗常驻到关闭动画结束：open 控制显隐，afterClose 再卸载，焦点回到打开它的按钮
@@ -168,8 +170,10 @@ export function OperatorTaskCenterPage() {
   const orgOptions = useMemo(() => {
     const m = new Map<string, string>();
     for (const t of all) m.set(t.orgId, t.orgName);
+    // 从组织详情「去任务中心」带来的组织可能还没有任务：也列进选项，名字从客户组织列表取
+    if (linkedOrg && !m.has(linkedOrg)) m.set(linkedOrg, orgs.data?.find((o) => o.id === linkedOrg)?.name ?? '这个客户组织');
     return [...m].map(([value, label]) => ({ value, label }));
-  }, [all]);
+  }, [all, linkedOrg, orgs.data]);
   const expertOptions = useMemo(() => {
     const m = new Map<string, string>();
     for (const t of all) if (t.assignedExpertId && t.assignedExpertName) m.set(t.assignedExpertId, t.assignedExpertName);
