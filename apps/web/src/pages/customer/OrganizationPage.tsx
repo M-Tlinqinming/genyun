@@ -4,17 +4,23 @@ import {
   CUSTOMER_ROLES,
   memberInviteSchema,
   orgProfileSchema,
+  chinaToday,
+  CREDIT_ENTRY_TYPE_LABELS,
+  customerCreditEntryText,
+  formatCreditDelta,
   type ContractState,
   type CustomerRole,
   type OrgEnterpriseAssignment,
   type OrgManagementView,
   type OrgMember,
+  type OrgCredits,
   type OrgMemberInvitation,
   type OrgProfileInput,
 } from '@genyun/shared';
 import { App, Button, Checkbox, Form, Input, Modal, Radio } from 'antd';
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
+import { useOrgCredits } from '../../api/credits';
 import {
   useChangeMemberRole,
   useInviteMember,
@@ -28,9 +34,10 @@ import {
 } from '../../api/orgMembers';
 import { ApiError } from '../../api/request';
 import { ContactLink } from '../../components/ContactLink';
+import { StatusTag, type StatusTone } from '../../components/StatusTag';
 import { linkButton, Loading, Notice, panel, requiredAfter } from '../../components/ui';
 import { useWorkspace } from '../../layouts/workspace';
-import { gy, stage } from '../../theme/tokens';
+import { gy, stage, type, weight } from '../../theme/tokens';
 
 // 组织管理（Paper 11 页）：仅组织管理员可见。四个标签：组织资料、成员与权限、企业分配、年度服务（?tab= 记住当前标签）。
 // 成员只能访问分配给自己的企业；组织管理员访问全部企业。邀请走邮件，7 天有效
@@ -319,41 +326,68 @@ function EnterprisesTab({ view, onAdjust }: { view: OrgManagementView; onAdjust:
 
 // —— 年度服务 ——
 
-const CONTRACT_TAGS: Record<ContractState, { label: string; tone: { color: string; bg: string } }> = {
-  active: { label: '有效', tone: stage.done },
-  expiring: { label: '即将到期', tone: stage.action },
-  expired: { label: '已到期', tone: stage.error },
-  upcoming: { label: '未开始', tone: stage.progress },
-  none: { label: '未登记', tone: stage.progress },
+const CONTRACT_TAGS: Record<ContractState, { label: string; tone: StatusTone }> = {
+  active: { label: '有效', tone: 'done' },
+  expiring: { label: '快到期', tone: 'action' },
+  expired: { label: '已到期', tone: 'error' },
+  upcoming: { label: '未开始', tone: 'progress' },
+  none: { label: '未开通', tone: 'progress' },
 };
+const RECORDS_FIRST = 10;
 
-function ServiceTab({ view }: { view: OrgManagementView }) {
+// C08 年度服务：服务状态、编制次数（用量和次数记录）、服务内容三张卡片
+function ServiceTab({ view, orgId }: { view: OrgManagementView; orgId: string }) {
   const s = view.service;
   const tag = CONTRACT_TAGS[s.state];
-  const period = s.startsAt && s.endsAt ? `服务期 ${dotted(s.startsAt)} — ${dotted(s.endsAt)}` : '服务期尚未登记，请联系耕云';
-  const left =
-    s.state === 'expired' ? ' · 已到期' : s.daysLeft !== null && (s.state === 'active' || s.state === 'expiring') ? ` · 还有 ${s.daysLeft} 天到期` : '';
-  const scope = s.scopeKind === 'annual' && s.scopeEnterprises ? `（合同约定 ${s.scopeEnterprises} 家）` : '';
+  const credits = useOrgCredits(orgId);
+  const tail =
+    s.state === 'expired' && s.endsAt
+      ? ` · 已于 ${dotted(s.endsAt)} 到期`
+      : s.state === 'upcoming'
+        ? ' · 还没开始'
+        : s.daysLeft === 0
+          ? ' · 今天到期'
+          : s.daysLeft !== null
+            ? ` · 还有 ${s.daysLeft} 天到期`
+            : '';
+  const period = s.state !== 'none' && s.startsAt && s.endsAt ? `服务期 ${dotted(s.startsAt)} — ${dotted(s.endsAt)}${tail}` : '服务期尚未登记，请联系耕云';
   const rows: [string, string][] = [
     ['开放业务', '生产安全事故应急预案编制'],
     ['每次交付', '应急预案、风险评估报告、应急资源调查报告，共三份 Word'],
-    ['办理方式', '资料齐全后提交 → 耕云编制 → 专家审核 → 交付'],
-    ['本年已办理', `${s.enterprises} 家企业${scope} · 已交付 ${s.delivered} · 办理中 ${s.inProgress}`],
+    ['办理方式', '准备资料 → 专家编制 → 已交付'],
+    ['本年已办理', `${s.enterprises} 家企业 · 已交付 ${s.delivered} · 办理中 ${s.inProgress}`],
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <section aria-label="年度服务" style={{ ...panel, display: 'flex', alignItems: 'center', gap: 20, padding: 24 }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h2 style={{ fontSize: 20, lineHeight: '28px', fontWeight: 500, color: gy.text, margin: 0 }}>年度服务</h2>
-            <span style={{ padding: '0 8px', borderRadius: 4, background: tag.tone.bg, color: tag.tone.color, fontSize: 13, lineHeight: '22px' }}>{tag.label}</span>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text, margin: 0 }}>年度服务</h2>
+            <StatusTag tone={tag.tone}>{tag.label}</StatusTag>
           </div>
-          <span style={muted}>
-            {period}
-            {left}
-          </span>
+          <span style={muted}>{period}</span>
         </div>
-        <ContactLink title="联系耕云续约" trigger={(open) => <Button onClick={open}>联系耕云续约</Button>} />
+        <ContactLink
+          title="联系耕云续约"
+          hint="续约或开通年度服务，请直接联系耕云。"
+          trigger={(open) => (
+            <Button onClick={open} style={{ borderColor: gy.border }}>
+              续约
+            </Button>
+          )}
+        />
+      </section>
+      <section aria-label="编制次数" style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 16, padding: 24 }}>
+        <h2 style={{ ...type.subtitle, fontWeight: weight.strong, color: gy.text, margin: 0 }}>编制次数</h2>
+        {credits.isPending ? (
+          <Loading rows={3} card={false} />
+        ) : credits.isError ? (
+          <span style={muted}>编制次数暂时读不出来：{credits.error.message}</span>
+        ) : credits.data.validUntil ? (
+          <CreditUsage credits={credits.data} />
+        ) : (
+          <NoCredits state={s.state} startsAt={s.startsAt} awaiting={credits.data.awaitingTasks.length} />
+        )}
       </section>
       <section aria-label="服务内容" style={{ ...panel, display: 'flex', flexDirection: 'column', padding: '8px 24px' }}>
         {rows.map(([label, value], i) => (
@@ -363,9 +397,97 @@ function ServiceTab({ view }: { view: OrgManagementView }) {
           </div>
         ))}
       </section>
-      <InfoBox title="到期后会怎样" text="不能再创建新任务；办理中的任务按约定完成；已交付的成果仍可查看和下载。" />
     </div>
   );
+}
+
+function CreditUsage({ credits: c }: { credits: OrgCredits }) {
+  const [all, setAll] = useState(false);
+  const [y, m, d] = c.validUntil!.split('-').map(Number);
+  const topUp = c.entries.some((e) => e.type === 'top_up');
+  const gift = c.remaining.gift;
+  const note = [
+    `剩余里：${gift > 0 ? `耕云赠送 ${gift} 次、` : ''}${topUp ? '合同购买和加购' : '合同购买'} ${c.remaining.purchase} 次`,
+    ...(gift > 0 ? ['先用赠送的'] : []),
+    '专家交付成果才算 1 次，之后重新打开再交付不再算',
+  ].join(' · ');
+  const shown = all ? c.entries : c.entries.slice(0, RECORDS_FIRST);
+  const cols = { date: 120, kind: 120, delta: 80 } as const;
+  const line: CSSProperties = { display: 'flex', alignItems: 'center', gap: 16, borderBottom: `1px solid ${gy.split}` };
+  return (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '20px 24px', borderRadius: 8, border: `1px solid ${gy.split}` }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ ...type.pageTitle, fontWeight: weight.strong, color: gy.text }}>剩余 {c.remaining.total} 次</span>
+            <span style={muted}>
+              共 {c.granted} 次，已用 {c.used} 次
+            </span>
+          </div>
+          <span style={muted}>
+            有效期至 {y} 年 {m} 月 {d} 日
+          </span>
+        </div>
+        <div
+          role="progressbar"
+          aria-label="已用次数"
+          aria-valuemin={0}
+          aria-valuemax={c.granted}
+          aria-valuenow={c.used}
+          style={{ height: 8, borderRadius: 4, background: gy.neutralBg, overflow: 'hidden' }}
+        >
+          <div style={{ width: `${c.granted > 0 ? Math.min(100, (c.used / c.granted) * 100) : 0}%`, height: '100%', borderRadius: 4, background: gy.primary }} />
+        </div>
+        <span style={{ ...type.caption, color: gy.tertiary }}>{note}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <span style={{ ...body, fontWeight: weight.strong, paddingBottom: 8 }}>次数记录</span>
+        <div style={{ ...line, borderTop: `1px solid ${gy.split}`, padding: '10px 0', ...type.caption, color: gy.secondary }}>
+          <span style={{ width: cols.date, flexShrink: 0 }}>日期</span>
+          <span style={{ width: cols.kind, flexShrink: 0 }}>类型</span>
+          <span style={{ flex: 1, minWidth: 0 }}>说明</span>
+          <span style={{ width: cols.delta, flexShrink: 0, textAlign: 'right' }}>次数</span>
+        </div>
+        {c.entries.length === 0 ? (
+          <span style={{ ...muted, padding: '12px 0' }}>还没有次数记录。</span>
+        ) : (
+          shown.map((e) => (
+            <div key={e.id} data-testid="credit-entry" style={{ ...line, padding: '12px 0', ...body }}>
+              <span style={{ width: cols.date, flexShrink: 0 }}>{dotted(chinaToday(new Date(e.createdAt)))}</span>
+              <span style={{ width: cols.kind, flexShrink: 0 }}>{CREDIT_ENTRY_TYPE_LABELS[e.type]}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{customerCreditEntryText(e)}</span>
+              <span style={{ width: cols.delta, flexShrink: 0, textAlign: 'right' }}>{formatCreditDelta(e.delta)}</span>
+            </div>
+          ))
+        )}
+        {!all && c.entries.length > RECORDS_FIRST && (
+          <button type="button" style={{ ...linkButton, alignSelf: 'flex-start', marginTop: 12 }} onClick={() => setAll(true)}>
+            查看全部 {c.entries.length} 条
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+// 没有生效合同时，次数那张卡片只写一句
+function NoCredits({ state, startsAt, awaiting }: { state: ContractState; startsAt: string | null; awaiting: number }) {
+  if (state === 'upcoming' && startsAt) return <span style={muted}>合同 {dotted(startsAt)} 起生效，到时这里会显示编制次数。</span>;
+  if (state === 'expired')
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={muted}>年度服务已到期，次数随合同失效。</span>
+        {awaiting > 0 && (
+          <span style={{ ...muted, display: 'flex', gap: 8 }}>
+            有 {awaiting} 份成果等续约后下载
+            <Link to="/customer/documents" style={{ color: gy.primary }}>
+              查看
+            </Link>
+          </span>
+        )}
+      </div>
+    );
+  return <span style={muted}>耕云登记合同后，这里会显示编制次数。</span>;
 }
 
 // —— 组织资料 ——
@@ -601,7 +723,6 @@ export function OrganizationPage() {
   const [membersOf, setMembersOf] = useState<OrgEnterpriseAssignment | null>(null);
 
   const fail = (err: unknown, fallback: string) => message.error(err instanceof Error ? err.message : fallback);
-  const orgName = view.data?.org.name ?? '';
 
   const askRemove = (m: OrgMember) => {
     const data = view.data!;
@@ -653,17 +774,16 @@ export function OrganizationPage() {
     });
 
   const header = (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <span style={muted}>{orgName ? `${orgName}　/　组织管理` : '组织管理'}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <h1 style={{ flex: 1, fontSize: 28, lineHeight: '40px', fontWeight: 500, color: gy.text, margin: 0 }}>组织管理</h1>
-        {tab === 'members' && view.data && (
-          <Button type="primary" onClick={() => setInviting(true)} style={{ padding: '7px 20px', height: 'auto' }}>
-            + 邀请成员
-          </Button>
-        )}
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <h1 style={{ ...type.pageTitle, fontWeight: weight.strong, color: gy.text, margin: 0 }}>组织管理</h1>
+        <span style={muted}>组织资料、成员、企业分配和年度服务都在这里。</span>
       </div>
-      <span style={muted}>仅组织管理员可见。成员只能访问分配给自己的企业。</span>
+      {tab === 'members' && view.data && (
+        <Button type="primary" onClick={() => setInviting(true)} style={{ flexShrink: 0 }}>
+          + 邀请成员
+        </Button>
+      )}
     </div>
   );
 
@@ -717,7 +837,7 @@ export function OrganizationPage() {
           />
         )}
         {tab === 'enterprises' && <EnterprisesTab view={data} onAdjust={setMembersOf} />}
-        {tab === 'service' && <ServiceTab view={data} />}
+        {tab === 'service' && <ServiceTab view={data} orgId={orgId} />}
         <InviteModal open={inviting} orgId={orgId} onClose={() => setInviting(false)} />
         <RoleModal member={roleOf} orgId={orgId} onClose={() => setRoleOf(null)} />
         <PickModal
