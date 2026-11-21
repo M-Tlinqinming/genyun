@@ -130,6 +130,8 @@ export interface WorkupEvent {
   // 系统自动的为空
   by?: string;
   byName?: string;
+  // 运营联系记录要读的几种（现在只有复制缺项清单）；别的事件不写
+  kind?: 'missing_list';
   what: string;
   extra?: string;
 }

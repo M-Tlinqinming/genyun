@@ -48,11 +48,13 @@ import {
   memberships,
   organizations,
   taskOperatorNotes,
+  taskWorkups,
   tasks,
   users,
 } from '../db/schema.ts';
 import { NotificationsService, REASSIGNED_TITLE } from '../notifications/notifications.service.ts';
 import { loadTaskViewInputs, type TaskViewFacts } from './task-view-input.ts';
+import { WorkupService } from './workup.service.ts';
 
 const NOT_FOUND = '找不到该任务';
 
@@ -188,6 +190,7 @@ export class OperatorTasksController {
     @Inject(DATABASE) private readonly db: Database,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(WorkupService) private readonly workup: WorkupService,
   ) {}
 
   // 全部任务（包括已交付），按运营任务中心的默认顺序：要运营动手的两组在前、等得最久的在前（数量少，不分页，前端再筛）
@@ -400,11 +403,31 @@ export class OperatorTasksController {
     return this.load(id);
   }
 
-  // 运营在任务上的记录：内部备注、改派（以前的提醒专家记录照常显示），新的在前
+  // 抽屉「等客户补资料」的缺项清单：专家列出的项和现在的补上情况（打开时按现在的资料重算，只显示不写）。
+  // 和专家接口同一个形状；逐项填写的老任务、没复制过清单的 list 为空
+  @Get(':id/missing-list')
+  async missingList(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    this.guard(user);
+    const task = await this.load(id);
+    return this.workup.missingListView(task.id, task.orgId);
+  }
+
+  // 运营在任务上的记录：内部备注、改派（以前的提醒专家记录照常显示），
+  // 加上专家复制缺项清单的那几次（核对数据里的事件，不写进运营记录表），新的在前
   @Get(':id/notes')
   async notes(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string): Promise<OperatorNote[]> {
     this.guard(user);
     await this.load(id);
+    const [workup] = await this.db.select({ data: taskWorkups.data }).from(taskWorkups).where(eq(taskWorkups.taskId, id)).limit(1);
+    const copied: OperatorNote[] = (workup?.data.events ?? [])
+      .filter((e) => e.kind === 'missing_list')
+      .map((e) => ({
+        id: `missing-list-${e.at}`,
+        kind: 'note',
+        body: '复制了缺项清单，任务标为「等客户补资料」。',
+        createdAt: new Date(e.at).toISOString(),
+        createdByName: e.byName ?? '专家',
+      }));
     const rows = await this.db
       .select({
         id: taskOperatorNotes.id,
@@ -417,7 +440,9 @@ export class OperatorTasksController {
       .innerJoin(users, eq(users.id, taskOperatorNotes.createdBy))
       .where(eq(taskOperatorNotes.taskId, id))
       .orderBy(desc(taskOperatorNotes.createdAt));
-    return rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }));
+    return [...rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })), ...copied].sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt),
+    );
   }
 
   // 写内部备注：只有运营看得到

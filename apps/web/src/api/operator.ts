@@ -23,6 +23,7 @@ import type {
 } from '@genyun/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
+import type { MissingListView } from './workup';
 
 // 运营看到的客户组织（Paper 16 页 I02）
 export interface OperatorOrg {
@@ -311,7 +312,18 @@ export const operatorTaskKeys = {
   detail: (id: string) => ['operator', 'tasks', id] as const,
   experts: (id: string) => ['operator', 'tasks', id, 'experts'] as const,
   notes: (id: string) => ['operator', 'tasks', id, 'notes'] as const,
+  missingList: (id: string) => ['operator', 'tasks', id, 'missing-list'] as const,
 };
+
+// 抽屉「等客户补资料」的缺项清单（和专家的查看缺项同一个形状）。每次打开抽屉都重新取：专家可能刚代客户传上东西
+export function useOperatorMissingList(taskId: string, enabled = true) {
+  return useQuery({
+    queryKey: operatorTaskKeys.missingList(taskId),
+    queryFn: () => request<MissingListView>(`/operator/tasks/${taskId}/missing-list`),
+    refetchOnMount: 'always',
+    enabled,
+  });
+}
 
 // 运营在任务上的记录（内部备注、提醒专家、改派），客户和专家看不到
 export function useOperatorNotes(taskId: string) {

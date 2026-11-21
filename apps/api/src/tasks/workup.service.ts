@@ -524,6 +524,7 @@ export class WorkupService {
       at: list.at,
       by: user.id,
       byName: user.name,
+      kind: 'missing_list',
       what: `复制了缺项清单，共 ${items.length} 项，任务标为等客户补资料`,
     });
     const saved = await this.db.transaction(async (tx) => {
@@ -542,6 +543,12 @@ export class WorkupService {
   // S02 查看缺项：清单和现在的补上情况（任务中心抽屉打开时取）
   async missingList(user: SessionUser, taskId: string) {
     const task = await this.task(user, taskId);
+    return this.missingListView(task.id, task.orgId);
+  }
+
+  // 缺项清单的内容（专家接口查过权限后、运营任务中心抽屉都调这里）
+  async missingListView(taskId: string, orgId: string) {
+    const task = { id: taskId, orgId };
     const row = await this.row(task.id);
     const [t] = await this.db
       .select({ number: tasks.number, since: tasks.awaitingCustomerSince, items: tasks.awaitingCustomerItems })

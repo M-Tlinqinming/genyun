@@ -7,6 +7,8 @@ import { expect, test, type Browser, type Locator, type Page } from '@playwright
 test.describe.configure({ mode: 'serial' });
 
 const HARDWARE = '示例五金制品有限公司';
+// 资料表格任务，周工已列出缺项、标着等客户补资料（expert-workup-missing 只看不改）
+const AWAITING = '示例家具制造有限公司';
 const FEIYU_ORG = '飞宇演示客户';
 
 type Group = 'to_assign' | 'awaiting' | 'working' | 'preparing' | 'delivered';
@@ -68,7 +70,8 @@ const stat = (label: string) => page.getByRole('group', { name: '按阶段筛选
 const statValue = async (label: string) => Number((await stat(label).locator('.gy-tabular').textContent())!.trim());
 
 test.beforeAll(async ({ browser }) => {
-  page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  // 缺项清单那段要读剪贴板
+  page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, permissions: ['clipboard-read', 'clipboard-write'] });
   await login(page, 'ops@demo.genyun.net.cn', /\/operator$/);
   hardwareTask = (await apiTasks()).find((t) => t.enterpriseName === HARDWARE && t.orgName === FEIYU_ORG)!.id;
 });
@@ -170,6 +173,53 @@ test('抽屉里写联系记录：只有运营看得到，记下后出现在列�
   await expect(page.getByText('已记下，客户看不到')).toBeVisible();
   await expect(notes.getByRole('listitem').filter({ hasText: '客户答应周五前把消防验收意见书发过来' })).toContainText('赵运营');
   await expect(notes.getByLabel('写一条联系记录')).toHaveValue('');
+});
+
+test('等客户补资料：抽屉里逐项列出缺项，补上的划掉；复制的是还没补上的项；联系记录里有专家列清单那条', async ({ browser }) => {
+  const taskId = (await apiTasks()).find((t) => t.enterpriseName === AWAITING)!.id;
+  // 周工用接口重新复制一次清单，再代客户补上「技术管理人员人数」
+  const zhou = await asExpert(browser, 'expert@demo.genyun.net.cn');
+  const workup = async () => (await (await zhou.p.request.get(`/api/tasks/${taskId}/workup`)).json()) as { version: number };
+  expect((await zhou.p.request.post(`/api/tasks/${taskId}/workup/missing-list`, { data: { version: (await workup()).version } })).ok()).toBe(true);
+  const filled = await zhou.p.request.put(`/api/tasks/${taskId}/workup/facts`, {
+    data: { version: (await workup()).version, key: 'technicalManagementCount', value: 6, source: 'customer' },
+  });
+  expect(filled.ok()).toBe(true);
+  await zhou.close();
+
+  await page.goto(`/operator/tasks?task=${taskId}`);
+  await expect(drawer()).toContainText(AWAITING);
+  await expect(drawer()).toContainText(/周工 \d+ 月 \d+ 日 \d{2}:\d{2} 列出缺项/);
+  const block = drawer().getByRole('region', { name: '缺项清单' });
+  const items = block.getByRole('list', { name: '缺项' });
+  await expect(items.getByRole('listitem').first()).toBeVisible();
+  const openCount = await items.locator('[role="listitem"]:not([data-filled])').count();
+  await expect(block.getByRole('heading')).toHaveText(`还缺 ${openCount} 项`);
+  const evacuation = items.getByRole('listitem').filter({ hasText: '紧急疏散示意图' });
+  await expect(evacuation).toContainText('必备');
+  await expect(evacuation).toContainText('没有这一项不能生成。');
+  const done = items.locator('[data-filled="true"]');
+  await expect(done).toHaveCount(1);
+  await expect(done).toContainText('技术人员数');
+  await expect(done).toContainText(/\d+ 月 \d+ 日已补上/);
+  await expect(done).not.toContainText('必备');
+  await expect(done.getByText('技术人员数')).toHaveCSS('text-decoration-line', 'line-through');
+  await expect(block).toContainText('清单由专家列出，这里只能看和复制。复制后粘贴到企业微信发给客户。');
+  await block.screenshot({ path: 'test-results/acceptance/k17-operator-missing-list.png' });
+
+  await block.getByRole('button', { name: '复制缺项清单' }).click();
+  await expect(page.getByText(`已复制 ${openCount} 项缺项，粘贴到企业微信发给客户`)).toBeVisible();
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  // Windows 的剪贴板读回来是 \r\n
+  expect(text.split(/\r?\n/)[0]).toMatch(/^【.+ · 编制应急预案还缺的资料】$/);
+  expect(text).toContain('专家 周工');
+  expect(text).toContain('紧急疏散示意图');
+  expect(text).not.toContain('技术管理人员人数');
+
+  const notes = drawer().getByRole('region', { name: '联系记录' });
+  await expect(notes.getByRole('listitem').first()).toContainText('复制了缺项清单，任务标为「等客户补资料」。');
+  await expect(notes.getByRole('listitem').first()).toContainText('周工');
+  await notes.screenshot({ path: 'test-results/acceptance/k17-operator-notes.png' });
 });
 
 test('改派给吴工：可选理由告诉周工；吴工看到任务，周工打开旧链接看到已改派给谁', async ({ browser }) => {
