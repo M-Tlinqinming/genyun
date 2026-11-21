@@ -37,8 +37,8 @@ beforeAll(async () => {
     .insert(organizations)
     .values([
       { name: '示例安全咨询机构', kind: 'customer', contractStartsAt: '2026-01-01', contractEndsAt: '2099-12-31', activatedAt: now },
-      { name: '待开通咨询公司', kind: 'customer', contractStartsAt: '2026-11-01', contractEndsAt: '2027-10-31', createdAt: new Date(now.getTime() - 3 * DAY) },
-      { name: '已到期咨询公司', kind: 'customer', contractStartsAt: '2024-01-01', contractEndsAt: '2025-12-31', activatedAt: new Date('2024-01-01') },
+      { name: '示例待开通机构', kind: 'customer', contractStartsAt: '2026-11-01', contractEndsAt: '2027-10-31', createdAt: new Date(now.getTime() - 3 * DAY) },
+      { name: '示例已到期机构', kind: 'customer', contractStartsAt: '2024-01-01', contractEndsAt: '2025-12-31', activatedAt: new Date('2024-01-01') },
       { name: '耕云', kind: 'internal' },
     ])
     .returning();
@@ -55,10 +55,10 @@ beforeAll(async () => {
   }
   const by = uid['admin@test.cn']!;
   const zhou = uid['zhou@test.cn']!;
-  const names = ['准备中', '待分派', '编制中', '超时', '已结束'];
+  const names = ['准备中', '待分配', '编制中', '超时', '已结束'];
   const ents = await db
     .insert(enterprises)
-    .values(names.map((n) => ({ orgId: active!.id, name: `示例${n}有限公司`, createdBy: by })))
+    .values(names.map((n) => ({ orgId: active!.id, name: `示例${n}`, createdBy: by })))
     .returning();
   const long = new Date('2026-10-27T07:20:00Z');
   const base = { orgId: active!.id, businessType: 'emergency_plan' as const, name: '2026 年应急预案', createdBy: by };
@@ -122,23 +122,23 @@ beforeAll(async () => {
   const [inv] = await db
     .insert(organizationInvitations)
     .values([
-      { ...invite, email: 'boss@pending.cn', name: '钱总', tokenHash: randomUUID(), createdAt: new Date(now.getTime() - 3 * DAY) },
-      { ...invite, email: 'new@pending.cn', name: '孙总', tokenHash: randomUUID() },
+      { ...invite, email: 'boss@example.com', name: '钱总', tokenHash: randomUUID(), createdAt: new Date(now.getTime() - 3 * DAY) },
+      { ...invite, email: 'new@example.com', name: '孙总', tokenHash: randomUUID() },
       // 过期超过 14 天的不再放进今天先处理
       {
         ...invite,
-        email: 'old@pending.cn',
+        email: 'old@example.com',
         name: '老邀请',
         tokenHash: randomUUID(),
         createdAt: new Date(now.getTime() - 30 * DAY),
         expiresAt: new Date(now.getTime() - 23 * DAY),
       },
-      // 客户管理员自己邀请的成员由客户跟进，不进运营待办
+      // 客户管理员邀请的成员也进运营待办（运营可提醒或协助重发）
       {
         orgId: active!.id,
         role: 'customer_member' as const,
         invitedBy: by,
-        email: 'member@active.cn',
+        email: 'member@example.com',
         name: '客户成员',
         tokenHash: randomUUID(),
         createdAt: new Date(now.getTime() - 5 * DAY),
@@ -171,41 +171,56 @@ describe('运营概览', () => {
     const ops = await as('ops@test.cn');
     const body = (await ops.get('/api/operator/overview').expect(200)).body as OperatorOverview;
     expect(body.orgs).toEqual({ total: 3, active: 1, pending: 1, expired: 1 });
-    // 已结束的任务不算在办
-    expect(body.tasks).toEqual({ open: 4, preparing: 1, unassigned: 1, drafting: 2 });
+    // 已交付的不算在办；待分配专家、等客户补资料和任务中心的分组一致
+    const center = (await ops.get('/api/operator/tasks').expect(200)).body as { group: string }[];
+    expect(body.tasks).toEqual({
+      open: center.filter((t) => t.group !== 'delivered').length,
+      toAssign: center.filter((t) => t.group === 'to_assign').length,
+      awaiting: center.filter((t) => t.group === 'awaiting').length,
+    });
+    expect(body.tasks.toAssign).toBe(1);
     expect(body.deliveries).toEqual({ thisMonth: 1 });
     expect(body).not.toHaveProperty('followUps');
     expect(body.feedback).toEqual({ new: 0, processing: 0 });
   });
 
-  it('今天先处理：待开通、邀请未接受、待分派，等得最久的在前；不再有超时兜底和上门工单', async () => {
+  it('今天先处理：待开通、邀请未接受（运营和客户管理员发的），等得最久的在前；待分配的任务不在这里', async () => {
     const ops = await as('ops@test.cn');
     const { todos } = (await ops.get('/api/operator/overview').expect(200)).body as OperatorOverview;
-    expect(todos.map((t) => t.kind).sort()).toEqual(['invitation', 'org_pending', 'unassigned']);
-    // 只有运营发的、过期 14 天内的邀请
-    expect(todos.filter((t) => t.kind === 'invitation').map((t) => t.title)).toEqual(['boss@pending.cn']);
+    expect(todos.map((t) => t.kind).sort()).toEqual(['invitation', 'invitation', 'org_pending']);
+    // 过期 14 天内的邀请；客户管理员发的也在
+    expect(todos.filter((t) => t.kind === 'invitation').map((t) => t.title)).toEqual(['member@example.com', 'boss@example.com']);
     const since = todos.map((t) => t.since);
     expect([...since].sort()).toEqual(since);
-    expect(todos.find((t) => t.kind === 'org_pending')).toMatchObject({ title: '待开通咨询公司', link: `/operator/organizations?open=${id.pending}` });
-    expect(todos.find((t) => t.kind === 'invitation')).toMatchObject({
+    expect(todos.find((t) => t.kind === 'org_pending')).toMatchObject({
+      title: '示例待开通机构',
+      note: '核对合同后开通，系统自动邀请管理员',
+      link: `/operator/organizations?open=${id.pending}`,
+    });
+    expect(todos.find((t) => t.title === 'boss@example.com')).toMatchObject({
       id: id.invitation,
-      title: 'boss@pending.cn',
+      note: '邀请已发出，对方还没有设置密码加入',
       link: `/operator/organizations/${id.pending}`,
     });
-    expect(todos.find((t) => t.kind === 'unassigned')).toMatchObject({ link: `/operator/tasks?task=${id.unassigned}` });
+    expect(todos.find((t) => t.title === 'member@example.com')).toMatchObject({
+      subtitle: '示例安全咨询机构 · 组织成员',
+      note: '由客户管理员发出，可提醒对方或协助重发',
+      action: '查看组织',
+    });
   });
 
-  it('客户年度服务不含已到期的；最近操作不含登录退出', async () => {
+  it('续约与次数：已到期 30 天以上的不放，待开通的在后；最近操作写成一句话并带身份', async () => {
     const ops = await as('ops@test.cn');
     const body = (await ops.get('/api/operator/overview').expect(200)).body as OperatorOverview;
-    expect(body.services.map((s) => [s.name, s.state])).toEqual([
-      ['示例安全咨询机构', 'active'],
-      ['待开通咨询公司', 'pending'],
-    ]);
-    expect(body.services[0]!.enterprises).toBe(5);
-    expect(body.services[1]!.daysLeft).toBeNull();
+    expect(body.renewals.map((r) => r.name)).toEqual(['示例安全咨询机构', '示例待开通机构']);
+    expect(body.renewals[1]).toMatchObject({ sub: '待开通 · 合同 2026.11.01 起', action: { text: '开通' } });
     expect(body.recent.map((r) => r.action)).toEqual(['task_assign']);
-    expect(body.recent[0]).toMatchObject({ actorName: '赵运营', target: 'GY-2026-003 · 周工' });
+    expect(body.recent[0]).toMatchObject({
+      actorName: '赵运营',
+      actorIdentity: 'operator',
+      target: 'GY-2026-003 · 周工',
+      sentence: '示例编制中已分配给周工',
+    });
   });
 
   it('只有运营能看：客户、专家 403，没登录 401', async () => {

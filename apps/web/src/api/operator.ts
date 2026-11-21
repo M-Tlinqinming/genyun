@@ -10,7 +10,7 @@ import type {
   OrgCreditsBrief,
   OperatorNote,
   OperatorNoteInput,
-  OperatorTaskStage,
+  OperatorTaskGroup,
   OrgOpenDraft,
   OrgRegisterInput,
   OrgRenewalInput,
@@ -18,6 +18,7 @@ import type {
   OrgServiceState,
   RegionParts,
   Role,
+  TaskViewTone,
   ServiceScopeKind,
 } from '@genyun/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -85,7 +86,8 @@ export interface OrgInvitation {
 export interface OrgEnterpriseTask {
   id: string;
   name: string;
-  task: { id: string; number: string; stage: OperatorTaskStage } | null;
+  // 运营那一侧的状态标签（和任务中心同一套）
+  task: { id: string; number: string; view: OperatorTaskViewBrief } | null;
 }
 
 // 组织的一份合同（详情「年度服务」页签，新的在前）。credits 按这份合同上各类型的台账行相加，不含交付扣减
@@ -240,7 +242,15 @@ export async function uploadContractFile(orgId: string, file: File): Promise<Con
   return request<ContractFile>(`/operator/organizations/${orgId}/contract-file`, { method: 'POST', body: form });
 }
 
-// 运营任务中心（Paper 16 页 I04）：全部客户任务，待分派由 needsAssignment 筛出
+/** 运营那一侧的状态：标签文字、颜色、下面一行说明 */
+export interface OperatorTaskViewBrief {
+  key: string;
+  label: string;
+  tone: TaskViewTone;
+  detail: string | null;
+}
+
+// 运营任务中心（Paper 16 页 I04）：全部客户任务（含已交付），后台已按默认顺序排好
 export interface OperatorTask {
   id: string;
   number: string;
@@ -249,6 +259,9 @@ export interface OperatorTask {
   orgId: string;
   orgName: string;
   orgRegion: string | null;
+  orgRegionProvince: string | null;
+  orgRegionCity: string | null;
+  orgRegionDistrict: string | null;
   enterpriseId: string;
   enterpriseName: string;
   status: 'preparing' | 'submitted';
@@ -257,21 +270,37 @@ export interface OperatorTask {
   closedAt: string | null;
   assignedExpertId: string | null;
   assignedExpertName: string | null;
-  stage: OperatorTaskStage;
+  assignedAt: string | null;
+  view: OperatorTaskViewBrief;
+  group: OperatorTaskGroup;
+  /** 待分配 = 提交时间，等客户补资料 = 列出缺项的时间，其余为空 */
+  waitingSince: string | null;
+  activityAt: string;
+  deliveredAt: string | null;
+  canReassign: boolean;
   needsAssignment: boolean;
   assignBlockedReason: string | null;
 }
 
+// 抽屉：多了地区全称、组织主联系人（完整手机号）、缺项数、有没有正文可看
 export interface OperatorTaskDetail extends OperatorTask {
-  workupStartedAt: string | null;
+  region: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  awaitingCustomerSince: string | null;
+  awaitingCustomerItems: number | null;
+  hasDraft: boolean;
 }
 
 export interface AssignableExpert {
   id: string;
   name: string;
   email: string;
+  /** 头像代码 gy1–gy8，没选为空 */
+  avatar: string | null;
+  /** 擅长的行业代码 */
+  industries: string[];
   openTasks: number;
-  sameOrgEnterprises: number;
   current: boolean;
   /** 专家已暂停接单：列出来但置灰、不能选 */
   paused: boolean;
@@ -317,7 +346,7 @@ export function useAssignableExperts(taskId: string) {
   });
 }
 
-// 分派或改派；别人刚改过时后台返回 409，列表和详情都重新取，让运营看到最新情况再决定
+// 分配或改派；别人刚改过时后台返回 409，列表和详情都重新取，让运营看到最新情况再决定
 export function useAssignExpert(taskId: string) {
   const client = useQueryClient();
   return useMutation({
@@ -331,6 +360,8 @@ export function useAssignExpert(taskId: string) {
       void client.invalidateQueries({ queryKey: operatorTaskKeys.notes(taskId) });
       // 组织详情「企业与任务」里的阶段跟着变
       void client.invalidateQueries({ queryKey: ['operator', 'organizations'] });
+      // 概览统计和侧栏「任务中心」的待分配数字
+      void client.invalidateQueries({ queryKey: ['operator', 'overview'] });
     },
   });
 }

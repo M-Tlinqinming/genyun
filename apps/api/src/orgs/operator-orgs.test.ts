@@ -102,12 +102,12 @@ async function as(email: string) {
 }
 
 const registration = {
-  name: '华东安评服务有限公司',
+  name: '示例华东咨询机构',
   region: { province: '上海市', city: '上海市', district: '闵行区' },
   socialCreditCode: '91310112MA1XXXXXX3',
   contactName: '孙经理',
   contactPhone: '136 2254 1234',
-  contactEmail: 'sun@huadong-anping.cn',
+  contactEmail: 'sun@example.com',
 };
 
 async function register(body: object = registration) {
@@ -134,7 +134,7 @@ function opening(fileId: string) {
     paymentReceived: true,
     adminName: '孙经理',
     adminPhone: '136 2254 1234',
-    adminEmail: 'Sun@Huadong-Anping.cn',
+    adminEmail: 'Sun@Example.com',
   };
 }
 
@@ -276,11 +276,11 @@ describe('开通', () => {
     expect(await db.select().from(creditEntries).where(eq(creditEntries.orgId, created.id))).toEqual([]);
     const invites = await db.select().from(organizationInvitations).where(eq(organizationInvitations.orgId, created.id));
     expect(invites).toHaveLength(1);
-    expect(invites[0]).toMatchObject({ email: 'sun@huadong-anping.cn', role: 'customer_admin', acceptedAt: null });
+    expect(invites[0]).toMatchObject({ email: 'sun@example.com', role: 'customer_admin', acceptedAt: null });
 
     expect(mailer.sent.length).toBe(before + 1);
     const mail = mailer.sent.at(-1)!;
-    expect(mail.to).toBe('sun@huadong-anping.cn');
+    expect(mail.to).toBe('sun@example.com');
     expect(mail.text).toMatch(/\/invite\/[\w-]{20,}/);
     // 链接里的令牌不以明文存库
     const token = /\/invite\/([\w-]+)/.exec(mail.text)![1]!;
@@ -297,10 +297,10 @@ describe('开通', () => {
 
 describe('开通时登记次数', () => {
   it('带合同购买和赠送次数时记两行台账，原因是次数记录里的原话', async () => {
-    const created = await register({ ...registration, name: '华南安评服务有限公司', socialCreditCode: '91440300MA5XXXXXX7' });
+    const created = await register({ ...registration, name: '示例华南咨询机构', socialCreditCode: '91440300MA5XXXXXX7' });
     const up = await uploadContract(created.id);
     const ops = await as('ops@test.cn');
-    const body = { ...opening(up.body.id), adminEmail: 'li@huanan-anping.cn', purchasedCredits: 20, giftCredits: 2 };
+    const body = { ...opening(up.body.id), adminEmail: 'li@example.com', purchasedCredits: 20, giftCredits: 2 };
     // 有赠送时要写活动名称
     expect((await ops.post(`/api/operator/organizations/${created.id}/open`).send(body)).body.message).toBe('开通前还要填：活动名称');
     const res = await ops.post(`/api/operator/organizations/${created.id}/open`).send({ ...body, giftCampaign: ' 开通赠送 ' });
@@ -320,7 +320,7 @@ describe('开通时登记次数', () => {
 });
 
 describe('越权', () => {
-  it('客户、专业人员不能登记、查看、上传合同或开通', async () => {
+  it('客户、专家不能登记、查看、上传合同或开通', async () => {
     const created = await register({ ...registration, name: '越权测试' });
     const up = await uploadContract(created.id);
     for (const who of ['a-admin@test.cn', 'expert@test.cn']) {
@@ -344,6 +344,16 @@ describe('越权', () => {
     expect(up.status).toBe(201);
     expect((await (await as('a-admin@test.cn')).get(`/api/files/${up.body.id}/download-url`)).status).toBe(404);
     expect((await (await as('a-admin@test.cn')).get(`/api/files/${up.body.id}/download-url?inline=1`)).status).toBe(404);
+  });
+
+  it('组织详情「企业与任务」：每家企业最近的任务，阶段用运营那一侧的状态', async () => {
+    const body = (await (await as('ops@test.cn')).get(`/api/operator/organizations/${org.a}`).expect(200)).body as {
+      enterprises: { name: string; task: { number: string; view: { key: string; label: string; tone: string } } | null }[];
+    };
+    const byName = new Map(body.enterprises.map((e) => [e.name, e.task]));
+    // 资料还在准备的任务：有 label 和 tone，没有旧的 stage 字段
+    expect(byName.get('甲企业')).toMatchObject({ number: 'GY-2026-900', view: { label: expect.any(String), tone: expect.any(String) } });
+    expect(byName.get('甲企业')).not.toHaveProperty('stage');
   });
 
   it('客户看不了运营的组织详情，包括自己组织的', async () => {

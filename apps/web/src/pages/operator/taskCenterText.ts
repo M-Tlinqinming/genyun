@@ -1,21 +1,35 @@
-import { chinaToday, type BusinessType } from '@genyun/shared';
+import { REGION_PLACEHOLDER_CITIES, formatTaskDayTime } from '@genyun/shared';
 import type { OperatorTask } from '../../api/operator';
 
-// 运营任务中心里的短业务名（Paper I04：「编制应急预案」）
-const SHORT_BUSINESS: Record<BusinessType, string> = { emergency_plan: '编制应急预案' };
-
-export const businessShort = (t: Pick<OperatorTask, 'businessType'>) => SHORT_BUSINESS[t.businessType];
-
-// 「示例化工有限公司 · 编制应急预案」
-export const taskTitle = (t: Pick<OperatorTask, 'enterpriseName' | 'businessType'>) => `${t.enterpriseName} · ${businessShort(t)}`;
-
-// 10.23
-export const monthDay = (iso: string) => chinaToday(new Date(iso)).slice(5).replace('-', '.');
-
-// 10.23 09:15（北京时间）
-export function monthDayTime(iso: string): string {
-  const time = new Date(iso).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false });
-  return `${monthDay(iso)} ${time}`;
+// 北京时间的月、日、时、分
+function beijing(iso: string) {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return { m: get('month'), d: get('day'), hh: get('hour').padStart(2, '0'), mm: get('minute') };
 }
 
-export const submittedLine = (t: Pick<OperatorTask, 'submittedAt'>) => (t.submittedAt ? `${monthDay(t.submittedAt)} 提交资料` : null);
+/** 「11 月 12 日 14:20」（北京时间，不写今天 / 昨天） */
+export function monthDayTime(iso: string): string {
+  const p = beijing(iso);
+  return `${p.m} 月 ${p.d} 日 ${p.hh}:${p.mm}`;
+}
+
+/** 「今天 10:52」「11 月 12 日 14:20」 */
+export const dayTime = (iso: string, now: Date = new Date()) => formatTaskDayTime(new Date(iso), now);
+
+/** 地区简称：市 + 区县（直辖市、省直辖县写省 + 区县）；没有分级的用登记时的原文 */
+export function regionShort(
+  t: Pick<OperatorTask, 'orgRegion' | 'orgRegionProvince' | 'orgRegionCity' | 'orgRegionDistrict'>,
+): string | null {
+  const { orgRegionProvince: province, orgRegionCity: city, orgRegionDistrict: district } = t;
+  if (!province || !city) return t.orgRegion;
+  const hidden = city === province || (REGION_PLACEHOLDER_CITIES as readonly string[]).includes(city);
+  return `${hidden ? province : city}${district ?? ''}`;
+}

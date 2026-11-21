@@ -6,7 +6,7 @@ import { Loading } from '../../components/ui';
 import { ReviewWorkspace } from '../expert/editing/ReviewWorkspace';
 import { phaseOf } from '../expert/workup/GenerationView';
 
-// 运营查看任务正文（只读）：网址 /operator/tasks/<任务>。任务中心（列表与分派）在 /operator/tasks?task=<任务>，
+// 运营查看任务正文（只读）：网址 /operator/tasks/<任务>。任务中心（列表与分配）在 /operator/tasks?task=<任务>，
 // 正文在这里看；三份草稿生成完才有正文可看，修改只能由负责专家做
 export function OperatorTaskPage() {
   const { taskId = '' } = useParams();
