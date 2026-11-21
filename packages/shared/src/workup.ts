@@ -19,6 +19,8 @@ import type { FiguresWorkup } from './workup-figures.ts';
 import type { ScopeWorkup } from './workup-scope.ts';
 import type { ResourcesExtra } from './workup-resources.ts';
 import type { ExpertUpload } from './workup-uploads.ts';
+import type { ReviewWorkup } from './workup-review.ts';
+import type { MissingList } from './workup-missing.ts';
 
 // 快照：企业身份四项（企业档案的列）+ 企业自填资料
 export interface WorkupSnapshot {
@@ -115,6 +117,21 @@ export interface WorkupData {
   resourcesExtra?: ResourcesExtra;
   // 专家代客户上传、上传专家的图，每次一条（最多留 200 条）
   expertUploads?: ExpertUpload[];
+  // 第 5 步第 1 页只有专家能定的项（预案编号、经费、两位负责人、改过的重大危险源判断），保存时整份写入
+  review?: ReviewWorkup;
+  // 复制缺项清单时列出的项（只用于资料表格流程），之后每次保存按现在的缺项记补上没有
+  missingList?: MissingList;
+  // 处理记录里资料核对的几件事（复制缺项清单、自动取消等客户补资料、改风险分值、改重大危险源判断），最多留 200 条
+  events?: WorkupEvent[];
+}
+
+export interface WorkupEvent {
+  at: string;
+  // 系统自动的为空
+  by?: string;
+  byName?: string;
+  what: string;
+  extra?: string;
 }
 
 export type { Stamp };

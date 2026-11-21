@@ -1,7 +1,7 @@
 // 处理记录（14 页 E18-13）：这个任务里谁在什么时候做了什么。不另建表，从现有的表拼出来，新的在前。
 // 每个来源一个小函数；以后资料核对每一步确认、代客户上传、重新打开这些事加在这里。
 // 只记改内容的操作；打开、切页签、看预览不记。核对、审核结论每份只留最后一次，所以只能记最后一次。
-import { DRAFT_KIND_KEYS, DRAFT_KINDS, pendingCount, uploadTargetLabel, type DraftKind, type HistoryEntry } from '@genyun/shared';
+import { DRAFT_KIND_KEYS, DRAFT_KINDS, isAddedRow, pendingCount, uploadTargetLabel, type DraftKind, type HistoryEntry } from '@genyun/shared';
 import { Controller, Get, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe } from '@nestjs/common';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -28,6 +28,15 @@ import { EditingService } from './editing.service.ts';
 
 type Entry = Omit<HistoryEntry, 'at'> & { at: Date };
 type Batch = { id: string; createdAt: Date; byName: string };
+
+// 资料核对五步（第 5 步只记第 1 页的专业项；第 2 页确认生成在「确认资料，开始生成」里）
+const STEP_LABELS = {
+  basic: '第 1 步「企业基本信息」',
+  organization: '第 2 步「人员与应急组织」',
+  production: '第 3 步「生产情况」',
+  resources: '第 4 步「应急资源与图纸」',
+  review: '第 5 步「专业项」',
+} as const;
 
 const entry = (at: Date, who: string | null, what: string, extra: string | null = null, check = false): Entry => ({ at, who, what, extra, check });
 
@@ -65,13 +74,29 @@ export class HistoryService {
     return all.map(({ e }) => ({ ...e, at: e.at.toISOString() }));
   }
 
-  /** 资料核对：代客户上传、上传专家的图（每次一条） */
+  /**
+   * 资料核对：代客户上传、上传专家的图（每次一条）；每一步的保存（每步只留最后一次）；
+   * 复制缺项清单、「等客户补资料」取消、改重大危险源（data.events）；新增危险源、改危险源分值（每行只留最后一次，带理由）
+   */
   private async workup(taskId: string): Promise<Entry[]> {
     const [row] = await this.db.select({ data: taskWorkups.data }).from(taskWorkups).where(eq(taskWorkups.taskId, taskId)).limit(1);
-    return (row?.data.expertUploads ?? []).map((u) => {
+    if (!row) return [];
+    const data = row.data;
+    const uploads = (data.expertUploads ?? []).map((u) => {
       const label = uploadTargetLabel(u.target);
       return entry(new Date(u.at), u.byName, label.byExpert ? `上传了${label.text}` : `代客户上传了${label.text}`, u.name);
     });
+    const steps = (Object.entries(data.steps ?? {}) as [keyof typeof STEP_LABELS, { byName: string; at: string } | undefined][]).flatMap(([k, s]) =>
+      s && STEP_LABELS[k] ? [entry(new Date(s.at), s.byName, `资料核对：保存${STEP_LABELS[k]}`)] : [],
+    );
+    const events = (data.events ?? []).map((e) => entry(new Date(e.at), e.byName ?? null, e.what, e.extra ?? null));
+    // 手动新增的行记「新增危险源」；系统候选里改了分值（写了理由）的记「改危险源…的分值」
+    const risks = Object.entries(data.risks?.rows ?? {}).flatMap(([id, r]) => {
+      const note = r.value.note?.trim() || null;
+      if (isAddedRow(id)) return [entry(new Date(r.at), r.byName, `新增危险源「${r.value.factor}」`, note)];
+      return note ? [entry(new Date(r.at), r.byName, `改危险源「${r.value.factor}」的分值`, note)] : [];
+    });
+    return [...uploads, ...steps, ...events, ...risks];
   }
 
   /** 客户提交资料：新流程上传 Excel 模板；旧任务按清单提交。新流程撤回过的另记一条「客户撤回提交」 */

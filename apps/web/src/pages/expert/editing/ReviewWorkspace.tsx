@@ -553,6 +553,8 @@ export function ReviewWorkspace({
       // 已交付后只读打开正文：四步都已完成，和已交付页一致
       current={published ? EXPERT_STAGES.length : 2}
       stageLastStrong={!!published}
+      // 画板：左右两块各宽 280，元素间距 16
+      sideWidth={280}
       extra={
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <button type="button" style={{ ...linkButton, ...text14 }} aria-expanded={historyOpen} onClick={() => setHistoryOpen((v) => !v)}>

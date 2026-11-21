@@ -28,7 +28,7 @@ import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
 import { MemoryMailer } from '../mail/mailer.ts';
-import { complete, testDocument } from '../tasks/test-workup.ts';
+import { completeFor, testDocument } from '../tasks/test-workup.ts';
 import { CreditsService } from './credits.service.ts';
 import { grantCredits } from './test-credits.ts';
 
@@ -167,7 +167,7 @@ async function prepare(taskId: string) {
   const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
   await db
     .update(taskWorkups)
-    .set({ data: complete(row!.snapshot), version: row!.version + 1 })
+    .set({ data: await completeFor(db, taskId, row!.snapshot, storage), version: row!.version + 1 })
     .where(eq(taskWorkups.taskId, taskId));
   await zhou.post(`/api/tasks/${taskId}/generation`).send({ version: row!.version + 1 }).expect(201);
   await queue.idle();

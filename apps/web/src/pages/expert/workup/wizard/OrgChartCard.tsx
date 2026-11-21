@@ -64,7 +64,7 @@ export function OrgChartCard({
   return (
     <SideCard title="应急救援组织体系图" tag={<SourceTag kind="system" text="实时生成" />} label="应急救援组织体系图">
       <div
-        style={{ display: 'flex', justifyContent: 'center', padding: 12, background: '#FAFBFC', border: `1px solid ${softLine}`, borderRadius: 6 }}
+        style={{ display: 'flex', justifyContent: 'center', padding: 12, background: gy.subtleBg, border: `1px solid ${softLine}`, borderRadius: 6 }}
       >
         <img src={svgUrl(svg.svg)} alt={`组织体系图：应急指挥部下设${org.groups.join('、')}`} style={{ width: '100%', height: 'auto', display: 'block' }} />
       </div>
@@ -126,7 +126,7 @@ export function OrgChartCard({
                     borderRadius: 6,
                     borderWidth: 1,
                     borderStyle: dragging && dragging !== g ? 'dashed' : 'solid',
-                    borderColor: dragging && dragging !== g ? gy.primary : '#D9D9D9',
+                    borderColor: dragging && dragging !== g ? gy.primary : gy.controlLine,
                     background: gy.surface,
                     opacity: dragging === g ? 0.4 : 1,
                     cursor: 'grab',

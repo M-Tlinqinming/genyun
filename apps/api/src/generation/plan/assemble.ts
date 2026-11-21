@@ -253,8 +253,9 @@ export function buildPlan(
   const ctx = planContext(input);
   const { company, selection } = ctx;
   const year = input.issuedOn.slice(0, 4);
+  // 预案编号：第 5 步专家填的 → 原来的「企业简称 + 年份」→ 待补充
   const shortName = input.expert.facts?.shortName?.trim();
-  const code = shortName ? `${shortName}${year}` : MISSING;
+  const code = input.expert.review?.planCode?.trim() || (shortName ? `${shortName}${year}` : MISSING);
   const version = `A ${year}`;
   const issued = cnDate(input.issuedOn);
   const templateMarkdown = (t: PlanTemplate) => {

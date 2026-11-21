@@ -6,6 +6,8 @@ import {
   addressOptions,
   groupDisplayNames,
   hazardousMaterialsOf,
+  majorHazardOf,
+  type MajorHazardResult,
   planSignals,
   resolveScope,
   selectPlans,
@@ -308,4 +310,43 @@ export function safetyLead(ctx: PlanContext): string {
   const org = ctx.input.organization;
   const people = [org.commander, ...org.deputies, ...org.groups.flatMap((g) => [g.leader, ...g.members])];
   return people.find((p) => p?.position && /安全/.test(p.position))?.position?.trim() || '总指挥';
+}
+
+/** 第 5 步的金额（万元）：「5」→「5 万元」；空的用 fallback（原来的专家事实）或待补充 */
+export function wanOr(value: string | undefined, fallback?: string): string {
+  const v = value?.trim();
+  return v ? `${v} 万元` : fill(fallback);
+}
+
+/** 第 5 步选的人：「林某（安全主任）」；没选为 undefined */
+export function personLabel(p: { name: string; position?: string } | undefined): string | undefined {
+  if (!p?.name.trim()) return undefined;
+  return p.position?.trim() ? `${p.name.trim()}（${p.position.trim()}）` : p.name.trim();
+}
+
+/** 系统按资料算的重大危险源（判定为危化品的物料、最大储存量），资料核对第 5 步同一份算法 */
+export function systemMajorHazardOf(ctx: Pick<PlanContext, 'input' | 'hazardous'>): MajorHazardResult {
+  const materials = ctx.input.production.materials.filter((m) => ctx.hazardous.includes(m.name));
+  return majorHazardOf(materials.map((m) => ({ name: m.name, maxStorageTons: m.maxStorageTons })));
+}
+
+/** 最终的重大危险源结论句（第 5 步专家改过的用专家的）；系统算不全且专家没改时为空 */
+export function majorHazardSentence(ctx: Pick<PlanContext, 'input' | 'hazardous'>): string {
+  const override = ctx.input.expert.review?.majorHazard;
+  if (override) {
+    if (override.value === '不构成') return '经辨识，本单位不构成危险化学品重大危险源。';
+    const list = (override.substances ?? []).map((s) => `${s.name}（${s.storage}）`).join('、');
+    return `经辨识，本单位构成危险化学品重大危险源${list ? `，涉及${list}` : ''}。`;
+  }
+  const sys = systemMajorHazardOf(ctx);
+  if (!sys.complete) return '';
+  return sys.conclusion === '构成' ? '经辨识，本单位构成危险化学品重大危险源。' : '经辨识，本单位不构成危险化学品重大危险源。';
+}
+
+/** 「周边环境与重大危险源」冒号后面：原来的专家事实周边环境 + 结论句；两样都空写待补充 */
+export function surroundingsText(ctx: Pick<PlanContext, 'input' | 'hazardous'>): string {
+  const s = ctx.input.expert.facts?.surroundings?.trim();
+  const sentence = majorHazardSentence(ctx);
+  if (!s) return sentence || fill(undefined);
+  return sentence ? `${s.replace(/[。；，]?$/, '。')}${sentence}` : s;
 }

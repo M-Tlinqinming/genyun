@@ -15,7 +15,7 @@ import type { ParagraphPolisher, PolishRequest } from '../generation/ai/drafter.
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { peopleOf } from './editing.service.ts';
-import { complete, testDocument } from './test-workup.ts';
+import { completeFor, testDocument } from './test-workup.ts';
 
 // 正文编辑（M2 第 11 项）：按节保存修订、两人同时改不覆盖、同一次保存重试不重复记、帮我改写这段、越权
 const PASSWORD = 'correct horse battery staple';
@@ -142,7 +142,7 @@ beforeAll(async () => {
   const zhou = await as('zhou@test.cn');
   await zhou.get(`/api/tasks/${taskId}/workup`).expect(200);
   const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
-  await db.update(taskWorkups).set({ data: complete(row!.snapshot), version: row!.version + 1 }).where(eq(taskWorkups.taskId, taskId));
+  await db.update(taskWorkups).set({ data: await completeFor(db, taskId, row!.snapshot, storage), version: row!.version + 1 }).where(eq(taskWorkups.taskId, taskId));
   await zhou.post(`/api/tasks/${taskId}/generation`).send({ version: row!.version + 1 }).expect(201);
   await queue.idle();
   batchId = (await zhou.get(`/api/tasks/${taskId}/drafts/plan/edit`).expect(200)).body.batchId;

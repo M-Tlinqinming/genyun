@@ -66,6 +66,8 @@ const GROUP_OF: Record<ScopeKey, ScopeGroup> = {
   landlord: 'business',
   roadTransport: 'business',
 };
+// 第 3 步已经问过客户的五项：按第 3 步的回答定，不在适用范围里单独改（早先存的专家修改不再用）
+const FROM_STEP3 = new Set<ScopeKey>(['pressureVessel', 'pressurePipeline', 'confinedSpace', 'landlord', 'roadTransport']);
 // 依据是物料是否危化品的开关：物料都判定过了才算已确定
 const CHEMICAL_KEYS = new Set<ScopeKey>(['chemicalsOver1t', 'combustibleGas', 'flammableLiquid', 'toxicChemicals', 'inertGas']);
 
@@ -141,9 +143,12 @@ export function scopeView(
   const switches = SCOPE_KEYS.map((key): ScopeSwitch => {
     const followsDust = key === 'dustSpecialty' && dustOff;
     const suggestion = suggested[key];
-    const judged = followsDust ? undefined : edits[key];
+    const step3 = FROM_STEP3.has(key);
+    const judged = followsDust || step3 ? undefined : edits[key];
     // 化学品类：物料没判定是否危化品时要确认；按储量建议不出、按危险源建议打开的（basis 为 cue 但没有命中物料）也要确认
-    const needsConfirm = CHEMICAL_KEYS.has(key)
+    const needsConfirm = step3
+      ? false
+      : CHEMICAL_KEYS.has(key)
       ? (suggestion.value && plan.hazardousMaterials.some((n) => undecided.has(n) && (suggestion.hit ?? '').includes(n))) ||
         (suggestion.basis === 'cue' && (!suggestion.value || !suggestion.hit))
       : suggestion.basis === 'cue' || suggestion.basis === 'photo';

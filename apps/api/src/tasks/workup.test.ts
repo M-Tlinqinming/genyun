@@ -275,11 +275,11 @@ describe('适用范围', () => {
       ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/scope`).send({ version: body.version, ...payload }).expect(200));
     };
     await put({ key: 'dustProcess', value: false });
-    await put({ key: 'landlord', value: true });
+    await put({ key: 'elevator', value: true });
     expect(body.data.scope.switches.dustProcess).toMatchObject({ value: false, byName: '周工' });
-    expect(Object.keys(body.data.scope.switches).sort()).toEqual(['dustProcess', 'landlord']);
+    expect(Object.keys(body.data.scope.switches).sort()).toEqual(['dustProcess', 'elevator']);
 
-    await put({ key: 'landlord', value: null });
+    await put({ key: 'elevator', value: null });
     expect(Object.keys(body.data.scope.switches)).toEqual(['dustProcess']);
     ({ body } = await zhou.put(`/api/tasks/${feiyuTask}/workup/facts`).send({ version: body.version, key: 'hospital', value: '仲恺人民医院' }).expect(200));
     expect(body.data.scope.switches.dustProcess.value).toBe(false);
@@ -291,6 +291,8 @@ describe('适用范围', () => {
     const { body } = await zhou.get(`/api/tasks/${feiyuTask}/workup`);
     const url = `/api/tasks/${feiyuTask}/workup/scope`;
     expect((await zhou.put(url).send({ version: body.version, key: 'P2', value: true }).expect(400)).body.message).toBe('没有这个开关');
+    // 第 3 步问过客户的五项按第 3 步的回答定，这里不能改
+    expect((await zhou.put(url).send({ version: body.version, key: 'landlord', value: true }).expect(400)).body.message).toContain('第 3 步');
     await zhou.put(url).send({ version: body.version - 1, key: 'dustProcess', value: true }).expect(409);
     const ops = await as('ops@test.cn');
     await ops.put(url).send({ version: body.version, key: 'dustProcess', value: true }).expect(403);
