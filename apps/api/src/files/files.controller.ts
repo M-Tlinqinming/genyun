@@ -13,7 +13,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
 import { createHash, randomUUID } from 'node:crypto';
@@ -33,6 +33,7 @@ import {
   taskDocuments,
   taskIntakeFiles,
   tasks,
+  taskWorkups,
 } from '../db/schema.ts';
 import { linkedEnterpriseIds } from './file-links.ts';
 import { DOWNLOAD_TTL_SECONDS, FILE_STORAGE, type FileStorage, LocalDiskStorage } from './storage.ts';
@@ -193,14 +194,14 @@ export class FilesController {
     const linked = needsFileEnterprises(user, file.orgId)
       ? ((await linkedEnterpriseIds(this.db, file.orgId, [id], Array.isArray(scope) ? scope : undefined)).get(id) ?? [])
       : [];
-    if (!canViewFile(user, file, { usedInMyAssignedTask: await this.usedInAssignedTask(user, id), linkedEnterpriseIds: linked })) {
+    if (!canViewFile(user, file, { usedInMyAssignedTask: await this.usedInAssignedTask(user, id, file.orgId), linkedEnterpriseIds: linked })) {
       throw new NotFoundException(NOT_FOUND);
     }
     const { uploadedBy: _, ...rest } = file;
     return rest;
   }
 
-  private async usedInAssignedTask(user: SessionUser, fileId: string): Promise<boolean> {
+  private async usedInAssignedTask(user: SessionUser, fileId: string, fileOrgId: string): Promise<boolean> {
     const [row] = await this.db
       .select({ taskId: checklistItemFiles.taskId })
       .from(checklistItemFiles)
@@ -242,6 +243,16 @@ export class FilesController {
       .innerJoin(tasks, eq(tasks.id, deliveries.taskId))
       .where(and(eq(deliveryFiles.fileId, fileId), eq(tasks.assignedExpertId, user.id)))
       .limit(1);
-    return delivered !== undefined;
+    if (delivered) return true;
+    // 资料核对里专家代客户上传、上传的图：引用只记在任务的专业整理里（expertUploads、第 3、4 步专家那份、resourcesExtra），
+    // 位置多、expertUploads 还有条数上限，所以直接在整份 data 里找这个文件 id（id 已按 UUID 校验过）。
+    // 只认当前由我负责、和文件同组织的任务：改派后新专家能看，原专家和别的专家看不到
+    const [workup] = await this.db
+      .select({ taskId: taskWorkups.taskId })
+      .from(taskWorkups)
+      .innerJoin(tasks, eq(tasks.id, taskWorkups.taskId))
+      .where(and(eq(tasks.assignedExpertId, user.id), eq(tasks.orgId, fileOrgId), sql`${taskWorkups.data}::text like ${`%"${fileId}"%`}`))
+      .limit(1);
+    return workup !== undefined;
   }
 }

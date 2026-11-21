@@ -6,7 +6,7 @@ import { downloadFile, viewFile } from '../../../../api/intake';
 import { ApiError } from '../../../../api/request';
 import { inlineUrl, useWorkupUpload, type Workup } from '../../../../api/workup';
 import { SourceTag } from '../../../../components/SourceTag';
-import { gy, type, weight } from '../../../../theme/tokens';
+import { gy, type, viewer, weight } from '../../../../theme/tokens';
 import { caption, dayOf, link14 } from './parts';
 import type { Autosave } from './useAutosave';
 
@@ -68,7 +68,7 @@ export function FilePreview({ title, files, index, onClose }: { title: string; f
 
   if (!open || !file) return null;
   const run = (job: Promise<void>) => job.catch((err) => message.error(err instanceof Error ? err.message : '打不开这份文件，请稍后再试'));
-  const tool: CSSProperties = { ...link14, color: '#FFFFFF', fontWeight: weight.strong };
+  const tool: CSSProperties = { ...link14, color: viewer.text, fontWeight: weight.strong };
   const zoom = (f: number) => setScale((s) => Math.min(8, Math.max(0.2, Math.round(s * f * 100) / 100)));
   const nav = (dir: -1 | 1): CSSProperties => ({
     position: 'absolute',
@@ -79,8 +79,8 @@ export function FilePreview({ title, files, index, onClose }: { title: string; f
     marginTop: -20,
     borderRadius: 20,
     border: 'none',
-    background: 'rgb(255 255 255 / 16%)',
-    color: '#FFFFFF',
+    background: viewer.toolBg,
+    color: viewer.text,
     cursor: 'pointer',
   });
 
@@ -89,15 +89,15 @@ export function FilePreview({ title, files, index, onClose }: { title: string; f
       role="dialog"
       aria-modal
       aria-label={title}
-      style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', flexDirection: 'column', background: 'rgb(24 36 59 / 92%)' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1200, display: 'flex', flexDirection: 'column', background: viewer.mask }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '16px 24px' }}>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ ...type.body, fontWeight: weight.strong, color: '#FFFFFF' }}>
+          <span style={{ ...type.body, fontWeight: weight.strong, color: viewer.text }}>
             {title}
             {files.length > 1 ? ` · 第 ${i + 1} 张，共 ${files.length} 张` : ''}
           </span>
-          {(file.note || file.name) && <span style={{ ...type.caption, color: '#C9D1DD' }}>{file.note ?? file.name}</span>}
+          {(file.note || file.name) && <span style={{ ...type.caption, color: viewer.muted }}>{file.note ?? file.name}</span>}
         </div>
         {!isPdf(file) && (
           <>
@@ -136,14 +136,14 @@ export function FilePreview({ title, files, index, onClose }: { title: string; f
         onMouseLeave={() => (drag.current = null)}
       >
         {isPdf(file) ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: '#FFFFFF' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: viewer.text }}>
             <span style={type.body}>PDF 文件在新标签页里看</span>
             <button type="button" style={tool} onClick={() => void run(viewFile(file.fileId))}>
               打开 {file.name ?? 'PDF'}
             </button>
           </div>
         ) : failed ? (
-          <span style={{ ...type.body, color: '#FFFFFF' }}>这份文件在页面里打不开，请点「下载」查看。</span>
+          <span style={{ ...type.body, color: viewer.text }}>这份文件在页面里打不开，请点「下载」查看。</span>
         ) : url ? (
           <img
             src={url}
@@ -159,7 +159,7 @@ export function FilePreview({ title, files, index, onClose }: { title: string; f
             }}
           />
         ) : (
-          <span style={{ ...type.body, color: '#C9D1DD' }}>正在打开…</span>
+          <span style={{ ...type.body, color: viewer.muted }}>正在打开…</span>
         )}
         {files.length > 1 && i > 0 && (
           <button type="button" aria-label="上一张" style={nav(-1)} onClick={() => setI(i - 1)}>
@@ -172,7 +172,7 @@ export function FilePreview({ title, files, index, onClose }: { title: string; f
           </button>
         )}
       </div>
-      <span style={{ padding: '12px 0 16px', textAlign: 'center', ...type.caption, color: '#C9D1DD' }}>滚轮缩放，拖动平移；按 Esc 关闭</span>
+      <span style={{ padding: '12px 0 16px', textAlign: 'center', ...type.caption, color: viewer.muted }}>滚轮缩放，拖动平移；按 Esc 关闭</span>
     </div>
   );
 }
