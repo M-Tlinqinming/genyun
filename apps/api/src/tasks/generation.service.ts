@@ -108,7 +108,8 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     const districts = await this.knowledge.agencyDistricts();
     // 专家核对向导保存的那份盖在快照上（客户原表不动）
     const snapshot = effectiveSnapshot(row.snapshot, row.data);
-    const { gaps } = workupGaps(snapshot, row.data, districts);
+    // 门槛里的两张图：和第 4 步图纸卡、附图同一份（drawingCandidates）
+    const { gaps } = workupGaps(snapshot, row.data, districts, await this.workup.drawingFiles(task.id, task.orgId, snapshot, row.data));
     if (gaps.length > 0) {
       throw new BadRequestException({ statusCode: 400, message: `还差 ${gaps.length} 项没有整理完，补齐后才能生成`, reason: 'gaps', gaps });
     }
@@ -150,6 +151,19 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
         })
         .returning();
       await tx.insert(generatedDrafts).values(DRAFT_KIND_KEYS.map((kind) => ({ batchId: b!.id, kind })));
+      // 还标着「等客户补资料」：专家决定不等了，一并取消，处理记录里记一条（只加记录，整理的版本号不变）
+      const [t] = await tx.select({ since: tasks.awaitingCustomerSince }).from(tasks).where(eq(tasks.id, task.id)).limit(1);
+      if (t?.since) {
+        await tx.update(tasks).set({ awaitingCustomerSince: null, awaitingCustomerItems: null }).where(eq(tasks.id, task.id));
+        const events = [
+          ...(row.data.events ?? []),
+          { at: new Date().toISOString(), by: user.id, byName: user.name, what: '确认生成，「等客户补资料」一并取消' },
+        ].slice(-200);
+        await tx
+          .update(taskWorkups)
+          .set({ data: { ...row.data, events } })
+          .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)));
+      }
       return b!;
     });
     for (const kind of DRAFT_KIND_KEYS) await this.queue.add({ batchId: batch.id, kind });

@@ -28,6 +28,15 @@ import { EditingService } from './editing.service.ts';
 type Entry = Omit<HistoryEntry, 'at'> & { at: Date };
 type Batch = { id: string; createdAt: Date; byName: string };
 
+// 资料核对五步（第 5 步只记第 1 页的专业项；第 2 页确认生成在「确认资料，开始生成」里）
+const STEP_LABELS = {
+  basic: '第 1 步「企业基本信息」',
+  organization: '第 2 步「人员与应急组织」',
+  production: '第 3 步「生产情况」',
+  resources: '第 4 步「应急资源与图纸」',
+  review: '第 5 步「专业项」',
+} as const;
+
 const entry = (at: Date, who: string | null, what: string, extra: string | null = null, check = false): Entry => ({ at, who, what, extra, check });
 
 @Injectable()
@@ -63,13 +72,26 @@ export class HistoryService {
     return all.map(({ e }) => ({ ...e, at: e.at.toISOString() }));
   }
 
-  /** 资料核对：代客户上传、上传专家的图（每次一条） */
+  /**
+   * 资料核对：代客户上传、上传专家的图（每次一条）；每一步的保存（每步只留最后一次）；
+   * 复制缺项清单、「等客户补资料」取消、改重大危险源（data.events）；改危险源分值（每行只留最后一次，带理由）
+   */
   private async workup(taskId: string): Promise<Entry[]> {
     const [row] = await this.db.select({ data: taskWorkups.data }).from(taskWorkups).where(eq(taskWorkups.taskId, taskId)).limit(1);
-    return (row?.data.expertUploads ?? []).map((u) => {
+    if (!row) return [];
+    const data = row.data;
+    const uploads = (data.expertUploads ?? []).map((u) => {
       const label = uploadTargetLabel(u.target);
       return entry(new Date(u.at), u.byName, label.byExpert ? `上传了${label.text}` : `代客户上传了${label.text}`, u.name);
     });
+    const steps = (Object.entries(data.steps ?? {}) as [keyof typeof STEP_LABELS, { byName: string; at: string } | undefined][]).flatMap(([k, s]) =>
+      s && STEP_LABELS[k] ? [entry(new Date(s.at), s.byName, `资料核对：保存${STEP_LABELS[k]}`)] : [],
+    );
+    const events = (data.events ?? []).map((e) => entry(new Date(e.at), e.byName ?? null, e.what, e.extra ?? null));
+    const risks = Object.values(data.risks?.rows ?? {}).flatMap((r) =>
+      r.value.note?.trim() ? [entry(new Date(r.at), r.byName, `改危险源「${r.value.factor}」的分值`, r.value.note.trim())] : [],
+    );
+    return [...uploads, ...steps, ...events, ...risks];
   }
 
   /** 客户提交资料：新流程上传 Excel 模板；旧任务按清单提交。新流程撤回过的另记一条「客户撤回提交」 */

@@ -18,7 +18,7 @@ import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
 import { PublishService } from './publish.service.ts';
 import type { ReviewService } from './review.service.ts';
-import { complete, testDocument } from './test-workup.ts';
+import { completeFor, testDocument } from './test-workup.ts';
 
 // 成果发布（M2 第 15 项）：审核结论有效才能发布、只有负责专家能发布、同一次发布重发只算一次、
 // 存储出错不形成交付可以重试、发布后任务已交付并提醒客户、正文只读、Word 文件属性写 AI 标识和审核人
@@ -175,7 +175,7 @@ beforeAll(async () => {
   const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
   await db
     .update(taskWorkups)
-    .set({ data: complete(row!.snapshot), version: row!.version + 1 })
+    .set({ data: await completeFor(db, taskId, row!.snapshot), version: row!.version + 1 })
     .where(eq(taskWorkups.taskId, taskId));
   await zhou
     .post(`/api/tasks/${taskId}/generation`)

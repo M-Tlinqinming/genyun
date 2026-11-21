@@ -9,7 +9,7 @@ import type { ScopeKey } from './plan/catalog.ts';
 import { parseTons, productionView, type ProductionWorkup } from './workup-production.ts';
 import { scopeView, type ScopeSwitch, type ScopeWorkup } from './workup-scope.ts';
 import { effectiveSnapshot, organizationStepView, type ExpertCopy } from './workup-steps.ts';
-import type { FactOverride, WorkupSnapshot } from './workup.ts';
+import type { FactOverride, WorkupData, WorkupSnapshot } from './workup.ts';
 
 const text = (max: number, label: string) => z.string().trim().max(max, `${label}最多 ${max} 个字`).optional();
 // 金额（万元）：数字，最多两位小数；空着不报错
@@ -63,6 +63,8 @@ export interface ReviewWorkup extends ReviewData {
 export const reviewStepWorkupSaveSchema = z.object({
   version: z.number().int().min(1),
   review: reviewSchema,
+  // 点「下一页：核对并生成」时带 5
+  stepsDone: z.number().int().min(0).max(5).optional(),
 });
 export type ReviewStepWorkupSave = z.infer<typeof reviewStepWorkupSaveSchema>;
 
@@ -175,4 +177,47 @@ export function scopeGroupsOf(snapshot: WorkupSnapshot, data: ScopeInput & { ris
     step3: visible.filter((s) => STEP3_SCOPE_KEYS.includes(s.key)).map((s) => ({ ...s, step3Pending: pendingOf[s.key]!() })),
     settled: visible.filter((s) => !STEP3_SCOPE_KEYS.includes(s.key) && !s.needsConfirm),
   };
+}
+
+/** 预案编号建议、缺项清单抬头用的企业名称和地址（叠上专家改的） */
+export function companyNameInputOf(snapshot: WorkupSnapshot, data: Partial<ExpertCopy>): { name: string; addresses: string[] } {
+  const eff = effectiveSnapshot(snapshot, data);
+  const addresses = [eff.identity.registeredAddress, eff.profile.basicStep?.basic.siteAddress].filter((a): a is string => Boolean(a?.trim()));
+  return { name: eff.identity.name, addresses };
+}
+
+// ---------- 资料版本那一行的「您修改 N 处、补充 N 项」 ----------
+
+const isEmptyLeaf = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+
+function leaves(value: unknown, path: string, out: Map<string, unknown>) {
+  if (Array.isArray(value)) value.forEach((v, i) => leaves(v, `${path}.${i}`, out));
+  else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) leaves(v, path ? `${path}.${k}` : k, out);
+  else out.set(path, value);
+}
+
+/**
+ * 专家在向导里改动的数量：客户原来有值、现在不一样的算「修改」，客户原来空着、现在有值的算「补充」。
+ * 按客户原表（快照）和盖上专家那份以后的资料逐个字段比；客户原表不变
+ */
+export function expertEditCounts(snapshot: WorkupSnapshot, data: WorkupData): { modified: number; supplemented: number } {
+  const before = new Map<string, unknown>();
+  const after = new Map<string, unknown>();
+  const eff = effectiveSnapshot(snapshot, data);
+  leaves({ identity: snapshot.identity, profile: snapshot.profile }, '', before);
+  leaves({ identity: eff.identity, profile: eff.profile }, '', after);
+  let modified = 0;
+  let supplemented = 0;
+  for (const [k, v] of after) {
+    const old = before.get(k);
+    if (isEmptyLeaf(v) || v === old) continue;
+    if (isEmptyLeaf(old)) supplemented += 1;
+    else modified += 1;
+  }
+  // 专家补的事实（成立日期、上级单位等不在客户表格里的）
+  for (const o of Object.values(data.overrides ?? {})) {
+    if (o.source !== 'expert' || isEmptyLeaf(o.value) || (Array.isArray(o.value) && o.value.length === 0)) continue;
+    supplemented += 1;
+  }
+  return { modified, supplemented };
 }

@@ -11,7 +11,7 @@ import * as schema from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
 import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
-import { complete, testDocument } from '../tasks/test-workup.ts';
+import { completeFor, testDocument } from '../tasks/test-workup.ts';
 import { DEMO_EMAILS, DEMO_INTAKE_ENTERPRISE, DEMO_ORGS, demoContractPdf, seedDemo } from './demo-seed.ts';
 
 const { enterprises, memberships, organizationContracts, organizations, taskContacts, taskNumberCounters, tasks, taskWorkups, users } = schema;
@@ -223,7 +223,7 @@ describe('演示数据', () => {
 
       const opened = await zhou.get(`/api/tasks/${task.id}/workup`).expect(200);
       const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, task.id));
-      const data = complete(row!.snapshot);
+      const data = await completeFor(db, task.id, row!.snapshot);
       // 客户资料里只差技术人员数要专家补（演示用），其余都是专家自己的判断
       expect(Object.keys(data.overrides)).toEqual(['technicalManagementCount']);
       await db.update(taskWorkups).set({ data, version: opened.body.version + 1 }).where(eq(taskWorkups.taskId, task.id));

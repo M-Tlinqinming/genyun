@@ -21,6 +21,9 @@ import {
   siteColumn,
   supplyNames,
   type PlanContext,
+  personLabel,
+  surroundingsText,
+  wanOr,
 } from './context.ts';
 
 export interface Attachment {
@@ -83,7 +86,7 @@ function companyProfile(ctx: PlanContext): string {
     '# 生产经营单位概况',
     '## 企业概况',
     `${company}${facts.establishedDate ? `成立于${cnDate(facts.establishedDate)}，` : ''}注册地址为${address}；统一社会信用代码 ${fill(b.socialCreditCode)}，法定代表人 ${fill(b.legalRepresentative)}，注册资本 ${dash(b.registeredCapital)}。公司经营范围依据营业执照：${fill(b.businessScope)}。主要产品 / 服务：${fill(b.mainProducts)}`,
-    `从业人数：全公司在册职工 ${fill(b.employeeCount)} 人${people}。${facts.superior?.trim() ? `隶属关系 / 上级主管单位：${facts.superior.trim().replace(/[。；，]$/, '')}。` : ''}安全生产业务接受${ctx.bureau}行业监管。重点岗位：本企业涉及的特种作业岗位及消防安全管理、应急救援等关键应急响应岗位，应持证上岗并纳入年度应急培训与演练。周边环境与重大危险源辨识：${fill(facts.surroundings)}`,
+    `从业人数：全公司在册职工 ${fill(b.employeeCount)} 人${people}。${facts.superior?.trim() ? `隶属关系 / 上级主管单位：${facts.superior.trim().replace(/[。；，]$/, '')}。` : ''}安全生产业务接受${ctx.bureau}行业监管。重点岗位：本企业涉及的特种作业岗位及消防安全管理、应急救援等关键应急响应岗位，应持证上岗并纳入年度应急培训与演练。周边环境与重大危险源辨识：${surroundingsText(ctx)}`,
     '**表1-1 企业基本情况表**',
     '| 项目 | 内容 |',
     '| --- | --- |',
@@ -465,7 +468,7 @@ function resourceSurvey(ctx: PlanContext): string {
       ? '- 应急指挥部办公地点：公司应急办公室（配备电话、应急通讯录、预案纸质本）。'
       : '- 应急指挥部办公地点：事故时由总指挥在事故现场上风向的安全地点或公司办公区确定（应备有电话、应急通讯录、预案纸质本）。',
     '**4. 应急资金保障（本单位内部）**',
-    `- 公司年度安全生产专项费用按规定足额提取并列支，其中应急培训与演练经费 ${fill(facts.training?.budget)}；物资装备购置与更新经费按年度计划列支，事故应急处置费用单独列入年度预算。`,
+    `- 公司年度安全生产专项费用按规定足额提取并列支，其中应急培训与演练经费 ${wanOr(input.expert.review?.trainingBudget, facts.training?.budget)}；物资装备购置与更新经费按年度计划列支，事故应急处置费用单独列入年度预算。`,
     '- 应急资金审批：事故响应期间，总指挥可直接批准 5 万元以内紧急采购；5 万元以上由总指挥与财务负责人会签，事后补正手续。',
     '**二、单位外部可依托应急资源**',
     '本单位规模与专业救援能力有限，事故扩散或处置超出本单位能力时，需第一时间寻求**外部**社会救援力量增援。本节按可依托方向逐类列明**外单位**应急力量与调用条件；各单位到场时间以每年调查核实的结果为准，本报告不预设。',
@@ -539,8 +542,11 @@ function trainingPlan(ctx: PlanContext): string {
   const lead = safetyLead(ctx) === '总指挥' ? '安全管理人员' : safetyLead(ctx);
   const facts = input.expert.facts ?? {};
   const principal = fill(input.basic.responsiblePerson || input.basic.legalRepresentative);
-  const budget = fill(facts.training?.budget);
-  const dept = fill(facts.training?.department);
+  // 培训演练经费、归档人：第 5 步填的 → 原来的专家事实（培训牵头部门）→ 待补充
+  const review = input.expert.review;
+  const budget = wanOr(review?.trainingBudget, facts.training?.budget);
+  const dept = fill(review?.fundingDepartment || facts.training?.department);
+  const archiver = personLabel(review?.archiver) ?? dept;
   const practice = practiceItemsText(ctx);
   const consumables = hasAed(ctx) ? '灭火器年检后填充、空气呼吸器气瓶充气、AED 电极片更换等' : '灭火器年检后填充、空气呼吸器气瓶充气、急救药品更换等';
   const keyPosts = [ctx.signals.melting ? '熔铸工、压铸机操作工' : '', '电工', ctx.scope.pressureVessel ? '压力容器操作人员' : '', '消防安全管理员']
@@ -604,7 +610,7 @@ function trainingPlan(ctx: PlanContext): string {
     '- 应急救援员等专项资格证书考试费（公司报销）',
     `经费每季度由综合保障组核算上报${lead}，半年和年度审计跟随公司财务审计执行。`,
     '**7）培训档案与可追溯性**',
-    `所有培训与演练必须形成完整记录，由 **${dept}** 归档，留存期限不少于 **5 年**（满足应急管理部门检查与事故倒查溯源要求）。每一次培训 / 演练的档案必须包含：`,
+    `所有培训与演练必须形成完整记录，由 **${archiver}** 归档，留存期限不少于 **5 年**（满足应急管理部门检查与事故倒查溯源要求）。每一次培训 / 演练的档案必须包含：`,
     '- 培训 / 演练计划通知单（含主题、时间、地点、对象、主讲）',
     '- 签到表（参训人员本人签字，缺训人员标注原因，后续补训跟踪）',
     '- 培训教材 / 演练脚本 / 课件 / 操作规程',

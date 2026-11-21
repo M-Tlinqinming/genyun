@@ -121,6 +121,17 @@ export interface WorkupData {
   review?: ReviewWorkup;
   // 复制缺项清单时列出的项（只用于资料表格流程），之后每次保存按现在的缺项记补上没有
   missingList?: MissingList;
+  // 处理记录里资料核对的几件事（复制缺项清单、自动取消等客户补资料、改风险分值、改重大危险源判断），最多留 200 条
+  events?: WorkupEvent[];
+}
+
+export interface WorkupEvent {
+  at: string;
+  // 系统自动的为空
+  by?: string;
+  byName?: string;
+  what: string;
+  extra?: string;
 }
 
 export type { Stamp };

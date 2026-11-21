@@ -16,6 +16,8 @@ import {
   medicalAgreement,
   supplyNames,
   type PlanContext,
+  personLabel,
+  wanOr,
 } from './context.ts';
 
 const CHAPTER_ORDER = ['rescue', 'logistics', 'communication', 'evacuation', 'medical'] as const;
@@ -361,8 +363,11 @@ function guarantee(ctx: PlanContext): string {
   const logistics = org.groups.find((g) => g.kind === 'logistics')?.leader;
   const logisticsLabel = logistics ? `${fill(logistics.name)} ${fill(logistics.phone)}` : MISSING;
   const commander = org.commander ? `${fill(org.commander.name)} ${fill(org.commander.phone)}` : MISSING;
-  const budget = fill(input.expert.facts?.training?.budget);
-  const dept = fill(input.expert.facts?.training?.department);
+  // 经费：第 5 步的应急经费、经费牵头部门 → 原来的专家事实 → 待补充
+  const review = input.expert.review;
+  const budget = wanOr(review?.emergencyBudget, input.expert.facts?.training?.budget);
+  const dept = fill(review?.fundingDepartment || input.expert.facts?.training?.department);
+  const ledger = personLabel(review?.ledgerOwner);
   const scenes = summarize(ctx.selection.site.map((t) => accidentTypeOf(t.title)), '各类事故');
   const processes = summarize(input.production.processFlow.steps.map((s) => s.name), '生产');
   const f = ctx.facts;
@@ -461,7 +466,7 @@ function guarantee(ctx: PlanContext): string {
     '- **事故响应期间紧急采购**：5 万元以内由总指挥（总经理）直接批准，事后 7 日内补正手续；5 万元以上由总指挥与财务负责人会签，事后报公司决策机构备案；',
     '- **超预算支出**：报总经理审批，涉及大额（≥ 20 万元）的需公司决策机构决议；',
     '- **审计监督**：应急经费使用情况纳入年度内部审计与年度安全生产专项费用专项审计，接受财务监督。',
-    `经费台账：${dept} 建立应急经费使用台账，逐笔记录用途、金额、审批人、凭证编号，留存 ≥ 5 年备查。年度终了形成《应急经费使用情况报告》，作为下年度预算编制依据。`,
+    `经费台账：${ledger ? `由 ${ledger} 负责，` : ''}${dept} 建立应急经费使用台账，逐笔记录用途、金额、审批人、凭证编号，留存 ≥ 5 年备查。年度终了形成《应急经费使用情况报告》，作为下年度预算编制依据。`,
     '### 交通运输保障',
     `由综合保障组负责落实应急运输力量：${f.hasVehicle ? '公司自有车辆登记造册并指定应急驾驶员，事故时优先用于伤员转运、物资调运与人员疏散；运力不足时，' : '公司无自有车辆的，伤员转运依靠 120 急救车；物资调运、人员疏散用车，'}与就近运输单位 / 邻企建立应急用车互助，并可请求属地政府协调社会运力。明确事故时厂区内外应急通道、消防车通道保持畅通，门卫负责清障与引导，确保救援车辆 5 分钟内可进厂、伤员车辆优先通行。`,
     '### 治安保障',

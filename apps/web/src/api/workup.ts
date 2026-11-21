@@ -9,9 +9,32 @@ import type {
   StepsDoneSave,
   DrawingFileKey,
   IntakeCellRef,
-  FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
+  FiguresSave,
+  MissingList,
+  ProductionSave,
+  ReviewStepWorkupSave,
+  RiskSave,
+  ScopeSave,
+  WorkupData,
+  WorkupSnapshot,
+} from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
+
+// 保存后「等客户补资料」自动取消时通知向导弹提示（各个保存接口共用）
+const clearedListeners = new Set<() => void>();
+export function onAwaitingCleared(fn: () => void): () => void {
+  clearedListeners.add(fn);
+  return () => clearedListeners.delete(fn);
+}
+function stored(client: ReturnType<typeof useQueryClient>, taskId: string, saved: Workup) {
+  const { awaitingCleared, ...rest } = saved;
+  client.setQueryData(workupKey(taskId), rest);
+  if (awaitingCleared) {
+    clearedListeners.forEach((fn) => fn());
+    void client.invalidateQueries({ queryKey: ['tasks'] });
+  }
+}
 
 // 原件对照（右栏）：任务里能看到的客户文件
 export interface WorkupOriginal {
@@ -41,6 +64,25 @@ export interface Workup {
   drawings: WorkupDrawingFile[];
   // 新流程：每个字段读自资料表格的哪一格（键如 production.equipment.0.name），对照客户原表用；老流程为空
   sources: Record<string, IntakeCellRef>;
+  // 第 5 步预案编号的建议值（字号拼音首字母 + 今年）；算不出为空串
+  planCodeSuggestion: string;
+  // 等客户补资料：复制缺项清单的时间和条数；没标为空
+  awaiting: { since: string; items: number } | null;
+  // 客户提交的时间
+  submittedAt: string | null;
+  // 这次保存把「等客户补资料」自动取消了（清单里的都补上了）
+  awaitingCleared?: true;
+}
+
+// S02 查看缺项
+export interface MissingListView {
+  list: MissingList | null;
+  awaitingSince: string | null;
+  awaitingItems: number | null;
+  taskNumber: string;
+  companyName?: string;
+  addresses?: string[];
+  contact?: { name?: string; phone?: string } | null;
 }
 
 export interface WorkupDrawingFile {
@@ -73,7 +115,7 @@ export function useSaveFact(taskId: string) {
   return useMutation({
     mutationFn: (input: FactSave) =>
       request<Workup>(`/tasks/${taskId}/workup/facts`, { method: 'PUT', body: JSON.stringify(input) }),
-    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+    onSuccess: (saved) => stored(client, taskId, saved),
   });
 }
 
@@ -83,7 +125,7 @@ export function useSaveProduction(taskId: string) {
   return useMutation({
     mutationFn: (input: ProductionSave) =>
       request<Workup>(`/tasks/${taskId}/workup/production`, { method: 'PUT', body: JSON.stringify(input) }),
-    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+    onSuccess: (saved) => stored(client, taskId, saved),
   });
 }
 
@@ -93,7 +135,7 @@ export function useSaveRisk(taskId: string) {
   return useMutation({
     mutationFn: (input: RiskSave) =>
       request<Workup>(`/tasks/${taskId}/workup/risks`, { method: 'PUT', body: JSON.stringify(input) }),
-    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+    onSuccess: (saved) => stored(client, taskId, saved),
   });
 }
 
@@ -103,7 +145,7 @@ export function useSaveScope(taskId: string) {
   return useMutation({
     mutationFn: (input: ScopeSave) =>
       request<Workup>(`/tasks/${taskId}/workup/scope`, { method: 'PUT', body: JSON.stringify(input) }),
-    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+    onSuccess: (saved) => stored(client, taskId, saved),
   });
 }
 
@@ -113,7 +155,7 @@ export function useSaveFigures(taskId: string) {
   return useMutation({
     mutationFn: (input: FiguresSave) =>
       request<Workup>(`/tasks/${taskId}/workup/figures`, { method: 'PUT', body: JSON.stringify(input) }),
-    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+    onSuccess: (saved) => stored(client, taskId, saved),
   });
 }
 
@@ -140,7 +182,7 @@ function useStepSave<T>(taskId: string, path: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: T) => request<Workup>(`/tasks/${taskId}/workup/steps/${path}`, { method: 'PUT', body: JSON.stringify(input) }),
-    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+    onSuccess: (saved) => stored(client, taskId, saved),
   });
 }
 
@@ -160,6 +202,30 @@ export function useWorkupUpload(taskId: string) {
       const q = new URLSearchParams({ target, version: String(version), ...(replace ? { replace } : {}) });
       return request<Workup>(`/tasks/${taskId}/workup/files?${q}`, { method: 'POST', body: form, signal });
     },
-    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+    onSuccess: (saved) => stored(client, taskId, saved),
+  });
+}
+
+export const useSaveReviewStep = (taskId: string) => useStepSave<ReviewStepWorkupSave>(taskId, 'review');
+
+// 复制缺项清单：资料表格流程的任务记下清单，任务标为「等客户补资料」
+export function useCopyMissingList(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { version: number }) => request<Workup>(`/tasks/${taskId}/workup/missing-list`, { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: (saved) => {
+      client.setQueryData(workupKey(taskId), saved);
+      void client.invalidateQueries({ queryKey: ['tasks'], predicate: (q) => q.queryKey[2] !== 'workup' });
+    },
+  });
+}
+
+export const missingListKey = (taskId: string) => ['tasks', taskId, 'missing-list'] as const;
+
+export function useMissingList(taskId: string | null) {
+  return useQuery({
+    queryKey: missingListKey(taskId ?? ''),
+    queryFn: () => request<MissingListView>(`/tasks/${taskId}/workup/missing-list`),
+    enabled: !!taskId,
   });
 }

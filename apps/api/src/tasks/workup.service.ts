@@ -47,6 +47,19 @@ import {
   type WorkupData,
   type WorkupSnapshot,
   type IntakeCellRef,
+  companyNameInputOf,
+  currentGaps,
+  missingContactOf,
+  missingItemsOf,
+  normalizeReview,
+  recomputeMissingList,
+  reviewStepWorkupSaveSchema,
+  riskView,
+  STEP3_SCOPE_KEYS,
+  type MissingList,
+  type ReviewWorkup,
+  type RiskSave,
+  type WorkupEvent,
 } from '@genyun/shared';
 import {
   BadRequestException,
@@ -79,6 +92,7 @@ import type { UploadedFile } from '../intake/intake.service.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import { lockTaskRow } from '../intake/intake.service.ts';
 import { KnowledgeService } from '../knowledge/knowledge.service.ts';
+import { suggestPlanCode } from './plan-code.ts';
 import {
   checklistItemFiles,
   enterpriseDocuments,
@@ -95,6 +109,22 @@ import {
 } from '../db/schema.ts';
 
 const NOT_FOUND = '找不到该任务';
+
+// 处理记录里资料核对的几件事，只留最近 200 条
+function withEvent(events: WorkupEvent[] | undefined, e: WorkupEvent): WorkupEvent[] {
+  return [...(events ?? []), e].slice(-200);
+}
+
+// 改了系统候选的分值（L、E、C 或可能性、严重性）要写一句理由，存在行的说明里
+function riskNoteError(snapshot: WorkupSnapshot, data: WorkupData, save: RiskSave): string | null {
+  if (!save.value || save.value.excluded) return null;
+  const row = riskView(snapshot, data).rows.find((r) => r.id === save.rowId);
+  const s = row?.suggested;
+  if (!s) return null;
+  const v = save.value;
+  const changed = (['l', 'e', 'c', 'likelihood', 'severity'] as const).some((k) => v[k] !== undefined && v[k] !== s[k]);
+  return changed && !v.note?.trim() ? '改了分值，请写一句理由' : null;
+}
 
 // 自填第 3、4 步拍的照片只存在企业资料里，不挂资料项（M1 第 7a 项说明），按所在位置归到资料项
 function profilePhotos(snapshot: WorkupSnapshot): { fileId: string; itemKey: string }[] {
@@ -385,14 +415,130 @@ export class WorkupService {
   }
 
   private async write(taskId: string, row: WorkupRow, data: WorkupData, userId: string) {
+    // 复制过缺项清单的：按这次保存后的资料重算，补上的划掉；都补上了自动取消「等客户补资料」
+    const missing = data.missingList ? await this.recomputeMissing(taskId, row.snapshot, data) : null;
+    const next = missing?.data ?? data;
     const [saved] = await this.db
       .update(taskWorkups)
-      .set({ data, version: row.version + 1, updatedBy: userId, updatedAt: new Date() })
+      .set({ data: next, version: row.version + 1, updatedBy: userId, updatedAt: new Date() })
       .where(and(eq(taskWorkups.taskId, taskId), eq(taskWorkups.version, row.version)))
       .returning();
     // 读与写之间别人刚好保存了
     if (!saved) throw this.stale(row.version + 1);
-    return this.view(taskId, saved);
+    if (missing?.clear) {
+      await this.db.update(tasks).set({ awaitingCustomerSince: null, awaitingCustomerItems: null }).where(eq(tasks.id, taskId));
+    }
+    const view = await this.view(taskId, saved);
+    return missing?.clear ? { ...view, awaitingCleared: true as const } : view;
+  }
+
+  // 缺项清单按现在的资料重算；还标着「等客户补资料」而清单都补上了：clear = true，并记一条处理记录
+  private async recomputeMissing(taskId: string, snapshot: WorkupSnapshot, data: WorkupData): Promise<{ data: WorkupData; clear: boolean }> {
+    const [task] = await this.db
+      .select({ orgId: tasks.orgId, since: tasks.awaitingCustomerSince })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!task || !data.missingList) return { data, clear: false };
+    const current = await this.currentGapsOf(taskId, task.orgId, snapshot, data);
+    const now = new Date().toISOString();
+    const { list, changed, allFilled } = recomputeMissingList(data.missingList, current, now);
+    const clear = allFilled && task.since !== null;
+    if (!changed && !clear) return { data, clear: false };
+    const events = clear ? withEvent(data.events, { at: now, what: '「等客户补资料」自动取消', extra: '缺项清单里的项都补上了' }) : data.events;
+    return { data: { ...data, missingList: list, ...(events ? { events } : {}) }, clear };
+  }
+
+  // 现在的缺项（门槛缺的 + 客户未填）：图纸按 drawingCandidates，属地按知识库
+  async currentGapsOf(taskId: string, orgId: string, snapshot: WorkupSnapshot, data: WorkupData) {
+    const drawings = await this.drawingFiles(taskId, orgId, effectiveSnapshot(snapshot, data), data);
+    return currentGaps(snapshot, data, await this.knowledge.agencyDistricts(), drawings);
+  }
+
+  // 第 5 步第 1 页「专业项」：预案编号、经费与两位责任人、重大危险源结论（和系统算的不同时才存）
+  async saveReviewStep(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+    const parsed = reviewStepWorkupSaveSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
+    const save = parsed.data;
+    const row = await this.ensure(task);
+    if (save.version !== row.version) throw this.stale(row.version);
+    const review: ReviewWorkup = normalizeReview(row.snapshot, row.data, save.review);
+    const now = new Date().toISOString();
+    const before = row.data.review?.majorHazard;
+    let events = row.data.events;
+    if (review.majorHazard) {
+      const same = before && before.value === review.majorHazard.value && before.reason === review.majorHazard.reason;
+      review.majorHazardAt = same ? (row.data.review?.majorHazardAt ?? now) : now;
+      if (!same) {
+        events = withEvent(events, { at: now, by: user.id, byName: user.name, what: `重大危险源改为「${review.majorHazard.value}」`, extra: review.majorHazard.reason });
+      }
+    } else if (before) {
+      events = withEvent(events, { at: now, by: user.id, byName: user.name, what: '重大危险源改回系统算的结果' });
+    }
+    const data: WorkupData = {
+      ...row.data,
+      review,
+      ...(events ? { events } : {}),
+      steps: { ...row.data.steps, review: this.stamp(user) },
+      stepsDone: Math.max(workupStepsDone(row.data), save.stepsDone ?? 0),
+    };
+    return this.write(task.id, row, data, user.id);
+  }
+
+  // 复制缺项清单（第 5 步第 2 页）：资料表格流程的任务记下清单，任务标为「等客户补资料」；逐项填写的老任务只复制文字，不来这里
+  async copyMissingList(user: SessionUser, taskId: string, body: unknown) {
+    const task = await this.task(user, taskId);
+    if (task.assignedExpertId !== user.id) throw new ForbiddenException(ONLY_EXPERT);
+    const parsed = stepsDoneSaveSchema.pick({ version: true }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException('内容不正确');
+    if (!(await this.isIntake(task.id))) throw new BadRequestException('逐项填写的任务只复制清单文字，不标「等客户补资料」');
+    const row = await this.ensure(task);
+    if (parsed.data.version !== row.version) throw this.stale(row.version);
+    const items = missingItemsOf(await this.currentGapsOf(task.id, task.orgId, row.snapshot, row.data));
+    if (items.length === 0) throw new BadRequestException('资料都齐了，没有要补的项');
+    const at = new Date();
+    const list: MissingList = { at: at.toISOString(), by: user.id, byName: user.name, items };
+    const events = withEvent(row.data.events, {
+      at: list.at,
+      by: user.id,
+      byName: user.name,
+      what: `复制了缺项清单，共 ${items.length} 项，任务标为等客户补资料`,
+    });
+    const [saved] = await this.db
+      .update(taskWorkups)
+      .set({ data: { ...row.data, missingList: list, events }, version: row.version + 1, updatedBy: user.id, updatedAt: at })
+      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, row.version)))
+      .returning();
+    if (!saved) throw this.stale(row.version + 1);
+    await this.db.update(tasks).set({ awaitingCustomerSince: at, awaitingCustomerItems: items.length }).where(eq(tasks.id, task.id));
+    return this.view(task.id, saved);
+  }
+
+  // S02 查看缺项：清单和现在的补上情况（任务中心抽屉打开时取）
+  async missingList(user: SessionUser, taskId: string) {
+    const task = await this.task(user, taskId);
+    const row = await this.row(task.id);
+    const [t] = await this.db
+      .select({ number: tasks.number, since: tasks.awaitingCustomerSince, items: tasks.awaitingCustomerItems })
+      .from(tasks)
+      .where(eq(tasks.id, task.id))
+      .limit(1);
+    if (!row?.data.missingList) return { list: null, awaitingSince: t?.since ?? null, awaitingItems: null, taskNumber: t?.number ?? '' };
+    // 打开时再按现在的资料算一遍（只显示，不写）
+    const current = await this.currentGapsOf(task.id, task.orgId, row.snapshot, row.data);
+    const { list } = recomputeMissingList(row.data.missingList, current, new Date().toISOString());
+    const name = companyNameInputOf(row.snapshot, row.data);
+    return {
+      list,
+      awaitingSince: t?.since ?? null,
+      awaitingItems: t?.items ?? null,
+      taskNumber: t?.number ?? '',
+      companyName: name.name,
+      addresses: name.addresses,
+      contact: missingContactOf(row.snapshot, row.data),
+    };
   }
 
   async saveFact(user: SessionUser, taskId: string, body: unknown) {
@@ -417,14 +563,7 @@ export class WorkupService {
       if (fileId) entry.fileId = fileId;
       overrides[key] = entry;
     }
-    const [saved] = await this.db
-      .update(taskWorkups)
-      .set({ data: { ...row.data, overrides }, version: version + 1, updatedBy: user.id, updatedAt: new Date() })
-      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, version)))
-      .returning();
-    // 读与写之间别人刚好保存了
-    if (!saved) throw this.stale(version + 1);
-    return this.view(task.id, saved);
+    return this.write(task.id, row, { ...row.data, overrides }, user.id);
   }
 
   // 生产设备与物料（14 页 E18-00B）：一次保存一条判断或一行修改，带版本号，value 为 null 撤回
@@ -469,13 +608,7 @@ export class WorkupService {
         break;
     }
 
-    const [saved] = await this.db
-      .update(taskWorkups)
-      .set({ data: { ...row.data, production }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
-      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
-      .returning();
-    if (!saved) throw this.stale(save.version + 1);
-    return this.view(task.id, saved);
+    return this.write(task.id, row, { ...row.data, production }, user.id);
   }
 
   // 危险源辨识（14 页 E18-00C）：一次保存一行（改过的候选或新增行），带版本号，value 为 null 撤回到系统推荐 / 删掉新增行
@@ -488,7 +621,7 @@ export class WorkupService {
 
     const row = await this.ensure(task);
     if (save.version !== row.version) throw this.stale(row.version);
-    const error = riskSaveError(row.snapshot, row.data, save);
+    const error = riskSaveError(row.snapshot, row.data, save) ?? riskNoteError(row.snapshot, row.data, save);
     if (error) throw new BadRequestException(error);
     if (save.fileId && !(await this.originals(task.id, effectiveSnapshot(row.snapshot, row.data))).some((o) => o.fileId === save.fileId)) {
       throw new BadRequestException('对照的原件不在这个任务里');
@@ -498,13 +631,7 @@ export class WorkupService {
     if (save.value === null) delete rows[save.rowId];
     else rows[save.rowId] = { by: user.id, byName: user.name, at: new Date().toISOString(), ...(save.fileId ? { fileId: save.fileId } : {}), value: save.value };
 
-    const [saved] = await this.db
-      .update(taskWorkups)
-      .set({ data: { ...row.data, risks: { rows } }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
-      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
-      .returning();
-    if (!saved) throw this.stale(save.version + 1);
-    return this.view(task.id, saved);
+    return this.write(task.id, row, { ...row.data, risks: { rows } }, user.id);
   }
 
   // 适用范围（14 页 E18-00D）：一次确认或改一个开关，带版本号，value 为 null 撤回到系统建议
@@ -514,6 +641,7 @@ export class WorkupService {
     const parsed = scopeSaveSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? '内容不正确');
     const save = parsed.data;
+    if (STEP3_SCOPE_KEYS.includes(save.key)) throw new BadRequestException('这一项按第 3 步的回答定，请到第 3 步修改');
 
     const row = await this.ensure(task);
     if (save.version !== row.version) throw this.stale(row.version);
@@ -521,13 +649,7 @@ export class WorkupService {
     if (save.value === null) delete switches[save.key];
     else switches[save.key] = { by: user.id, byName: user.name, at: new Date().toISOString(), value: save.value };
 
-    const [saved] = await this.db
-      .update(taskWorkups)
-      .set({ data: { ...row.data, scope: { switches } }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
-      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
-      .returning();
-    if (!saved) throw this.stale(save.version + 1);
-    return this.view(task.id, saved);
+    return this.write(task.id, row, { ...row.data, scope: { switches } }, user.id);
   }
 
   // 图件（14 页 E18-00F）：改一张或两张图的画法（null 恢复自动排版）、采用图；采用时记下当时的图，之后图有变化回到待采用
@@ -557,13 +679,7 @@ export class WorkupService {
       figures.adopted![key] = { by: user.id, byName: user.name, at: new Date().toISOString(), signature: figureSignature(view, key) };
     }
 
-    const [saved] = await this.db
-      .update(taskWorkups)
-      .set({ data: { ...row.data, figures }, version: save.version + 1, updatedBy: user.id, updatedAt: new Date() })
-      .where(and(eq(taskWorkups.taskId, task.id), eq(taskWorkups.version, save.version)))
-      .returning();
-    if (!saved) throw this.stale(save.version + 1);
-    return this.view(task.id, saved);
+    return this.write(task.id, row, { ...row.data, figures }, user.id);
   }
 
   // 快照的来源：新流程（上传资料表格且已读出内容）取读表结果；老流程复制企业资料
@@ -622,7 +738,12 @@ export class WorkupService {
       ? await this.db.select({ name: users.name }).from(users).where(eq(users.id, row.updatedBy)).limit(1)
       : [];
     const effective = effectiveSnapshot(row.snapshot, row.data);
-    const [task] = await this.db.select({ orgId: tasks.orgId }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    const [task] = await this.db
+      .select({ orgId: tasks.orgId, awaitingSince: tasks.awaitingCustomerSince, awaitingItems: tasks.awaitingCustomerItems, submittedAt: tasks.submittedAt })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    const company = companyNameInputOf(row.snapshot, row.data);
     return {
       version: row.version,
       snapshot: row.snapshot,
@@ -640,6 +761,12 @@ export class WorkupService {
       agencyDistricts: await this.knowledge.agencyDistricts(),
       // 新流程：每个字段读自资料表格的哪一格（对照客户原表用）；老流程为空
       sources: await this.sheetSources(taskId),
+      // 第 5 步预案编号的建议值（字号拼音首字母 + 今年）；算不出为空串
+      planCodeSuggestion: suggestPlanCode(company.name, company.addresses),
+      // 等客户补资料（向导顶部提示）：复制缺项清单的时间和条数；没标为空
+      awaiting: task?.awaitingSince ? { since: task.awaitingSince, items: task.awaitingItems ?? 0 } : null,
+      // 客户提交的时间（老流程「客户在线填写，X 月 X 日提交」）
+      submittedAt: task?.submittedAt ?? null,
     };
   }
 
@@ -760,7 +887,7 @@ export class WorkupService {
   }
 
   // 图纸带上文件名和类型（页面判断能不能预览）
-  private async drawingFiles(taskId: string, orgId: string, snapshot: WorkupSnapshot, data: WorkupData): Promise<WorkupDrawingFile[]> {
+  async drawingFiles(taskId: string, orgId: string, snapshot: WorkupSnapshot, data: WorkupData): Promise<WorkupDrawingFile[]> {
     const candidates = await this.drawingCandidates(taskId, orgId, snapshot, data);
     if (candidates.length === 0) return [];
     const rows = await this.db
@@ -879,6 +1006,21 @@ export class WorkupController {
     }
     if (!file) throw new BadRequestException('请选择要上传的文件');
     return this.service.uploadFile(user, id, query, file);
+  }
+
+  @Put('steps/review')
+  saveReviewStep(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.saveReviewStep(user, id, body);
+  }
+
+  @Post('missing-list')
+  copyMissingList(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.service.copyMissingList(user, id, body);
+  }
+
+  @Get('missing-list')
+  missingList(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.missingList(user, id);
   }
 
   @Put('steps/done')

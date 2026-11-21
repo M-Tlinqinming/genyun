@@ -27,7 +27,7 @@ import type { DraftRenderer } from '../generation/drafts.ts';
 import { InProcessQueue } from '../generation/queue.ts';
 import { simplePdf, type PdfConverter } from '../generation/word/preview-pdf.ts';
 import { EditingService } from './editing.service.ts';
-import { complete, testDocument } from './test-workup.ts';
+import { completeFor, testDocument } from './test-workup.ts';
 
 // Word 校对与审核结论（M2 第 12 项）：逐份核对、改正文后该份回到待核对、三份核对完才能确认结论、
 // 当前稿转 PDF 给校对页看、越权
@@ -172,7 +172,7 @@ beforeAll(async () => {
   const [row] = await db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
   await db
     .update(taskWorkups)
-    .set({ data: complete(row!.snapshot), version: row!.version + 1 })
+    .set({ data: await completeFor(db, taskId, row!.snapshot), version: row!.version + 1 })
     .where(eq(taskWorkups.taskId, taskId));
   await zhou
     .post(`/api/tasks/${taskId}/generation`)
