@@ -29,7 +29,7 @@ test('生成初稿页：三份都好了可以开始核对；处理记录；返�
   await page.screenshot({ path: 'test-results/acceptance/k12-generation-done.png', fullPage: true });
 
   // 处理记录：重新生成过，所以不写用时
-  const toggle = page.getByRole('button', { name: '处理记录' });
+  const toggle = page.getByRole('button', { name: '处理记录', exact: true });
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   const drawer = page.getByRole('dialog', { name: '处理记录' });
