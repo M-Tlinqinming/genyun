@@ -32,6 +32,8 @@ async function choose(page: Page, label: string, option: string) {
 }
 
 test('第 3 步：补设备、判定危化品和特种设备、加返工；第 4 步：耐火等级', async ({ page }) => {
+  // 两步十几处改动，每处都等保存回来
+  test.setTimeout(90_000);
   await openFeiyu(page);
   await expect(page.getByText('整理中 · 必需项 11 / 22')).toBeVisible();
 
