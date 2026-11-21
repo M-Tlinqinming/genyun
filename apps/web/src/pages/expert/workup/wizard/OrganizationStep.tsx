@@ -23,6 +23,7 @@ import { SourceTag } from '../../../../components/SourceTag';
 import { gy, source, type, weight } from '../../../../theme/tokens';
 import { AddMemberModal, type AddedMember } from './AddMemberModal';
 import { OrgChartCard } from './OrgChartCard';
+import { CompareBar, compareSheets, CompareSheets, type CompareMode } from './OriginalCompare';
 import { OriginalSheetCard, RosterCard } from './OriginalSheetCard';
 import { caption, Card, link14, softLine, StepTitle, UseCard } from './parts';
 import { groupTitle, stepErrors, stepForSave, updatePerson, type PersonField } from './people';
@@ -48,6 +49,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
   const [open, setOpen] = useState<Set<string>>(() => new Set(initial.groups[0] ? [initial.groups[0].id] : []));
   const [adding, setAdding] = useState<DraftGroup | null>(null);
   const [extraOpen, setExtraOpen] = useState(false);
+  const [mode, setMode] = useState<CompareMode>('items');
   const saved = useRef(initial);
   const inputs = useRef(new Map<string, HTMLInputElement>());
 
@@ -193,6 +195,26 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
     rosterCount ? `，另附通讯录 ${rosterCount} 份` : ''
   }。`;
 
+  const compare =
+    workup.flow === 'intake' ? <CompareBar summary="客户表格里这一步用到的：「应急组织」" mode={mode} onChange={setMode} /> : null;
+  const sheetMain = (
+    <>
+      <StepTitle
+        title="核对应急指挥部和各小组"
+        customerText={customerText}
+        sub={`已按${customerText}「应急组织」预填。请核对各组负责人和手机号；右侧的组织体系图会随资料实时生成，不用自己画。`}
+      />
+      {compare}
+      <CompareSheets
+        taskId={taskId}
+        workup={workup}
+        sheets={compareSheets(
+          Object.fromEntries(Object.entries(workup.sources).filter(([k]) => k.startsWith('organization.'))),
+          { organization: { original: workup.snapshot.profile.organizationStep?.step, current: step } },
+        )}
+      />
+    </>
+  );
   const main = (
     <>
       <StepTitle
@@ -200,6 +222,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
         customerText={customerText}
         sub={`已按${customerText}「应急组织」预填。请核对各组负责人和手机号；右侧的组织体系图会随资料实时生成，不用自己画。`}
       />
+      {compare}
       <div
         aria-label="客户填写小结"
         style={{ padding: '12px 16px', background: gy.surface, border: `1px solid ${gy.split}`, borderRadius: 8, ...type.body, color: gy.secondary }}
@@ -409,7 +432,7 @@ export function OrganizationStep({ taskId, workup, autosave, customerText, frame
   );
 
   return frame({
-    main,
+    main: mode === 'sheet' ? sheetMain : main,
     side,
     note: `第 2 步，共 5 步 · ${step.groups.length} 个小组${memberless.length ? `，${memberless.length} 组组员${notFilled}` : '，组员都已填'}`,
     actions: (

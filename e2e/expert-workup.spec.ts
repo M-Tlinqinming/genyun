@@ -47,16 +47,13 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
   await expect(row(page, 'contactPerson')).toContainText('系统推导 · 当前账号');
   await expect(row(page, 'agency.emergencyBureau')).toContainText('仲恺高新区应急管理局');
 
-  // 只缺技术人员数：生产设备与物料的 6 项判断（含新增的乙炔）由 expert-workup-production 判定完，适用范围的 2 个开关由 expert-workup-scope 确认完，
-  // 工艺流程图由 expert-workup-visuals 采用（组织体系图随资料生成，不用采用）
-  await expect(page.getByText('整理中 · 必需项 21 / 22')).toBeVisible();
+  // 只缺技术人员数：生产设备与物料的判断（含新增的乙炔）由 expert-workup-production 在第 3、4 步判定完，适用范围的开关由 expert-workup-scope 确认完；
+  // 工艺流程图按排版自动画，不用采用
+  await expect(page.getByText('整理中 · 必需项 20 / 21')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 1 项：技术人员数');
 
-  // 原件对照：客户补传的台账（expert-workup-visuals-drawings 还补传了一份消防设施布置图，切到台账）
-  const originals = page.getByRole('complementary', { name: '原件对照' });
-  await originals.getByRole('tab', { name: /应急物资台账/ }).click();
-  await expect(originals.getByRole('tab', { name: /应急物资台账/ })).toHaveAttribute('aria-selected', 'true');
-  await expect(originals.locator('iframe')).toHaveAttribute('src', /d=inline/);
+  // 客户原件已搬到资料核对右栏「客户原表」卡，原来的整理页不再有原件对照
+  await expect(page.getByRole('complementary', { name: '原件对照' })).toHaveCount(0);
 
   // 下一个缺失项：企业基本信息里的缺项回到资料核对第 1 步填
   await page.getByRole('button', { name: '下一个缺失项' }).click();
@@ -82,7 +79,7 @@ test('周工对照原件补齐企业事实，退出再进内容还在', async ({
   await page.goto(`${new URL(page.url()).pathname}?view=workup-old`);
   await expect(row(page, 'technicalManagementCount')).toContainText('8 人');
   await expect(row(page, 'dutyPhone')).toContainText('0752-3324000');
-  await expect(page.getByText('整理中 · 必需项 22 / 22')).toBeVisible();
+  await expect(page.getByText('整理中 · 必需项 21 / 21')).toBeVisible();
   await expect(page.getByRole('region', { name: '整理进度' })).toContainText('资料核对的必需项已齐');
 });
 

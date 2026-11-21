@@ -13,6 +13,19 @@ export const CUSTOMER_DRAWINGS = {
 export type CustomerDrawingKey = keyof typeof CUSTOMER_DRAWINGS;
 export const CUSTOMER_DRAWING_KEYS = Object.keys(CUSTOMER_DRAWINGS) as CustomerDrawingKey[];
 
+// 专家在资料核对第 4 步上传的三张图（客户表格里没有），排在客户图纸后面
+export const EXPERT_DRAWINGS = {
+  surroundings_map: '周边环境图',
+  hospital_route: '到就近医院路线图',
+  traffic_map: '公司外部交通图',
+} as const;
+export type ExpertDrawingKey = keyof typeof EXPERT_DRAWINGS;
+export const EXPERT_DRAWING_KEYS = Object.keys(EXPERT_DRAWINGS) as ExpertDrawingKey[];
+
+// 附件 7 里放的全部图纸，按先后排
+export type DrawingFileKey = CustomerDrawingKey | ExpertDrawingKey;
+export const DRAWING_FILE_KEYS: DrawingFileKey[] = [...CUSTOMER_DRAWING_KEYS, ...EXPERT_DRAWING_KEYS];
+
 // 能转成图片放进 Word 的文件
 export const DRAWING_CONTENT_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const;
 export const isDrawingContentType = (t: string) => (DRAWING_CONTENT_TYPES as readonly string[]).includes(t);
@@ -36,7 +49,7 @@ export interface CustomerDrawing {
   fileId: string;
   name: string;
   contentType: string;
-  key: CustomerDrawingKey;
+  key: DrawingFileKey;
   // 转不出来（文件损坏、加密）时为 null，页面提示，生成时跳过
   pageCount: number | null;
   error?: string;
@@ -47,13 +60,13 @@ export interface CustomerDrawing {
 
 // 确认生成时锁定进生成输入（PlanInput.drawings），生成应急预案时按这里取图
 export interface PlanDrawingRef {
-  key: CustomerDrawingKey;
+  key: DrawingFileKey;
   fileId: string;
   page: number;
 }
 
 export function planDrawingsOf(drawings: CustomerDrawing[]): PlanDrawingRef[] {
-  return CUSTOMER_DRAWING_KEYS.flatMap((key) =>
+  return DRAWING_FILE_KEYS.flatMap((key) =>
     drawings.filter((d) => d.key === key).flatMap((d) => d.selected.map((page) => ({ key, fileId: d.fileId, page }))),
   );
 }

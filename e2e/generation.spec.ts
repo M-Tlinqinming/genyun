@@ -2,7 +2,7 @@ import { expect, request, test, type Page } from '@playwright/test';
 import JSZip from 'jszip';
 
 // 确认采用资料并生成三份草稿（14 页 E18-01、E18-02、E18-02b）。
-// 文件名排在 expert-workup.spec 之后：那时飞宇的专业整理必需项已齐（22 / 22）。
+// 文件名排在 expert-workup.spec 之后：那时飞宇的专业整理必需项已齐（21 / 21）。
 // 测试服务器设了 DRAFT_FAIL_ONCE=risk：风险评估报告第一次生成会失败
 async function openFeiyu(page: Page) {
   await page.goto('/login');
@@ -54,11 +54,11 @@ test('确认采用资料：资料又变了留在本页标出；生成时一份�
   const ledger = materials(page).getByRole('listitem', { name: '应急物资台账.pdf' });
   await expect(ledger).toContainText('整理开始后客户上传');
   const outline = page.getByRole('complementary', { name: '将生成的内容' });
-  await expect(outline).toContainText('✓ 必需项 22 / 22 已整理');
+  await expect(outline).toContainText('✓ 必需项 21 / 21 已整理');
   await expect(outline).toContainText(/危险源\s*\d+ 项/);
-  await expect(outline).toContainText('已采用 1 张');
-  // 客户图纸：expert-workup-visuals-drawings 里专家选了消防设施布置图第 2、3 页
-  await expect(outline).toContainText('附件 7 放 2 页');
+  await expect(outline).toContainText('自动生成 1 张');
+  // 客户图纸：expert-workup-visuals-drawings 里专家选了消防设施布置图第 2、3 页，expert-workup-production 里代客户传了一张疏散图
+  await expect(outline).toContainText('附件 7 放 3 页');
   await expect(page.getByRole('button', { name: '确认采用并生成三份草稿' })).toBeEnabled();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'test-results/acceptance/m2-10b-confirm.png', fullPage: true });
@@ -99,13 +99,13 @@ test('确认采用资料：资料又变了留在本页标出；生成时一份�
   await expect(draft(page, '风险评估报告')).toContainText('✓ 已生成');
   expect(await draft(page, '应急预案').innerText()).toBe(planBefore);
   await expect(draft(page, '应急预案').getByRole('button', { name: '下载 Word' })).toBeVisible();
-  // 附件 7 放了消防设施布置图选的两页：五张系统画的图 + 两页客户图纸
+  // 附件 7 放了消防设施布置图选的两页和代传的疏散图：五张系统画的图 + 三页客户图纸
   const taskId = new URL(page.url()).pathname.split('/').filter(Boolean).pop()!;
   const progress = await (await page.request.get(`/api/tasks/${taskId}/generation`)).json();
   const planFile = progress.current.drafts.find((d: { kind: string }) => d.kind === 'plan').wordFileId as string;
   const { url } = await (await page.request.get(`/api/files/${planFile}/download-url`)).json();
   const word = await JSZip.loadAsync(await (await page.request.get(url)).body());
-  expect(Object.keys(word.files).filter((n) => n.startsWith('word/media/'))).toHaveLength(7);
+  expect(Object.keys(word.files).filter((n) => n.startsWith('word/media/'))).toHaveLength(8);
   expect(await word.file('word/document.xml')!.async('string')).toContain('消防设施布置图（2）');
   await page.screenshot({ path: 'test-results/acceptance/m2-10b-done.png', fullPage: true });
 

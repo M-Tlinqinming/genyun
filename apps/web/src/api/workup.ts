@@ -4,7 +4,11 @@ import type {
   CustomerDrawing,
   FactSave,
   OrganizationStepWorkupSave,
+  ProductionStepWorkupSave,
+  ResourcesStepWorkupSave,
   StepsDoneSave,
+  DrawingFileKey,
+  IntakeCellRef,
   FiguresSave, ProductionSave, RiskSave, ScopeSave, WorkupData, WorkupSnapshot } from '@genyun/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './request';
@@ -33,6 +37,17 @@ export interface Workup {
   flow: 'intake' | 'legacy';
   // 客户这次提交时上传的文件（资料表格、营业执照、图纸照片），按上传先后
   intakeFiles: WorkupIntakeFile[];
+  // 能放进附件 7 的图：客户原件、Excel 入口上传的图、第 4 步代客户上传和专家自己的三张图
+  drawings: WorkupDrawingFile[];
+  // 新流程：每个字段读自资料表格的哪一格（键如 production.equipment.0.name），对照客户原表用；老流程为空
+  sources: Record<string, IntakeCellRef>;
+}
+
+export interface WorkupDrawingFile {
+  fileId: string;
+  key: DrawingFileKey;
+  name: string;
+  contentType: string;
 }
 
 export interface WorkupIntakeFile {
@@ -120,7 +135,7 @@ export function inlineUrl(fileId: string) {
   return request<{ url: string }>(`/files/${fileId}/download-url?inline=1`);
 }
 
-// 资料核对向导：第 1、2 步整步保存；只记走到第几步（第 3–5 步还用原来的整理页时用）
+// 资料核对向导：第 1、2 步整步保存；只记走到第几步（第 5 步还用原来的整理页时用）
 function useStepSave<T>(taskId: string, path: string) {
   const client = useQueryClient();
   return useMutation({
@@ -132,3 +147,19 @@ function useStepSave<T>(taskId: string, path: string) {
 export const useSaveBasicStep = (taskId: string) => useStepSave<BasicStepWorkupSave>(taskId, 'basic');
 export const useSaveOrganizationStep = (taskId: string) => useStepSave<OrganizationStepWorkupSave>(taskId, 'organization');
 export const useSaveStepsDone = (taskId: string) => useStepSave<StepsDoneSave>(taskId, 'done');
+export const useSaveProductionStep = (taskId: string) => useStepSave<ProductionStepWorkupSave>(taskId, 'production');
+export const useSaveResourcesStep = (taskId: string) => useStepSave<ResourcesStepWorkupSave>(taskId, 'resources');
+
+// 代客户上传 / 专家上传的图：一次一个文件；target 如 drawing:evacuation_plan、msds:m-3、label:m-3、firstAid
+export function useWorkupUpload(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ target, version, file, replace, signal }: { target: string; version: number; file: File; replace?: string; signal?: AbortSignal }) => {
+      const form = new FormData();
+      form.append('file', file);
+      const q = new URLSearchParams({ target, version: String(version), ...(replace ? { replace } : {}) });
+      return request<Workup>(`/tasks/${taskId}/workup/files?${q}`, { method: 'POST', body: form, signal });
+    },
+    onSuccess: (saved) => client.setQueryData(workupKey(taskId), saved),
+  });
+}

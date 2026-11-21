@@ -1,7 +1,7 @@
 // 处理记录（14 页 E18-13）：这个任务里谁在什么时候做了什么。不另建表，从现有的表拼出来，新的在前。
 // 每个来源一个小函数；以后资料核对每一步确认、代客户上传、重新打开这些事加在这里。
 // 只记改内容的操作；打开、切页签、看预览不记。核对、审核结论每份只留最后一次，所以只能记最后一次。
-import { DRAFT_KIND_KEYS, DRAFT_KINDS, pendingCount, type DraftKind, type HistoryEntry } from '@genyun/shared';
+import { DRAFT_KIND_KEYS, DRAFT_KINDS, pendingCount, uploadTargetLabel, type DraftKind, type HistoryEntry } from '@genyun/shared';
 import { Controller, Get, Inject, Injectable, NotFoundException, Param, ParseUUIDPipe } from '@nestjs/common';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -20,6 +20,7 @@ import {
   taskIntakeSubmissions,
   tasks,
   taskSubmissions,
+  taskWorkups,
   users,
 } from '../db/schema.ts';
 import { EditingService } from './editing.service.ts';
@@ -54,11 +55,21 @@ export class HistoryService {
       ids.length ? this.checks(ids) : [],
       ids.length ? this.reviews(ids) : [],
       this.deliveries(taskId),
+      this.workup(taskId),
     ]);
     // 新的在前；同一时刻按来源顺序倒过来（后发生的事排前面）
     const all = parts.flat().map((e, i) => ({ e, i }));
     all.sort((a, b) => b.e.at.getTime() - a.e.at.getTime() || b.i - a.i);
     return all.map(({ e }) => ({ ...e, at: e.at.toISOString() }));
+  }
+
+  /** 资料核对：代客户上传、上传专家的图（每次一条） */
+  private async workup(taskId: string): Promise<Entry[]> {
+    const [row] = await this.db.select({ data: taskWorkups.data }).from(taskWorkups).where(eq(taskWorkups.taskId, taskId)).limit(1);
+    return (row?.data.expertUploads ?? []).map((u) => {
+      const label = uploadTargetLabel(u.target);
+      return entry(new Date(u.at), u.byName, label.byExpert ? `上传了${label.text}` : `代客户上传了${label.text}`, u.name);
+    });
   }
 
   /** 客户提交资料：新流程上传 Excel 模板；旧任务按清单提交。新流程撤回过的另记一条「客户撤回提交」 */

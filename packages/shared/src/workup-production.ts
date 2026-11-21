@@ -59,9 +59,10 @@ export type ExpertMaterial = z.infer<typeof expertMaterialSchema>;
 export type FireGrade = Exclude<keyof typeof FIRE_RATINGS, 'expert'>;
 export const FIRE_GRADES = ['1', '2', '3', '4'] as const satisfies readonly FireGrade[];
 
-// 特种设备的判定：有（可补参数，行的格式同客户填写）或没有。判定为没有不用写理由
+// 特种设备的判定：有（可补参数，行的格式同客户填写）、没有，或待补充（拿不准，不拦生成，文稿里这一类写「（待补充）」）。判定为没有不用写理由
+export const SPECIAL_JUDGEMENTS = ['yes', 'no', 'later'] as const;
 export interface SpecialJudgement {
-  answer: 'yes' | 'no';
+  answer: (typeof SPECIAL_JUDGEMENTS)[number];
   items: Record<string, unknown>[];
 }
 
@@ -97,7 +98,7 @@ export const productionSaveSchema = z.discriminatedUnion('kind', [
     kind: z.literal('special'),
     category: z.enum(SPECIAL_CATEGORY_KEYS as [SpecialCategory, ...SpecialCategory[]]),
     value: z
-      .object({ answer: z.enum(['yes', 'no']), items: z.array(z.record(z.string(), z.unknown())).max(20, '每类最多 20 台').default([]) })
+      .object({ answer: z.enum(SPECIAL_JUDGEMENTS), items: z.array(z.record(z.string(), z.unknown())).max(20, '每类最多 20 台').default([]) })
       .nullable(),
   }),
   z.object({ ...base, kind: z.literal('fireRating'), rowId, value: z.enum(FIRE_GRADES).nullable() }),
@@ -153,6 +154,8 @@ export interface SpecialRow {
   customer?: SpecialAnswer;
   // 现在的结论：专家判定的优先，其次客户答的有 / 没有
   answer?: 'yes' | 'no';
+  // 专家标了「待补充」：不算待判定，文稿里这一类写「（待补充）」
+  later: boolean;
   items: Record<string, unknown>[];
   photoFileIds: string[];
   judged?: Judged<SpecialJudgement>;
@@ -273,12 +276,15 @@ export function productionView(snapshot: WorkupSnapshot, data: { production?: Pr
     const c = step?.specialEquipment[category];
     const judged = w.special[category];
     const customer = c?.answer;
-    const answer = judged?.value.answer ?? (customer === 'yes' || customer === 'no' ? customer : undefined);
+    const later = judged?.value.answer === 'later';
+    const answer = later
+      ? undefined
+      : ((judged?.value.answer as 'yes' | 'no' | undefined) ?? (customer === 'yes' || customer === 'no' ? customer : undefined));
     const items = judged ? judged.value.items : ((c?.items ?? []) as Record<string, unknown>[]);
     const label = SPECIAL_LABELS[category];
-    const isPending = answer === undefined;
+    const isPending = answer === undefined && !later;
     if (isPending) pending.push({ list: 'special', key: `special:${category}`, label: `${label}判定` });
-    return { category, label, customer, answer, items, photoFileIds: c?.photoFileIds ?? [], judged, pending: isPending };
+    return { category, label, customer, answer, later, items, photoFileIds: c?.photoFileIds ?? [], judged, pending: isPending };
   });
 
   const buildings: BuildingRow[] = (res?.buildings ?? [])

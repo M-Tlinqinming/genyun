@@ -83,7 +83,8 @@ export function ConfirmView({
       riskEdited: risks.filter((r) => r.added || r.changes.length > 0).length,
       specialty: counted(scope.preview.specialty),
       site: counted(scope.preview.site),
-      figures: figures.required - figures.pending.length,
+      // 工艺流程图按排版自动画（K11 起不用再「采用」）
+      figures: figures.required,
     };
   }, [workup]);
 
@@ -176,7 +177,7 @@ export function ConfirmView({
             <dt style={{ color: gy.secondary }}>现场处置方案</dt>
             <dd style={{ margin: 0, color: gy.text }}>{summary.site} 份</dd>
             <dt style={{ color: gy.secondary }}>图件</dt>
-            <dd style={{ margin: 0, color: gy.text }}>已采用 {summary.figures} 张</dd>
+            <dd style={{ margin: 0, color: gy.text }}>自动生成 {summary.figures} 张</dd>
             <dt style={{ color: gy.secondary }}>客户图纸</dt>
             <dd style={{ margin: 0, color: gy.text }}>
               {drawings.isLoading ? '读取中…' : drawingPages ? `附件 7 放 ${drawingPages} 页` : '没有，附件 7 写待补充'}

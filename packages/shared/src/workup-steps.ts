@@ -13,7 +13,10 @@ import {
   type OrganizationStep,
   organizationStepSchema,
 } from './profile/organization-step.ts';
-import type { Stamp } from './workup-production.ts';
+import { productionStepSchema, type ProductionStep } from './profile/production-step.ts';
+import { resourcesStepSchema, type ResourcesStep } from './profile/resources-step.ts';
+import { emptyProductionWorkup, isAddedRow, type ProductionWorkup, type Stamp } from './workup-production.ts';
+import { resourcesExtraSchema } from './workup-resources.ts';
 import type { FactOverride, FactPerson, FactValue, WorkupData, WorkupSnapshot } from './workup.ts';
 
 // 向导的五步（任务中心「资料核对 N / 5 步」、页头阶段条共用）
@@ -33,7 +36,7 @@ export function effectiveSnapshot(snapshot: WorkupSnapshot, data: Partial<Expert
 }
 
 // ── 每一步用到的事实项（老整理页的单项修改按这些键合并、保存后删除） ──
-export type WizardStep = 'basic' | 'organization';
+export type WizardStep = 'basic' | 'organization' | 'production' | 'resources';
 
 export const BASIC_STEP_KEYS = [
   'companyName',
@@ -56,10 +59,16 @@ export const BASIC_STEP_KEYS = [
 
 const ORG_KEYS = ['commander', 'dutyPhone', 'paSystem', 'imGroup'];
 
-/** 这一项事实属于向导的哪一步（agency.*、编制小组、专家判断等不属于第 1、2 步） */
+// 第 3、4 步没有老整理页的单项修改；「先留空」的键带步骤前缀（如 resources.firePool.volume）
+export const PRODUCTION_STEP_PREFIX = 'production.';
+export const RESOURCES_STEP_PREFIX = 'resources.';
+
+/** 这一项事实属于向导的哪一步（agency.*、编制小组、专家判断等不属于第 1–4 步） */
 export function wizardStepOfKey(key: string): WizardStep | undefined {
   if ((BASIC_STEP_KEYS as readonly string[]).includes(key)) return 'basic';
   if (ORG_KEYS.includes(key) || key.startsWith('deputy.') || key.startsWith('group.')) return 'organization';
+  if (key.startsWith(PRODUCTION_STEP_PREFIX)) return 'production';
+  if (key.startsWith(RESOURCES_STEP_PREFIX)) return 'resources';
   return undefined;
 }
 
@@ -213,7 +222,23 @@ export const organizationStepWorkupSaveSchema = z.object({
 });
 export type OrganizationStepWorkupSave = z.infer<typeof organizationStepWorkupSaveSchema>;
 
-// 只记走到第几步（第 3–5 步还用原来的整理页时，「下一步」用它）
+export const productionStepWorkupSaveSchema = z.object({
+  version: z.number().int().min(1),
+  step: productionStepSchema,
+  stepsDone: z.number().int().min(0).max(5).optional(),
+});
+export type ProductionStepWorkupSave = z.infer<typeof productionStepWorkupSaveSchema>;
+
+export const resourcesStepWorkupSaveSchema = z.object({
+  version: z.number().int().min(1),
+  step: resourcesStepSchema,
+  // 客户表格里没有、只有专家填的项（外部联系方式补充、四邻、专家的三张图）
+  extra: resourcesExtraSchema,
+  stepsDone: z.number().int().min(0).max(5).optional(),
+});
+export type ResourcesStepWorkupSave = z.infer<typeof resourcesStepWorkupSaveSchema>;
+
+// 只记走到第几步（第 5 步还用过渡页时，「下一步」用它）
 export const stepsDoneSaveSchema = z.object({
   version: z.number().int().min(1),
   stepsDone: z.number().int().min(0).max(5),
@@ -241,3 +266,38 @@ export function organizationStepSaveError(next: OrganizationStep, before: Organi
 
 // 每步谁、什么时候保存的（页头「已自动保存」与操作记录用）
 export type StepStamps = Partial<Record<WizardStep, Stamp>>;
+
+/**
+ * 第 3 步显示和保存的内容。专家第一次保存第 3 步以前，老整理页对设备、物料的改动（data.production 的 equipment、materials）
+ * 叠在（专家那份 ?? 快照）上：改过的行换成专家的值，专家新增的行（x 开头）接在后面；保存后这两样并进专家那份、从老整理层删掉
+ */
+export function productionStepView(
+  snapshot: WorkupSnapshot,
+  data: Partial<ExpertCopy> & { production?: ProductionWorkup },
+): ProductionStep {
+  const eff = effectiveSnapshot(snapshot, data);
+  const base = productionStepSchema.parse(eff.profile.productionStep?.step ?? {});
+  const w = data.production ?? emptyProductionWorkup();
+  const added = <T>(edits: Record<string, { at: string; value: T }>) =>
+    Object.entries(edits)
+      .filter(([id]) => isAddedRow(id))
+      .sort((a, b) => a[1].at.localeCompare(b[1].at));
+  const equipment = [
+    ...base.equipment.map((e) => (w.equipment[e.id] ? { ...e, ...w.equipment[e.id]!.value, id: e.id } : e)),
+    ...added(w.equipment)
+      .filter(([id]) => !base.equipment.some((e) => e.id === id))
+      .map(([id, j]) => ({ ...j.value, id })),
+  ];
+  const materials = [
+    ...base.materials.map((m) => (w.materials[m.id] ? { ...m, ...w.materials[m.id]!.value, id: m.id, labelPhotoFileIds: m.labelPhotoFileIds } : m)),
+    ...added(w.materials)
+      .filter(([id]) => !base.materials.some((m) => m.id === id))
+      .map(([id, j]) => ({ ...j.value, id, labelPhotoFileIds: [] })),
+  ];
+  return { ...base, equipment, materials };
+}
+
+/** 第 4 步显示的内容：（专家那份 ?? 快照）；都没有时是空的一份 */
+export function resourcesStepView(snapshot: WorkupSnapshot, data: Partial<ExpertCopy>): ResourcesStep {
+  return resourcesStepSchema.parse(effectiveSnapshot(snapshot, data).profile.resourcesStep?.step ?? {});
+}

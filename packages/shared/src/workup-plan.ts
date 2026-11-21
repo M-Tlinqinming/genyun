@@ -12,7 +12,9 @@ import { figuresView, planFiguresOf } from './workup-figures.ts';
 import { planProductionOf, productionView, type ProductionList } from './workup-production.ts';
 import { planHazardsOf, riskView } from './workup-risk.ts';
 import { planScopeOf, scopeView } from './workup-scope.ts';
-import { answerOf, effectiveSnapshot, organizationStepView } from './workup-steps.ts';
+import { answerOf, effectiveSnapshot, organizationStepView, resourcesStepView } from './workup-steps.ts';
+import { emptyResourcesExtra } from './workup-resources.ts';
+import type { ExternalContacts } from './plan/input.ts';
 import { workupFacts, workupProgress, type FactPerson, type FactSection, type FactValue, type WorkupData, type WorkupSnapshot } from './workup.ts';
 
 const address = (detail: string): Address => ({ province: '', city: '', district: '', detail });
@@ -162,11 +164,12 @@ function factsOf(data: WorkupData, buildings: ReturnType<typeof productionView>[
 export interface WorkupGap {
   key: string;
   label: string;
-  module: 'facts' | ProductionList | 'scope' | 'figures';
+  module: 'facts' | ProductionList | 'scope';
   section?: FactSection;
 }
 
-// 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关、待采用的图在后。
+// 还差的项：企业事实的必需项在前，生产设备与物料待确认的判断、适用范围待确认的开关在后。
+// 工艺流程图按当前排版自动画，不用再采用，不算缺项。
 // 专家页底栏、「下一个缺失项」和确认生成的检查共用
 // districts：知识库里的属地应急机构（后台、专家页都传同一份；不传用内置数据）
 export function workupGaps(
@@ -177,14 +180,12 @@ export function workupGaps(
   const progress = workupProgress(workupFacts(snapshot, data, districts));
   const production = productionView(snapshot, data);
   const scope = scopeView(snapshot, data);
-  const figures = figuresView(snapshot, data);
   const gaps: WorkupGap[] = [
     ...progress.missing.map((f) => ({ key: f.key, label: f.label, module: 'facts' as const, section: f.section })),
     ...production.pending.map((p) => ({ key: p.key, label: p.label, module: p.list })),
     ...scope.pending.map((s) => ({ key: `scope:${s.key}`, label: s.label, module: 'scope' as const })),
-    ...figures.pending.map((f) => ({ key: `figure:${f.key}`, label: `${f.label}待采用`, module: 'figures' as const })),
   ];
-  return { required: progress.required + production.required + scope.required + figures.required, gaps };
+  return { required: progress.required + production.required + scope.required, gaps };
 }
 
 const compact =<T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
@@ -209,6 +210,29 @@ export function planInputOf(snapshot: WorkupSnapshot, data: WorkupData, issuedOn
       facts: compact(factsOf(data, production.buildings)),
       figures: planFiguresOf(figuresView(snapshot, data)),
       pending: data.blank?.length ? [...data.blank] : undefined,
+      ...expertResourcesOf(snapshot, data),
+      specialPending: production.special.filter((x) => x.later).map((x) => x.label),
     },
+  };
+}
+
+// 第 4 步专家填的四邻、外部应急联系方式补充（就近医院：专家改过用专家的，没改用客户的）
+function expertResourcesOf(snapshot: WorkupSnapshot, data: WorkupData): Pick<PlanInput['expert'], 'quarters' | 'externalContacts'> {
+  const extra = data.resourcesExtra ?? emptyResourcesExtra();
+  const res = resourcesStepView(snapshot, data);
+  const has = (c: { name?: string; phone?: string } | undefined) => Boolean(c?.name?.trim() || c?.phone?.trim());
+  const contact = (c: { name?: string; phone?: string; hours?: string }) =>
+    compact({ name: c.name?.trim() || undefined, phone: c.phone?.trim() || undefined, hours: c.hours?.trim() || undefined });
+  const { hospital: hospitalHours, ...hours } = extra.hours;
+  const externalContacts: ExternalContacts = compact({
+    police: has(extra.police) ? contact(extra.police!) : undefined,
+    brigade: extra.brigade && !extra.brigade.none && has(extra.brigade) ? contact(extra.brigade) : undefined,
+    hospital: has(res.hospital) ? contact({ ...res.hospital!, hours: hospitalHours }) : undefined,
+    hours: Object.keys(hours).length ? hours : undefined,
+  });
+  const quarters = compact({ ...extra.quarters });
+  return {
+    quarters: Object.values(quarters).some((v) => v?.trim()) ? quarters : undefined,
+    externalContacts: Object.keys(externalContacts).length ? externalContacts : undefined,
   };
 }

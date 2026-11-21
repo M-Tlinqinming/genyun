@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// 资料核对向导（13 页 E2）：第 1 步企业基本信息、第 2 步人员与应急组织；第 3–5 步先用原来的整理页。
+// 资料核对向导（13 页 E2）：第 1 步企业基本信息、第 2 步人员与应急组织；第 3、4 步见 expert-workup-production；第 5 步先用原来的整理页。
 // 文件名排在 expert-workup-visuals 之后、expert-workup 之前：这里不动必需项（技术人员数留给 expert-workup 补）
 async function openWizard(page: Page, step?: number) {
   await page.goto('/login');
@@ -34,8 +34,11 @@ const memberSaved = (page: Page, name: string, present: boolean) =>
       membersOf(r.request().postDataJSON()).includes(name) === present,
   );
 
-test('第 1 步：还没生成过草稿时默认打开；改了自动保存，格式不对的先不存', async ({ page }) => {
+test('还没生成过草稿时默认打开资料核对，停在第一个没走完的步骤；第 1 步改了自动保存，格式不对的先不存', async ({ page }) => {
   await openWizard(page);
+  // expert-workup-production 已经走到第 4 步的「下一步」，默认打开第 5 步
+  await expect(page.getByRole('heading', { name: '核对并生成' })).toBeVisible();
+  await page.goto(`${new URL(page.url()).pathname}?view=workup&step=1`);
   await expect(page.getByRole('heading', { name: '核对企业基本信息' })).toBeVisible();
   await expect(footer(page)).toContainText(/第 1 步，共 5 步 · 客户已填 \d+ 项，\d+ 项未填；还有 1 项待您补充或留空/);
   // 铺满窗口，盖住工作台的侧栏
@@ -226,22 +229,25 @@ test('第 2 步：断网时标红并提示没保存上，重试后补存', async
   await reverting;
 });
 
-test('第 3–5 步先用原来的整理页；第 5 步去确认并生成', async ({ page }) => {
+test('第 3、4 步是新样式；第 5 步先用原来的整理页，去确认并生成', async ({ page }) => {
   await openWizard(page, 2);
   await page.getByRole('button', { name: '下一步：生产情况' }).click();
   await expect(page).toHaveURL(/view=workup&step=3/);
-  await expect(page.getByRole('heading', { name: '生产情况' })).toBeVisible();
-  const oldLinks = page.getByRole('navigation', { name: '打开原来的整理页' });
-  await expect(oldLinks.getByRole('link')).toHaveText(['设备清单', '特种设备', '原辅材料', '建构筑物', '工艺流程']);
-  await oldLinks.getByRole('link', { name: '设备清单' }).click();
-  await expect(page).toHaveURL(/view=workup-old&module=equipment/);
-  await expect(page.getByText('资料核对第 3–5 步正在换新样式，这里是原来的整理页')).toBeVisible();
-  await page.getByRole('link', { name: '回到资料核对' }).click();
-  await expect(page.getByRole('heading', { name: '生产情况' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '核对场所、设备与物料' })).toBeVisible();
+  await page.getByRole('button', { name: '下一页：工艺流程' }).click();
+  await expect(page.getByRole('heading', { name: '核对工艺流程' })).toBeVisible();
   await page.getByRole('button', { name: '下一步：应急资源与图纸' }).click();
-  await expect(page.getByRole('navigation', { name: '打开原来的整理页' }).getByRole('link')).toHaveText(['消防设施', '应急物资', '急救药箱', '图件']);
+  await expect(page.getByRole('heading', { name: '核对应急资源与图纸' })).toBeVisible();
+  await page.getByRole('button', { name: '上一步' }).click();
+  await expect(page.getByRole('heading', { name: '核对工艺流程' })).toBeVisible();
+  await page.getByRole('button', { name: '下一步：应急资源与图纸' }).click();
   await page.getByRole('button', { name: '下一步：核对并生成' }).click();
-  await expect(page.getByRole('navigation', { name: '打开原来的整理页' }).getByRole('link')).toHaveText(['危险源辨识', '适用范围']);
+  const oldLinks = page.getByRole('navigation', { name: '打开原来的整理页' });
+  await expect(oldLinks.getByRole('link')).toHaveText(['危险源辨识', '适用范围']);
+  await oldLinks.getByRole('link', { name: '适用范围' }).click();
+  await expect(page).toHaveURL(/view=workup-old&module=scope/);
+  await expect(page.getByText('资料核对第 5 步正在换新样式，这里是原来的整理页')).toBeVisible();
+  await page.getByRole('link', { name: '回到资料核对' }).click();
   await expect(footer(page)).toContainText('第 5 步，共 5 步');
   await expect(page.getByRole('button', { name: '去确认并生成' })).toBeVisible();
 

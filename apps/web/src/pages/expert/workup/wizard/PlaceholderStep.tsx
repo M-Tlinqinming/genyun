@@ -7,7 +7,7 @@ import { gy, type, weight } from '../../../../theme/tokens';
 import { Card, link14, UseCard } from './parts';
 import type { StepProps } from './types';
 
-// 第 3–5 步还没换新样式：先用原来的整理页，这里列出这一步要核对的几类，每类直达原来整理页的对应模块
+// 第 5 步还没换新样式：先用原来的整理页，这里列出这一步要核对的几类，每类直达原来整理页的对应模块
 const OLD_MODULES: Record<number, [module: string, label: string][]> = {
   3: [
     ['equipment', '设备清单'],

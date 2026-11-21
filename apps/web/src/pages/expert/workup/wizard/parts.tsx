@@ -40,7 +40,7 @@ export function MissingTag({ text = '待您补充' }: { text?: string }) {
 }
 
 /** 页面标题、说明和来源图例 */
-export function StepTitle({ title, sub, customerText }: { title: string; sub: ReactNode; customerText: string }) {
+export function StepTitle({ title, sub, customerText, expertOnly }: { title: string; sub: ReactNode; customerText: string; expertOnly?: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <h1 style={{ margin: 0, ...type.pageTitle, fontWeight: weight.strong, color: gy.text }}>{title}</h1>
@@ -51,6 +51,7 @@ export function StepTitle({ title, sub, customerText }: { title: string; sub: Re
         <SourceTag kind="system" text="系统带出" />
         <SourceTag kind="expert" text="您已修改" />
         <MissingTag />
+        {expertOnly && <SourceTag kind="expert" text="只有专家能填" />}
       </div>
     </div>
   );

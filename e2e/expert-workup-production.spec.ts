@@ -1,109 +1,165 @@
 import { expect, test, type Page } from '@playwright/test';
 
+// 资料核对第 3、4 步（13 页 E2-3a、E2-3b、E2-4，K11）。
 // 演示数据：飞宇第 3 步有 8 台设备、5 种物料；压力管道答「拍照给耕云看」，厂房耐火等级留给专家。
-// 本文件排在 expert-workup-contact 之后、expert-workup 之前：判定完 4 项并新增乙炔；适用范围的开关在 expert-workup-scope 确认
-async function openFeiyu(page: Page) {
+// 本文件排在 expert-workup-contact 之后、expert-workup-scope 之前：判定完 4 项并新增乙炔；适用范围的开关在 expert-workup-scope 确认
+async function openFeiyu(page: Page, step?: number) {
+  const m = page.url().match(/\/expert\/tasks\/[0-9a-f-]+/);
+  if (m) {
+    // 已在任务里：直接换视图，不再登录
+    await page.goto(`${m[0]}?view=${step ? `workup&step=${step}` : 'workup-old'}`);
+    return;
+  }
   await page.goto('/login');
   await page.getByPlaceholder('请输入邮箱').fill('expert@demo.genyun.net.cn');
   await page.getByPlaceholder('请输入密码').fill('e2e-password');
   await page.getByRole('button', { name: /登\s*录/ }).click();
   await expect(page).toHaveURL(/\/expert$/);
   await page.getByRole('row', { name: /惠阳飞宇电器有限公司/ }).click();
-  // 默认打开资料核对向导；这几块还在原来的整理页
   await expect(page).toHaveURL(/\/expert\/tasks\/[0-9a-f-]+/);
-  await page.goto(`${new URL(page.url()).pathname}?view=workup-old`);
-  await expect(page.getByRole('heading', { name: '惠阳飞宇电器有限公司' })).toBeVisible();
+  await page.goto(`${new URL(page.url()).pathname}?view=${step ? `workup&step=${step}` : 'workup-old'}`);
 }
 
-const lists = (page: Page) => page.getByRole('list', { name: '生产设备与物料清单' });
-const row = (page: Page, key: string) => page.locator(`[data-row="${key}"]`);
-const impact = (page: Page) => page.getByLabel('本表影响的适用范围开关');
+const footer = (page: Page) => page.getByRole('region', { name: '页面操作' });
+// 第 3、4 步整步保存（防抖 800 ms）；判定另走一条
+const stepSaved = (page: Page, step: 'production' | 'resources') =>
+  page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith(`/workup/steps/${step}`) && r.ok());
+const judged = (page: Page) => page.waitForResponse((r) => r.request().method() === 'PUT' && r.url().endsWith('/workup/production') && r.ok());
 
-test('周工判定危化品、特种设备与耐火等级，补设备和物料', async ({ page }) => {
+async function choose(page: Page, label: string, option: string) {
+  await page.getByLabel(label, { exact: true }).click();
+  await page.locator('.ant-select-dropdown:visible').getByTitle(option, { exact: true }).click();
+}
+
+test('第 3 步：补设备、判定危化品和特种设备、加返工；第 4 步：耐火等级', async ({ page }) => {
   await openFeiyu(page);
-  await expect(page.getByText('整理中 · 必需项 11 / 23')).toBeVisible();
-  // 「下一个缺失项」：在原来的整理页里先跳这页上的缺项（技术人员数在资料核对第 1 步），即原辅材料里第一项待确认的判断
-  await page.getByRole('button', { name: '下一个缺失项' }).click();
-  await expect(page.getByRole('region', { name: '原辅材料' })).toBeVisible();
-  await expect(row(page, 'material:m3')).toBeInViewport();
+  await expect(page.getByText('整理中 · 必需项 11 / 22')).toBeVisible();
 
-  await page.getByRole('button', { name: /生产设备与物料/ }).click();
-  await expect(page.getByRole('button', { name: /生产设备与物料.*4 待确认/ })).toBeVisible();
+  await openFeiyu(page, 3);
+  await expect(page.getByRole('heading', { name: '核对场所、设备与物料' })).toBeVisible();
+  await expect(footer(page)).toContainText('第 3 步，共 5 步（第 1 页）');
 
-  // 设备清单：补一台客户漏填的叉车
-  const equipment = page.getByRole('region', { name: '设备清单' });
-  await expect(equipment).toContainText('锌压铸机');
-  await equipment.getByRole('button', { name: '新增一行' }).click();
-  await equipment.getByLabel('名称').fill('电动叉车');
-  await equipment.getByLabel('数量').fill('1 台');
-  await equipment.getByRole('button', { name: '保存' }).click();
-  await expect(equipment).toContainText('电动叉车');
-  await expect(equipment.getByText('专家整理').first()).toBeVisible();
+  // 设备：补一台客户漏填的叉车
+  const equipment = page.getByRole('table', { name: '设备' });
+  await expect(equipment.getByLabel('设备名称').first()).toHaveValue('熔炉');
+  await page.getByRole('button', { name: '+ 添加设备' }).click();
+  const saved = stepSaved(page, 'production');
+  await equipment.getByLabel('设备名称').last().fill('电动叉车');
+  await equipment.getByLabel('数量').last().fill('1 台');
+  await saved;
 
-  // 原辅材料：酒精按系统建议判定为危化品，陶瓷灯头不是
-  await lists(page).getByRole('listitem').filter({ hasText: '原辅材料' }).click();
-  const materials = page.getByRole('region', { name: '原辅材料' });
-  await expect(row(page, 'material:m5')).toContainText('即乙醇，列在《危险化学品目录》第 2568 号（易燃液体），建议判定为危化品');
-  await expect(impact(page)).toContainText('开 · 使用酒精、天那水、汽油等可燃液体');
-  await row(page, 'material:m5').getByRole('button', { name: '采纳' }).click();
-  await expect(row(page, 'material:m5').getByText('是', { exact: true })).toBeVisible();
-  await expect(row(page, 'material:m3')).toContainText('《危险化学品目录》里查不到这个名称');
-  await row(page, 'material:m3').getByRole('button', { name: '不是危化品' }).click();
-  await expect(row(page, 'material:m3').getByText('否', { exact: true })).toBeVisible();
+  // 危化品：酒精是，陶瓷灯头不是
+  let j = judged(page);
+  await choose(page, '酒精是否危化品', '是危化品');
+  await j;
+  j = judged(page);
+  await choose(page, '陶瓷灯头是否危化品', '不是危化品');
+  await j;
 
-  // 新增乙炔：判定为危化品后，可燃气体开关建议打开
-  await materials.getByRole('button', { name: '新增一行' }).click();
-  await materials.getByLabel('名称').fill('乙炔');
-  await materials.getByLabel('最大储量').fill('4 瓶');
-  await materials.getByRole('button', { name: '保存' }).click();
-  const acetylene = materials.locator('[data-row^="material:x"]');
-  await expect(acetylene).toContainText('列在《危险化学品目录》第 2629 号（易燃气体）');
-  await acetylene.getByRole('button', { name: '采纳' }).click();
-  await expect(impact(page)).toContainText('开 · 使用天然气、液化气、乙炔等可燃气体');
+  // 新增乙炔，判定为危化品
+  await page.getByRole('button', { name: '+ 添加物料' }).click();
+  const added = stepSaved(page, 'production');
+  await page.getByRole('table', { name: '原辅材料' }).getByLabel('物料名称').last().fill('乙炔');
+  await added;
+  j = judged(page);
+  await choose(page, '乙炔是否危化品', '是危化品');
+  await j;
 
-  // 特种设备：压力管道判定为无（不用写理由）；压力容器对照铭牌补参数，PV 值系统算
-  await lists(page).getByRole('listitem').filter({ hasText: '特种设备' }).click();
-  await expect(row(page, 'special:pressurePipelines')).toContainText('有空压机与储气罐，可能有压缩空气主管');
-  await expect(impact(page)).toContainText('开 · 有压力管道');
-  await row(page, 'special:pressurePipelines').getByRole('button', { name: '判定为无' }).click();
-  await expect(row(page, 'special:pressurePipelines')).toContainText('拍照给耕云看 → 无');
-  await expect(impact(page)).toContainText('关 · 有压力管道');
+  // 特种设备：压力管道没有；压力容器有，对照铭牌补参数
+  const pipes = page.getByRole('group', { name: '压力管道' });
+  j = judged(page);
+  await pipes.getByText('没有', { exact: true }).click();
+  await j;
+  const vessels = page.getByRole('group', { name: '压力容器' });
+  await vessels.getByText('有', { exact: true }).click();
+  j = judged(page);
+  await vessels.getByLabel('最高工作压力').fill('0.84');
+  await vessels.getByLabel('容积').fill('1.25');
+  await j;
+  await page.screenshot({ path: 'test-results/acceptance/k11-step3-page1.png', fullPage: true });
 
-  await row(page, 'special:pressureVessels').hover();
-  await row(page, 'special:pressureVessels').getByRole('button', { name: '补压力容器参数' }).click();
-  await page.getByLabel('最高工作压力').fill('0.84');
-  await page.getByLabel('容积').fill('1.25');
-  await page.getByRole('button', { name: '判定为有' }).click();
-  await expect(row(page, 'special:pressureVessels')).toContainText('PV 1.05 MPa·m³（系统计算）');
+  // 第 2 页：工艺流程，加一条返工，流程图自动画
+  await page.getByRole('button', { name: '下一页：工艺流程' }).click();
+  await expect(page).toHaveURL(/page=2/);
+  await expect(page.getByRole('heading', { name: '核对工艺流程' })).toBeVisible();
+  const steps = page.getByRole('list', { name: '工序' }).getByRole('textbox');
+  const n = await steps.count();
+  expect(n).toBeGreaterThan(2);
+  const first = await steps.first().inputValue();
+  const last = await steps.last().inputValue();
+  await page.getByRole('button', { name: '+ 添加返工 / 回用' }).click();
+  await choose(page, '从哪道工序', last);
+  await choose(page, '回到哪道工序', first);
+  await page.getByRole('button', { name: '添加', exact: true }).click();
+  const branch = `返工：${last} → ${first}`;
+  await expect(page.getByText(branch)).toBeVisible();
+  await page.screenshot({ path: 'test-results/acceptance/k11-step3-page2.png', fullPage: true });
 
-  // 建构筑物：厂房耐火等级
-  await lists(page).getByRole('listitem').filter({ hasText: '建构筑物' }).click();
-  await page.getByLabel('1 号生产厂房耐火等级').click();
-  await page.getByTitle('二级').click();
-  await expect(row(page, 'building:b1').getByText('专家整理')).toBeVisible();
+  // 第 4 步：厂房耐火等级
+  await page.getByRole('button', { name: '下一步：应急资源与图纸' }).click();
+  await expect(page.getByRole('heading', { name: '核对应急资源与图纸' })).toBeVisible();
+  j = judged(page);
+  await choose(page, '1 号生产厂房耐火等级', '二级');
+  await j;
 
-  // 都判定完：模块打勾，剩企业事实的技术人员数、适用范围里靠名称推断的粉尘、粉尘专项、熔融三个开关和待采用的工艺流程图（组织体系图随资料生成，不用采用）
-  await expect(page.getByRole('button', { name: /生产设备与物料\s*✓/ })).toBeVisible();
-  await expect(page.getByText('整理中 · 必需项 16 / 22')).toBeVisible();
-  await expect(page.getByRole('region', { name: '整理进度' })).toContainText(
-    '还差 6 项：技术人员数 · 适用范围（4 个开关待确认） · 图件（1 张待采用）',
-  );
+  // 都判定完：剩企业事实的技术人员数、适用范围里靠名称推断的 4 个开关（工艺流程图按排版自动画，不用采用）
+  await openFeiyu(page);
+  await expect(page.getByText('整理中 · 必需项 16 / 21')).toBeVisible();
+  await expect(page.getByRole('region', { name: '整理进度' })).toContainText('还差 5 项：技术人员数 · 适用范围（4 个开关待确认）');
 
-  // 退出再进，判断都还在
-  await page.reload();
-  await page.getByRole('button', { name: /生产设备与物料/ }).click();
-  await lists(page).getByRole('listitem').filter({ hasText: '原辅材料' }).click();
-  await expect(row(page, 'material:m5').getByText('是', { exact: true })).toBeVisible();
+  // 退出再进，判断、新加的行和支路都还在
+  await openFeiyu(page, 3);
+  await expect(page.locator('.ant-select').filter({ has: page.getByLabel('酒精是否危化品') })).toContainText('是危化品');
+  await expect(page.getByRole('table', { name: '设备' }).getByLabel('设备名称').last()).toHaveValue('电动叉车');
+  await page.getByRole('button', { name: '下一页：工艺流程' }).click();
+  await expect(page.getByText(branch)).toBeVisible();
 });
 
-test('客户已填的急救药箱清单、工艺流程只读显示', async ({ page }) => {
-  await openFeiyu(page);
-  await page.getByRole('button', { name: /生产设备与物料/ }).click();
-  await lists(page).getByRole('listitem').filter({ hasText: '急救药箱' }).click();
-  // 飞宇的药箱清单客户已填
-  await expect(page.getByRole('region', { name: '急救药箱' })).toContainText('急救箱（综合配置）');
-  await expect(page.getByRole('region', { name: '急救药箱' })).not.toContainText('请客户补充');
-  // 工艺流程只读，工序来自客户
-  await lists(page).getByRole('listitem').filter({ hasText: '工艺流程' }).click();
-  await expect(page.getByRole('list', { name: '工序' })).toContainText('压铸');
+test('第 4 步：代客户上传疏散图、填外部联系方式和四邻', async ({ page }) => {
+  await openFeiyu(page, 4);
+  await expect(page.getByRole('heading', { name: '核对应急资源与图纸' })).toBeVisible();
+
+  // 疏散图：客户没传，代客户上传
+  const evac = page.getByRole('group', { name: '紧急疏散示意图' });
+  await expect(evac).toContainText('客户没传这张图');
+  const chooser = page.waitForEvent('filechooser');
+  await evac.getByRole('button', { name: '代客户上传' }).click();
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  await (await chooser).setFiles({ name: '车间疏散图.png', mimeType: 'image/png', buffer: png });
+  await expect(evac).toContainText('车间疏散图.png');
+  await expect(evac).toContainText('您代传');
+
+  // 外部联系方式：修改 → 填派出所、专职消防队附近没有
+  const contacts = page.getByRole('table', { name: '外部应急联系方式' });
+  await page.getByRole('button', { name: '修改', exact: true }).first().click();
+  await page.getByLabel('派出所名称').fill('陈江派出所');
+  await page.getByLabel('派出所电话').fill('0752-333');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('号码位数不对').first()).toBeVisible();
+  await page.getByLabel('派出所电话').fill('0752-3333333');
+  await page.getByText('附近没有', { exact: true }).click();
+  const saved = stepSaved(page, 'resources');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await saved;
+  await expect(contacts).toContainText('陈江派出所');
+  await expect(contacts).toContainText('0752-3333333');
+  await expect(contacts).toContainText('附近没有专职消防队，预案里不写这一行');
+
+  // 四邻
+  const quarters = stepSaved(page, 'resources');
+  await page.getByLabel('东邻').fill('空地');
+  await page.getByLabel('北邻').fill('和畅五路');
+  await quarters;
+  await expect(footer(page)).toContainText('第 4 步，共 5 步');
+  await page.screenshot({ path: 'test-results/acceptance/k11-step4.png', fullPage: true });
+
+  // 退出再进都还在
+  await page.reload();
+  await expect(page.getByRole('group', { name: '紧急疏散示意图' })).toContainText('车间疏散图.png');
+  await expect(page.getByLabel('东邻')).toHaveValue('空地');
+  await expect(page.getByRole('table', { name: '外部应急联系方式' })).toContainText('陈江派出所');
+
+  // 第 5 步先用原来的过渡页
+  await page.getByRole('button', { name: '下一步：核对并生成' }).click();
+  await expect(footer(page)).toContainText('第 5 步，共 5 步');
 });
