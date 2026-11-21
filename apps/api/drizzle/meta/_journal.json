@@ -211,6 +211,13 @@
       "when": 1795248289078,
       "tag": "0029_generated_draft_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1795262276364,
+      "tag": "0030_task_reopens",
+      "breakpoints": true
     }
   ]
 }
