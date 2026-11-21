@@ -7,12 +7,16 @@ import {
   DRAFT_KINDS,
   draftActive,
   generationConfirmSchema,
+  generationRetrySchema,
   materialsFingerprint,
+  pendingCount,
+  pendingOf,
   planDrawingsOf,
   planInputOf,
   SELF_FILL_STEP_TITLES,
   workupGaps,
   type DraftKind,
+  type DraftStepProgress,
   type GenerationMaterials,
   type GenerationProgress,
   type LockedMaterial,
@@ -34,7 +38,7 @@ import {
   type OnApplicationShutdown,
   type OnModuleInit,
 } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { createHash, randomUUID } from 'node:crypto';
 import type { SessionUser } from '../auth/auth.service.ts';
 import { CurrentUser } from '../auth/session.guard.ts';
@@ -54,9 +58,10 @@ import {
 import { FILE_STORAGE, type FileStorage } from '../files/storage.ts';
 import { serializeDocument } from '../generation/document-json.ts';
 import { DRAFT_RENDERER, type DraftRenderer } from '../generation/drafts.ts';
+import type { DrawingRenderer } from '../generation/drawings/renderer.ts';
 import { DRAFT_QUEUE, type DraftJob, type DraftQueue } from '../generation/queue.ts';
 import { KnowledgeService } from '../knowledge/knowledge.service.ts';
-import { DrawingsService } from './drawings.service.ts';
+import { DRAWING_RENDERER, DrawingsService } from './drawings.service.ts';
 import { WorkupService } from './workup.service.ts';
 
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -72,6 +77,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
     @Inject(DrawingsService) private readonly drawings: DrawingsService,
     @Inject(KnowledgeService) private readonly knowledge: KnowledgeService,
+    @Inject(DRAWING_RENDERER) private readonly pdfPages: DrawingRenderer,
   ) {}
 
   async onModuleInit() {
@@ -149,7 +155,8 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
           createdBy: user.id,
         })
         .returning();
-      await tx.insert(generatedDrafts).values(DRAFT_KIND_KEYS.map((kind) => ({ batchId: b!.id, kind })));
+      const queuedAt = new Date();
+      await tx.insert(generatedDrafts).values(DRAFT_KIND_KEYS.map((kind) => ({ batchId: b!.id, kind, queuedAt })));
       return b!;
     });
     for (const kind of DRAFT_KIND_KEYS) await this.queue.add({ batchId: batch.id, kind });
@@ -225,18 +232,32 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     return { rows, fingerprint: materialsFingerprint(rows) };
   }
 
-  // 只把失败的份重新排队，已生成的不动
-  async retry(user: SessionUser, id: string): Promise<GenerationProgress> {
+  // 只把失败的份重新排队，已生成的不动。带 kind 只重做这一份（别的份还在排队、生成也可以）
+  async retry(user: SessionUser, id: string, body: unknown): Promise<GenerationProgress> {
     const task = await this.workup.task(user, id);
+    const parsed = generationRetrySchema.safeParse(body ?? {});
+    if (!parsed.success) throw new BadRequestException('请求格式不正确');
+    const { kind } = parsed.data;
     const batch = await this.latest(task.id);
     if (!batch) throw new BadRequestException('还没有生成过草稿');
+    const reset = { status: 'queued' as const, error: null, startedAt: null, finishedAt: null, progress: null, queuedAt: new Date() };
+    // 一条语句只改失败的份：连点两下时第二下改不到，不会重复进队列
     const queued = await this.db
       .update(generatedDrafts)
-      .set({ status: 'queued', error: null, startedAt: null, finishedAt: null })
-      .where(and(eq(generatedDrafts.batchId, batch.id), eq(generatedDrafts.status, 'failed')))
+      .set(reset)
+      .where(and(eq(generatedDrafts.batchId, batch.id), eq(generatedDrafts.status, 'failed'), ...(kind ? [eq(generatedDrafts.kind, kind)] : [])))
       .returning({ kind: generatedDrafts.kind });
-    if (queued.length === 0) throw new BadRequestException('没有失败的草稿需要重试');
-    for (const { kind } of queued) await this.queue.add({ batchId: batch.id, kind });
+    if (queued.length === 0) {
+      if (!kind) throw new BadRequestException('没有失败的草稿需要重试');
+      const [now] = await this.db
+        .select({ status: generatedDrafts.status })
+        .from(generatedDrafts)
+        .where(and(eq(generatedDrafts.batchId, batch.id), eq(generatedDrafts.kind, kind)))
+        .limit(1);
+      const message = now?.status === 'done' ? '这一份已经生成好了，刷新看看' : '这一份已经在重新生成了';
+      throw new ConflictException({ statusCode: 409, message, code: 'draft_not_failed' });
+    }
+    for (const q of queued) await this.queue.add({ batchId: batch.id, kind: q.kind });
     return this.view(batch);
   }
 
@@ -259,19 +280,48 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
         .limit(1);
       if (!batch) return;
       const drawings = kind === 'plan' ? await this.drawings.images(batch.input.drawings ?? []) : undefined;
-      const rendered = await this.render(kind, batch.input, drawings);
+      // 每一步开始时记下来给生成页看；只写生成中的份（失败或重做以后不再写），写不进去也不影响生成
+      const onProgress = async (p: DraftStepProgress) => {
+        try {
+          await this.db
+            .update(generatedDrafts)
+            .set({ progress: p })
+            .where(and(where, eq(generatedDrafts.status, 'running')));
+        } catch (err) {
+          console.error('记生成进度失败', batchId, kind, err);
+        }
+      };
+      const rendered = await this.render(kind, batch.input, drawings, onProgress);
       const name = `${batch.input.basic.companyName}${DRAFT_KINDS[kind]}（草稿）`;
       const wordFileId = await this.store(batch.orgId, batch.createdBy, `${name}.docx`, DOCX, rendered.word);
       const pdfFileId = rendered.pdf ? await this.store(batch.orgId, batch.createdBy, `${name}.pdf`, 'application/pdf', rendered.pdf) : null;
       const documentFileId = await this.store(batch.orgId, batch.createdBy, `${name}.json`, 'application/json', serializeDocument(rendered.document));
+      const pages = rendered.pdf ? await this.countPages(rendered.pdf) : null;
+      let pending: number | null = null;
+      try {
+        // 和核对定稿刚打开时的「待补充」是同一个数
+        pending = pendingCount(pendingOf(rendered.document, rendered.document));
+      } catch (err) {
+        console.error('数待补充失败', batchId, kind, err);
+      }
       await this.db
         .update(generatedDrafts)
-        .set({ status: 'done', wordFileId, pdfFileId, documentFileId, notes: rendered.notes, error: null, finishedAt: new Date() })
+        .set({ status: 'done', wordFileId, pdfFileId, documentFileId, notes: rendered.notes, error: null, finishedAt: new Date(), pages, pendingCount: pending })
         .where(where);
     } catch (err) {
       console.error('草稿生成失败', batchId, kind, err);
       const reason = err instanceof Error && err.message ? err.message.slice(0, 200) : '未知原因';
       await this.db.update(generatedDrafts).set({ status: 'failed', error: `生成没有完成：${reason}`, finishedAt: new Date() }).where(where);
+    }
+  }
+
+  // PDF 页数；数不出来只记日志
+  private async countPages(pdf: Buffer): Promise<number | null> {
+    try {
+      return await this.pdfPages.count(pdf, 'application/pdf');
+    } catch (err) {
+      console.error('数 PDF 页数失败', err);
+      return null;
     }
   }
 
@@ -314,6 +364,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
     // 三份里专家保存过修订的节数：重新生成前提醒专家这些修订要在新稿里重新对照
     const edits = await this.db.select({ sections: draftEdits.sections }).from(draftEdits).where(eq(draftEdits.batchId, batch.id));
     const editedSections = edits.reduce((n, e) => n + Object.keys(e.sections).length, 0);
+    const drafts = await this.drafts(batch.id);
     return {
       id: batch.id,
       workupVersion: batch.workupVersion,
@@ -322,7 +373,7 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
       createdAt: batch.createdAt.toISOString(),
       createdByName: by?.name ?? '',
       editedSections,
-      drafts: (await this.drafts(batch.id)).map((d) => ({
+      drafts: drafts.map((d) => ({
         kind: d.kind as DraftKind,
         status: d.status,
         attempts: d.attempts,
@@ -331,8 +382,32 @@ export class GenerationService implements OnModuleInit, OnApplicationShutdown {
         error: d.error,
         startedAt: iso(d.startedAt),
         finishedAt: iso(d.finishedAt),
+        progress: d.progress ?? null,
+        queuedAt: (d.queuedAt ?? batch.createdAt).toISOString(),
+        pages: d.pages ?? null,
+        pendingCount: d.pendingCount ?? null,
       })),
+      queueAhead: await this.queueAhead(batch, drafts),
     };
+  }
+
+  // 前面还有几个任务：别的批次里有一份在生成、或有一份排得比我最早的排队份还早的，按批次去重计数。
+  // 一个任务同时只有一批在生成，批次数就是任务数。只返回一个数，不透露别的任务的任何信息
+  private async queueAhead(batch: typeof generationBatches.$inferSelect, drafts: (typeof generatedDrafts.$inferSelect)[]): Promise<number | null> {
+    const queued = drafts.filter((d) => d.status === 'queued');
+    if (queued.length === 0) return null;
+    const mine = new Date(Math.min(...queued.map((d) => (d.queuedAt ?? batch.createdAt).getTime())));
+    const [row] = await this.db
+      .select({ n: sql<number>`count(distinct ${generatedDrafts.batchId})::int` })
+      .from(generatedDrafts)
+      .innerJoin(generationBatches, eq(generationBatches.id, generatedDrafts.batchId))
+      .where(
+        and(
+          ne(generatedDrafts.batchId, batch.id),
+          sql`(${generatedDrafts.status} = 'running' or (${generatedDrafts.status} = 'queued' and coalesce(${generatedDrafts.queuedAt}, ${generationBatches.createdAt}) < ${mine.toISOString()}::timestamptz))`,
+        ),
+      );
+    return Number(row?.n ?? 0);
   }
 }
 
@@ -356,8 +431,9 @@ export class GenerationController {
     return { current: await this.service.confirm(user, id, body) };
   }
 
+  // 请求体 { kind? }：带 kind 只重做这一份
   @Post('retry')
-  async retry(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string) {
-    return { current: await this.service.retry(user, id) };
+  async retry(@CurrentUser() user: SessionUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return { current: await this.service.retry(user, id, body) };
   }
 }
