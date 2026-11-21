@@ -112,6 +112,19 @@ export function operatorTaskState(t: Row, f: TaskViewFacts, now: Date): Operator
   };
 }
 
+/** 给一批任务算上运营那一侧的状态（任务中心、运营概览共用） */
+export async function withOperatorTaskState<T extends Row>(db: Database, rows: T[], now: Date = new Date()): Promise<(T & OperatorTaskState)[]> {
+  const facts = await loadTaskViewInputs(
+    db,
+    rows.map((r) => r.id),
+  );
+  return rows.flatMap((r) => {
+    const f = facts.get(r.id);
+    const state = f && operatorTaskState(r, f, now);
+    return state ? [{ ...r, ...state }] : [];
+  });
+}
+
 const regionFull = (t: {
   orgRegion: string | null;
   orgRegionProvince: string | null;
@@ -395,17 +408,8 @@ export class OperatorTasksController {
     return selectTasks(this.db);
   }
 
-  private async withState<T extends Row>(rows: T[]): Promise<(T & OperatorTaskState)[]> {
-    const facts = await loadTaskViewInputs(
-      this.db,
-      rows.map((r) => r.id),
-    );
-    const now = new Date();
-    return rows.flatMap((r) => {
-      const f = facts.get(r.id);
-      const state = f && operatorTaskState(r, f, now);
-      return state ? [{ ...r, ...state }] : [];
-    });
+  private withState<T extends Row>(rows: T[]) {
+    return withOperatorTaskState(this.db, rows);
   }
 
   private async load(id: string) {
