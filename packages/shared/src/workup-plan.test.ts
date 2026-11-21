@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { feiyuSnapshot } from './fixtures/feiyu-profile.ts';
 import { feiyuPlanInput } from './fixtures/feiyu-plan.ts';
-import { planInputOf } from './workup-plan.ts';
+import { planInputOf, workupGaps } from './workup-plan.ts';
+import { emptyProductionWorkup } from './workup-production.ts';
 import type { FactOverride, FactValue } from './workup.ts';
 
 const by = { source: 'expert' as const, by: 'u-zhou', byName: '周工', at: '2026-10-31T08:00:00.000Z' };
@@ -103,5 +104,20 @@ describe('按整理结果拼生成输入', () => {
     expect(input.expert.pending).toBeUndefined();
     const blank = planInputOf(feiyuSnapshot, { overrides: {}, blank: ['technicalManagementCount', 'contactPerson'] }, '2026-11-01');
     expect(blank.expert.pending).toEqual(['technicalManagementCount', 'contactPerson']);
+  });
+});
+
+describe('特种设备判为「待补充」', () => {
+  const data = {
+    overrides: {},
+    production: { ...emptyProductionWorkup(), special: { pressureVessels: { ...by, value: { answer: 'later' as const, items: [] } } } },
+  };
+
+  it('不算生成门槛的缺项', () => {
+    expect(workupGaps(feiyuSnapshot, data).gaps.map((g) => g.key)).not.toContain('special:pressureVessels');
+  });
+
+  it('生成输入里带上这一类，文稿写「（待补充）」', () => {
+    expect(planInputOf(feiyuSnapshot, data, '2026-11-01').expert.specialPending).toEqual(['压力容器']);
   });
 });

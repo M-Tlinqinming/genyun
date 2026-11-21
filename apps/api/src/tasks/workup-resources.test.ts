@@ -1,5 +1,5 @@
 // 资料核对向导第 3、4 步（K11）：整步保存、只有专家填的部分、代客户上传和专家上传的图、处理记录、图纸候选
-import { effectiveSnapshot, resourcesStepView, type HistoryEntry } from '@genyun/shared';
+import { effectiveSnapshot, productionStepView, resourcesStepView, type HistoryEntry, type WorkupData } from '@genyun/shared';
 import { feiyuProfile } from '@genyun/shared/fixtures/feiyu-profile';
 import type { INestApplication } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
@@ -11,6 +11,7 @@ import { hashPassword } from '../auth/auth.service.ts';
 import { openDatabase, type DatabaseHandle } from '../db/client.ts';
 import { enterprises, files, memberships, organizations, taskIntakeFiles, tasks, taskWorkups, users } from '../db/schema.ts';
 import type { FileStorage } from '../files/storage.ts';
+import { LANDSCAPE, PORTRAIT, testPdf } from '../generation/drawings/test-pdf.ts';
 
 const PASSWORD = 'correct horse battery staple';
 
@@ -51,6 +52,7 @@ beforeAll(async () => {
   for (const p of [
     { email: 'feiyu@test.cn', name: '陈志刚', orgId: customer!.id, role: 'customer_admin' as const },
     { email: 'zhou@test.cn', name: '周工', orgId: internal!.id, role: 'expert' as const },
+    { email: 'wu@test.cn', name: '吴工', orgId: internal!.id, role: 'expert' as const },
     { email: 'ops@test.cn', name: '赵运营', orgId: internal!.id, role: 'operator' as const },
   ]) {
     const [u] = await db.insert(users).values({ email: p.email, name: p.name, passwordHash }).returning();
@@ -151,6 +153,9 @@ describe('第 4 步整步保存', () => {
     const step = resourcesStepView(body.snapshot, body.data);
     const bad = await zhou.put(url).send({ version: body.version, step, extra: { police: { phone: '12345678' } } }).expect(400);
     expect(bad.body.message).toBe('号码位数不对');
+    // 就近医院的电话也一样
+    const badHospital = { ...step, hospital: { name: '仲恺医院', phone: '12345678' } };
+    expect((await zhou.put(url).send({ version: body.version, step: badHospital, extra: {} }).expect(400)).body.message).toBe('号码位数不对');
     const foreign = { ...step, drawings: { ...step.drawings, site_plan: [otherOrgFile] } };
     expect((await zhou.put(url).send({ version: body.version, step: foreign, extra: {} }).expect(400)).body.message).toBe('有文件不在这个任务里');
     const foreignExtra = { drawings: { traffic_map: [otherOrgFile] } };
@@ -235,5 +240,112 @@ describe('图纸候选认得资料表格流程上传页的文件', () => {
     const drawings: { fileId: string; key: string; name: string }[] = body.drawings;
     expect(drawings).toContainEqual(expect.objectContaining({ fileId: site, key: 'site_plan', name: '总平面图.png' }));
     expect(drawings.some((d) => d.fileId === gone)).toBe(false);
+  });
+});
+
+describe('属地机构的改写', () => {
+  it('电话位数不对 400；对的存进去；只写名称也行', async () => {
+    const zhou = await as('zhou@test.cn');
+    const body = await current();
+    const url = `/api/tasks/${taskId}/workup/facts`;
+    const bad = await zhou.put(url).send({ version: body.version, key: 'agency.fireDept', value: '惠城区消防救援大队 · 12345678' }).expect(400);
+    expect(bad.body.message).toBe('号码位数不对');
+    let res = await zhou.put(url).send({ version: body.version, key: 'agency.fireDept', value: '惠城区消防救援大队 · 0752-2222222' }).expect(200);
+    expect(res.body.data.overrides['agency.fireDept'].value).toBe('惠城区消防救援大队 · 0752-2222222');
+    res = await zhou.put(url).send({ version: res.body.version, key: 'agency.streetOffice', value: '陈江街道办事处' }).expect(200);
+    expect(res.body.data.overrides['agency.streetOffice'].value).toBe('陈江街道办事处');
+  });
+});
+
+describe('专家代传、上传的文件', () => {
+  it('负责专家能下载；别的专家 404；改派以后新专家能下载、原专家 404', async () => {
+    const zhou = await as('zhou@test.cn');
+    const wu = await as('wu@test.cn');
+    const body = await current();
+    const up = (
+      await zhou.post(`/api/tasks/${taskId}/workup/files`).query({ target: 'firstAid', version: body.version }).attach('file', PNG, '药箱.png').expect(201)
+    ).body;
+    const fileId: string = up.data.expertUploads.at(-1).fileId;
+    await zhou.get(`/api/files/${fileId}/download-url`).expect(200);
+    await zhou.get(`/api/files/${fileId}`).expect(200);
+    await wu.get(`/api/files/${fileId}/download-url`).expect(404);
+    await handle.db.update(tasks).set({ assignedExpertId: uid['wu@test.cn']! }).where(eq(tasks.id, taskId));
+    try {
+      await wu.get(`/api/files/${fileId}/download-url`).expect(200);
+      await zhou.get(`/api/files/${fileId}/download-url`).expect(404);
+    } finally {
+      await handle.db.update(tasks).set({ assignedExpertId: uid['zhou@test.cn']! }).where(eq(tasks.id, taskId));
+    }
+  });
+
+  it('只记在第 4 步里（处理记录里的那条已经被挤掉）也认得', async () => {
+    const zhou = await as('zhou@test.cn');
+    const body = await current();
+    const up = (
+      await zhou.post(`/api/tasks/${taskId}/workup/files`).query({ target: 'drawing:traffic_map', version: body.version }).attach('file', PNG, '交通.png').expect(201)
+    ).body;
+    const fileId: string = up.data.resourcesExtra.drawings.traffic_map.at(-1);
+    const [row] = await handle.db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
+    const data = row!.data as WorkupData;
+    await handle.db
+      .update(taskWorkups)
+      .set({ data: { ...data, expertUploads: (data.expertUploads ?? []).filter((u) => u.fileId !== fileId) } })
+      .where(eq(taskWorkups.taskId, taskId));
+    await zhou.get(`/api/files/${fileId}/download-url`).expect(200);
+    await (await as('wu@test.cn')).get(`/api/files/${fileId}/download-url`).expect(404);
+  });
+});
+
+describe('专家传的图是多页 PDF', () => {
+  it('周边环境图选页存得住', async () => {
+    const zhou = await as('zhou@test.cn');
+    let body = await current();
+    body = (
+      await zhou
+        .post(`/api/tasks/${taskId}/workup/files`)
+        .query({ target: 'drawing:surroundings_map', version: body.version })
+        .attach('file', testPdf([LANDSCAPE, PORTRAIT, LANDSCAPE]), '周边环境.pdf')
+        .expect(201)
+    ).body;
+    const fileId: string = body.data.resourcesExtra.drawings.surroundings_map.at(-1);
+    const res = await zhou.put(`/api/tasks/${taskId}/workup/figures`).send({ version: body.version, drawings: { [fileId]: [2] } }).expect(200);
+    expect(res.body.data.figures.drawings[fileId]).toEqual([2]);
+  });
+});
+
+describe('第 3 步旧层并进新块', () => {
+  it('改过的物料、x 开头的新增行各留一份，旧层清空，视图不变', async () => {
+    const zhou = await as('zhou@test.cn');
+    const [row] = await handle.db.select().from(taskWorkups).where(eq(taskWorkups.taskId, taskId));
+    const data = row!.data as WorkupData;
+    const stamp = { by: uid['zhou@test.cn']!, byName: '周工', at: '2026-11-01T08:00:00.000Z' };
+    const firstId = feiyuProfile.productionStep!.step.materials[0]!.id;
+    const { profile: _p, ...rest } = data;
+    const legacy: WorkupData = {
+      ...rest,
+      profile: { ...data.profile, productionStep: undefined },
+      production: {
+        equipment: {},
+        materials: {
+          [firstId]: { ...stamp, value: { kind: 'material', name: '水性油漆', annualUsage: '3 t', maxStorage: '0.5 t' } },
+          x1: { ...stamp, value: { kind: 'material', name: '稀释剂', annualUsage: '1 t', maxStorage: '50 kg' } },
+        },
+        hazardous: {},
+        special: {},
+        fireRatings: {},
+      },
+    } as WorkupData;
+    await handle.db.update(taskWorkups).set({ data: legacy }).where(eq(taskWorkups.taskId, taskId));
+    const body = await current();
+    const before = productionStepView(body.snapshot, body.data);
+    expect(before.materials.filter((m) => m.name === '稀释剂')).toHaveLength(1);
+    const res = await zhou.put(`/api/tasks/${taskId}/workup/steps/production`).send({ version: body.version, step: before }).expect(200);
+    const saved = res.body.data as WorkupData;
+    expect(saved.production?.materials).toEqual({});
+    const mats = saved.profile.productionStep!.step.materials;
+    expect(mats.filter((m) => m.name === '稀释剂')).toHaveLength(1);
+    expect(mats.filter((m) => m.name === '水性油漆')).toHaveLength(1);
+    expect(mats.find((m) => m.id === firstId)?.name).toBe('水性油漆');
+    expect(productionStepView(res.body.snapshot, saved)).toEqual(before);
   });
 });

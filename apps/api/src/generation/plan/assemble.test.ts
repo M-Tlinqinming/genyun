@@ -605,3 +605,12 @@ describe('专家勾了「先留空」的项', () => {
   }, 60_000);
 });
 
+
+describe('特种设备「待补充」', () => {
+  it('文稿里写「压力容器（待补充）」，照常生成', () => {
+    const doc = buildPlan({ ...feiyuPlanInput, expert: { ...feiyuPlanInput.expert, specialPending: ['压力容器', '压力管道'] } });
+    const text = allText(doc);
+    expect(text).toContain('压力容器（待补充）');
+    expect(text).toContain('压力管道（待补充）');
+  }, 60_000);
+});
